@@ -7,7 +7,12 @@ import { logError } from "../utils/app-logger";
 
 export type InitializeAppSettingsResult = {
     settings: AppSettings;
-    shouldWarnAboutLibraryPath: boolean;
+    // The stored library folder could not be reached (a drive that is not connected, a share that
+    // is offline). `settings.libraryPath` still holds the stored path. It is kept rather than
+    // cleared, because clearing it is what made "reconnect the drive and restart" impossible, and
+    // what let the next folder the user picked be taken as a first library instead of a switch the
+    // backend asks about.
+    libraryUnreachable: boolean;
 };
 
 type InitializeAppSettingsOptions = {
@@ -19,26 +24,18 @@ export async function initializeAppSettings({
 }: InitializeAppSettingsOptions): Promise<InitializeAppSettingsResult> {
     const storedLibraryPath = storedSettings.libraryPath.trim();
     let libraryPath = storedLibraryPath;
+    let libraryUnreachable = false;
 
     if (libraryPath) {
         try {
             libraryPath = await resolveExistingDirectory(libraryPath);
-        } catch (error) {
-            logError("settings", "Failed to resolve stored library directory.", error, {
-                libraryPath,
-            });
-            libraryPath = "";
-        }
-    }
-
-    if (libraryPath) {
-        try {
             libraryPath = await ensureDirectoryExists(libraryPath);
         } catch (error) {
-            logError("settings", "Failed to ensure library directory exists.", error, {
+            logError("settings", "The stored library directory is unreachable.", error, {
                 libraryPath,
             });
-            libraryPath = "";
+            libraryPath = storedLibraryPath;
+            libraryUnreachable = true;
         }
     }
 
@@ -50,9 +47,6 @@ export async function initializeAppSettings({
             checkUpdatesOnStartup: storedSettings.checkUpdatesOnStartup,
             externalBackupDir: storedSettings.externalBackupDir,
         },
-        // Only warn when a previously configured library path was lost (e.g. a removable
-        // drive is unplugged or the folder was deleted). A fresh install with no stored
-        // path is the normal empty state, not a warning.
-        shouldWarnAboutLibraryPath: storedLibraryPath !== "" && libraryPath === "",
+        libraryUnreachable,
     };
 }

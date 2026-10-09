@@ -21,7 +21,7 @@ describe("initializeAppSettings", () => {
         vi.clearAllMocks();
     });
 
-    it("resolves and ensures the stored library path without warning", async () => {
+    it("resolves and ensures the stored library path", async () => {
         vi.mocked(resolveExistingDirectory).mockResolvedValueOnce("/library/resolved");
         vi.mocked(ensureDirectoryExists).mockResolvedValueOnce("/library/resolved");
 
@@ -38,11 +38,14 @@ describe("initializeAppSettings", () => {
         expect(resolveExistingDirectory).toHaveBeenCalledWith("/library");
         expect(ensureDirectoryExists).toHaveBeenCalledWith("/library/resolved");
         expect(result.settings.libraryPath).toBe("/library/resolved");
-        expect(result.shouldWarnAboutLibraryPath).toBe(false);
+        expect(result.libraryUnreachable).toBe(false);
         expect(logError).not.toHaveBeenCalled();
     });
 
-    it("clears the path and warns when the stored directory cannot be resolved", async () => {
+    it("keeps the stored path and reports it unreachable when it cannot be resolved", async () => {
+        // A drive that is not connected. Clearing the path here is what made reconnecting and
+        // restarting useless, since nothing was left to reconnect to, and what let the next folder
+        // picked be applied as a first library without the backend asking.
         const resolveError = new Error("missing");
         vi.mocked(resolveExistingDirectory).mockRejectedValueOnce(resolveError);
 
@@ -57,17 +60,17 @@ describe("initializeAppSettings", () => {
         });
 
         expect(ensureDirectoryExists).not.toHaveBeenCalled();
-        expect(result.settings.libraryPath).toBe("");
-        expect(result.shouldWarnAboutLibraryPath).toBe(true);
+        expect(result.settings.libraryPath).toBe("/library");
+        expect(result.libraryUnreachable).toBe(true);
         expect(logError).toHaveBeenCalledWith(
             "settings",
-            "Failed to resolve stored library directory.",
+            "The stored library directory is unreachable.",
             resolveError,
             { libraryPath: "/library" }
         );
     });
 
-    it("clears the path and warns when the directory cannot be ensured", async () => {
+    it("keeps the stored path, not the resolved one, when the directory cannot be ensured", async () => {
         const ensureError = new Error("no access");
         vi.mocked(resolveExistingDirectory).mockResolvedValueOnce("/library/resolved");
         vi.mocked(ensureDirectoryExists).mockRejectedValueOnce(ensureError);
@@ -82,14 +85,8 @@ describe("initializeAppSettings", () => {
             },
         });
 
-        expect(result.settings.libraryPath).toBe("");
-        expect(result.shouldWarnAboutLibraryPath).toBe(true);
-        expect(logError).toHaveBeenCalledWith(
-            "settings",
-            "Failed to ensure library directory exists.",
-            ensureError,
-            { libraryPath: "/library/resolved" }
-        );
+        expect(result.settings.libraryPath).toBe("/library");
+        expect(result.libraryUnreachable).toBe(true);
     });
 
     it("treats a whitespace-only stored path as empty without touching the filesystem", async () => {
@@ -106,10 +103,10 @@ describe("initializeAppSettings", () => {
         expect(resolveExistingDirectory).not.toHaveBeenCalled();
         expect(ensureDirectoryExists).not.toHaveBeenCalled();
         expect(result.settings.libraryPath).toBe("");
-        expect(result.shouldWarnAboutLibraryPath).toBe(false);
+        expect(result.libraryUnreachable).toBe(false);
     });
 
-    it("does not warn on a fresh install with no stored library path", async () => {
+    it("does not report a fresh install with no stored library path as unreachable", async () => {
         const result = await initializeAppSettings({
             storedSettings: {
                 importMode: "copy",
@@ -123,7 +120,7 @@ describe("initializeAppSettings", () => {
         expect(resolveExistingDirectory).not.toHaveBeenCalled();
         expect(ensureDirectoryExists).not.toHaveBeenCalled();
         expect(result.settings.libraryPath).toBe("");
-        expect(result.shouldWarnAboutLibraryPath).toBe(false);
+        expect(result.libraryUnreachable).toBe(false);
         expect(logError).not.toHaveBeenCalled();
     });
 

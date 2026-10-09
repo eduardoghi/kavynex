@@ -14,22 +14,7 @@ import type { SettingsController } from "../../../hooks/settings/use-settings-co
 import type { PendingLibraryMove } from "../../../use-cases/change-library-path";
 import type { LibraryMigrationProgress } from "../../../types/generated/LibraryMigrationProgress";
 import { AppButton } from "../../ui/app-button";
-
-// Windows extended-length paths (`\\?\`, `\\?\UNC\`) are what the backend canonicalizes to, but
-// they are noise to a user, so the raw stored path is prettied only for display.
-function displayWindowsPath(path: string): string {
-    const normalizedPath = path.trim();
-
-    if (normalizedPath.startsWith("\\\\?\\UNC\\")) {
-        return `\\\\${normalizedPath.slice(8)}`;
-    }
-
-    if (normalizedPath.startsWith("\\\\?\\")) {
-        return normalizedPath.slice(4);
-    }
-
-    return normalizedPath;
-}
+import { displayWindowsPath } from "../../../utils/paths";
 
 // "12.4 GB in 1,204 video files, 33 audio files and 1,250 thumbnails", or null without a summary.
 function describeMoveSize(move: PendingLibraryMove): string | null {
@@ -170,6 +155,9 @@ type LibraryFolderSectionProps = Pick<
     | "refreshLibrarySummary"
 > & {
     libraryPath: string;
+    isLibraryUnreachable?: boolean;
+    isRetryingLibraryFolder?: boolean;
+    onRetryLibraryFolder?: () => void;
     onChooseLibraryPath: () => void;
     onOpenLibraryPath: () => void;
     onOpenDiagnostics: () => void;
@@ -185,6 +173,9 @@ type LibraryFolderSectionProps = Pick<
 
 export function LibraryFolderSection({
     libraryPath,
+    isLibraryUnreachable = false,
+    isRetryingLibraryFolder = false,
+    onRetryLibraryFolder = () => undefined,
     librarySummary,
     isLoadingLibrarySummary,
     librarySummaryError,
@@ -216,6 +207,33 @@ export function LibraryFolderSection({
                 readOnly
                 placeholder="No library folder selected"
             />
+
+            {isLibraryUnreachable && (
+                <Alert color="yellow" variant="light">
+                    <Stack gap="xs">
+                        <Text size="sm" fw={600}>
+                            The library folder cannot be reached
+                        </Text>
+                        <Text size="sm">
+                            Kavynex cannot open this folder. If it is on a drive that is not
+                            connected, connect it and try again. It is still your library folder,
+                            and nothing in it or in the app was changed. Choosing another folder
+                            asks first and moves nothing.
+                        </Text>
+                        <Group gap="sm">
+                            <AppButton
+                                appVariant="primary"
+                                leftSection={<RefreshCcw size={16} />}
+                                onClick={onRetryLibraryFolder}
+                                loading={isRetryingLibraryFolder}
+                                disabled={disableLibraryPathChange}
+                            >
+                                Try again
+                            </AppButton>
+                        </Group>
+                    </Stack>
+                </Alert>
+            )}
 
             {!libraryPath.trim() && (
                 <Alert color="blue" variant="light">
@@ -323,7 +341,7 @@ export function LibraryFolderSection({
                     appVariant="secondary"
                     leftSection={<FolderOpen size={16} />}
                     onClick={onOpenLibraryPath}
-                    disabled={!libraryPath.trim()}
+                    disabled={!libraryPath.trim() || isLibraryUnreachable}
                 >
                     Open folder
                 </AppButton>

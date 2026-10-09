@@ -412,6 +412,14 @@ database still lists media or avatars, since the likeliest cause is a drive that
 The pending move then turns into a second question, and confirming it passes
 `switchWithoutMoving`, which switches to the new folder without moving anything.
 
+Startup is where that state is usually found, and it keeps the path rather than clearing it.
+`initializeAppSettings` reports the folder as unreachable, `prepareSettings` writes nothing, and
+`isLibraryUnreachable` holds the state for the session. A folder chosen next is therefore a `move`
+and not a first library's `apply`, and the frontend asks the second question at once instead of
+waiting for the backend to refuse. The backend keeps accepting the other settings meanwhile, since
+`set_app_settings` writes the stored `library_path` back without checking it again. Try again
+reloads the window once the folder answers, so the asset scope is registered by a normal start.
+
 While the copy runs, `migrate_library_directory` reports `LibraryMigrationProgress` (files and
 bytes copied out of the totals) on a Channel at most every 200 ms, which the section shows as a
 progress bar by bytes. `cancel_library_migration` stops the copy before the next file, or partway

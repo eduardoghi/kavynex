@@ -181,11 +181,17 @@ examples. That reads like the library was wiped. It was not, and the reason the 
 is where each one lives. The database sits with the app's own data, not in the library folder, so
 the rows survive a disconnected drive intact while the files they point at are simply out of reach.
 
-Reconnect the drive (or bring the network share back online) and **restart Kavynex**. The restart is
-the part worth knowing about. The library folder is authorized with the webview once, when the
-library path is loaded at startup, and reconnecting the drive mid-session does not re-run that, so
-without a restart the files are reachable again while the thumbnails and the player still refuse
-them.
+Reconnect the drive (or bring the network share back online). What to do next depends on when it
+went away.
+
+- **Kavynex was started while it was away.** It says so on startup, keeps the folder configured and
+  changes nothing. Settings > Library folder shows the folder with **Try again**, which picks the
+  library back up once the folder answers, without a restart. Choosing the same folder again with
+  Choose folder does the same.
+- **It went away while Kavynex was open.** Restart Kavynex after reconnecting it. The library folder
+  is authorized with the webview once, when the library path is loaded at startup, and reconnecting
+  the drive mid-session does not re-run that, so without a restart the files are reachable again
+  while the thumbnails and the player still refuse them.
 
 Nothing needs repairing afterwards. If you want to confirm, run Diagnostics once the library is back
 and the same checks report the real numbers.

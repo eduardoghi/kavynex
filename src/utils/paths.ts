@@ -44,3 +44,22 @@ export function isFilesystemRootPath(path: string): boolean {
 
     return false;
 }
+
+/**
+ * The path as a user would write it. Windows extended-length paths are what the backend
+ * canonicalizes to, but the prefix is noise to a user, so a stored path is prettied for display only
+ * and never for anything sent back.
+ */
+export function displayWindowsPath(path: string): string {
+    const normalizedPath = path.trim();
+
+    if (normalizedPath.startsWith("\\\\?\\UNC\\")) {
+        return `\\\\${normalizedPath.slice(8)}`;
+    }
+
+    if (normalizedPath.startsWith("\\\\?\\")) {
+        return normalizedPath.slice(4);
+    }
+
+    return normalizedPath;
+}

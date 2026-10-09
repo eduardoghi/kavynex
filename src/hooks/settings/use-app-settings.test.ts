@@ -60,11 +60,14 @@ describe("useAppSettings", () => {
             confirmLibraryMove: vi.fn(),
             cancelLibraryMove: vi.fn(),
             cancelRunningLibraryMove: vi.fn(),
+            retryLibraryFolder: vi.fn(),
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
+            isLibraryUnreachable: false,
+            isRetryingLibraryFolder: false,
             pendingLibraryMove: null,
             libraryMoveProgress: null,
             chooseExternalBackupDirAction: vi.fn(),
@@ -182,11 +185,14 @@ describe("useAppSettings", () => {
             confirmLibraryMove: vi.fn(),
             cancelLibraryMove: vi.fn(),
             cancelRunningLibraryMove: vi.fn(),
+            retryLibraryFolder: vi.fn(),
             setImportModeAction: nextSetImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
+            isLibraryUnreachable: false,
+            isRetryingLibraryFolder: false,
             pendingLibraryMove: null,
             libraryMoveProgress: null,
             chooseExternalBackupDirAction: vi.fn(),
@@ -227,11 +233,14 @@ describe("useAppSettings", () => {
             confirmLibraryMove: vi.fn(),
             cancelLibraryMove: vi.fn(),
             cancelRunningLibraryMove: vi.fn(),
+            retryLibraryFolder: vi.fn(),
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction: nextOpenCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
+            isLibraryUnreachable: false,
+            isRetryingLibraryFolder: false,
             pendingLibraryMove: null,
             libraryMoveProgress: null,
             chooseExternalBackupDirAction: vi.fn(),
@@ -272,11 +281,14 @@ describe("useAppSettings", () => {
             confirmLibraryMove: vi.fn(),
             cancelLibraryMove: vi.fn(),
             cancelRunningLibraryMove: vi.fn(),
+            retryLibraryFolder: vi.fn(),
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
             openCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
+            isLibraryUnreachable: false,
+            isRetryingLibraryFolder: false,
             pendingLibraryMove: null,
             libraryMoveProgress: null,
             chooseExternalBackupDirAction: vi.fn(),
@@ -299,6 +311,26 @@ describe("useAppSettings", () => {
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
             externalBackupDir: "",
+        });
+
+        renderHook(() =>
+            useAppSettings({
+                onError: vi.fn(),
+            })
+        );
+
+        expect(mockedRegisterLibraryAssetScope).not.toHaveBeenCalled();
+        expect(mockedMigrateLiveChatToLibrary).not.toHaveBeenCalled();
+    });
+
+    it("skips asset scope registration and live chat migration while the folder cannot be reached", () => {
+        // The path is still configured, but there is nothing behind it to authorize. The app
+        // reloads once the folder is back, and the fresh start registers it.
+        mockedUseAppSettingsActions.mockReturnValue({
+            ...mockedUseAppSettingsActions(
+                {} as Parameters<typeof useAppSettingsActions>[0]
+            ),
+            isLibraryUnreachable: true,
         });
 
         renderHook(() =>

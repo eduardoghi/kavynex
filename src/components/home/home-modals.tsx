@@ -170,6 +170,9 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         onClose={settings.closeSettings}
                         importMode={settings.settings.importMode}
                         libraryPath={settings.settings.libraryPath}
+                        isLibraryUnreachable={settings.isLibraryUnreachable}
+                        isRetryingLibraryFolder={settings.isRetryingLibraryFolder}
+                        onRetryLibraryFolder={() => void settings.retryLibraryFolder()}
                         loadRemoteImages={settings.settings.loadRemoteImages}
                         checkUpdatesOnStartup={settings.settings.checkUpdatesOnStartup}
                         onChangeImportMode={settings.setImportMode}

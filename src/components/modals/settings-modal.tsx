@@ -18,6 +18,9 @@ type SettingsModalProps = {
     onClose: () => void;
     importMode: ImportMode;
     libraryPath: string;
+    isLibraryUnreachable?: boolean;
+    isRetryingLibraryFolder?: boolean;
+    onRetryLibraryFolder?: () => void;
     loadRemoteImages: boolean;
     checkUpdatesOnStartup: boolean;
     onChangeImportMode: (mode: ImportMode) => void;
@@ -45,6 +48,9 @@ export function SettingsModal({
     onClose,
     importMode,
     libraryPath,
+    isLibraryUnreachable = false,
+    isRetryingLibraryFolder = false,
+    onRetryLibraryFolder = () => undefined,
     loadRemoteImages,
     checkUpdatesOnStartup,
     onChangeImportMode,
@@ -158,6 +164,9 @@ export function SettingsModal({
 
                     <LibraryFolderSection
                         libraryPath={libraryPath}
+                        isLibraryUnreachable={isLibraryUnreachable}
+                        isRetryingLibraryFolder={isRetryingLibraryFolder}
+                        onRetryLibraryFolder={onRetryLibraryFolder}
                         librarySummary={controller.librarySummary}
                         isLoadingLibrarySummary={controller.isLoadingLibrarySummary}
                         librarySummaryError={controller.librarySummaryError}

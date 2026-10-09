@@ -24,6 +24,10 @@ export type AppSettingsController = {
     hasLoadedSettings: boolean;
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
+    // The configured library folder could not be reached at startup. The path is still in
+    // `settings.libraryPath`; see initializeAppSettings.
+    isLibraryUnreachable: boolean;
+    isRetryingLibraryFolder: boolean;
     pendingLibraryMove: PendingLibraryMove | null;
     libraryMoveProgress: LibraryMigrationProgress | null;
     openSettings: () => void;
@@ -35,6 +39,7 @@ export type AppSettingsController = {
     confirmLibraryMove: () => Promise<void>;
     cancelLibraryMove: () => void;
     cancelRunningLibraryMove: () => Promise<void>;
+    retryLibraryFolder: () => Promise<void>;
     openCurrentLibraryPath: () => Promise<void>;
     chooseExternalBackupDir: () => Promise<void>;
     clearExternalBackupDir: () => Promise<void>;
@@ -55,7 +60,7 @@ export function useAppSettings({
     // the effect below can depend on it directly. This keeps the dependency array honest (no
     // eslint-disable) while still not depending on the whole object, whose identity changes
     // every render.
-    const { prepareSettings } = settingsActions;
+    const { prepareSettings, isLibraryUnreachable } = settingsActions;
 
     const openSettings = useCallback((): void => {
         setSettingsOpen(true);
@@ -90,6 +95,10 @@ export function useAppSettings({
         await settingsActions.changeLibraryPath(settings.libraryPath);
     }, [settings.libraryPath, settingsActions]);
 
+    const retryLibraryFolder = useCallback(async (): Promise<void> => {
+        await settingsActions.retryLibraryFolder(settings.libraryPath);
+    }, [settings.libraryPath, settingsActions]);
+
     const openCurrentLibraryPath = useCallback(async (): Promise<void> => {
         await settingsActions.openCurrentLibraryPathAction(settings.libraryPath);
     }, [settings.libraryPath, settingsActions]);
@@ -112,7 +121,11 @@ export function useAppSettings({
     useEffect(() => {
         const libraryPath = settings.libraryPath.trim();
 
-        if (!libraryPath) {
+        // An unreachable folder is still the configured one, but there is nothing in it to
+        // authorize or to move live chat into. The backend would refuse the registration anyway,
+        // since it cannot canonicalize a path that does not exist. Once the folder is back the app
+        // reloads (retryLibraryFolder), and this runs on the fresh start.
+        if (!libraryPath || isLibraryUnreachable) {
             return;
         }
 
@@ -142,7 +155,7 @@ export function useAppSettings({
         // `onError` joins the deps rather than being suppressed. It is `useErrorModal`'s
         // `showError`, a `useCallback(..., [])` that never changes identity, so listing it keeps the
         // array honest without making this effect re-run any more often than the library path does.
-    }, [settings.libraryPath, onError]);
+    }, [settings.libraryPath, isLibraryUnreachable, onError]);
 
     // Reference-stable controller (its identity only changes when a field does), via useMemoObject
     // rather than a hand-maintained useMemo dependency array, so adding a field here can never
@@ -152,6 +165,7 @@ export function useAppSettings({
         hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
+        isRetryingLibraryFolder,
         pendingLibraryMove,
         libraryMoveProgress,
         confirmLibraryMove,
@@ -166,6 +180,8 @@ export function useAppSettings({
         hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
+        isLibraryUnreachable,
+        isRetryingLibraryFolder,
         pendingLibraryMove,
         libraryMoveProgress,
         openSettings,
@@ -177,6 +193,7 @@ export function useAppSettings({
         confirmLibraryMove,
         cancelLibraryMove,
         cancelRunningLibraryMove,
+        retryLibraryFolder,
         openCurrentLibraryPath,
         chooseExternalBackupDir,
         clearExternalBackupDir,

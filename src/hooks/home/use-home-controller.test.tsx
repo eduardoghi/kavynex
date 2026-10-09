@@ -96,6 +96,8 @@ const mockSettingsState = {
     hasLoadedSettings: true,
     isMigratingLibraryPath: false,
     isSavingExternalBackupDir: false,
+    isLibraryUnreachable: false,
+    isRetryingLibraryFolder: false,
     pendingLibraryMove: null,
     libraryMoveProgress: null,
     openSettings: vi.fn(),
@@ -107,6 +109,7 @@ const mockSettingsState = {
     confirmLibraryMove: vi.fn(),
     cancelLibraryMove: vi.fn(),
     cancelRunningLibraryMove: vi.fn(),
+    retryLibraryFolder: vi.fn(),
     openCurrentLibraryPath: vi.fn(),
     chooseExternalBackupDir: vi.fn(),
     clearExternalBackupDir: vi.fn(),
@@ -307,6 +310,7 @@ const mockHomeActions = {
     confirmLibraryMove: vi.fn(),
     cancelLibraryMove: vi.fn(),
     cancelRunningLibraryMove: vi.fn(),
+    retryLibraryFolder: vi.fn(),
     confirmDeleteChannel: vi.fn(),
 };
 
@@ -476,6 +480,7 @@ describe("useHomeController", () => {
             isAddingMedia: mockMediaLibrary.isAddingMedia,
             isMigratingLibraryPath: mockSettingsState.isMigratingLibraryPath,
             libraryPath: mockSettingsState.settings.libraryPath,
+            isLibraryUnreachable: mockSettingsState.isLibraryUnreachable,
         });
     });
 

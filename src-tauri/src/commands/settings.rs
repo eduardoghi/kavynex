@@ -68,19 +68,32 @@ pub async fn set_app_settings(
 ) -> AppResult<()> {
     let trimmed_library_path = library_path.trim().to_string();
 
-    // The database file lives directly in the app config directory, so its parent is that directory
-    // (the same derivation get_app_settings uses); the library must not be nested inside it.
-    let config_dir = db.path().parent().map(Path::to_path_buf);
-
-    // Validate the library path off the async runtime. resolve_existing_library_dir touches the
-    // filesystem (exists / is_dir / canonicalize).
-    let path_for_validation = trimmed_library_path.clone();
-    run_blocking(move || {
-        validate_settings_library_path(&path_for_validation, config_dir.as_deref())
-    })
-    .await?;
-
     let pool = db.pool().await?;
+
+    // The path already stored is written back without being checked again. It was validated when
+    // it was stored, and writing it back grants nothing new. Every other settings change rewrites
+    // the whole row with it, so checking it would refuse a change to the import mode or a privacy
+    // toggle whenever the library's drive is not connected, which is exactly when the frontend
+    // keeps the stored path instead of clearing it.
+    let stored_library_path = get_app_settings_from_pool(&pool)
+        .await?
+        .library_path
+        .unwrap_or_default();
+
+    if trimmed_library_path != stored_library_path.trim() {
+        // The database file lives directly in the app config directory, so its parent is that
+        // directory (the same derivation get_app_settings uses); the library must not be nested
+        // inside it.
+        let config_dir = db.path().parent().map(Path::to_path_buf);
+
+        // Validate the library path off the async runtime. resolve_existing_library_dir touches
+        // the filesystem (exists / is_dir / canonicalize).
+        let path_for_validation = trimmed_library_path.clone();
+        run_blocking(move || {
+            validate_settings_library_path(&path_for_validation, config_dir.as_deref())
+        })
+        .await?;
+    }
 
     // The four keys this form owns. `external_backup_dir` stays `None` on purpose. It has its own
     // command, and a `None` field is skipped rather than cleared, so saving the settings form
@@ -356,6 +369,69 @@ mod tests {
         assert_eq!(response["importMode"], "move");
         assert_eq!(response["loadRemoteImages"], "false");
         assert_eq!(response["checkUpdatesOnStartup"], "true");
+    }
+
+    fn set_settings_over_ipc(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        import_mode: &str,
+        library_path: &str,
+    ) -> Result<tauri::ipc::InvokeResponseBody, serde_json::Value> {
+        invoke(
+            webview,
+            "set_app_settings",
+            serde_json::json!({
+                "importMode": import_mode,
+                "libraryPath": library_path,
+                "loadRemoteImages": false,
+                "checkUpdatesOnStartup": true
+            }),
+        )
+    }
+
+    #[test]
+    fn set_app_settings_keeps_working_while_the_stored_library_folder_is_gone() {
+        // The library's drive is not connected. The frontend keeps the stored path rather than
+        // clearing it, and every other settings change writes it back with the rest of the row, so
+        // refusing it here would make the import mode and the privacy toggles unchangeable until the
+        // drive came back.
+        let library = unique_test_dir("stored-gone");
+        fs::create_dir_all(&library).unwrap();
+        let library_path = library.to_string_lossy().to_string();
+
+        let webview = test_webview(memory_db());
+
+        set_settings_over_ipc(&webview, "copy", &library_path).expect("store the library");
+        fs::remove_dir_all(&library).unwrap();
+
+        set_settings_over_ipc(&webview, "move", &library_path)
+            .expect("the stored path is written back unchecked");
+
+        let response = invoke(&webview, "get_app_settings", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<serde_json::Value>()
+            .unwrap();
+
+        assert_eq!(response["importMode"], "move");
+        assert_eq!(response["libraryPath"], library_path.as_str());
+    }
+
+    #[test]
+    fn set_app_settings_still_refuses_a_new_library_folder_that_does_not_exist() {
+        // The exemption above covers the value already stored and nothing else.
+        let stored = unique_test_dir("stored-present");
+        fs::create_dir_all(&stored).unwrap();
+        let missing = unique_test_dir("new-missing");
+
+        let webview = test_webview(memory_db());
+
+        set_settings_over_ipc(&webview, "copy", &stored.to_string_lossy()).expect("store");
+
+        let error = set_settings_over_ipc(&webview, "copy", &missing.to_string_lossy())
+            .expect_err("a different, missing folder must be refused");
+
+        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+
+        let _ = fs::remove_dir_all(&stored);
     }
 
     #[test]

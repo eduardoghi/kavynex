@@ -132,6 +132,7 @@ export function useHomeController(): HomeController {
         isAddingMedia: mediaLibrary.isAddingMedia,
         isMigratingLibraryPath: settingsState.isMigratingLibraryPath,
         libraryPath,
+        isLibraryUnreachable: settingsState.isLibraryUnreachable,
     });
 
     // chooseLibraryPath is orchestrated at the Home level (UI-guard checks), so it replaces the

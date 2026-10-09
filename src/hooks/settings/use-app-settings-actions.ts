@@ -12,7 +12,9 @@ import {
     cancelLibraryMigration,
     getLibrarySummary,
     openLibraryDirectory,
+    resolveExistingDirectory,
 } from "../../services/library-service";
+import { displayWindowsPath } from "../../utils/paths";
 import type { LibraryMigrationProgress } from "../../types/generated/LibraryMigrationProgress";
 import { parseAppError } from "../../utils/app-error";
 import { LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE } from "../../constants/error-codes";
@@ -39,6 +41,10 @@ type UseAppSettingsActionsReturn = {
     hasLoadedSettings: boolean;
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
+    // The configured library folder could not be reached at startup. The path stays configured;
+    // see initializeAppSettings.
+    isLibraryUnreachable: boolean;
+    isRetryingLibraryFolder: boolean;
     // A move of the library waiting for the user to confirm it, or null.
     pendingLibraryMove: PendingLibraryMove | null;
     // How far the copy of a confirmed move has got, or null when none is copying.
@@ -49,6 +55,8 @@ type UseAppSettingsActionsReturn = {
     cancelLibraryMove: () => void;
     // Stops a move that is copying. The old library stays as it was.
     cancelRunningLibraryMove: () => Promise<void>;
+    // Checks the unreachable library folder again, and starts over with it once it is back.
+    retryLibraryFolder: (libraryPath: string) => Promise<void>;
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
     setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartupAction: (checkUpdatesOnStartup: boolean) => void;
@@ -71,6 +79,9 @@ export function useAppSettingsActions({
         useAsyncFlag();
     const { isRunning: isSavingExternalBackupDir, runWithFlag: runSaveExternalBackupDir } =
         useAsyncFlag();
+    const { isRunning: isRetryingLibraryFolder, runWithFlag: runRetryLibraryFolder } =
+        useAsyncFlag();
+    const [isLibraryUnreachable, setIsLibraryUnreachable] = useState(false);
     const [pendingLibraryMove, setPendingLibraryMove] = useState<PendingLibraryMove | null>(
         null
     );
@@ -89,15 +100,26 @@ export function useAppSettingsActions({
                 // drives the asset-scope registration effect, and the backend validates
                 // the requested path against the persisted library path, so the database
                 // must already hold the value before that effect can fire.
-                await persistSettings(result.settings);
+                //
+                // Not when the folder is unreachable. Then the stored path is what the database
+                // already holds, and leaving it untouched is the point. It used to be cleared and
+                // written back empty, so reconnecting the drive and restarting found nothing to
+                // reconnect to, and the next folder picked was taken as a first library instead of
+                // a switch the backend asks about.
+                if (!result.libraryUnreachable) {
+                    await persistSettings(result.settings);
+                }
+
                 setSettings(result.settings);
+                setIsLibraryUnreachable(result.libraryUnreachable);
                 setHasLoadedSettings(true);
 
-                if (result.shouldWarnAboutLibraryPath) {
+                if (result.libraryUnreachable) {
                     onError(
-                        "The previously selected library folder could not be found, so it was cleared. " +
-                            "If it is on a removable drive, reconnect it and restart the app; otherwise " +
-                            "select the library folder again in Settings."
+                        `Kavynex cannot reach the library folder ${displayWindowsPath(result.settings.libraryPath)}. ` +
+                            "If it is on a drive that is not connected, connect it and choose Try " +
+                            "again in Settings > Library folder. The folder is still configured, and " +
+                            "nothing was changed."
                     );
                 }
             } catch (error) {
@@ -106,6 +128,36 @@ export function useAppSettingsActions({
             }
         });
     }, [onError, runPrepareSettings, setSettings]);
+
+    // Reloads the app once the folder answers again rather than only clearing the flag. Images that
+    // failed to load while it was gone do not retry on their own, and a fresh start registers the
+    // folder's asset scope and stores its canonical path the way every launch does.
+    const reloadIfLibraryIsBack = useCallback(async (libraryPath: string): Promise<boolean> => {
+        try {
+            await resolveExistingDirectory(libraryPath);
+        } catch {
+            return false;
+        }
+
+        window.location.reload();
+        return true;
+    }, []);
+
+    const retryLibraryFolder = useCallback(
+        async (libraryPath: string): Promise<void> => {
+            await runRetryLibraryFolder(async () => {
+                if (await reloadIfLibraryIsBack(libraryPath)) {
+                    return;
+                }
+
+                onError(
+                    `Kavynex still cannot reach ${displayWindowsPath(libraryPath)}. Check that its ` +
+                        "drive is connected, or choose another folder."
+                );
+            });
+        },
+        [onError, reloadIfLibraryIsBack, runRetryLibraryFolder]
+    );
 
     // Choosing a folder only plans the change. A first library is applied at once, and a move of an
     // existing one becomes pendingLibraryMove, which the library section shows with what is about
@@ -118,11 +170,32 @@ export function useAppSettingsActions({
                     const plan = await planChangeLibraryPath({ currentLibraryPath });
 
                     if (plan.kind === "unchanged") {
+                        // Picking the configured folder itself after reconnecting its drive is the
+                        // natural way to say it is back. A cancelled dialog lands here too, so a
+                        // folder still missing stays quiet rather than reporting an error nobody
+                        // asked about.
+                        if (isLibraryUnreachable) {
+                            await reloadIfLibraryIsBack(currentLibraryPath);
+                        }
+
                         return;
                     }
 
                     if (plan.kind === "apply") {
                         setSettings(await updateStoredLibraryPath(plan.finalLibraryPath));
+                        return;
+                    }
+
+                    // Known to be gone, so the question is the second one straight away (switch
+                    // without moving anything) rather than a move confirmation the backend would
+                    // only turn into it.
+                    if (isLibraryUnreachable) {
+                        setPendingLibraryMove({
+                            currentLibraryPath: plan.currentLibraryPath,
+                            destination: plan.destination,
+                            summary: null,
+                            currentFolderUnreachable: true,
+                        });
                         return;
                     }
 
@@ -146,7 +219,7 @@ export function useAppSettingsActions({
                 }
             });
         },
-        [onError, runLibraryPathChange, setSettings]
+        [isLibraryUnreachable, onError, reloadIfLibraryIsBack, runLibraryPathChange, setSettings]
     );
 
     const cancelLibraryMove = useCallback((): void => {
@@ -172,6 +245,7 @@ export function useAppSettingsActions({
 
                 const nextSettings = await updateStoredLibraryPath(result.finalLibraryPath);
                 setSettings(nextSettings);
+                setIsLibraryUnreachable(false);
 
                 if (result.oldDirectoryRetained) {
                         // The migration copied everything but could not remove the old directory, so
@@ -338,6 +412,8 @@ export function useAppSettingsActions({
         hasLoadedSettings,
         isMigratingLibraryPath,
         isSavingExternalBackupDir,
+        isLibraryUnreachable,
+        isRetryingLibraryFolder,
         pendingLibraryMove,
         libraryMoveProgress,
         prepareSettings,
@@ -345,6 +421,7 @@ export function useAppSettingsActions({
         confirmLibraryMove,
         cancelLibraryMove,
         cancelRunningLibraryMove,
+        retryLibraryFolder,
         setImportModeAction,
         setLoadRemoteImagesAction,
         setCheckUpdatesOnStartupAction,

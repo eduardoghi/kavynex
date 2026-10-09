@@ -195,6 +195,30 @@ describe("useHomeLibraryPanel", () => {
         expect(whileLoading.result.current.addMediaDisabledReason).toBe("");
     });
 
+    it("disables add media and says why while the configured folder cannot be reached", () => {
+        // The folder stays configured when its drive is not connected, so the empty-path reason no
+        // longer covers it. The backend would refuse the file anyway.
+        const { result } = renderHook(() =>
+            useHomeLibraryPanel({
+                selectedChannel: {
+                    id: 1,
+                    name: "Canal A",
+                    youtube_handle: "@canala",
+                    avatar_path: null,
+                    created_at: "2026-03-31T10:00:00.000Z",
+                },
+                channelMediaTotal: 3,
+                viewMode: "library",
+                isLoadingMedia: false,
+                libraryPath: "/library",
+                isLibraryUnreachable: true,
+            })
+        );
+
+        expect(result.current.disableAddMedia).toBe(true);
+        expect(result.current.addMediaDisabledReason).toContain("cannot be reached");
+    });
+
     it("defaults isAddingMedia to false when omitted", () => {
         const { result } = renderHook(() =>
             useHomeLibraryPanel({

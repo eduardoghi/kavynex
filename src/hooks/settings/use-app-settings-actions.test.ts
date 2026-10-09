@@ -15,6 +15,7 @@ vi.mock("../../services/library-service", () => ({
     openLibraryDirectory: vi.fn(),
     getLibrarySummary: vi.fn(),
     cancelLibraryMigration: vi.fn(),
+    resolveExistingDirectory: vi.fn(),
 }));
 
 vi.mock("./use-app-settings-storage", () => ({
@@ -34,6 +35,7 @@ import {
     cancelLibraryMigration,
     getLibrarySummary,
     openLibraryDirectory,
+    resolveExistingDirectory,
 } from "../../services/library-service";
 import {
     loadStoredSettings,
@@ -47,6 +49,14 @@ describe("useAppSettingsActions", () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
+
+    const NEW_SETTINGS = {
+        importMode: "copy" as const,
+        libraryPath: "/new-library",
+        loadRemoteImages: true,
+        checkUpdatesOnStartup: false,
+        externalBackupDir: "",
+    };
 
     it("prepares settings successfully", async () => {
         const onError = vi.fn();
@@ -68,7 +78,7 @@ describe("useAppSettingsActions", () => {
                 checkUpdatesOnStartup: false,
                 externalBackupDir: "",
             },
-            shouldWarnAboutLibraryPath: false,
+            libraryUnreachable: false,
         });
 
         vi.mocked(persistSettings).mockResolvedValueOnce(undefined);
@@ -116,63 +126,154 @@ describe("useAppSettingsActions", () => {
         expect(onError).not.toHaveBeenCalled();
     });
 
-    it("warns the user when the stored library path was reset", async () => {
-        const onError = vi.fn();
-        const setSettings = vi.fn();
+    const UNREACHABLE_SETTINGS = {
+        importMode: "copy" as const,
+        libraryPath: "/library",
+        loadRemoteImages: true,
+        checkUpdatesOnStartup: false,
+        externalBackupDir: "",
+    };
 
-        vi.mocked(loadStoredSettings).mockResolvedValueOnce({
-            importMode: "copy",
-            libraryPath: "",
-            loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
-            externalBackupDir: "",
-        });
-
+    async function renderWithUnreachableLibrary(onError = vi.fn(), setSettings = vi.fn()) {
+        vi.mocked(loadStoredSettings).mockResolvedValueOnce(UNREACHABLE_SETTINGS);
         vi.mocked(initializeAppSettings).mockResolvedValueOnce({
-            settings: {
-                importMode: "copy",
-                libraryPath: "",
-                loadRemoteImages: true,
-                checkUpdatesOnStartup: false,
-                externalBackupDir: "",
-            },
-            shouldWarnAboutLibraryPath: true,
+            settings: UNREACHABLE_SETTINGS,
+            libraryUnreachable: true,
         });
 
-        vi.mocked(persistSettings).mockResolvedValueOnce(undefined);
-
-        const { result } = renderHook(() =>
-            useAppSettingsActions({
-                onError,
-                setSettings,
-            })
-        );
+        const rendered = renderHook(() => useAppSettingsActions({ onError, setSettings }));
 
         await act(async () => {
-            await result.current.prepareSettings();
+            await rendered.result.current.prepareSettings();
         });
 
-        expect(setSettings).toHaveBeenCalledWith({
-            importMode: "copy",
-            libraryPath: "",
-            loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
-            externalBackupDir: "",
+        return { ...rendered, onError, setSettings };
+    }
+
+    function spyOnReload(): ReturnType<typeof vi.fn> {
+        const reloadSpy = vi.fn();
+        Object.defineProperty(window, "location", {
+            configurable: true,
+            value: { ...window.location, reload: reloadSpy },
         });
-        expect(persistSettings).toHaveBeenCalledWith({
-            importMode: "copy",
-            libraryPath: "",
-            loadRemoteImages: true,
-            checkUpdatesOnStartup: false,
-            externalBackupDir: "",
-        });
+        return reloadSpy;
+    }
+
+    it("keeps an unreachable library configured and writes nothing", async () => {
+        // The drive is not connected. The path used to be cleared and written back empty, so
+        // reconnecting and restarting found nothing to reconnect to.
+        const { result, onError, setSettings } = await renderWithUnreachableLibrary();
+
+        expect(persistSettings).not.toHaveBeenCalled();
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
+        expect(setSettings).toHaveBeenCalledWith(UNREACHABLE_SETTINGS);
+        expect(result.current.isLibraryUnreachable).toBe(true);
+        expect(result.current.hasLoadedSettings).toBe(true);
         expect(onError).toHaveBeenCalledTimes(1);
         expect(onError).toHaveBeenCalledWith(
-            "The previously selected library folder could not be found, so it was cleared. " +
-                "If it is on a removable drive, reconnect it and restart the app; otherwise " +
-                "select the library folder again in Settings."
+            expect.stringContaining("cannot reach the library folder /library")
         );
+        expect(onError).toHaveBeenCalledWith(expect.stringContaining("nothing was changed"));
+    });
+
+    it("reloads once the unreachable folder answers again", async () => {
+        const { result, onError } = await renderWithUnreachableLibrary();
+        const reloadSpy = spyOnReload();
+        vi.mocked(resolveExistingDirectory).mockResolvedValueOnce("/library");
+
+        await act(async () => {
+            await result.current.retryLibraryFolder("/library");
+        });
+
+        expect(resolveExistingDirectory).toHaveBeenCalledWith("/library");
+        expect(reloadSpy).toHaveBeenCalledTimes(1);
+        // Only the startup notice.
+        expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it("says so when the folder still cannot be reached", async () => {
+        const { result, onError } = await renderWithUnreachableLibrary();
+        const reloadSpy = spyOnReload();
+        vi.mocked(resolveExistingDirectory).mockRejectedValueOnce(new Error("missing"));
+
+        await act(async () => {
+            await result.current.retryLibraryFolder("/library");
+        });
+
+        expect(reloadSpy).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenLastCalledWith(
+            expect.stringContaining("still cannot reach /library")
+        );
+        expect(result.current.isLibraryUnreachable).toBe(true);
+    });
+
+    it("asks to switch without moving when another folder is chosen for an unreachable one", async () => {
+        // The question the backend would raise (LIBRARY_FOLDER_UNREACHABLE), asked up front. With
+        // the path cleared this used to be a first library, applied without asking anything.
+        const { result, setSettings } = await renderWithUnreachableLibrary();
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({
+            kind: "move",
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+        });
+
+        await act(async () => {
+            await result.current.changeLibraryPath("/library");
+        });
+
+        expect(getLibrarySummary).not.toHaveBeenCalled();
+        expect(result.current.pendingLibraryMove).toEqual({
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+            summary: null,
+            currentFolderUnreachable: true,
+        });
+
+        vi.mocked(moveLibrary).mockResolvedValueOnce({
+            changed: true,
+            finalLibraryPath: "/new-library",
+            oldDirectoryRetained: false,
+        });
+        vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce(NEW_SETTINGS);
+
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(moveLibrary).toHaveBeenCalledWith(
+            expect.objectContaining({ currentFolderUnreachable: true }),
+            expect.any(Function)
+        );
+        expect(setSettings).toHaveBeenLastCalledWith(NEW_SETTINGS);
+        expect(result.current.isLibraryUnreachable).toBe(false);
+    });
+
+    it("treats choosing the same folder again as reconnecting it", async () => {
+        const { result, onError } = await renderWithUnreachableLibrary();
+        const reloadSpy = spyOnReload();
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({ kind: "unchanged" });
+        vi.mocked(resolveExistingDirectory).mockResolvedValueOnce("/library");
+
+        await act(async () => {
+            await result.current.changeLibraryPath("/library");
+        });
+
+        expect(reloadSpy).toHaveBeenCalledTimes(1);
+        expect(onError).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays quiet when the dialog is cancelled and the folder is still missing", async () => {
+        const { result, onError } = await renderWithUnreachableLibrary();
+        const reloadSpy = spyOnReload();
+        vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({ kind: "unchanged" });
+        vi.mocked(resolveExistingDirectory).mockRejectedValueOnce(new Error("missing"));
+
+        await act(async () => {
+            await result.current.changeLibraryPath("/library");
+        });
+
+        expect(reloadSpy).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledTimes(1);
     });
 
     it("logs and reports an error when preparing settings fails", async () => {
@@ -203,14 +304,6 @@ describe("useAppSettingsActions", () => {
         // A failed read leaves the stored preferences unknown, so nothing gated on them may run.
         expect(result.current.hasLoadedSettings).toBe(false);
     });
-
-    const NEW_SETTINGS = {
-        importMode: "copy" as const,
-        libraryPath: "/new-library",
-        loadRemoteImages: true,
-        checkUpdatesOnStartup: false,
-        externalBackupDir: "",
-    };
 
     const SUMMARY = {
         total_bytes: 2048,

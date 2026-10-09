@@ -79,6 +79,31 @@ describe("LibraryFolderSection", () => {
         expect(screen.getByRole("button", { name: /open folder/i })).toBeDisabled();
     });
 
+    it("offers to try again, and keeps the folder shown, while it cannot be reached", () => {
+        const onRetry = vi.fn();
+
+        renderWithMantine(
+            <LibraryFolderSection
+                {...baseProps({ isLibraryUnreachable: true, onRetryLibraryFolder: onRetry })}
+            />
+        );
+
+        expect(screen.getByDisplayValue("/library")).toBeInTheDocument();
+        expect(screen.getByText("The library folder cannot be reached")).toBeInTheDocument();
+        // Revealing a folder that is not there would only fail.
+        expect(screen.getByRole("button", { name: /open folder/i })).toBeDisabled();
+
+        fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+        expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows nothing about reaching the folder while it is reachable", () => {
+        renderWithMantine(<LibraryFolderSection {...baseProps()} />);
+
+        expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+    });
+
     it("disables choosing a folder and explains why when the change is blocked", () => {
         renderWithMantine(
             <LibraryFolderSection
