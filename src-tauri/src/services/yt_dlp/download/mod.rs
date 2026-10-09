@@ -13,9 +13,7 @@ use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata, YtDlpMet
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
-use crate::services::filesystem::{
-    clean_matching_files_in_dir, find_best_matching_file, replace_file_safely,
-};
+use crate::services::filesystem::{clean_matching_files_in_dir, replace_file_safely};
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
@@ -36,7 +34,7 @@ use crate::services::yt_dlp::registry::{
 };
 use crate::services::yt_dlp::url::youtube_ref_for_log;
 use crate::utils::bounded_semaphore::BoundedSemaphore;
-use crate::utils::format::codec_is_present;
+use crate::utils::format::{codec_is_present, is_allowed_media_extension};
 use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
@@ -183,6 +181,68 @@ fn destination_placement_lock(path: &Path) -> Arc<std::sync::Mutex<()>> {
     lock
 }
 
+/// Picks the media file among what yt-dlp left in the run's directory under `file_name_prefix`.
+///
+/// The directory also holds the live chat replay (`<prefix>.live_chat.json`), and can hold a
+/// subtitle or a format's leftover part. A merged format (`137+140`) matches no single entry of the
+/// metadata, so there is usually no expected extension to go by. Choosing the newest file let the
+/// replay win whenever yt-dlp dated the merged video by the server's Last-Modified (its `--mtime`
+/// option, the default in older releases), and the JSON was then stored as the video. Only a media
+/// extension is a candidate now. The expected one comes first, then the largest, which is the merged
+/// file whenever its parts were left behind.
+fn pick_downloaded_media(
+    candidates: Vec<(PathBuf, u64)>,
+    expected_ext: Option<&str>,
+) -> Option<PathBuf> {
+    let extension_of = |path: &Path| {
+        path.extension()
+            .and_then(|value| value.to_str())
+            .map(|value| value.to_ascii_lowercase())
+    };
+    let expected_ext = expected_ext.map(|value| value.trim_start_matches('.').to_ascii_lowercase());
+
+    candidates
+        .into_iter()
+        .filter(|(path, _)| {
+            extension_of(path).is_some_and(|extension| is_allowed_media_extension(&extension))
+        })
+        .max_by_key(|(path, len)| {
+            let is_expected = expected_ext.is_some() && extension_of(path) == expected_ext;
+            (is_expected, *len)
+        })
+        .map(|(path, _)| path)
+}
+
+fn find_downloaded_media_file(
+    temp_dir: &Path,
+    file_name_prefix: &str,
+    expected_ext: Option<&str>,
+) -> AppResult<PathBuf> {
+    let not_found = || {
+        AppError::from_code(
+            AppErrorCode::YtDlpDownloadedFileNotFound,
+            "download completed but the final file was not found",
+        )
+    };
+
+    let candidates = fs::read_dir(temp_dir)
+        .map_err(|_| not_found())?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with(file_name_prefix))
+        })
+        .filter_map(|entry| {
+            let metadata = entry.metadata().ok()?;
+            metadata.is_file().then(|| (entry.path(), metadata.len()))
+        })
+        .collect();
+
+    pick_downloaded_media(candidates, expected_ext).ok_or_else(not_found)
+}
+
 /// Returns the final path and whether an already-catalogued file was kept (the fresh download
 /// was discarded). The caller surfaces the second value to the user, since otherwise a re-download
 /// of the same video+format silently keeps the old bytes with no visible signal.
@@ -197,6 +257,20 @@ fn place_downloaded_file(
             "downloaded file has no valid name",
         )
     })?;
+
+    // The backstop for pick_downloaded_media. Nothing but a media file may land in `video/` or
+    // `audio/`, whatever chose it.
+    let is_media = downloaded_temp
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(is_allowed_media_extension);
+
+    if !is_media {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidDownloadedFile,
+            "the downloaded file is not a media file the library accepts",
+        ));
+    }
 
     // Serialize the placement into the library against a concurrent migration (see library::lock)
     // so a just-finished download cannot land in the old directory while the migration is
@@ -1049,13 +1123,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         }
 
         let downloaded_temp =
-            find_best_matching_file(&temp_dir, &file_name_prefix, expected_ext.as_deref())
-                .map_err(|_| {
-                    AppError::from_code(
-                        AppErrorCode::YtDlpDownloadedFileNotFound,
-                        "download completed but the final file was not found",
-                    )
-                })?;
+            find_downloaded_media_file(&temp_dir, &file_name_prefix, expected_ext.as_deref())?;
 
         let (final_destination, kept_existing) =
             place_downloaded_file_async(downloaded_temp, media_dir, library_dir.clone()).await?;
@@ -1071,6 +1139,24 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 "A file for this video and format already existed in the library; kept the existing copy and discarded the new download.",
                 "system",
             )?;
+        }
+
+        // yt-dlp merges into .mkv when the picked video and audio cannot share an mp4 or webm
+        // container (VP9 or AV1 video with m4a audio, which is what high resolutions usually are).
+        // The file is fine, but WebKit on macOS has no Matroska support, so the player there shows
+        // nothing. Said here because the format list cannot know the merged container up front.
+        let merged_into_mkv = final_destination
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("mkv"));
+
+        if merged_into_mkv {
+            emit_download_log_infallible(
+                app,
+                &normalized_run_id,
+                "Saved as .mkv because the chosen video and audio streams cannot share an mp4 container. The macOS version of Kavynex cannot play .mkv files, so choose an mp4 format there to avoid this.",
+                "system",
+            );
         }
 
         // Best effort, like the thumbnail below, because the media is already in the library by now.
@@ -1194,6 +1280,9 @@ mod tests {
         assert_eq!(args.last().unwrap(), "https://www.youtube.com/watch?v=abc");
         assert_eq!(args[args.len() - 2], "--");
 
+        // Dated by when it was written, whatever the installed yt-dlp defaults to.
+        assert!(args.iter().any(|arg| arg == "--no-mtime"));
+
         // The chosen format follows `-f` verbatim.
         let format_index = args.iter().position(|arg| arg == "-f").unwrap();
         assert_eq!(args[format_index + 1], "137+140");
@@ -1307,6 +1396,78 @@ mod tests {
         // The `--` separator + URL invariant still holds with the extra flags present.
         assert_eq!(args.last().unwrap(), "https://youtu.be/x");
         assert_eq!(args[args.len() - 2], "--");
+    }
+
+    fn candidate(name: &str, len: u64) -> (PathBuf, u64) {
+        (PathBuf::from(name), len)
+    }
+
+    #[test]
+    fn a_merged_download_is_picked_over_a_newer_or_larger_live_chat_replay() {
+        // A merged format has no expected extension. The replay used to win on mtime whenever
+        // yt-dlp dated the video by the server's Last-Modified, and was then stored as the video.
+        let picked = pick_downloaded_media(
+            vec![
+                candidate("youtube_ID_137_140.live_chat.json", 50_000_000),
+                candidate("youtube_ID_137_140.mkv", 1_000),
+            ],
+            None,
+        );
+
+        assert_eq!(picked, Some(PathBuf::from("youtube_ID_137_140.mkv")));
+    }
+
+    #[test]
+    fn the_expected_extension_wins_over_a_larger_media_file() {
+        let picked = pick_downloaded_media(
+            vec![candidate("x.webm", 900), candidate("x.mp4", 10)],
+            Some("MP4"),
+        );
+
+        assert_eq!(picked, Some(PathBuf::from("x.mp4")));
+    }
+
+    #[test]
+    fn without_an_expected_extension_the_largest_media_file_is_the_download() {
+        // A part yt-dlp left behind next to the merged file is smaller than the merge.
+        let picked = pick_downloaded_media(
+            vec![candidate("x.f140.m4a", 300), candidate("x.mp4", 1_300)],
+            None,
+        );
+
+        assert_eq!(picked, Some(PathBuf::from("x.mp4")));
+    }
+
+    #[test]
+    fn nothing_is_picked_when_no_file_is_media() {
+        let picked = pick_downloaded_media(
+            vec![
+                candidate("x.live_chat.json", 10),
+                candidate("x.en.vtt", 10),
+                candidate("x.webp", 10),
+            ],
+            None,
+        );
+
+        assert_eq!(picked, None);
+    }
+
+    #[test]
+    fn place_downloaded_file_refuses_a_file_that_is_not_media() {
+        let base = unique_temp_dir("place-not-media");
+        let media_dir = base.join("video");
+        fs::create_dir_all(&media_dir).unwrap();
+
+        let temp_file = base.join("youtube_ID_137.live_chat.json");
+        fs::write(&temp_file, b"{}").unwrap();
+
+        let error = place_downloaded_file(&temp_file, &media_dir, &base)
+            .expect_err("a replay must never be stored as the video");
+
+        assert_eq!(error.code, AppErrorCode::InvalidDownloadedFile.as_str());
+        assert!(!media_dir.join("youtube_ID_137.live_chat.json").exists());
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

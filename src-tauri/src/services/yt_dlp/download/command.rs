@@ -177,6 +177,11 @@ pub(super) fn build_download_command_args(
         "--restrict-filenames".to_string(),
         "--windows-filenames".to_string(),
         "--no-part".to_string(),
+        // Dated by when it was written rather than by the server's Last-Modified. Recent yt-dlp
+        // already does that by default and older releases did not. Nothing here depends on the
+        // date any more (pick_downloaded_media), but a downloaded file dated years back is a
+        // surprise in a file manager.
+        "--no-mtime".to_string(),
         "--newline".to_string(),
         "--progress".to_string(),
         // No `--no-warnings` here, deliberately, and unlike the metadata calls in
