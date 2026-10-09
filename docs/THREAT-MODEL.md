@@ -655,7 +655,10 @@ in-app terminal (`download/redaction.rs`), the `Cookies from browser:` line and 
 (`download/mod.rs`), and yt-dlp's own `[debug] Command-line config` echo in `terminal_logs` and in
 a failure detail (`metadata.rs::redact_sensitive_from_line`). All of them show
 `browser[+keyring]:<redacted>` through `redact_cookies_browser_selector`; the browser and keyring
-stay because they name a tool, not the user.
+stay because they name a tool, not the user. On Windows yt-dlp prints both the echo and its cookie errors as
+Python reprs, with every backslash doubled, so that spelling is matched too
+(`metadata.rs::redact_cookies_from_line`), along with a profile written as a path when an error
+names it on its own.
 
 ## Outbound image fetches (thumbnails and channel avatars)
 

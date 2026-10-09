@@ -5,8 +5,9 @@
 use super::{
     comments_extraction_looks_incomplete, comments_extractor_args, cookies_browser_from_args,
     cookies_path_from_args, is_valid_youtube_video_id, read_capped_json_stdout,
-    redact_cookies_path_from_line, redact_sensitive_from_line, resolve_youtube_video_id,
-    run_yt_dlp_and_capture_json, sanitize_filename_component, sanitize_identifier_component,
+    redact_cookies_from_line, redact_cookies_path_from_line, redact_sensitive_from_line,
+    resolve_youtube_video_id, run_yt_dlp_and_capture_json, sanitize_filename_component,
+    sanitize_identifier_component,
 };
 use crate::AppErrorCode;
 
@@ -261,7 +262,9 @@ fn redact_sensitive_reduces_the_full_url_to_a_video_reference() {
     // yt-dlp's -v echo prints the whole argv, including the pasted URL with its playlist and
     // tracking parameters. The sanitized line must keep only the video reference and still
     // redact the cookies path, matching the download flow's redaction.
-    let line = "[debug] Command-line config: ['--cookies', 'C:\\Users\\Alice\\cookies.txt', '--', 'https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s']";
+    // Raw, so the doubled backslashes are what the line holds. yt-dlp prints the argv as a Python
+    // repr, which is the only way a Windows path ever appears in this echo.
+    let line = r"[debug] Command-line config: ['--cookies', 'C:\\Users\\Alice\\cookies.txt', '--', 'https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s']";
 
     let redacted = redact_sensitive_from_line(
         line,
@@ -279,8 +282,57 @@ fn redact_sensitive_reduces_the_full_url_to_a_video_reference() {
         "playlist/tracking params must not survive: {redacted}"
     );
     assert!(
-        !redacted.contains(r"C:\Users\Alice\cookies.txt"),
+        !redacted.contains("Alice"),
         "cookies path must still be redacted: {redacted}"
+    );
+}
+
+#[test]
+fn a_windows_cookies_path_is_redacted_in_the_form_yt_dlp_prints_it() {
+    // The shape yt-dlp 2026.08.19 prints on Windows. The repr doubles every backslash, so the path
+    // the user picked never appears with single ones, and matching only those let it through.
+    let line = r"[debug] Command-line config: ['-v', '--cookies', 'C:\\Users\\Alice\\Desktop\\cookies.txt', '--', 'https://youtu.be/abc']";
+
+    let redacted = redact_cookies_path_from_line(line, Some(r"C:\Users\Alice\Desktop\cookies.txt"));
+
+    assert!(!redacted.contains("Alice"), "{redacted}");
+    assert!(redacted.contains("'--cookies', '<redacted>'"), "{redacted}");
+}
+
+#[test]
+fn a_windows_browser_profile_is_redacted_in_the_argv_echo_and_in_errors() {
+    let selector = r"firefox:C:\Users\Alice\AppData\Roaming\Mozilla\Firefox\Profiles\abc.default";
+
+    let echo = r"[debug] Command-line config: ['--cookies-from-browser', 'firefox:C:\\Users\\Alice\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\abc.default', '--', 'https://youtu.be/abc']";
+    let redacted_echo =
+        redact_sensitive_from_line(echo, None, Some(selector), "https://youtu.be/abc");
+
+    assert!(!redacted_echo.contains("Alice"), "{redacted_echo}");
+    assert!(
+        redacted_echo.contains("'firefox:<redacted>'"),
+        "{redacted_echo}"
+    );
+
+    // The profile alone, as the directory an error says it searched. No selector surrounds it.
+    let error = r"ERROR: could not find firefox cookies database in 'C:\\Users\\Alice\\AppData\\Roaming\\Mozilla\\Firefox\\Profiles\\abc.default'";
+    let redacted_error = redact_cookies_from_line(error, None, Some(selector));
+
+    assert!(!redacted_error.contains("Alice"), "{redacted_error}");
+    assert!(
+        redacted_error.contains("cookies database in '<redacted>'"),
+        "{redacted_error}"
+    );
+}
+
+#[test]
+fn a_profile_given_by_name_is_not_hunted_through_the_rest_of_the_line() {
+    // A bare name is a word, not a path. Replacing every "default" in a line would garble it and
+    // hide nothing about the user.
+    let line = "[Cookies] Extracting cookies from: default profile";
+
+    assert_eq!(
+        redact_cookies_from_line(line, None, Some("firefox:default")),
+        line
     );
 }
 

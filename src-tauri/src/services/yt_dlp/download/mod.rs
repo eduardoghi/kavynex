@@ -26,7 +26,7 @@ use crate::services::yt_dlp::events::{
     emit_download_log_infallible,
 };
 use crate::services::yt_dlp::metadata::{
-    fetch_yt_dlp_metadata, normalize_download_metadata, redact_cookies_path_from_line,
+    fetch_yt_dlp_metadata, normalize_download_metadata, redact_cookies_from_line,
     sanitize_filename_component, sanitize_identifier_component,
 };
 use crate::services::yt_dlp::registry::{
@@ -895,6 +895,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
         // reveals the local username/profile and may be pasted into a public bug report.
         let cookies_path_stdout = normalized_cookies_path.clone();
         let cookies_path_stderr = normalized_cookies_path.clone();
+        let cookies_browser_stdout = normalized_cookies_browser.clone();
+        let cookies_browser_stderr = normalized_cookies_browser.clone();
 
         let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let stderr_buffer_reader = Arc::clone(&stderr_buffer);
@@ -911,7 +913,11 @@ pub async fn download_media_from_url_async<R: Runtime>(
                     Ordering::Relaxed,
                 );
 
-                let line = redact_cookies_path_from_line(&line, cookies_path_stdout.as_deref());
+                let line = redact_cookies_from_line(
+                    &line,
+                    cookies_path_stdout.as_deref(),
+                    cookies_browser_stdout.as_deref(),
+                );
                 emit_download_log_infallible(&app_stdout, &run_id_stdout, line, "stdout");
             }
         });
@@ -930,7 +936,11 @@ pub async fn download_media_from_url_async<R: Runtime>(
 
                 // Redact before buffering so the failure message built from this buffer below is
                 // redacted too, not just the live stream.
-                let line = redact_cookies_path_from_line(&line, cookies_path_stderr.as_deref());
+                let line = redact_cookies_from_line(
+                    &line,
+                    cookies_path_stderr.as_deref(),
+                    cookies_browser_stderr.as_deref(),
+                );
 
                 // A warning goes to the terminal but never into this buffer. The buffer is joined
                 // verbatim into the user-facing failure message, so a run that warned about a

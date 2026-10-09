@@ -150,6 +150,11 @@ pub(crate) struct CookiesBrowserSelector {
 }
 
 impl CookiesBrowserSelector {
+    /// The profile part, as typed. Often a path under the user's home directory.
+    pub(crate) fn profile(&self) -> Option<&str> {
+        self.profile.as_deref()
+    }
+
     /// The value handed to yt-dlp. Browser and keyring lowercased, whitespace around the separators
     /// dropped, profile and container exactly as typed (profile names are case-sensitive on Linux).
     pub(crate) fn to_argument(&self) -> String {

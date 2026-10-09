@@ -285,9 +285,14 @@ pub(crate) fn redact_path_from_line(line: &str, path: &str) -> String {
         return line.to_string();
     }
 
-    // The plausible representations of the same full path. Verbatim, and with either separator
-    // convention. Case is handled by the ASCII-insensitive matcher below.
+    // The plausible representations of the same full path. Verbatim, with either separator
+    // convention, and with every backslash doubled. The doubled one is what yt-dlp actually prints
+    // on Windows. Its `-v` argv echo and its "could not find ... in '<path>'" errors both write the
+    // Python repr of the string, so a path never appears there with single backslashes, and the
+    // other spellings matched nothing on the platform where paths carry the user's name. Case is
+    // handled by the ASCII-insensitive matcher below.
     let variants = [
+        path.replace('\\', "\\\\"),
         path.to_string(),
         path.replace('\\', "/"),
         path.replace('/', "\\"),
@@ -313,20 +318,7 @@ pub(crate) fn redact_sensitive_from_line(
     cookies_browser: Option<&str>,
     url: &str,
 ) -> String {
-    let mut redacted = redact_cookies_path_from_line(line, cookies_path);
-
-    if let Some(selector) = cookies_browser
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let safe = redact_cookies_browser_selector(selector);
-
-        // A bare browser name redacts to itself; replacing it with itself would be a no-op, and a
-        // selector with a profile is the only case where the argv echo carries something to hide.
-        if safe != selector {
-            redacted = redacted.replace(selector, &safe);
-        }
-    }
+    let redacted = redact_cookies_from_line(line, cookies_path, cookies_browser);
 
     let url = url.trim();
 
@@ -335,6 +327,48 @@ pub(crate) fn redact_sensitive_from_line(
     }
 
     redacted.replace(url, &youtube_ref_for_log(url))
+}
+
+/// Hides the cookies file path and the profile of a `--cookies-from-browser` selector, in every
+/// spelling yt-dlp prints them. Shared by the metadata calls and the download, whose output reaches
+/// the same terminal and log.
+pub(crate) fn redact_cookies_from_line(
+    line: &str,
+    cookies_path: Option<&str>,
+    cookies_browser: Option<&str>,
+) -> String {
+    let mut redacted = redact_cookies_path_from_line(line, cookies_path);
+
+    let Some(selector) = cookies_browser
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return redacted;
+    };
+
+    let safe = redact_cookies_browser_selector(selector);
+
+    // A bare browser name redacts to itself; replacing it with itself would be a no-op, and a
+    // selector with a profile is the only case where the argv echo carries something to hide. The
+    // echo is a Python repr, so on Windows the selector appears there with its backslashes doubled.
+    if safe != selector {
+        redacted = redacted.replace(&selector.replace('\\', "\\\\"), &safe);
+        redacted = redacted.replace(selector, &safe);
+    }
+
+    // The profile also turns up on its own, as the directory an error says it searched ("could not
+    // find firefox cookies database in '<profile>'"), where no selector surrounds it to match. Only
+    // a profile written as a path is hidden there. A bare profile name is a word, and replacing every
+    // occurrence of a word like "default" would garble the line for nothing.
+    if let Some(profile) =
+        crate::services::yt_dlp::cookies::parse_cookies_browser_selector(selector)
+            .and_then(|parsed| parsed.profile().map(str::to_owned))
+            .filter(|profile| profile.contains(['/', '\\']))
+    {
+        redacted = redact_path_from_line(&redacted, &profile);
+    }
+
+    redacted
 }
 
 /// Replaces every ASCII-case-insensitive occurrence of `needle` in `haystack`. Uses
