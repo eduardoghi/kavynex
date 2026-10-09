@@ -163,7 +163,7 @@ fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
 /// this same hash), so a large `left` file is not hashed a second time. The size check still runs
 /// first, and `right` is always hashed, so a `right` file whose bytes no longer match its name
 /// (a corrupt library file) is still caught.
-fn file_paths_have_same_content_using(
+pub(crate) fn file_paths_have_same_content_using(
     left: &Path,
     right: &Path,
     left_hash: Option<&str>,

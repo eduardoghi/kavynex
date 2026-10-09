@@ -4,7 +4,8 @@ use std::sync::atomic::AtomicBool;
 
 use crate::models::yt_dlp::ImportMode;
 use crate::services::filesystem::{
-    copy_file_atomic_cancellable, stage_move_cancellable, StagedMove,
+    copy_file_atomic_cancellable, file_paths_have_same_content_using, stage_move_cancellable,
+    StagedMove,
 };
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
@@ -205,15 +206,39 @@ pub fn stage_media_import_cancellable_sync(
     // multi-GB file for no reason).
     let destination_existed = destination.exists();
 
+    // A Move of a file that is already in the library is imported as a Copy. Removing the source
+    // would take the file another row points at (`video/youtube_<id>_<fmt>.mp4` picked in the dialog
+    // and imported again under `media_<hash>`), leaving that row on a missing file. The one exception
+    // is a source that *is* the destination, which the staged move recognizes and keeps as the
+    // user's only copy.
+    let mode = if matches!(mode, ImportMode::Move)
+        && source_is_another_library_file(&source, &destination, &library_dir)
+    {
+        logger::info(
+            "library",
+            "the import source is already in the library, so it is copied rather than moved",
+        );
+        ImportMode::Copy
+    } else {
+        mode
+    };
+
     let (source_to_remove, library_holds_only_copy) = match mode {
         ImportMode::Copy => {
             if destination_existed {
-                // The content-addressed destination already holds this exact content, so there
-                // is nothing to copy and the source is left untouched (Copy semantics).
+                // A file under this content's name is already in the library. Its name is a claim
+                // about its bytes, not proof of them, so it is compared before the import adopts
+                // it. Taking it on its name let a truncated or damaged file stand in for the
+                // user's intact original, which they then believed was backed up. The hash already
+                // computed is reused, so only the library file is read.
+                if !file_paths_have_same_content_using(&source, &destination, Some(&hash))? {
+                    return Err(damaged_destination(&destination));
+                }
+
                 logger::info(
                     "library",
                     format!(
-                        "media import skipped because destination already exists: '{}'",
+                        "media import reuses the identical file already in the library: '{}'",
                         crate::services::logger::redact_path(&destination)
                     ),
                 );
@@ -228,7 +253,16 @@ pub fn stage_media_import_cancellable_sync(
             // source is still owed its removal and the Move actually frees it. Pass the hash we
             // already computed above so the identical-content check does not re-hash the
             // (possibly multi-GB) source a second time.
-            match stage_move_cancellable(&source, &destination, &hash, cancel)? {
+            let staged =
+                stage_move_cancellable(&source, &destination, &hash, cancel).map_err(|error| {
+                    if error.code == AppErrorCode::DestinationAlreadyExists.as_str() {
+                        damaged_destination(&destination)
+                    } else {
+                        error
+                    }
+                })?;
+
+            match staged {
                 StagedMove::SourceKept => (Some(source.clone()), false),
                 StagedMove::SourceConsumed => (None, true),
                 // The user's file is the library file. If no row ends up pointing at it, it is
@@ -265,6 +299,44 @@ pub fn stage_media_import_cancellable_sync(
         source_to_remove,
         library_holds_only_copy,
     })
+}
+
+/// True when `source` sits inside the library and is not the content-addressed `destination`
+/// itself. Both are canonicalized, so a different spelling of a library path still counts.
+fn source_is_another_library_file(source: &Path, destination: &Path, library_dir: &Path) -> bool {
+    let Ok(canonical_source) = source.canonicalize() else {
+        return false;
+    };
+
+    if destination
+        .canonicalize()
+        .is_ok_and(|canonical_destination| canonical_destination == canonical_source)
+    {
+        return false;
+    }
+
+    library_dir
+        .canonicalize()
+        .is_ok_and(|canonical_library| canonical_source.starts_with(canonical_library))
+}
+
+/// The refusal for a library file whose name says it holds the imported content and whose bytes
+/// say otherwise. Neither copy is touched. Which one is right is the user's call, and the deep check
+/// in Diagnostics is what tells them which library files no longer match their names.
+fn damaged_destination(destination: &Path) -> AppError {
+    AppError::from_code_with_details(
+        AppErrorCode::DestinationAlreadyExists,
+        "a library file is named for this content but holds different bytes",
+        format!(
+            "{} in the library is named for this file's content but does not match it, so it may \
+             be damaged. Nothing was changed. The deep check in Diagnostics lists the library files \
+             that no longer match their names.",
+            destination
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        ),
+    )
 }
 
 pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<()> {
@@ -449,6 +521,115 @@ mod tests {
 
         assert!(!source.exists());
         assert_eq!(fs::read(&library_file).unwrap(), b"video-bytes");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_move_of_a_file_already_in_the_library_keeps_it_for_the_row_that_owns_it() {
+        // Picking a downloaded video (`youtube_<id>_<fmt>.mp4`) in the dialog and importing it in
+        // Move mode removed it once the new row landed, leaving its own row on a missing file.
+        let root = unique_test_dir("move-from-library");
+        let library_dir = root.join("library");
+        let video_dir = library_dir.join("video");
+        fs::create_dir_all(&video_dir).unwrap();
+
+        let owned = video_dir.join("youtube_abc_137.mp4");
+        fs::write(&owned, b"downloaded-bytes").unwrap();
+
+        let staged = stage_media_import_cancellable_sync(
+            owned.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            staged.source_to_remove, None,
+            "the library file is not the import's to remove"
+        );
+        assert!(!staged.library_holds_only_copy);
+        assert_eq!(fs::read(&owned).unwrap(), b"downloaded-bytes");
+        assert_eq!(
+            fs::read(library_dir.join(&staged.relative_path)).unwrap(),
+            b"downloaded-bytes"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    /// A library holding `media_<hash of content>.mp4` whose bytes are not `content`.
+    fn library_with_a_damaged_copy_of(root: &Path, content: &[u8]) -> (PathBuf, PathBuf, PathBuf) {
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        let video_dir = library_dir.join("video");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(&video_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, content).unwrap();
+
+        let hash = crate::utils::hash::file_hash(&source).unwrap();
+        let damaged = video_dir.join(format!("media_{hash}.mp4"));
+        fs::write(&damaged, b"truncat").unwrap();
+
+        (source, library_dir, damaged)
+    }
+
+    #[test]
+    fn a_copy_import_refuses_a_library_file_named_for_its_content_that_holds_other_bytes() {
+        // Adopted on its name alone, the damaged file became the "backup" of the user's intact one.
+        let root = unique_test_dir("copy-damaged");
+        let (source, library_dir, damaged) = library_with_a_damaged_copy_of(&root, b"intact-bytes");
+
+        let error = stage_media_import_cancellable_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+        )
+        .expect_err("a damaged library file must not stand in for the import");
+
+        assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
+        assert!(
+            error
+                .details
+                .as_deref()
+                .unwrap_or_default()
+                .contains("may be damaged"),
+            "{error:?}"
+        );
+        assert_eq!(
+            fs::read(&damaged).unwrap(),
+            b"truncat",
+            "neither copy is touched"
+        );
+        assert_eq!(fs::read(&source).unwrap(), b"intact-bytes");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_move_import_explains_the_same_refusal() {
+        let root = unique_test_dir("move-damaged");
+        let (source, library_dir, _) = library_with_a_damaged_copy_of(&root, b"intact-bytes");
+
+        let error = stage_media_import_cancellable_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+        )
+        .expect_err("a damaged library file must not stand in for the import");
+
+        assert_eq!(error.code, AppErrorCode::DestinationAlreadyExists.as_str());
+        assert!(error
+            .details
+            .as_deref()
+            .unwrap_or_default()
+            .contains("may be damaged"));
+        assert!(source.is_file());
 
         let _ = fs::remove_dir_all(root);
     }
