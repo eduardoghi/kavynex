@@ -896,6 +896,19 @@ pub async fn download_media_from_url_async<R: Runtime>(
             DownloadTermination::Succeeded => {}
         }
 
+        // A cancel that arrived after yt-dlp exited is still honored before the file is placed, the
+        // last point where stopping leaves nothing in the library. The Cancel button stays up for
+        // the whole creation, not only while the process runs.
+        if cancel_flag.load(Ordering::SeqCst) {
+            let message = "yt-dlp download cancelled";
+            emit_download_cancelled(app, &normalized_run_id, message);
+
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadCancelled,
+                message,
+            ));
+        }
+
         let downloaded_temp =
             find_downloaded_media_file(&temp_dir, &file_name_prefix, expected_ext.as_deref())?;
 

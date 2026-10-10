@@ -100,6 +100,29 @@ describe("AddMediaModalActions", () => {
         expect(screen.getByRole("button", { name: /cancel download/i })).toBeInTheDocument();
     });
 
+    it("keeps the download cancellable after yt-dlp exits, while the file is saved", () => {
+        renderWithMantine(
+            <form>
+                <AddMediaModalActions
+                    isYtDlpRunning={false}
+                    isUrlMode
+                    isImportingLocalFile={false}
+                    isLoadingYtDlpFormats={false}
+                    isCancellingYtDlp={false}
+                    isModalLocked
+                    canSubmit
+                    isBusy
+                    loading
+                    onCancelYtDlpDownload={vi.fn()}
+                    onClose={vi.fn()}
+                />
+            </form>
+        );
+
+        expect(screen.getByText("Saving to the library...")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /cancel download/i })).toBeInTheDocument();
+    });
+
     it("shows a cancel import button while a local file is being imported", () => {
         const onCancel = vi.fn();
 

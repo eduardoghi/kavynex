@@ -37,16 +37,21 @@ export function AddMediaModalActions({
     onCancelYtDlpDownload,
     onClose,
 }: AddMediaModalActionsProps): JSX.Element {
-    // One button for both, because it is one backend mechanism. A download and an import register
-    // the same kind of run and are stopped by the same command. Only the wording differs, since
-    // "Cancel download" in front of a file copy would describe the wrong thing.
-    const cancellable = isUrlMode ? isYtDlpRunning || isFetchingComments : isImportingLocalFile;
-
     // The whole import, not just the yt-dlp process. `loading` stays true through
     // registering the media and fetching comments and live chat, which is exactly the
     // window where the footer must not be offering to start another one.
     const isImporting = loading || isYtDlpRunning;
     const isListingFormats = isLoadingYtDlpFormats && !loading;
+
+    // One button for both, because it is one backend mechanism. A download and an import register
+    // the same kind of run and are stopped by the same command. Only the wording differs, since
+    // "Cancel download" in front of a file copy would describe the wrong thing.
+    //
+    // A download is cancellable for the whole of it, not only while yt-dlp runs. After the process
+    // exits the backend still places the file and fetches the thumbnail and the replay under the same
+    // run, and the footer used to show "Importing..." there with no way out at all. A cancel that
+    // arrives once the run is over is a no-op the frontend already treats as benign.
+    const cancellable = isUrlMode ? isImporting || isFetchingComments : isImportingLocalFile;
 
     let statusText = "Importing...";
     let cancelText = isUrlMode ? "Cancel download" : "Cancel import";
@@ -59,6 +64,8 @@ export function AddMediaModalActions({
     } else if (isFetchingComments) {
         statusText = "Fetching comments...";
         cancelText = "Skip comments";
+    } else if (isUrlMode && loading) {
+        statusText = "Saving to the library...";
     }
 
     if (isImporting) {
