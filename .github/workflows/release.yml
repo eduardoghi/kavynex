@@ -534,6 +534,25 @@ jobs:
                   echo "Smoke-testing $binary"
                   xvfb-run -a "$binary" --smoke-test
 
+            # The .deb and .rpm declare the glibc they need (bundle.linux in tauri.conf.json), and
+            # the AppImage carries no glibc of its own, so all three need the version the binary
+            # actually links against to be no newer than that. It is decided by the build image,
+            # not by anything in the code, so a newer runner can raise it silently. A binary that
+            # needs more than the declared floor fails here instead of on a user's older system.
+            - name: Check the glibc the binary needs against the declared floor (Linux)
+              if: startsWith(matrix.platform, 'ubuntu-')
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+                  floor=$(jq -r '.bundle.linux.deb.depends[] | select(startswith("libc6")) | capture("(?<v>[0-9]+[.][0-9]+)").v' src-tauri/tauri.conf.json)
+                  needed=$(objdump -T "$binary" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -n1)
+
+                  echo "The binary needs glibc $needed, and the packages declare $floor."
+
+                  if [ "$(printf '%s\n%s\n' "$floor" "$needed" | sort -V | tail -n1)" != "$floor" ]; then
+                      echo "::error::the binary needs glibc $needed, newer than the $floor the packages and docs promise. Raise the floor in tauri.conf.json, README.md and docs/TROUBLESHOOTING.md, or build on an older image." >&2
+                      exit 1
+                  fi
+
             - name: Smoke-test the built binary (Windows)
               if: startsWith(matrix.platform, 'windows-')
               shell: bash

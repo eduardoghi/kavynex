@@ -155,8 +155,12 @@ reports it when it cannot:
 sudo apt install ./kavynex_*_amd64.deb
 ```
 
-Ubuntu 22.04 and Debian 12 are the oldest releases carrying the 4.1 series. On anything older the
-AppImage is the way out, since it brings its own copy.
+Ubuntu 22.04 and Debian 12 are the oldest releases carrying the 4.1 series, but the packages need
+more than that. The binary is linked against glibc 2.39, so the oldest systems that run it are
+Ubuntu 24.04, Debian 13 and Fedora 40. The `.deb` and `.rpm` declare it, so the package manager
+refuses the install on an older system instead of the app failing to start with
+`GLIBC_2.39 not found`. The AppImage carries its own WebKitGTK but uses the system's glibc, so it
+has the same floor. The release workflow checks the binary against it on every build.
 
 **The GPU driver and WebKitGTK's compositing disagree.** On some setups, most often the proprietary
 NVIDIA driver, the window opens and stays blank, or the process dies at launch. Two environment
