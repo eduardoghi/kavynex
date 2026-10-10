@@ -600,6 +600,13 @@ pub async fn download_media_from_url_async<R: Runtime>(
         .await?
     };
 
+    // yt-dlp reads and rewrites a copy in the run's own folder (see RunCookies).
+    let run_cookies = crate::services::yt_dlp::cookies::RunCookies::prepare(
+        normalized_cookies_path.as_deref(),
+        &temp_dir,
+    );
+    let run_cookies_path = run_cookies.path();
+
     logger::info(
         "yt_dlp",
         format!(
@@ -689,7 +696,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             &yt_dlp,
             &normalized_url,
             normalized_cookies_browser.as_deref(),
-            normalized_cookies_path.as_deref(),
+            run_cookies_path.as_deref(),
             Some(Arc::clone(&cancel_flag)),
         )
         .await
@@ -797,7 +804,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             &normalized_format_id,
             download_live_chat,
             normalized_cookies_browser.as_deref(),
-            normalized_cookies_path.as_deref(),
+            run_cookies_path.as_deref(),
             &temp_dir,
             &file_prefix,
             &normalized_url,
@@ -992,6 +999,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
             live_chat_file_path,
             placement_marker,
         };
+
+        run_cookies.keep_refreshed();
 
         emit_download_finished(
             app,

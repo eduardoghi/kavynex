@@ -317,6 +317,108 @@ pub fn redact_cookies_browser_selector(value: &str) -> String {
     }
 }
 
+/// A private copy of the user's cookies file for one yt-dlp run.
+///
+/// yt-dlp rewrites the file it is given with `--cookies` when it finishes. Handed the user's own
+/// file, two runs at once (a format probe and a comment backup, a download beside another) wrote it
+/// over each other, and a run killed on cancel or timeout could stop halfway through the rewrite,
+/// leaving a truncated cookie jar. Each run now reads and writes a copy in its own scratch folder,
+/// and the copy goes back over the user's file only after the run succeeded
+/// ([`RunCookies::keep_refreshed`]), so the cookies yt-dlp renewed are still kept.
+pub struct RunCookies {
+    copy: Option<std::path::PathBuf>,
+    original: Option<std::path::PathBuf>,
+    scratch: Option<std::path::PathBuf>,
+}
+
+/// Only one copy goes back over a cookies file at a time.
+static COOKIES_WRITE_BACK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+impl RunCookies {
+    /// Copies the validated cookies file into a new folder under `scratch_root`. Without a valid
+    /// cookies file there is nothing to copy. A copy that cannot be made falls back to the user's
+    /// file, which is how runs worked before, rather than dropping the cookies.
+    pub fn prepare(cookies_path: Option<&str>, scratch_root: &Path) -> RunCookies {
+        let Some(original) = normalize_cookies_path(cookies_path) else {
+            return RunCookies {
+                copy: None,
+                original: None,
+                scratch: None,
+            };
+        };
+
+        let original = std::path::PathBuf::from(original);
+        let scratch = scratch_root.join(format!(
+            "cookies-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        let copy = scratch.join("cookies.txt");
+
+        let copied =
+            std::fs::create_dir_all(&scratch).and_then(|_| std::fs::copy(&original, &copy));
+
+        if let Err(error) = copied {
+            crate::services::logger::warn(
+                "yt_dlp",
+                format!("could not copy the cookies file for this run, using it directly: {error}"),
+            );
+            let _ = std::fs::remove_dir_all(&scratch);
+
+            return RunCookies {
+                copy: Some(original.clone()),
+                original: Some(original),
+                scratch: None,
+            };
+        }
+
+        RunCookies {
+            copy: Some(copy),
+            original: Some(original),
+            scratch: Some(scratch),
+        }
+    }
+
+    /// The cookies file to pass to yt-dlp for this run, if there is one.
+    pub fn path(&self) -> Option<String> {
+        self.copy
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+    }
+
+    /// Puts the copy yt-dlp updated back over the user's file. Called after a run that succeeded.
+    /// Skipped when the copy is no longer a cookie jar, and best effort otherwise. The user's file
+    /// is then simply not updated, as it was not before yt-dlp ran.
+    pub fn keep_refreshed(&self) {
+        let (Some(copy), Some(original), Some(_)) = (&self.copy, &self.original, &self.scratch)
+        else {
+            return;
+        };
+
+        if !has_cookie_file_header(copy) {
+            return;
+        }
+
+        let _guard = COOKIES_WRITE_BACK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        if let Err(error) = crate::services::filesystem::replace_file_safely(copy, original) {
+            crate::services::logger::warn(
+                "yt_dlp",
+                format!("could not keep the cookies yt-dlp renewed: {error}"),
+            );
+        }
+    }
+}
+
+impl Drop for RunCookies {
+    fn drop(&mut self) {
+        if let Some(scratch) = &self.scratch {
+            let _ = std::fs::remove_dir_all(scratch);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -512,6 +614,68 @@ mod tests {
         );
 
         let _ = fs::remove_file(&file);
+    }
+
+    #[test]
+    fn a_run_gets_its_own_copy_of_the_cookies_file_and_writes_back_only_when_asked() {
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        let before = fs::read(&original).unwrap();
+        let scratch_root = unique_temp_path("cookie-scratch");
+        fs::create_dir_all(&scratch_root).unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        let copy = std::path::PathBuf::from(run.path().expect("a valid jar is copied"));
+
+        assert_ne!(copy, original, "yt-dlp must not be handed the user's file");
+        assert!(copy.starts_with(&scratch_root));
+
+        // What yt-dlp does at the end of a run, on the copy only.
+        let mut renewed = before.clone();
+        renewed.extend_from_slice(b".youtube.com\tTRUE\t/\tTRUE\t0\tSID\trenewed\n");
+        fs::write(&copy, &renewed).unwrap();
+        assert_eq!(
+            fs::read(&original).unwrap(),
+            before,
+            "untouched until the run succeeded"
+        );
+
+        run.keep_refreshed();
+        assert_eq!(fs::read(&original).unwrap(), renewed);
+
+        drop(run);
+        assert!(!copy.exists(), "the copy goes with the run");
+
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
+    }
+
+    #[test]
+    fn a_copy_yt_dlp_left_unreadable_is_not_written_back() {
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        let before = fs::read(&original).unwrap();
+        let scratch_root = unique_temp_path("cookie-scratch-bad");
+        fs::create_dir_all(&scratch_root).unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        fs::write(run.path().unwrap(), b"truncated").unwrap();
+        run.keep_refreshed();
+
+        assert_eq!(fs::read(&original).unwrap(), before);
+
+        drop(run);
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
+    }
+
+    #[test]
+    fn no_valid_cookies_file_means_no_copy() {
+        let scratch_root = unique_temp_path("cookie-scratch-none");
+        let run = RunCookies::prepare(Some("/nonexistent/cookies.txt"), &scratch_root);
+
+        assert_eq!(run.path(), None);
+        assert!(!scratch_root.exists());
     }
 
     #[test]
