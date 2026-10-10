@@ -366,8 +366,14 @@ fn database_unavailable(detail: String) -> AppError {
 /// app would open an empty library, and the daily snapshot of that empty file would then rotate
 /// out one good generation a day. The frontend answers this code with the restore it offers for a
 /// damaged database, plus the choice of starting empty.
+///
+/// A file of zero bytes counts as missing too. That is what a quarantine or a sync client can leave
+/// behind instead of removing the file, and SQLite opens it as an empty database just the same.
 fn missing_database_error(path: &Path, allow_create: bool) -> Option<AppError> {
-    if allow_create || path.exists() || !crate::services::db_backup::has_backup_candidates(path) {
+    if allow_create
+        || database_file_holds_data(path)
+        || !crate::services::db_backup::has_backup_candidates(path)
+    {
         return None;
     }
 
@@ -375,6 +381,17 @@ fn missing_database_error(path: &Path, allow_create: bool) -> Option<AppError> {
         AppErrorCode::DatabaseMissing,
         "the database file is missing, but backups of it are still there",
     ))
+}
+
+/// Whether the database at `path` has anything for SQLite to open. A main file of zero bytes still
+/// does when its write-ahead log is not empty, since the pages can sit there until a checkpoint.
+fn database_file_holds_data(path: &Path) -> bool {
+    let non_empty = |file: &Path| std::fs::metadata(file).is_ok_and(|meta| meta.len() > 0);
+
+    let mut wal = path.as_os_str().to_owned();
+    wal.push("-wal");
+
+    non_empty(path) || (path.exists() && non_empty(Path::new(&wal)))
 }
 
 async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool> {
@@ -1127,6 +1144,36 @@ mod tests {
 
         assert_eq!(error.code, AppErrorCode::DatabaseMissing.as_str());
         assert!(!path.exists(), "nothing was created at the database path");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_zero_byte_database_with_backups_beside_it_counts_as_missing() {
+        let dir = missing_database_dir("db-zero-bytes");
+        let path = dir.join("kavynex.db");
+        std::fs::write(&path, b"").unwrap();
+        std::fs::write(dir.join("kavynex.db.bak"), b"a snapshot").unwrap();
+
+        let error = build_pool_at(&path, false)
+            .await
+            .expect_err("an emptied file would open as an empty library");
+
+        assert_eq!(error.code, AppErrorCode::DatabaseMissing.as_str());
+        assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_zero_byte_main_file_with_its_pages_in_the_log_still_holds_data() {
+        let dir = missing_database_dir("db-zero-bytes-wal");
+        let path = dir.join("kavynex.db");
+        std::fs::write(&path, b"").unwrap();
+        assert!(!database_file_holds_data(&path));
+
+        std::fs::write(dir.join("kavynex.db-wal"), b"frames").unwrap();
+        assert!(database_file_holds_data(&path));
 
         let _ = std::fs::remove_dir_all(&dir);
     }
