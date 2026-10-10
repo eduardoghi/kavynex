@@ -450,19 +450,6 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
     Ok(summary)
 }
 
-/// Sweeps the library's managed subdirectories (video/audio/thumbnails/live_chat) for
-/// atomic-write leftovers a crashed copy/replace/migrate left behind. The startup cache sweep
-/// (`cleanup_stale_temp_files_sync`) never reaches these, because they live inside the library
-/// tree next to the real files rather than in the disposable cache directories. Reported by
-/// `library::integrity` as orphans until now, but nothing removed them.
-///
-/// Runs under the library read guard like every other function that unlinks inside the library
-/// (`library::media::delete_media_file_sync`, `thumbnail::persist::delete_thumbnail_file_sync`,
-/// `library::cleanup::delete_live_chat_file_at`), so it cannot remove a file out of a tree a
-/// migration is in the middle of copying. The exposure was small (the sweep runs once, early, and
-/// only reaches week-old scratch names), but it was the one library unlink outside the gate, and a
-/// rule with an exception is two rules. Nothing below acquires a second guard, which the gate's
-/// debug-only nesting check would refuse.
 /// Purges what the orphan removal moved aside, one folder per run, once the run is older than
 /// `max_age`. A link in the trash folder's place is left alone rather than followed.
 fn purge_library_trash(library_dir: &Path, max_age: Duration) -> AppResult<CleanupSummary> {
@@ -475,6 +462,17 @@ fn purge_library_trash(library_dir: &Path, max_age: Duration) -> AppResult<Clean
     cleanup_dir_children(&trash_dir, max_age)
 }
 
+/// Sweeps the library's managed subdirectories (video/audio/thumbnails/live_chat) for
+/// atomic-write leftovers a crashed copy/replace/migrate left behind, and purges the trash runs
+/// older than [`ORPHAN_GRACE_PERIOD`](crate::services::library::cleanup::ORPHAN_GRACE_PERIOD). The
+/// startup cache sweep (`cleanup_stale_temp_files_sync`) never reaches these, because they live
+/// inside the library tree next to the real files rather than in the disposable cache directories.
+///
+/// Runs under the library read guard like every other function that unlinks inside the library
+/// (`library::media::delete_media_file_sync`, `thumbnail::persist::delete_thumbnail_file_sync`,
+/// `library::cleanup::delete_live_chat_file_at`), so it cannot remove a file out of a tree a
+/// migration is in the middle of copying. Nothing below acquires a second guard, which the gate's
+/// debug-only nesting check would refuse.
 pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSummary> {
     let mut summary = CleanupSummary::default();
 

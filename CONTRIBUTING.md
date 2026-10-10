@@ -113,7 +113,7 @@ Repository consistency (plain Node, no install needed. CI runs all six on every 
   nothing calls is still reachable from the renderer, and two that unlinked files stayed registered
   for weeks that way. Run it with `--print` to see each command's wrapper and how many files call it.
 
-A seventh consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
+Another consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
 on every push:
 
 - `node scripts/verify-mutants-exclusions.js <cargo mutants --list output>`: fails when an
@@ -134,7 +134,7 @@ on every push:
   every mutant the exclusions name, so every pattern would read as dead. It also drops `examine_globs`,
   which is why the scope is passed back in from that same list via `--file-args`.
 
-A fifth needs a real release to check against, so it runs in `release.yml`'s `checksums` job:
+One more needs a real release to check against, so it runs in `release.yml`'s `checksums` job:
 
 - `node scripts/verify-readme-asset-names.js <file with one asset name per line>`: fails when
   `README.md`'s download list and the assets a release carries disagree, in either direction. Either

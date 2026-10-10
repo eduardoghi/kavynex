@@ -136,7 +136,7 @@ verify` will report *no attestation* for those installers rather than a failure 
 
 ## Development
 
-To run the project from source, you need Node.js, pnpm, Rust, yt-dlp, and FFmpeg.
+To run the project from source, you need Node.js, pnpm, Rust, yt-dlp, FFmpeg and Deno.
 
 ```bash
 pnpm install

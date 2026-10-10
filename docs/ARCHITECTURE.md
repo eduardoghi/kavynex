@@ -361,7 +361,7 @@ duration probe (`readMediaDurationInSeconds`, which needs a media element the ba
 written back through `update_media_duration`), the comment backup, and the live-chat notice. None of
 them can strand an artifact, because the media is already registered when they run.
 
-**Progress and cancellation.** During step 2 the backend streams `yt-dlp-log` / `yt-dlp-error`
+**Progress and cancellation.** During step 4 the backend streams `yt-dlp-log` / `yt-dlp-error`
 / `yt-dlp-finished` / `yt-dlp-cancelled` / `yt-dlp-terminal` (`src/constants/events.ts`),
 correlated by run id; `useYtDlpEvents` subscribes through `listenValidated`, so a payload that
 does not match its zod schema is dropped at the seam. `cancelYtDlpDownload` calls

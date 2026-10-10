@@ -245,12 +245,10 @@ pub async fn open_path_in_system(db: State<'_, Db>, path: String) -> AppResult<(
 
 /// Compares the database's stored paths against the files in the configured library.
 ///
-/// Verified against the persisted setting for the reason given on `get_library_summary`. This one
-/// mattered most of the three. The report carries up to five *real filenames* per category
-/// (`orphan_media_examples` and friends), collected by walking `<library_path>/video`, `/audio`,
-/// `/thumbnails` and `/live_chat`. With the path trusted, that made this command a directory
-/// enumerator for any such tree on disk. The names are worth reporting (Diagnostics shows the
-/// user which of their own files are unreferenced), so the fix is the guard, not a poorer report.
+/// The library comes from the settings, never from the caller. The report carries up to five *real
+/// filenames* per category (`orphan_media_examples` and friends), collected by walking
+/// `<library_path>/video`, `/audio`, `/thumbnails` and `/live_chat`, so a caller-supplied path
+/// would make this command a directory enumerator for any such tree on disk.
 ///
 /// **The stored paths are read here rather than sent in.** This command used to take three
 /// `Vec<String>` of every path the database holds, which the renderer assembled by first pulling
@@ -387,12 +385,6 @@ pub async fn verify_library_content(
         })
 }
 
-/// Asks a running library verification to stop.
-///
-/// Takes no arguments, and that is deliberate rather than an omission. Only one verification runs at
-/// a time, so there is no run to name and therefore nothing for a caller to point at the wrong one.
-/// A cancel arriving when nothing is running is a no-op, because the flag is cleared by the next run
-/// that begins rather than by this one.
 /// Asks a running library migration to stop copying. Same contract as
 /// `cancel_library_verification` below. A no-op when nothing runs.
 #[tauri::command]
@@ -400,6 +392,12 @@ pub fn cancel_library_migration() {
     library::migration::request_migration_cancel();
 }
 
+/// Asks a running library verification to stop.
+///
+/// Takes no arguments, and that is deliberate rather than an omission. Only one verification runs at
+/// a time, so there is no run to name and therefore nothing for a caller to point at the wrong one.
+/// A cancel arriving when nothing is running is a no-op, because the flag is cleared by the next run
+/// that begins rather than by this one.
 #[tauri::command]
 pub fn cancel_library_verification() {
     library::verification::request_verification_cancel();

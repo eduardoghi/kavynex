@@ -281,7 +281,7 @@ reading the environment during a release build. `minimumReleaseAge` and `blockEx
 (`pnpm-workspace.yaml`) plus `cargo-deny`'s source allow-list are what reduce the chance of such
 a dependency arriving in the first place; nothing in the current workflow removes the exposure
 itself. Rotating the minisign key is the response if a compromise is ever suspected (see "The
-updater signing key" below).
+updater signing key" above).
 
 One asymmetry is worth stating plainly, because the two ecosystems get their publish-age
 cooling-off from different places and the two places do not cover the same thing:

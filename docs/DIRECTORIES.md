@@ -38,8 +38,9 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   schema version N. Taken every time a migration is pending, never throttled or rotated by the
   daily snapshot, and the two most recent are kept (`PRE_MIGRATION_SNAPSHOTS_KEPT`). It is the copy
   to go back to after a migration that went wrong, or after installing an older version, which
-  cannot open a database a newer one migrated. Restore does not offer it, so going back means
-  closing Kavynex and copying it over `kavynex.db` by hand.
+  cannot open a database a newer one migrated. The restore offered after a failed start tries it
+  after the daily snapshots. Going back to it from a database that still opens means closing
+  Kavynex and copying it over `kavynex.db` by hand.
 - `kavynex.db.integrity-checked`: an empty marker whose mtime records the last time the background
   full `integrity_check` passed. It throttles that check to once a week (`db_backup/integrity.rs`); the
   automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
