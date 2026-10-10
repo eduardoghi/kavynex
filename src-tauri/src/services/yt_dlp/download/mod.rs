@@ -1952,6 +1952,18 @@ mod tests {
     }
 
     #[test]
+    fn find_live_chat_temp_file_passes_over_what_an_unfinished_replay_leaves() {
+        let dir = unique_temp_dir("live-chat-partial");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("youtube_ID_137.live_chat.json.part"), b"{").unwrap();
+        fs::write(dir.join("youtube_ID_137.live_chat.json.ytdl"), b"{}").unwrap();
+
+        assert!(find_live_chat_temp_file(&dir, "youtube_ID_137").is_none());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn find_live_chat_temp_file_returns_none_without_live_chat_file() {
         let dir = unique_temp_dir("no-live-chat");
         fs::create_dir_all(&dir).unwrap();

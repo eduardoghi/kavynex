@@ -261,6 +261,41 @@ where
     stream_reader_lines(decoded, batch_lines, MAX_LIVE_CHAT_DECOMPRESSED_BYTES, emit)
 }
 
+/// The longest replay line kept. One chat action is a few kilobytes of JSON, a super sticker a few
+/// tens. The ceiling on the whole stream does not stop one line of hundreds of megabytes (a damaged
+/// or planted file), which was read whole, copied again by the lossy decode and sent to the webview
+/// as a single string in one batch.
+const MAX_LIVE_CHAT_LINE_BYTES: u64 = 1024 * 1024;
+
+/// Reads one line into `raw`, keeping at most [`MAX_LIVE_CHAT_LINE_BYTES`] of it. Returns how many
+/// bytes the line took from `reader` and whether it was cut. The rest of a line that was cut is read
+/// and dropped, so the next call starts at the next line.
+fn read_capped_line<R: BufRead>(reader: &mut R, raw: &mut Vec<u8>) -> std::io::Result<(u64, bool)> {
+    let mut read = reader
+        .by_ref()
+        .take(MAX_LIVE_CHAT_LINE_BYTES + 1)
+        .read_until(b'\n', raw)? as u64;
+
+    if read <= MAX_LIVE_CHAT_LINE_BYTES || raw.last() == Some(&b'\n') {
+        return Ok((read, false));
+    }
+
+    let mut rest = Vec::new();
+
+    loop {
+        rest.clear();
+        let skipped = reader
+            .by_ref()
+            .take(64 * 1024)
+            .read_until(b'\n', &mut rest)?;
+        read += skipped as u64;
+
+        if skipped == 0 || rest.last() == Some(&b'\n') {
+            return Ok((read, true));
+        }
+    }
+}
+
 /// Reads `reader` line by line, decoding each line lossily, and hands `emit` batches of at most
 /// `batch_lines` lines. Aborts with `LiveChatFileUnreadable` once the decompressed byte count
 /// exceeds `max_total_bytes`. Split out from [`stream_live_chat_lines`] so the ceiling can be
@@ -289,7 +324,7 @@ where
     loop {
         raw.clear();
 
-        let read = reader.read_until(b'\n', &mut raw).map_err(|error| {
+        let (read, cut) = read_capped_line(&mut reader, &mut raw).map_err(|error| {
             AppError::from_code_with_details(
                 AppErrorCode::LiveChatFileUnreadable,
                 "failed to read live chat file",
@@ -301,13 +336,19 @@ where
             break;
         }
 
-        total_bytes += read as u64;
+        total_bytes += read;
 
         if total_bytes > max_total_bytes {
             return Err(AppError::from_code(
                 AppErrorCode::LiveChatFileUnreadable,
                 "the live chat file is too large when decompressed",
             ));
+        }
+
+        // A line past the ceiling is no chat message the parser could read, so it is dropped
+        // rather than cut into a fragment of JSON.
+        if cut {
+            continue;
         }
 
         // Strip the trailing newline (and a preceding carriage return), matching the line split
@@ -938,6 +979,31 @@ mod tests {
         assert_eq!(lines[0], "before");
         assert!(lines[1].contains('\u{fffd}'));
         assert_eq!(lines[2], "after");
+    }
+
+    #[test]
+    fn stream_reader_lines_drops_a_line_past_the_line_ceiling_and_keeps_the_rest() {
+        let mut data: Vec<u8> = b"before\n".to_vec();
+        data.extend(std::iter::repeat_n(
+            b'x',
+            MAX_LIVE_CHAT_LINE_BYTES as usize * 2,
+        ));
+        data.extend_from_slice(b"\nafter\n");
+        // A line exactly at the ceiling is kept whole.
+        data.extend(std::iter::repeat_n(b'y', MAX_LIVE_CHAT_LINE_BYTES as usize));
+        data.extend_from_slice(b"\n");
+
+        let mut lines = Vec::new();
+        stream_reader_lines(&data[..], 500, MAX_LIVE_CHAT_DECOMPRESSED_BYTES, |batch| {
+            lines.extend(batch);
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0], "before");
+        assert_eq!(lines[1], "after");
+        assert_eq!(lines[2].len(), MAX_LIVE_CHAT_LINE_BYTES as usize);
     }
 
     #[test]

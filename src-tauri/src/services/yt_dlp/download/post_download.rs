@@ -14,6 +14,11 @@ use crate::services::yt_dlp::events::emit_download_log_infallible;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// The live chat replay yt-dlp finished writing for `file_prefix`, if there is one.
+///
+/// Only a name ending in `.json`. A replay cut short leaves `.part` or `.ytdl` files beside it, and
+/// storing one of those as the replay kept the broken copy for good, since a later download never
+/// replaces a replay that is already stored.
 pub(super) fn find_live_chat_temp_file(temp_dir: &Path, file_prefix: &str) -> Option<PathBuf> {
     let entries = fs::read_dir(temp_dir).ok()?;
 
@@ -29,6 +34,7 @@ pub(super) fn find_live_chat_temp_file(temp_dir: &Path, file_prefix: &str) -> Op
 
         if normalized_name.starts_with(&file_prefix.to_lowercase())
             && normalized_name.contains("live_chat")
+            && normalized_name.ends_with(".json")
         {
             return Some(path);
         }
