@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager, Runtime, State};
 
+use crate::services::chosen_files::{self, ChosenFile};
 use crate::services::database::{database_path, get_app_settings_from_pool, Db};
 use crate::services::db_backup::{
     self, DatabaseBackupStatus, DatabaseIntegrityReport, MachinePaths,
@@ -258,6 +259,8 @@ pub async fn export_database<R: Runtime>(
     app: AppHandle<R>,
     destination_path: String,
 ) -> AppResult<()> {
+    chosen_files::ensure_chosen(ChosenFile::Destination, &destination_path)?;
+
     // The AppHandle-bound half. Resolve the app config directory the containment guard needs. The
     // validation ordering and the single-path invariant then live in the pure
     // prepare_export_destination (unit-tested), which returns the exact path the write uses.
@@ -431,6 +434,8 @@ async fn checkpoint_live_database<R: Runtime>(app: &AppHandle<R>) {
 /// next startup, so the caller should relaunch the app after this succeeds.
 #[tauri::command]
 pub async fn import_database<R: Runtime>(app: AppHandle<R>, source_path: String) -> AppResult<()> {
+    chosen_files::ensure_chosen(ChosenFile::Source, &source_path)?;
+
     // Gate the caller-supplied source before anything stats or opens it (see
     // prepare_import_source), and read from exactly the path it returns.
     let source = prepare_import_source(&source_path)?;

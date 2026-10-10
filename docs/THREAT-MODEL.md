@@ -194,15 +194,12 @@ case has limited blast radius:
   caller-supplied (the pre-import preview and import have to reach a file the user picked
   anywhere on disk, before it is in the library), which leaves one residual.
   `generate_temporary_thumbnail` runs FFmpeg on that source and writes a single preview
-  frame into the app cache directory, which is authorized in the asset scope, so a
-  compromised frontend could drive it, path by path, to disclose one still frame (or the
-  embedded cover art) of any media-extension file on disk, never one the user selected. It
-  is disclosure only (never a write outside the managed tree, an arbitrary-file *content*
-  read of a non-media file, or code execution), and it is bounded further. The source is
-  rejected up front if it is a UNC/network location
-  (`services/thumbnail/temp.rs::validate_source_media_path`), closing the NTLM-leak
-  escalation the same way `open_path_in_system` does. Scoping the source to the library is
-  not possible without breaking the preview, so this is recorded as an accepted residual.
+  frame into the app cache directory, which is authorized in the asset scope. That used to let
+  a compromised frontend drive it, path by path, to disclose one still frame of any
+  media-extension file on disk. Both commands now accept only a file the user picked (see "Only
+  a file the user picked" below), which closes that. The source is also rejected up front if it
+  is a UNC/network location (`services/thumbnail/temp.rs::validate_source_media_path`), since a
+  picker can return one.
 - `export_database`: the destination is **extension-gated** to `.db`/`.sqlite`/
   `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
   database cannot be written over an arbitrary file such as a document or a key, a
@@ -212,10 +209,9 @@ case has limited blast radius:
   additionally **refused if it resolves inside the app's own config directory**
   (`destination_is_inside_dir`), where the live `kavynex.db` and every backup generation live.
   Those share the `.db` extension, so without this a save aimed there could clobber the live
-  database or a recovery snapshot. The destination is otherwise caller-chosen (the backend cannot
-  see the save dialog, and the pick-then-confirm import UX depends on the dialog staying on the
-  frontend); overwriting *another* app's `.db`/`.sqlite` file remains the accepted, documented
-  residual of that tradeoff.
+  database or a recovery snapshot. The destination must also be one the user picked in the save
+  dialog (`services/chosen_files.rs`), so overwriting another app's `.db`/`.sqlite` file takes the
+  user choosing that file.
 - `import_database`: the mirror image of the export gate, on the way in
   (`commands/database.rs::prepare_import_source`). The source is **extension-gated** to the same
   `.db`/`.sqlite`/`.sqlite3` list the export uses (one shared `DATABASE_FILE_EXTENSIONS`, so the
@@ -373,6 +369,24 @@ image file on disk there, move the whole library onto it in one call, or have th
 it every day. The two helpers answered for any path on disk whether it existed and was a folder, and
 one of them created folders wherever it was pointed. The content-addressed naming of library writes
 never bounded any of this, because the location of the library itself was the renderer's choice.
+
+#### Only a file the user picked
+
+The file-taking commands follow the same rule, through `services/chosen_files.rs`. A file reaches
+them from the backend's open dialog (`open_file_dialog`), its save dialog (`save_file_dialog`), or
+as a preview the backend wrote and returned (`generate_temporary_thumbnail`,
+`stage_manual_thumbnail`). Each is recorded with its kind, *source* or *destination*, and a
+command checks the kind it needs. So a file picked to be imported cannot be named as an export
+destination, and a save destination cannot be read. The commands are `import_database` (source),
+`export_database` (destination), `generate_temporary_thumbnail`, `stage_manual_thumbnail`,
+`persist_thumbnail_file`, the cookies file of `list_yt_dlp_formats` and `fetch_youtube_comments`,
+and in `create_media` the media file of a local import, a thumbnail given as a path on disk, and the
+cookies file. Anything else is refused as `INVALID_INPUT` before it is stat'ed.
+
+The extension gates and the network refusal described above still run after it. They decide what
+kind of file a pick may be, and the record decides that the user chose it. Before the record, a
+compromised renderer could import any video or image on disk into the library, where the player
+and the asset protocol serve it, or point an import at any `.db` file.
 
 #### Accepted residual: a move-import hashes the source once
 
@@ -783,6 +797,13 @@ shell, so the scope's glob was all that stood between a URL and the shell's own 
 app only ever opens a video's watch page and an author's channel page, so `commands/external.rs`
 now takes the id, checks it is 11 (video) or `UC` plus 22 (channel) characters of `[A-Za-z0-9_-]`,
 and builds the URL itself. The renderer holds no `opener:` permission.
+
+The window those grants belong to is built in `main_window.rs` rather than from the config, so it
+can carry two hooks. A navigation is allowed only to the app's own origin (`tauri://localhost`,
+`http(s)://tauri.localhost`, or the dev server in a dev build), and a `window.open` or
+`target="_blank"` opens nothing. A script that got to run in the renderer could otherwise load a
+remote page into the window holding the IPC bridge, or open a popup this app's CSP does not
+cover.
 
 `convertFileSrc` and `Channel` appear in no grant because they need none. The first builds a URL
 string in the renderer, and the second is part of the IPC mechanism rather than a command. What

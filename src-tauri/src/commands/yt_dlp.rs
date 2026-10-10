@@ -2,6 +2,7 @@ use tauri::{AppHandle, Runtime};
 
 use crate::models::yt_dlp::{ExternalToolsStatus, YtDlpComment, YtDlpFormatsResult};
 use crate::services::binaries::resolve_external_tools_status_async;
+use crate::services::chosen_files::{self, ChosenFile};
 use crate::services::yt_dlp;
 use crate::AppResult;
 
@@ -13,6 +14,8 @@ pub async fn list_yt_dlp_formats<R: Runtime>(
     cookies_path: Option<String>,
     run_id: Option<String>,
 ) -> AppResult<YtDlpFormatsResult> {
+    chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
+
     yt_dlp::list_yt_dlp_formats_async(
         &app,
         &url,
@@ -31,6 +34,8 @@ pub async fn fetch_youtube_comments<R: Runtime>(
     cookies_path: Option<String>,
     run_id: Option<String>,
 ) -> AppResult<Vec<YtDlpComment>> {
+    chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
+
     yt_dlp::fetch_youtube_comments_async(
         &app,
         &video_id,

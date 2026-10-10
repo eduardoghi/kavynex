@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod constants;
 pub mod error;
+mod main_window;
 pub mod models;
 pub mod services;
 pub mod utils;
@@ -526,6 +527,9 @@ pub fn run() {
             }
 
             services::logger::info("app", "application setup started");
+
+            // First, where Tauri would have created it from the config. See main_window.
+            main_window::create(app)?;
 
             // Pin the launch instant while it is still accurate. The pending-media sweep refuses to
             // consume any marker that is not older than it, and that cutoff has to be the real start

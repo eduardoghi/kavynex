@@ -585,9 +585,10 @@ const GUARD_CLASSES = {
     "library-confined": "services/library/mod.rs::resolve_path_inside_library",
     // An absolute path confined to an app cache subdirectory rather than to the library.
     "cache-confined": "utils/path.rs::ensure_existing_path_inside_dir against a temp_paths dir",
-    // An absolute path the user chose in a file dialog. Bounded by an extension gate and the
-    // network refusal, never by the library, because it has to reach a file that is not in one yet.
-    "user-picked": "an extension gate plus utils/path.rs::is_network_path",
+    // An absolute path the user chose in a file dialog. Bounded by the record of what the dialog
+    // returned, an extension gate and the network refusal, never by the library, because it has to
+    // reach a file that is not in one yet.
+    "user-picked": "services/chosen_files.rs::ensure_chosen, an extension gate and utils/path.rs::is_network_path",
     // A directory the user chose in the backend's folder dialog, or the one the settings already
     // store. Checked by exact string before anything resolves it, so no network refusal is needed
     // (a share the user picked is supported). Refused inside the app config directory too.

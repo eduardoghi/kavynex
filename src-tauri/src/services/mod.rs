@@ -6,6 +6,7 @@
 // siblings reach each other through `super::`, matching those existing directories.
 pub mod binaries;
 pub mod channel_repository;
+pub mod chosen_files;
 pub mod chosen_folders;
 pub mod database;
 pub mod db_backup;

@@ -107,7 +107,18 @@ pub async fn open_file_dialog<R: Runtime>(
     let picked =
         run_blocking(move || Ok(file_dialog(&window, title, filters).blocking_pick_file())).await?;
 
-    picked_path(picked)
+    let picked = picked_path(picked)?;
+
+    // The commands that read a user's file accept only one picked here, or a preview the backend
+    // wrote. See services::chosen_files.
+    if let Some(path) = picked.as_deref() {
+        crate::services::chosen_files::record(
+            crate::services::chosen_files::ChosenFile::Source,
+            path,
+        );
+    }
+
+    Ok(picked)
 }
 
 /// Opens a save dialog with `default_file_name` filled in. Resolves to the chosen destination, or
@@ -131,7 +142,16 @@ pub async fn save_file_dialog<R: Runtime>(
     })
     .await?;
 
-    picked_path(picked)
+    let picked = picked_path(picked)?;
+
+    if let Some(path) = picked.as_deref() {
+        crate::services::chosen_files::record(
+            crate::services::chosen_files::ChosenFile::Destination,
+            path,
+        );
+    }
+
+    Ok(picked)
 }
 
 #[cfg(test)]

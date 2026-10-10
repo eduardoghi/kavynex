@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Runtime};
 
+use crate::services::chosen_files::{self, ChosenFile};
 use crate::services::library::guard::{
     ensure_configured_library_path, verify_library_path_then_blocking,
 };
@@ -13,7 +14,15 @@ pub async fn generate_temporary_thumbnail<R: Runtime>(
     app: AppHandle<R>,
     path: String,
 ) -> AppResult<String> {
-    run_blocking(move || thumbnail::generate_temporary_thumbnail_sync(&app, &path)).await
+    chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
+
+    let preview =
+        run_blocking(move || thumbnail::generate_temporary_thumbnail_sync(&app, &path)).await?;
+
+    // The add-media form hands the preview back as the media's thumbnail.
+    chosen_files::record(ChosenFile::Source, &preview);
+
+    Ok(preview)
 }
 
 #[tauri::command]
@@ -22,6 +31,8 @@ pub async fn persist_thumbnail_file<R: Runtime>(
     path: String,
     library_path: String,
 ) -> AppResult<String> {
+    chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
+
     verify_library_path_then_blocking(&app, library_path, move |library_path| {
         thumbnail::persist_thumbnail_file_sync(&path, &library_path)
     })
@@ -99,7 +110,13 @@ pub async fn stage_manual_thumbnail<R: Runtime>(
     app: AppHandle<R>,
     path: String,
 ) -> AppResult<String> {
-    run_blocking(move || thumbnail::stage_manual_thumbnail_sync(&app, &path)).await
+    chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
+
+    let staged = run_blocking(move || thumbnail::stage_manual_thumbnail_sync(&app, &path)).await?;
+
+    chosen_files::record(ChosenFile::Source, &staged);
+
+    Ok(staged)
 }
 
 #[tauri::command]
@@ -172,6 +189,7 @@ mod tests {
         let picked = root.join("picked.png");
         fs::create_dir_all(&root).unwrap();
         fs::write(&picked, b"\x89PNG\r\n\x1a\n").unwrap();
+        chosen_files::record(ChosenFile::Source, &picked.to_string_lossy());
 
         let webview = test_webview(memory_db_with_library(&library));
 
@@ -205,6 +223,9 @@ mod tests {
 
         let webview = test_webview(memory_db_with_library(&library));
 
+        // Picked, so the network gate is what refuses it. A picker can return a network path.
+        chosen_files::record(ChosenFile::Source, r"\\evil\share\cover.jpg");
+
         let error = invoke(
             &webview,
             "persist_thumbnail_file",
@@ -216,6 +237,33 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::InvalidSourceThumbnail.as_str());
+        assert!(!library.join(LIBRARY_DIR_THUMBNAILS).exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn persist_thumbnail_file_command_refuses_an_image_that_was_never_picked_over_ipc() {
+        let root = unique_test_dir("persist-unpicked");
+        let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
+        let library = library.canonicalize().unwrap();
+        let unpicked = root.join("unpicked.png");
+        fs::write(&unpicked, b"\x89PNG\r\n\x1a\n").unwrap();
+
+        let webview = test_webview(memory_db_with_library(&library));
+
+        let error = invoke(
+            &webview,
+            "persist_thumbnail_file",
+            serde_json::json!({
+                "path": unpicked.to_string_lossy(),
+                "libraryPath": library.to_string_lossy()
+            }),
+        )
+        .unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str());
         assert!(!library.join(LIBRARY_DIR_THUMBNAILS).exists());
 
         let _ = fs::remove_dir_all(&root);

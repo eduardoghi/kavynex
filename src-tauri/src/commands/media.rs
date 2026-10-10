@@ -22,6 +22,7 @@ pub async fn create_media<R: Runtime>(
     request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
     ensure_configured_library_path(&app, &request.library_path).await?;
+    media_creation::ensure_request_files_were_chosen(&request)?;
 
     media_creation::create_media_async(&app, request).await
 }
@@ -57,6 +58,7 @@ mod tests {
     use super::*;
     use crate::commands::test_ipc::{invoke, memory_db};
     use crate::models::yt_dlp::ImportMode;
+    use crate::services::chosen_files::{record, ChosenFile};
     use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
     use crate::services::library;
     use crate::utils::hash::file_hash;
@@ -117,6 +119,13 @@ mod tests {
         library: &Path,
         import_mode: &str,
     ) -> serde_json::Value {
+        // As the file picker would have, since the command accepts only what it handed out.
+        record(ChosenFile::Source, &source.to_string_lossy());
+
+        if let Some(thumbnail) = thumbnail {
+            record(ChosenFile::Source, &thumbnail.to_string_lossy());
+        }
+
         serde_json::json!({
             "request": {
                 "channelId": channel_id,
@@ -179,6 +188,31 @@ mod tests {
 
         assert_eq!(response["mediaType"], "video");
         assert!(response["id"].is_number());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn create_media_command_refuses_a_source_that_was_never_picked_over_ipc() {
+        // A real, readable, importable file the user never chose. Before the pick check a renderer
+        // could import any video on disk into the library, where the player serves it.
+        let root = unique_test_dir("ipc-create-unpicked");
+        let library = root.join("library");
+        fs::create_dir_all(&library).unwrap();
+        let library = library.canonicalize().unwrap();
+        let picked = write_temp_file(&root.join("source"), "picked.mp4", b"picked");
+        let unpicked = write_temp_file(&root.join("source"), "unpicked.mp4", b"never-chosen");
+
+        let (db, channel_id) = memory_db_with_library_and_channel(&library);
+        let webview = test_webview(db);
+
+        let mut request = local_request(channel_id, &picked, None, &library, "copy");
+        request["request"]["sourceValue"] = serde_json::json!(unpicked.to_string_lossy());
+
+        let error = invoke(&webview, "create_media", request).unwrap_err();
+
+        assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str());
+        assert!(!library.join("video").exists());
 
         let _ = fs::remove_dir_all(&root);
     }
