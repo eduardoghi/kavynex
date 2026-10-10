@@ -42,6 +42,7 @@
 import { readFileSync, readdirSync } from "fs";
 import { resolve, join, dirname, relative, sep } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 const COMMAND_ATTRIBUTE = "#[tauri::command]";
 
@@ -776,6 +777,6 @@ function main() {
     process.exitCode = 1;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     main();
 }

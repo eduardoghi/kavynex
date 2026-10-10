@@ -32,6 +32,7 @@
 import { readFileSync } from "fs";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 // Pulls one `name = [ ... ]` array out of the TOML and returns its raw element strings, in document
 // order. Hand-rolled rather than pulling in a TOML parser. This file is the only consumer, the two
@@ -205,7 +206,7 @@ export function verifyMutantsExclusions({ tomlContent, mutantList }) {
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
 // this file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const tomlPath = join(root, "src-tauri", ".cargo", "mutants.toml");
     const tomlContent = readFileSync(tomlPath, "utf8");

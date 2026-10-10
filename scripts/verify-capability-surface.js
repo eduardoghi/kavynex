@@ -34,6 +34,7 @@
 import { readFileSync, readdirSync, existsSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 // The two files eslint permits to import `@tauri-apps`, relative to the repository root. Hard-coded
 // rather than discovered. That is the point of the rule, and a scan that found a third file would be
@@ -277,7 +278,7 @@ export function verifyCapabilitySurface({ seams, capabilities, aclManifest = nul
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
 // this file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
     const seams = SEAM_FILES.map((relativePath) => ({

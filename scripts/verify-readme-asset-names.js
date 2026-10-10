@@ -28,6 +28,7 @@
 import { readFileSync } from "fs";
 import { resolve, dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 // The final extensions that make an asset something a user downloads and runs, as opposed to
 // something the release carries for a machine (`.sig`, `latest.json`, `SHA256SUMS.txt`, the SBOM)
@@ -148,7 +149,7 @@ export function verifyReadmeAssetNames({ readmeContent, assetNames }) {
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
 // this file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const assetsPath = process.argv[2];
 
     if (!assetsPath) {

@@ -20,6 +20,7 @@
 //     node scripts/check-js-advisories.js --dev      # dev tree (CI reports, does not gate)
 
 import { execFileSync } from "node:child_process";
+import { isMainModule } from "./script-entry.js";
 
 const OSV_QUERY_BATCH_URL = "https://api.osv.dev/v1/querybatch";
 const OSV_VULN_URL = "https://api.osv.dev/v1/vulns";
@@ -364,7 +365,7 @@ async function main() {
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
 // this file must not shell out to pnpm or reach the network). Mirrors check-js-licenses.js.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     main().catch((error) => {
         // Never pass silently on a transport failure. A scanner that cannot reach its data source
         // has not cleared the tree, and treating that as success is how a gate quietly stops gating.

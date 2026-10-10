@@ -15,6 +15,7 @@
 // counterpart, so adding it to deny.toml would only imply a crate could ship under it.
 
 import { execFileSync } from "node:child_process";
+import { isMainModule } from "./script-entry.js";
 
 // The licenses the production tree is allowed to carry. All permissive, and the script prints the
 // package count and the distinct licenses it found on every run, so the current state lives in
@@ -117,6 +118,6 @@ function main() {
 
 // Only run the gate when invoked as a script, so the export above stays unit-testable (importing
 // this file must not shell out to pnpm).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     main();
 }

@@ -20,6 +20,7 @@
 // The `2>` is not a typo. cargo-deny writes its JSON diagnostics to stderr and leaves stdout empty.
 
 import { readFileSync } from "fs";
+import { isMainModule } from "./script-entry.js";
 
 // The crate name and its versions, read out of one `duplicate` diagnostic.
 //
@@ -194,7 +195,7 @@ export function renderBansSummary({ duplicates, reportedWarnings = null, unparse
 // mis-wired reporter fails in the worst possible way, printing nothing forever while the step stays
 // green and the summary silently reads as a clean tree. That belongs loud. What must stay quiet is
 // only the part that judges cargo-deny's *content*, which is handled in the renderer above.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const inputPath = process.argv[2];
 
     if (!inputPath) {

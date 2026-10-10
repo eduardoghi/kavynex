@@ -11,6 +11,7 @@ import { existsSync } from "fs";
 import { spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 // What to do, given the environment and whether `dist/index.html` exists. Pure, so the two ways it
 // can go wrong (skipping a build nobody did, building with the key in the environment) are tested.
@@ -31,7 +32,7 @@ export function planFrontendBuild(env, distIsBuilt) {
 }
 
 // Only run when invoked as a script, so the export above stays unit-testable.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const plan = planFrontendBuild(process.env, existsSync(join(root, "dist", "index.html")));
 

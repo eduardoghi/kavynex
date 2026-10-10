@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { isValidSemver, replaceCargoVersion } from "./version-utils.js";
+import { isMainModule } from "./script-entry.js";
 
 // Rewrites the app version in package.json, tauri.conf.json and Cargo.toml (and regenerates
 // Cargo.lock) to `newVersion`, returning a process exit code. The filesystem and cargo are injected
@@ -71,7 +72,7 @@ export function bumpVersion({ newVersion, root, readFile, writeFile, runCargoUpd
 
 // Only run the bump when invoked as a script, so the export above stays unit-testable (importing
 // this file must not write files or shell out to cargo).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
     const exitCode = bumpVersion({

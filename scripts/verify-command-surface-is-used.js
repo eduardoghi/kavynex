@@ -33,6 +33,7 @@
 import { readFileSync, readdirSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 // Command names registered with Tauri, read from the `generate_handler!` list in lib.rs.
 //
@@ -254,7 +255,7 @@ function readSourceFiles(root, dir) {
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
 // this file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
     const handlerSource = readFileSync(join(root, "src-tauri", "src", "lib.rs"), "utf8");

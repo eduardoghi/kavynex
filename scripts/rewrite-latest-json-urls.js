@@ -19,6 +19,7 @@
 
 import { readFileSync, writeFileSync } from "fs";
 import { releaseDownloadPrefix } from "./verify-latest-json.js";
+import { isMainModule } from "./script-entry.js";
 
 // Maps a manifest URL back to the asset it names. tauri-action writes the REST asset endpoint,
 // whose last path segment is the numeric asset id, which is *not* the `id` the GitHub CLI reports
@@ -62,7 +63,7 @@ export function rewriteManifestUrls(manifest, assets, downloadPrefix, version) {
 
 // Only run when invoked as a script, so the exports above stay unit-testable (importing this file
 // must not read or write files).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const [manifestPath, assetsPath] = process.argv.slice(2);
 
     if (!manifestPath || !assetsPath) {

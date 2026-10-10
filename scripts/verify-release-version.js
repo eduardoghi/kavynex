@@ -5,6 +5,7 @@ import { readFileSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { parseCargoVersion, findVersionMismatch } from "./version-utils.js";
+import { isMainModule } from "./script-entry.js";
 
 // Decides the release-version gate from the raw file contents, returning `{ ok, message }` rather
 // than reading files or exiting itself. Exported so the glue (the null-cargo branch, the mismatch
@@ -36,7 +37,7 @@ export function verifyReleaseVersion({ packageJson, tauriConfJson, cargoToml }) 
 
 // Only run the gate when invoked as a script, so the export above stays unit-testable (importing
 // this file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
     const result = verifyReleaseVersion({

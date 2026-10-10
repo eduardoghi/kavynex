@@ -12,6 +12,7 @@
 import { createReadStream, readFileSync } from "fs";
 import { createHash, createPublicKey, verify } from "crypto";
 import { basename, dirname, join } from "path";
+import { isMainModule } from "./script-entry.js";
 
 // Every key the release carries, mapped to the asset suffix its entry must point at (null for the
 // bare key, which tauri fills with one of the installers).
@@ -253,7 +254,7 @@ export async function findSignatureProblems(manifest, assetsDir, publicKeyBase64
 }
 
 // Only run the gate when invoked as a script, so the export above stays unit-testable.
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const manifestPath = process.argv[2];
 
     if (!manifestPath) {

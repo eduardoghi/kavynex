@@ -14,6 +14,7 @@
 import { readFileSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 const NPM_PACKAGE_PATTERN = /^ {6}'(@tauri-apps\/(?:api|plugin-[a-z0-9-]+))':\r?\n {8}specifier: [^\r\n]*\r?\n {8}version: ([^\s(]+)/gm;
 
@@ -125,7 +126,7 @@ export function verifyTauriPackageVersions({ pnpmLock, cargoLock }) {
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing
 // this file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
     const result = verifyTauriPackageVersions({

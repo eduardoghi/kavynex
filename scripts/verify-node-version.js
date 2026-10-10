@@ -8,6 +8,7 @@
 import { readFileSync, readdirSync } from "fs";
 import { resolve, join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { isMainModule } from "./script-entry.js";
 
 // Strips a leading `v` and surrounding whitespace so `v26.5.0`, `26.5.0 ` and `26.5.0` compare
 // equal. Setup-node and .nvmrc both accept the bare form, and this keeps a stray `v` from reading
@@ -90,7 +91,7 @@ export function verifyNodeVersion({ nvmrc, workflows }) {
 
 // Only run the gate when invoked as a script, so the exports above stay unit-testable (importing this
 // file must not read files or exit).
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
+if (isMainModule(import.meta.url)) {
     const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const workflowsDir = join(root, ".github", "workflows");
 
