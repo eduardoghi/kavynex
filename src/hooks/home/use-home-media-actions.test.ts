@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { useHomeMediaActions } from "./use-home-media-actions";
+import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
 
 describe("useHomeMediaActions", () => {
     function createDiagnosticsState(overrides?: Partial<any>) {
@@ -39,9 +40,8 @@ describe("useHomeMediaActions", () => {
             isCancellingYtDlp: false,
             isFetchingComments: false,
 
-            ytDlpLogs: [],
+            ytDlpTerminalStore: createYtDlpTerminalStore(),
             isYtDlpRunning: false,
-            ytDlpProgress: null,
 
             addMediaForm: {
                 sourceMode: "local" as const,

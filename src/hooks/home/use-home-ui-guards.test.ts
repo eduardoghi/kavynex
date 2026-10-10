@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useHomeUiGuards } from "./use-home-ui-guards";
+import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
 
 describe("useHomeUiGuards", () => {
     function createSettingsState(overrides?: Partial<any>) {
@@ -58,9 +59,8 @@ describe("useHomeUiGuards", () => {
             isCancellingYtDlp: false,
             isFetchingComments: false,
 
-            ytDlpLogs: [],
+            ytDlpTerminalStore: createYtDlpTerminalStore(),
             isYtDlpRunning: false,
-            ytDlpProgress: null,
 
             addMediaForm: {
                 sourceMode: "local" as const,

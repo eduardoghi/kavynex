@@ -72,6 +72,7 @@ import { useHomePlayerPanel } from "./use-home-player-panel";
 import { useHomeViewState } from "./use-home-view-state";
 import { useHomeLibraryPanel } from "./use-home-library-panel";
 import { checkAppUpdate } from "../../services/app-update-service";
+import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
 
 const mockErrorState = {
     errorOpen: true,
@@ -198,9 +199,8 @@ const mockMediaLibrary = {
     isCancellingYtDlp: false,
     isFetchingComments: false,
 
-    ytDlpLogs: [],
+    ytDlpTerminalStore: createYtDlpTerminalStore(),
     isYtDlpRunning: false,
-    ytDlpProgress: null,
 
     addMediaForm: {
         sourceMode: "local" as const,

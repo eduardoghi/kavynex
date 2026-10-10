@@ -4,8 +4,8 @@ import { createMedia } from "../services/media-service";
 import { cancelMediaDownload } from "../services/media-download-service";
 import { useAddMediaForm } from "./use-add-media-form";
 import { useAsyncFlag } from "./use-async-flag";
-import { useYtDlpEvents, type YtDlpLogLine } from "./use-yt-dlp-events";
-import type { YtDlpProgress } from "../services/yt-dlp-progress";
+import { useYtDlpEvents } from "./use-yt-dlp-events";
+import type { YtDlpTerminalStore } from "./yt-dlp-terminal-store";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
 import {
@@ -46,9 +46,9 @@ type UseAddMediaWorkflowReturn = {
     // The comment backup that runs after a download was registered. Cancelling it skips the
     // comments and keeps the media.
     isFetchingComments: boolean;
-    ytDlpLogs: YtDlpLogLine[];
+    // The terminal's lines and progress, read through useYtDlpTerminal by what renders them.
+    ytDlpTerminalStore: YtDlpTerminalStore;
     isYtDlpRunning: boolean;
-    ytDlpProgress: YtDlpProgress | null;
     addMediaForm: ReturnType<typeof useAddMediaForm>;
     addMedia: () => Promise<void>;
     cancelYtDlpDownload: () => Promise<void>;
@@ -124,12 +124,10 @@ export function useAddMediaWorkflow({
     const { resetForm } = addMediaForm;
     // startRun/appendManualLog/markStopped are stable (useCallback in useYtDlpEvents), so addMedia
     // can depend on them directly instead of on the whole ytDlpEvents object, whose identity
-    // changes on every log line (ytDlpLogs is part of it), which was churning addMedia's identity
-    // on each stdout line during an active download.
+    // changed on every log line back when the lines were part of it.
     const {
-        ytDlpLogs,
+        terminal: ytDlpTerminalStore,
         isYtDlpRunning,
-        ytDlpProgress,
         resetYtDlpState,
         startRun,
         appendManualLog,
@@ -418,9 +416,8 @@ export function useAddMediaWorkflow({
         isAddingMedia,
         isCancellingYtDlp,
         isFetchingComments,
-        ytDlpLogs,
+        ytDlpTerminalStore,
         isYtDlpRunning,
-        ytDlpProgress,
         addMediaForm,
         addMedia,
         cancelYtDlpDownload,

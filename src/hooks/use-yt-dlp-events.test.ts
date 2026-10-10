@@ -76,7 +76,7 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(true);
         expect(result.current.currentRunIdRef.current).toBe("run-1");
-        expect(result.current.ytDlpLogs.map((line) => line.text)).toEqual([
+        expect(result.current.terminal.getSnapshot().logs.map((line) => line.text)).toEqual([
             "yt-dlp https://youtube.com/watch?v=abc",
             "",
         ]);
@@ -91,7 +91,7 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(true);
         expect(result.current.currentRunIdRef.current).toBe("manual-1");
-        expect(logTexts(result.current.ytDlpLogs)).toEqual(["Manual header", ""]);
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual(["Manual header", ""]);
     });
 
     it("appends log lines only for the current run", async () => {
@@ -121,8 +121,8 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Downloading...");
-        expect(logTexts(result.current.ytDlpLogs)).not.toContain("ignore me");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Downloading...");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).not.toContain("ignore me");
     });
 
     it.each(ALL_EVENTS)(
@@ -145,7 +145,7 @@ describe("useYtDlpEvents", () => {
             });
 
             expect(result.current.isYtDlpRunning).toBe(false);
-            expect(logTexts(result.current.ytDlpLogs)).toEqual([]);
+            expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual([]);
         }
     );
 
@@ -174,7 +174,7 @@ describe("useYtDlpEvents", () => {
             result.current.startRun("run-1", "cmd");
         });
 
-        const logsBefore = [...result.current.ytDlpLogs];
+        const logsBefore = [...result.current.terminal.getSnapshot().logs];
 
         act(() => {
             emit(eventName, payload);
@@ -182,7 +182,7 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(true);
         expect(result.current.currentRunIdRef.current).toBe("run-1");
-        expect(result.current.ytDlpLogs).toEqual(logsBefore);
+        expect(result.current.terminal.getSnapshot().logs).toEqual(logsBefore);
     });
 
     it("finalizes only once when finished event is followed by terminal finished", async () => {
@@ -208,7 +208,7 @@ describe("useYtDlpEvents", () => {
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(result.current.currentRunIdRef.current).toBe("");
 
-        const logsAfterFinished = [...result.current.ytDlpLogs];
+        const logsAfterFinished = [...result.current.terminal.getSnapshot().logs];
 
         act(() => {
             emit(EVENT_YT_DLP_TERMINAL, {
@@ -218,9 +218,9 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(result.current.ytDlpLogs).toEqual(logsAfterFinished);
+        expect(result.current.terminal.getSnapshot().logs).toEqual(logsAfterFinished);
         expect(
-            result.current.ytDlpLogs.filter((line) => line.text.includes("finished"))
+            result.current.terminal.getSnapshot().logs.filter((line) => line.text.includes("finished"))
         ).toHaveLength(1);
     });
 
@@ -245,7 +245,7 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(result.current.currentRunIdRef.current).toBe("");
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal failed: Network error");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal failed: Network error");
     });
 
     it("terminal failure without a message falls back to a default", async () => {
@@ -267,7 +267,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal failed: Unknown failure");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal failed: Unknown failure");
     });
 
     it("terminal failure with a whitespace-only message falls back to a default", async () => {
@@ -289,7 +289,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal failed: Unknown failure");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal failed: Unknown failure");
     });
 
     it("terminal finished without a file_path uses a generic message", async () => {
@@ -311,9 +311,9 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal finished.");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal finished.");
         expect(
-            result.current.ytDlpLogs.some((line) => line.text.startsWith("Terminal finished: "))
+            result.current.terminal.getSnapshot().logs.some((line) => line.text.startsWith("Terminal finished: "))
         ).toBe(false);
     });
 
@@ -336,7 +336,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal finished.");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal finished.");
     });
 
     it("terminal finished with a file_path reports it and stops", async () => {
@@ -358,7 +358,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal finished: /tmp/video.mp4");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal finished: /tmp/video.mp4");
         expect(result.current.isYtDlpRunning).toBe(false);
     });
 
@@ -381,7 +381,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal cancelled: User stopped it");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal cancelled: User stopped it");
         expect(result.current.isYtDlpRunning).toBe(false);
     });
 
@@ -404,7 +404,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Terminal cancelled: Cancelled");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal cancelled: Cancelled");
     });
 
     it("finalizes with error event message", async () => {
@@ -426,7 +426,7 @@ describe("useYtDlpEvents", () => {
         });
 
         expect(result.current.isYtDlpRunning).toBe(false);
-        expect(logTexts(result.current.ytDlpLogs)).toContain("ERROR: Download failed");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("ERROR: Download failed");
     });
 
     it("finalizes with cancelled event message", async () => {
@@ -448,7 +448,7 @@ describe("useYtDlpEvents", () => {
         });
 
         expect(result.current.isYtDlpRunning).toBe(false);
-        expect(logTexts(result.current.ytDlpLogs)).toContain("Cancelled: User cancelled");
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Cancelled: User cancelled");
     });
 
     it("markStopped stops current run and ignores later events", async () => {
@@ -469,7 +469,7 @@ describe("useYtDlpEvents", () => {
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(result.current.currentRunIdRef.current).toBe("");
 
-        const logsBeforeLateEvent = [...result.current.ytDlpLogs];
+        const logsBeforeLateEvent = [...result.current.terminal.getSnapshot().logs];
 
         act(() => {
             emit(EVENT_YT_DLP_LOG, {
@@ -479,7 +479,7 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        expect(result.current.ytDlpLogs).toEqual(logsBeforeLateEvent);
+        expect(result.current.terminal.getSnapshot().logs).toEqual(logsBeforeLateEvent);
     });
 
     it("resetYtDlpState can also clear logs", async () => {
@@ -507,7 +507,7 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(result.current.currentRunIdRef.current).toBe("");
-        expect(logTexts(result.current.ytDlpLogs)).toEqual([]);
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual([]);
     });
 
     it("resetYtDlpState without arguments preserves existing logs", () => {
@@ -523,7 +523,7 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(result.current.currentRunIdRef.current).toBe("");
-        expect(logTexts(result.current.ytDlpLogs)).toEqual(["cmd", ""]);
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual(["cmd", ""]);
     });
 
     describe("log line processing", () => {
@@ -538,7 +538,7 @@ describe("useYtDlpEvents", () => {
                 result.current.appendManualLog("");
             });
 
-            expect(logTexts(result.current.ytDlpLogs)).toEqual(["first"]);
+            expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual(["first"]);
         });
 
         it("splits a multi-line manual log entry on CRLF and CR", () => {
@@ -548,7 +548,7 @@ describe("useYtDlpEvents", () => {
                 result.current.appendManualLog("line1\r\nline2\rline3");
             });
 
-            expect(logTexts(result.current.ytDlpLogs)).toEqual(["line1", "line2", "line3"]);
+            expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual(["line1", "line2", "line3"]);
         });
 
         it("does not duplicate consecutive blank lines", async () => {
@@ -566,7 +566,7 @@ describe("useYtDlpEvents", () => {
                 emit(EVENT_YT_DLP_LOG, { run_id: "run-1", line: "", stream: "stdout" });
             });
 
-            expect(logTexts(result.current.ytDlpLogs)).toEqual(["cmd", ""]);
+            expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual(["cmd", ""]);
         });
 
         it("skips a log line identical to the previous one", async () => {
@@ -589,7 +589,7 @@ describe("useYtDlpEvents", () => {
             });
 
             expect(
-                result.current.ytDlpLogs.filter((line) => line.text === "same line")
+                result.current.terminal.getSnapshot().logs.filter((line) => line.text === "same line")
             ).toHaveLength(1);
         });
 
@@ -608,7 +608,7 @@ describe("useYtDlpEvents", () => {
                 emit(EVENT_YT_DLP_LOG, { run_id: "run-1", line: "a\tb", stream: "stdout" });
             });
 
-            expect(logTexts(result.current.ytDlpLogs)).toContain("a    b");
+            expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("a    b");
         });
 
         it.each([
@@ -645,7 +645,7 @@ describe("useYtDlpEvents", () => {
                 });
             });
 
-            const progressEntries = result.current.ytDlpLogs
+            const progressEntries = result.current.terminal.getSnapshot().logs
                 .filter((line) => line.text.startsWith(prefix))
                 .map((line) => line.text);
             expect(progressEntries).toEqual([`${prefix} 20%`]);
@@ -660,7 +660,7 @@ describe("useYtDlpEvents", () => {
                 });
             });
 
-            const logs = logTexts(result.current.ytDlpLogs);
+            const logs = logTexts(result.current.terminal.getSnapshot().logs);
             expect(logs[logs.length - 1]).toBe(`xxx${prefix}`);
             expect(logs).toContain(`${prefix} 20%`);
         });
@@ -692,7 +692,7 @@ describe("useYtDlpEvents", () => {
                 });
             });
 
-            expect(logTexts(result.current.ytDlpLogs)).toEqual([
+            expect(logTexts(result.current.terminal.getSnapshot().logs)).toEqual([
                 "cmd",
                 "",
                 "Starting download",
@@ -723,7 +723,7 @@ describe("useYtDlpEvents", () => {
                 emit(EVENT_YT_DLP_LOG, { run_id: "run-1", line: "   ", stream: "stdout" });
             });
 
-            const logs = logTexts(result.current.ytDlpLogs);
+            const logs = logTexts(result.current.terminal.getSnapshot().logs);
             expect(logs[logs.length - 1]).toBe("   ");
             expect(logs).toContain("[download] 10%");
         });
@@ -737,8 +737,8 @@ describe("useYtDlpEvents", () => {
                 }
             });
 
-            expect(result.current.ytDlpLogs).toHaveLength(500);
-            const cappedLogs = logTexts(result.current.ytDlpLogs);
+            expect(result.current.terminal.getSnapshot().logs).toHaveLength(500);
+            const cappedLogs = logTexts(result.current.terminal.getSnapshot().logs);
             expect(cappedLogs[0]).toBe("line-20");
             expect(cappedLogs[cappedLogs.length - 1]).toBe("line-519");
         });
@@ -811,5 +811,30 @@ describe("useYtDlpEvents", () => {
                 );
             });
         });
+    });
+
+    it("does not re-render its owner for a log line, only the terminal's subscribers", () => {
+        // The owner is the Home page. A download writes several lines a second, and as state each
+        // one re-rendered the whole page.
+        let renders = 0;
+        const { result } = renderHook(() => {
+            renders += 1;
+            return useYtDlpEvents();
+        });
+        const listener = vi.fn();
+        const unsubscribe = result.current.terminal.subscribe(listener);
+        const rendersBefore = renders;
+
+        act(() => {
+            result.current.appendManualLog("[download]  42.0% of 10.00MiB");
+        });
+
+        expect(renders).toBe(rendersBefore);
+        expect(listener).toHaveBeenCalled();
+        expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain(
+            "[download]  42.0% of 10.00MiB"
+        );
+
+        unsubscribe();
     });
 });

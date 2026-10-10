@@ -11,6 +11,7 @@ import { listenValidated } from "../lib/tauri-client";
 import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
+import { createYtDlpTerminalStore, type YtDlpTerminalStore } from "./yt-dlp-terminal-store";
 import type { DownloadLogLevel } from "../types/generated/DownloadLogLevel";
 import { advanceYtDlpProgress, type YtDlpProgress } from "../services/yt-dlp-progress";
 
@@ -31,12 +32,12 @@ export type YtDlpLogLevel = DownloadLogLevel;
 export type YtDlpLogLine = { id: number; text: string; level: YtDlpLogLevel };
 
 type UseYtDlpEventsReturn = {
-    ytDlpLogs: YtDlpLogLine[];
+    // The terminal's lines, and how far the run has got (null until something reports a stage).
+    // The progress is derived from the same lines, so it needs no second event. Both live in a store
+    // rather than in this hook's state, so a log line re-renders only what subscribes to it (see
+    // yt-dlp-terminal-store.ts). The store's identity never changes.
+    terminal: YtDlpTerminalStore;
     isYtDlpRunning: boolean;
-    // How far the run has got, or null when nothing has reported a stage yet. Derived from the same
-    // lines the terminal shows, so it needs no second event. The information was always arriving,
-    // it just had nowhere to be read except a scrolling wall of text.
-    ytDlpProgress: YtDlpProgress | null;
     currentRunIdRef: React.RefObject<string>;
     startRun: (runId: string, commandPreview: string) => void;
     startManualSession: (runId: string, header: string) => void;
@@ -126,10 +127,30 @@ function appendProcessedLogs(
     return next.slice(-MAX_YT_DLP_LOG_LINES);
 }
 
+function setLogs(
+    terminal: YtDlpTerminalStore,
+    change: YtDlpLogLine[] | ((current: YtDlpLogLine[]) => YtDlpLogLine[])
+): void {
+    terminal.update((current) => ({
+        ...current,
+        logs: typeof change === "function" ? change(current.logs) : change,
+    }));
+}
+
+function setProgress(
+    terminal: YtDlpTerminalStore,
+    change: YtDlpProgress | null | ((current: YtDlpProgress | null) => YtDlpProgress | null)
+): void {
+    terminal.update((current) => {
+        const progress = typeof change === "function" ? change(current.progress) : change;
+
+        return progress === current.progress ? current : { ...current, progress };
+    });
+}
+
 export function useYtDlpEvents(): UseYtDlpEventsReturn {
-    const [ytDlpLogs, setYtDlpLogs] = useState<YtDlpLogLine[]>([]);
+    const [terminal] = useState(createYtDlpTerminalStore);
     const [isYtDlpRunning, setIsYtDlpRunning] = useState(false);
-    const [ytDlpProgress, setYtDlpProgress] = useState<YtDlpProgress | null>(null);
 
     const currentRunIdRef = useRef("");
 
@@ -141,19 +162,19 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         (level: YtDlpLogLevel, ...lines: string[]): void => {
             const chunks = lines.flatMap(normalizeLogChunks);
 
-            setYtDlpLogs((current) => appendProcessedLogs(current, chunks, level));
+            setLogs(terminal, (current) => appendProcessedLogs(current, chunks, level));
 
             // Folded outside the log updater rather than inside it. A state updater has to stay
             // pure (StrictMode runs it twice), and a second setState there would be a side effect
             // in a reducer. Reading the same chunks twice is free next to that.
-            setYtDlpProgress((current) =>
+            setProgress(terminal, (current) =>
                 chunks.reduce<YtDlpProgress | null>(
                     (progress, line) => advanceYtDlpProgress(progress, line),
                     current
                 )
             );
         },
-        []
+        [terminal]
     );
 
     const appendManualLog = useCallback(
@@ -163,35 +184,44 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         [appendLogs]
     );
 
-    const resetYtDlpState = useCallback((clearLogs = false): void => {
-        currentRunIdRef.current = "";
-        setIsYtDlpRunning(false);
-        setYtDlpProgress(null);
+    const resetYtDlpState = useCallback(
+        (clearLogs = false): void => {
+            currentRunIdRef.current = "";
+            setIsYtDlpRunning(false);
+            setProgress(terminal, null);
 
-        if (clearLogs) {
-            setYtDlpLogs([]);
-        }
-    }, []);
+            if (clearLogs) {
+                setLogs(terminal, []);
+            }
+        },
+        [terminal]
+    );
 
-    const startRun = useCallback((runId: string, commandPreview: string): void => {
-        currentRunIdRef.current = runId;
-        setYtDlpLogs(toLogLines([commandPreview, ""]));
-        setIsYtDlpRunning(true);
-        setYtDlpProgress(null);
-    }, []);
+    const startRun = useCallback(
+        (runId: string, commandPreview: string): void => {
+            currentRunIdRef.current = runId;
+            setLogs(terminal, toLogLines([commandPreview, ""]));
+            setIsYtDlpRunning(true);
+            setProgress(terminal, null);
+        },
+        [terminal]
+    );
 
-    const startManualSession = useCallback((runId: string, header: string): void => {
-        currentRunIdRef.current = runId;
-        setYtDlpLogs(toLogLines([header, ""]));
-        setIsYtDlpRunning(true);
-        setYtDlpProgress(null);
-    }, []);
+    const startManualSession = useCallback(
+        (runId: string, header: string): void => {
+            currentRunIdRef.current = runId;
+            setLogs(terminal, toLogLines([header, ""]));
+            setIsYtDlpRunning(true);
+            setProgress(terminal, null);
+        },
+        [terminal]
+    );
 
     const markStopped = useCallback((): void => {
         currentRunIdRef.current = "";
         setIsYtDlpRunning(false);
-        setYtDlpProgress(null);
-    }, []);
+        setProgress(terminal, null);
+    }, [terminal]);
 
     // `level` is required, and it is what replaced the terminal's old `startsWith("ERROR:")` check.
     // That sniff only ever matched one of these outcomes (the yt-dlp error event, whose text
@@ -205,9 +235,9 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
             currentRunIdRef.current = "";
             setIsYtDlpRunning(false);
-            setYtDlpProgress(null);
+            setProgress(terminal, null);
         },
-        [appendLogs]
+        [appendLogs, terminal]
     );
 
     // Registers the yt-dlp event listeners once. The dependencies are stable (appendLogs is
@@ -361,9 +391,8 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     // Memoized so the controller object keeps a stable identity across renders. Consumers that
     // depend on the whole object stop being invalidated on unrelated re-renders.
     return useMemoObject({
-        ytDlpLogs,
+        terminal,
         isYtDlpRunning,
-        ytDlpProgress,
         currentRunIdRef,
         startRun,
         startManualSession,

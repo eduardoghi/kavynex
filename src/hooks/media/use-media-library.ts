@@ -3,8 +3,7 @@ import type React from "react";
 import type { MediaRow } from "../../types/media";
 import type { ImportMode } from "../../types/settings";
 import type { MediaQueryFilters } from "../../utils/media-library-filters";
-import type { YtDlpProgress } from "../../services/yt-dlp-progress";
-import type { YtDlpLogLine } from "../use-yt-dlp-events";
+import type { YtDlpTerminalStore } from "../yt-dlp-terminal-store";
 import type { AddMediaFormController } from "../use-add-media-form";
 import { useAddMediaWorkflow } from "../use-add-media-workflow";
 import { useChannelMediaList } from "../channels/use-channel-media-list";
@@ -44,9 +43,8 @@ export type MediaLibraryController = {
     isUpdatingTitle: boolean;
     isCancellingYtDlp: boolean;
     isFetchingComments: boolean;
-    ytDlpLogs: YtDlpLogLine[];
+    ytDlpTerminalStore: YtDlpTerminalStore;
     isYtDlpRunning: boolean;
-    ytDlpProgress: YtDlpProgress | null;
     addMediaForm: AddMediaFormController;
     mediaPlayer: MediaPlayerController;
     applyMediaQuery: (filters: MediaQueryFilters) => Promise<void>;
@@ -243,9 +241,8 @@ export function useMediaLibrary({
         isCancellingYtDlp: addMediaWorkflow.isCancellingYtDlp,
         isFetchingComments: addMediaWorkflow.isFetchingComments,
 
-        ytDlpLogs: addMediaWorkflow.ytDlpLogs,
+        ytDlpTerminalStore: addMediaWorkflow.ytDlpTerminalStore,
         isYtDlpRunning: addMediaWorkflow.isYtDlpRunning,
-        ytDlpProgress: addMediaWorkflow.ytDlpProgress,
 
         addMediaForm: addMediaWorkflow.addMediaForm,
         mediaPlayer,

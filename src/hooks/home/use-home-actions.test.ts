@@ -16,6 +16,7 @@ vi.mock("../../utils/error-message", () => ({
 
 import { executeDeleteSelectedChannel } from "../../use-cases/delete-selected-channel";
 import { logError } from "../../utils/app-logger";
+import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
 
 describe("useHomeActions", () => {
     function createErrorState(overrides?: Partial<any>): any {
@@ -124,7 +125,7 @@ describe("useHomeActions", () => {
             isUpdatingTitle: false,
             isCancellingYtDlp: false,
 
-            ytDlpLogs: [],
+            ytDlpTerminalStore: createYtDlpTerminalStore(),
             isYtDlpRunning: false,
 
             addMediaForm: {

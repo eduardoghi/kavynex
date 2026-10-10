@@ -12,6 +12,7 @@ import type { AddMediaFormController } from "../../hooks/use-add-media-form";
 import type { DatabaseRecoveryController } from "../../hooks/use-app-bootstrap";
 import type { DiagnosticsController } from "../../hooks/use-diagnostics";
 import type { ErrorModalController } from "../../hooks/use-error-modal";
+import { createYtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 
 function createAddMediaForm(): AddMediaFormController {
     return {
@@ -135,9 +136,8 @@ function createMedia(): MediaLibraryController {
         isUpdatingTitle: false,
         isCancellingYtDlp: false,
         isFetchingComments: false,
-        ytDlpLogs: [],
+        ytDlpTerminalStore: createYtDlpTerminalStore(),
         isYtDlpRunning: false,
-        ytDlpProgress: null,
         addMediaForm: createAddMediaForm(),
         mediaPlayer: createMediaPlayer(),
         applyMediaQuery: vi.fn().mockResolvedValue(undefined),

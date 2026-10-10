@@ -6,6 +6,7 @@ import { useMediaLibrary } from "./use-media-library";
 import { saveMediaProgress as persistMediaProgress } from "../../services/media-service";
 import { listChannelMediaPage } from "../../services/media-service";
 import { DEFAULT_MEDIA_QUERY_FILTERS } from "../../utils/media-library-filters";
+import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
 
 // useChannelMediaList and useMediaPlayer are exercised for real (not mocked) below, so the
 // dependency-array mutants in useMediaLibrary's own useCallback/useEffect blocks can be
@@ -51,7 +52,7 @@ vi.mock("../use-add-media-workflow", () => ({
         closeAddMediaModal: vi.fn(),
         isAddingMedia: false,
         isCancellingYtDlp: false,
-        ytDlpLogs: [],
+        ytDlpTerminalStore: createYtDlpTerminalStore(),
         isYtDlpRunning: false,
         addMediaForm: {
             isGeneratingThumb: false,

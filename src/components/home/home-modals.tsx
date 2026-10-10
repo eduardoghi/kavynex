@@ -1,4 +1,4 @@
-import { lazy, memo, Suspense } from "react";
+import { lazy, memo, Suspense, type ComponentProps } from "react";
 import { Text } from "@mantine/core";
 import { RotateCcw } from "lucide-react";
 import { AddMediaModal } from "../modals/add-media-modal";
@@ -6,6 +6,7 @@ import { ConfirmDeleteModal } from "../modals/confirm-delete-modal";
 import { CreateChannelModal } from "../modals/create-channel-modal";
 import { ErrorModal } from "../modals/error-modal";
 import { useHasBeenTrue } from "../../hooks/use-has-been-true";
+import { useYtDlpTerminal, type YtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 import { describeChannelDeletion } from "./channel-deletion-copy";
 
 // The two heaviest modals, and the two the app can run a whole session without opening. Settings
@@ -248,6 +249,19 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
     );
 });
 
+// The add media modal with the yt-dlp terminal read from its store. The subscription lives here, so
+// a log line re-renders this and the modal, and nothing above it.
+function AddMediaModalWithTerminal({
+    terminal,
+    ...props
+}: Omit<ComponentProps<typeof AddMediaModal>, "ytDlpLogs" | "ytDlpProgress"> & {
+    terminal: YtDlpTerminalStore;
+}): JSX.Element {
+    const { logs, progress } = useYtDlpTerminal(terminal);
+
+    return <AddMediaModal {...props} ytDlpLogs={logs} ytDlpProgress={progress} />;
+}
+
 export function HomeModals({
     channels,
     media,
@@ -263,7 +277,8 @@ export function HomeModals({
 
     return (
         <>
-            <AddMediaModal
+            <AddMediaModalWithTerminal
+                terminal={media.ytDlpTerminalStore}
                 opened={media.addMediaOpen}
                 onClose={() => void uiGuards.closeAddMediaModalSafely()}
                 sourceMode={addMediaForm.sourceMode}
@@ -283,9 +298,7 @@ export function HomeModals({
                 loading={media.isAddingMedia}
                 isCancellingYtDlp={media.isCancellingYtDlp}
                 isFetchingComments={media.isFetchingComments}
-                ytDlpLogs={media.ytDlpLogs}
                 isYtDlpRunning={media.isYtDlpRunning}
-                ytDlpProgress={media.ytDlpProgress}
                 ytDlpFormats={addMediaForm.ytDlpFormats}
                 selectedYtDlpFormatId={addMediaForm.selectedYtDlpFormatId}
                 isLoadingYtDlpFormats={addMediaForm.isLoadingYtDlpFormats}

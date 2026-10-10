@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import type { useAddMediaForm } from "./use-add-media-form";
 import { useAddMediaWorkflow } from "./use-add-media-workflow";
-import type { YtDlpLogLine } from "./use-yt-dlp-events";
+import { createYtDlpTerminalStore, type YtDlpTerminalStore } from "./yt-dlp-terminal-store";
 
 vi.mock("../services/media-service", () => ({
     createMedia: vi.fn(),
@@ -40,7 +40,7 @@ type MockAddMediaForm = {
 };
 
 type MockYtDlpEvents = {
-    ytDlpLogs: YtDlpLogLine[];
+    terminal: YtDlpTerminalStore;
     isYtDlpRunning: boolean;
     currentRunIdRef: { current: string };
     startRun: ReturnType<typeof vi.fn>;
@@ -94,7 +94,7 @@ function createMockAddMediaForm(): MockAddMediaForm {
 
 function createMockYtDlpEvents(): MockYtDlpEvents {
     return {
-        ytDlpLogs: [],
+        terminal: createYtDlpTerminalStore(),
         isYtDlpRunning: false,
         currentRunIdRef: { current: "" },
         startRun: mockStartRun,
