@@ -169,7 +169,17 @@ pub fn mark_integrity_check_passed(db_path: &Path) {
 
     let marker = integrity_check_marker_path(db_path);
 
-    if let Err(error) = std::fs::File::create(&marker) {
+    // The time is set explicitly. Truncating an existing empty file is not a write, and NTFS keeps
+    // its old modification time, so `File::create` alone left the marker at the first pass and the
+    // weekly check ran on every launch.
+    let stamped = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&marker)
+        .and_then(|file| file.set_modified(std::time::SystemTime::now()));
+
+    if let Err(error) = stamped {
         logger::warn(
             "db_integrity",
             format!("failed to write the integrity-check marker: {error}"),
@@ -202,6 +212,29 @@ mod tests {
         mark_integrity_check_passed(&db);
         assert!(integrity_check_marker_path(&db).exists());
         assert!(!integrity_check_is_due(&db));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pass_renews_a_marker_left_by_an_older_pass() {
+        // The marker already exists from a pass more than a week ago, which is the state every
+        // launch after the first one starts from. Recording a new pass has to move its time forward,
+        // or the check stays due forever.
+        let dir = temp_dir("integrity-renew");
+        let db = dir.join("kavynex.db");
+        let marker = integrity_check_marker_path(&db);
+        std::fs::write(&marker, b"").unwrap();
+        let ten_days_ago = SystemTime::now() - std::time::Duration::from_secs(10 * 24 * 60 * 60);
+        filetime_set(&marker, ten_days_ago);
+        assert!(integrity_check_is_due(&db));
+
+        mark_integrity_check_passed(&db);
+
+        assert!(
+            !integrity_check_is_due(&db),
+            "a pass recorded over an old marker must restart the weekly throttle"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
