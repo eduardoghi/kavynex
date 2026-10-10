@@ -385,6 +385,22 @@ their changes for the *next* startup instead of swapping the live pool. Keeping 
 state (rather than a process-wide static) also lets tests inject an in-memory pool via
 `Db::from_pool`.
 
+### Compaction
+
+SQLite reuses the pages deleted rows leave behind but never gives them back to the disk on its
+own, so deleting a channel with a large comment history leaves the file at its old size. Diagnostics
+has a "Compact database" button (`compact_database`, in `db_backup/compaction.rs`) that runs
+`VACUUM` and then a `wal_checkpoint(TRUNCATE)`, so the file shrinks right away rather than at the
+next checkpoint. It holds the backup lock, so it never overlaps the daily snapshot, and a failure
+(most likely running out of disk, since `VACUUM` needs up to twice the database size while it runs)
+leaves the database as it was. It is never run automatically, because it reads and rewrites the
+whole file.
+
+The app does not run `PRAGMA optimize`. On a database that was never analyzed it runs `ANALYZE`,
+and the statistics that leaves behind change what the query planner picks. Every index choice
+recorded in `ddl.rs` was measured against the planner without statistics, which is the one
+production runs. Turning it on means measuring those choices again with statistics present.
+
 ## Backup, restore, export, import
 
 All four operations are implemented in the `db_backup/` module, one submodule each. The automatic

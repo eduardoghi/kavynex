@@ -9,7 +9,7 @@ use crate::services::db_backup::gates::{
     prepare_export_destination, prepare_import_source,
 };
 use crate::services::db_backup::{
-    self, DatabaseBackupStatus, DatabaseIntegrityReport, MachinePaths,
+    self, DatabaseBackupStatus, DatabaseCompaction, DatabaseIntegrityReport, MachinePaths,
 };
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -273,6 +273,14 @@ pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<DatabaseIn
     }
 
     Ok(report)
+}
+
+/// Rewrites the live database without the space deleted rows left behind. User-triggered from the
+/// Diagnostics dialog, never automatic, because it reads and rewrites the whole file.
+#[tauri::command]
+pub async fn compact_database(db: State<'_, Db>) -> AppResult<DatabaseCompaction> {
+    let pool = db.pool().await?;
+    db_backup::compact_database(&pool).await
 }
 
 #[cfg(test)]

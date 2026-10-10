@@ -2,10 +2,16 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { pickFolder } from "./file-dialog-service";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
+import type { DatabaseCompaction } from "../types/generated/DatabaseCompaction";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStatus";
 
-export type { DatabaseBackupStatus, DatabaseIntegrityReport, ExternalBackupStatus };
+export type {
+    DatabaseBackupStatus,
+    DatabaseCompaction,
+    DatabaseIntegrityReport,
+    ExternalBackupStatus,
+};
 
 /**
  * Initializes the backend database (creating and migrating the schema on first call)
@@ -97,4 +103,12 @@ export async function undoDatabaseImport(): Promise<void> {
  */
 export async function checkDatabaseIntegrity(): Promise<DatabaseIntegrityReport> {
     return invokeCommand(TAURI_COMMANDS.CHECK_DATABASE_INTEGRITY);
+}
+
+/**
+ * Runs `VACUUM` on the live database, which gives the space deleted rows left behind back to the
+ * disk. Resolves to how much smaller the database got.
+ */
+export async function compactDatabase(): Promise<DatabaseCompaction> {
+    return invokeCommand(TAURI_COMMANDS.COMPACT_DATABASE);
 }

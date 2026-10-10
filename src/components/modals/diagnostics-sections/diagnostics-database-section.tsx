@@ -1,6 +1,7 @@
 import { Stack } from "@mantine/core";
 import { Database } from "lucide-react";
 import type { MediaRepositoryStats } from "../../../types/diagnostics";
+import { DiagnosticsDatabaseCompaction } from "./diagnostics-database-compaction";
 import { DiagnosticsDatabaseIntegrityCheck } from "./diagnostics-database-integrity-check";
 import {
     DiagnosticsMetric,
@@ -31,6 +32,8 @@ export function DiagnosticsDatabaseSection({
             </DiagnosticsMetricGrid>
 
             <DiagnosticsDatabaseIntegrityCheck />
+
+            <DiagnosticsDatabaseCompaction />
         </Stack>
     );
 }

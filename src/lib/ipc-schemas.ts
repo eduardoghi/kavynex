@@ -53,6 +53,7 @@ import type { KeptFilesSummary } from "../types/generated/KeptFilesSummary";
 import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStatus";
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
+import type { DatabaseCompaction } from "../types/generated/DatabaseCompaction";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
@@ -286,6 +287,11 @@ const databaseIntegrityReportSchema = z.object({
     truncated: z.boolean(),
 });
 
+const databaseCompactionSchema = z.object({
+    freedBytes: z.number(),
+    formattedFreedSize: z.string(),
+});
+
 // A discriminated union rather than a nullable string. The caller re-asks about every path it has
 // not settled, so "no derivative" has to say whether asking again could change the answer. Discarding
 // that here would put the distinction back at the seam where the backend cannot be consulted.
@@ -363,6 +369,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     get_database_backup_status: databaseBackupStatusSchema satisfies z.ZodType<DatabaseBackupStatus>,
     check_database_integrity:
         databaseIntegrityReportSchema satisfies z.ZodType<DatabaseIntegrityReport>,
+    compact_database: databaseCompactionSchema satisfies z.ZodType<DatabaseCompaction>,
     get_app_settings: storedAppSettingsPayloadSchema satisfies z.ZodType<StoredAppSettingsPayload>,
     take_startup_notices: startupNoticesSchema satisfies z.ZodType<StartupNotices>,
     list_channels: z.array(channelSchema) satisfies z.ZodType<Channel[]>,

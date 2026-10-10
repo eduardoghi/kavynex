@@ -26,6 +26,7 @@ import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStat
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
+import type { DatabaseCompaction } from "../types/generated/DatabaseCompaction";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
@@ -106,6 +107,7 @@ export type TauriCommandReturns = {
     get_database_import_undo_status: boolean;
     undo_database_import: void;
     check_database_integrity: DatabaseIntegrityReport;
+    compact_database: DatabaseCompaction;
     get_app_settings: StoredAppSettingsPayload;
     set_app_settings: void;
     set_external_backup_dir: void;

@@ -9,6 +9,7 @@
 //! - `import.rs`: staging a user-selected database and applying it at the next startup.
 //! - `external.rs`: the user-triggered export and the once-a-day off-volume mirror.
 //! - `integrity.rs`: the throttled full `PRAGMA integrity_check`.
+//! - `compaction.rs`: the user-triggered `VACUUM`.
 //!
 //! Most of the tests for all of them are still this module's `mod tests` (in `tests.rs` beside this
 //! file, so the module reads as its production code), and one reason for that
@@ -446,6 +447,10 @@ pub use integrity::{
 // pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with
 // them, which is the point of the move. An internal a submodule's own tests reach no longer has
 // to be visible to its parent.
+
+// The user-triggered `VACUUM`, which takes the backup lock above.
+mod compaction;
+pub use compaction::{compact_database, DatabaseCompaction};
 
 // The user-triggered export and the once-a-day external mirror live in the `external` submodule.
 mod external;
