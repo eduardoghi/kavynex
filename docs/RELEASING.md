@@ -18,7 +18,8 @@ actually act on what it says.
    `scripts/verify-release-version.js` (run in both `ci.yml` and `release.yml`) fails the
    build if these three files ever disagree, so always use the bump script rather than
    editing versions by hand.
-2. Commit the version bump and push to `main`.
+2. Commit the version bump, push to `main`, and wait for `ci.yml` to finish green on that commit.
+   The release's first job (`ci-passed`) refuses to go on otherwise.
 3. Manually trigger the `release` GitHub Actions workflow
    (`.github/workflows/release.yml`, `workflow_dispatch`. There is no automatic release
    on tag or merge). It builds installers across six matrix legs (Windows x64
@@ -26,8 +27,7 @@ actually act on what it says.
    (`ubuntu-26.04-arm`), and both macOS architectures (`aarch64-apple-darwin`,
    `x86_64-apple-darwin` on `macos-26`)) runs the same
    lint/test/build and fmt/clippy/Rust-test/TS-bindings-freshness/dependency-audit checks CI
-   does (the release is manually dispatched, so nothing guarantees the chosen commit already
-   passed CI), and refuses to run if `v<version>` (matching `package.json`'s version, e.g.
+   does on top of requiring that CI passed on the commit, and refuses to run if `v<version>` (matching `package.json`'s version, e.g.
    `v1.2.0`) already names a **published** release. Bump the version again before
    re-releasing. A tag left behind by a dispatch that failed partway is handled instead of
    refused; see "When a release dispatch fails" below. The Windows-on-ARM and preview
