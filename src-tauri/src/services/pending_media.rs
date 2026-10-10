@@ -14,9 +14,11 @@
 //! is therefore a creation that died in exactly that window, and the sweep below hands its paths to
 //! the same reference-counting cleanup the manual path uses.
 //!
-//! That reuse is the safety property. `cleanup_unreferenced_artifacts` deletes a file only when no
-//! row references it, so a marker that outlived a creation which actually *succeeded* (the row was
-//! inserted, the clear call was lost) deletes nothing. The sweep can be wrong about what happened
+//! That reuse is the safety property. `trash_unreferenced_artifacts` moves a file into the
+//! library's `.trash` folder only when no row references it (moved rather than deleted, since a
+//! finished download may be of something no longer on YouTube), so a marker that outlived a
+//! creation which actually *succeeded* (the row was inserted, the clear call was lost) moves
+//! nothing. The sweep can be wrong about what happened
 //! without being able to destroy anything the library still needs.
 //!
 //! It is *not* free to be wrong about *which* marker is a leftover, though, and that is what
@@ -538,7 +540,7 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
 
     for (name, artifacts) in markers {
         if !artifacts.is_empty() {
-            match crate::services::library::cleanup::cleanup_unreferenced_artifacts(
+            match crate::services::library::cleanup::trash_unreferenced_artifacts(
                 app,
                 artifacts.file_path.clone(),
                 artifacts.thumbnail_path.clone(),
@@ -553,7 +555,7 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
                         logger::info(
                             "pending_media",
                             format!(
-                                "removed {} artifact(s) left by a media creation that never finished",
+                                "moved {} artifact(s) left by a media creation that never finished to the library trash",
                                 report.deleted_paths.len()
                             ),
                         );

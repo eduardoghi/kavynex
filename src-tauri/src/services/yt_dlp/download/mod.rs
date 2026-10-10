@@ -30,7 +30,8 @@ use crate::services::yt_dlp::metadata::{
     sanitize_identifier_component,
 };
 use crate::services::yt_dlp::registry::{
-    register_download_run, set_download_pid, DownloadRunReleaseGuard, MAX_ACTIVE_RUNS,
+    register_download_run, set_download_pid, DownloadPidGuard, DownloadRunReleaseGuard,
+    MAX_ACTIVE_RUNS,
 };
 use crate::services::yt_dlp::url::youtube_ref_for_log;
 use crate::utils::bounded_semaphore::BoundedSemaphore;
@@ -369,6 +370,34 @@ fn build_live_chat_relative_path(file_name: &Path) -> String {
 /// whose child has been spawned. Intended to run on app exit. It does not touch the async
 /// runtime, so in-flight yt-dlp/ffmpeg children are terminated instead of being orphaned
 /// when the window closes.
+/// Records a crash marker naming a download's file, the moment it is in the library. Best effort,
+/// like the registration's own marker. A marker that cannot be written costs one launch's automatic
+/// reconciliation, and Diagnostics still reports the file.
+async fn record_placement_marker<R: Runtime>(app: &AppHandle<R>, file_path: &str) -> Option<String> {
+    let app = app.clone();
+    let artifacts = crate::services::pending_media::PendingMediaArtifacts {
+        file_path: Some(file_path.to_string()),
+        ..Default::default()
+    };
+
+    let recorded = run_blocking(move || {
+        crate::services::pending_media::record_pending_media_artifacts(&app, artifacts)
+    })
+    .await;
+
+    match recorded {
+        Ok(marker) => Some(marker),
+        Err(error) => {
+            logger::warn(
+                "yt_dlp",
+                format!("could not record the crash marker for a placed download: {error}"),
+            );
+
+            None
+        }
+    }
+}
+
 pub fn cancel_all_active_downloads_blocking() {
     let pids = crate::services::yt_dlp::registry::signal_cancel_all_and_collect_pids();
 
@@ -731,6 +760,9 @@ async fn supervise_download_child<R: Runtime>(
     if let Some(pid) = child_pid {
         set_download_pid(&normalized_run_id, pid);
     }
+    // Forgotten when this function returns, with the child reaped, rather than when the whole run
+    // ends minutes later (see clear_download_pid).
+    let _pid_registration = DownloadPidGuard::new(&normalized_run_id);
     // Also track it in the process-wide registry so the exit handler's global sweep covers
     // it uniformly with the metadata/thumbnail children; killing a pid twice on exit (once
     // via the download registry, once via the global one) is harmless. Unregisters when
@@ -1000,11 +1032,20 @@ pub async fn download_media_from_url_async<R: Runtime>(
     let _run_release_guard = DownloadRunReleaseGuard::new(&normalized_run_id);
 
     // Wait for a download slot (see DOWNLOAD_SEMAPHORE). Acquired after the run is registered, so a
-    // queued download is still cancellable (the wait loop below observes the cancel flag as soon as
-    // it starts), and held until this function returns, so the slot covers the whole run.
-    let _download_permit = DOWNLOAD_SEMAPHORE
-        .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
-        .await?;
+    // cancel reaches a download still waiting in the queue, which stops waiting rather than holding
+    // its place until a slot frees. Held until this function returns, so the slot covers the run.
+    let _download_permit = tokio::select! {
+        permit = DOWNLOAD_SEMAPHORE.acquire(AppErrorCode::TooManyConcurrentYtDlpRuns) => permit?,
+        () = crate::utils::process::wait_for_cancel(Some(&cancel_flag)) => {
+            let message = "yt-dlp download cancelled";
+            emit_download_cancelled(app, &normalized_run_id, message);
+
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadCancelled,
+                message,
+            ));
+        }
+    };
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
@@ -1347,15 +1388,25 @@ pub async fn download_media_from_url_async<R: Runtime>(
             }
         };
 
+        // Nothing past this point may fail the run. The file is in the library, and an error here
+        // would leave it there with no row while the user is told the download failed.
+        let file_path = relative_path_from_base(&library_dir, &final_destination)?;
+
+        // Recorded now, before the live chat and the thumbnail, which can take minutes. A process
+        // that dies in that stretch leaves this marker, and the next launch's sweep moves the file
+        // to the library's trash instead of leaving it there with nothing pointing at it. The
+        // registration replaces it with a marker naming everything it writes.
+        let placement_marker = record_placement_marker(app, &file_path).await;
+
         if kept_existing {
             // The library already held these exact bytes (see place_downloaded_file), so the fresh
             // copy was discarded. Said so the user is not left guessing why nothing new appeared.
-            emit_download_log(
+            emit_download_log_infallible(
                 app,
                 &normalized_run_id,
                 "The library already held this exact file, so it was reused and the new download discarded.",
                 "system",
-            )?;
+            );
         }
 
         // yt-dlp merges into .mkv when the picked video and audio cannot share an mp4 or webm
@@ -1408,7 +1459,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         };
 
         let result = DownloadedMediaResult {
-            file_path: relative_path_from_base(&library_dir, &final_destination)?,
+            file_path,
             suggested_title: suggested_title.clone(),
             youtube_video_id,
             published_at,
@@ -1416,6 +1467,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             thumbnail_path,
             is_live,
             live_chat_file_path,
+            placement_marker,
         };
 
         emit_download_finished(

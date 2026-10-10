@@ -616,6 +616,7 @@ mod registration {
             live_chat_file_path: None,
             move_source_to_remove: None,
             media_file_is_only_copy: false,
+            interim_marker: None,
         }
     }
 
@@ -1204,6 +1205,73 @@ mod registration {
         let _ = std::fs::remove_dir_all(&library);
     }
 
+    fn record_interim_marker(app: &MockApp, file_path: &str) -> String {
+        crate::services::pending_media::record_pending_media_artifacts(
+            app.handle(),
+            crate::services::pending_media::PendingMediaArtifacts {
+                file_path: Some(file_path.to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_registration_replaces_the_marker_a_download_recorded_for_its_file() {
+        let (app, library) = app_with_library("interim-marker").await;
+        let placed = artifacts_on_disk(&library, "media_interim_marker");
+        let file_path = placed.file_path.clone();
+        let prepared = PreparedArtifacts {
+            interim_marker: Some(record_interim_marker(&app, &file_path)),
+            ..placed
+        };
+        assert_eq!(markers_naming(&app, &file_path), 1);
+
+        register_prepared_media(app.handle(), &request(MediaSourceMode::YtDlp), prepared)
+            .await
+            .expect("a valid registration should succeed");
+
+        assert_eq!(markers_naming(&app, &file_path), 0);
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_download_whose_insert_fails_is_moved_to_the_library_trash() {
+        // A finished download may be of something no longer on YouTube, so a refused insert must
+        // not be what deletes it.
+        let (app, library) = app_with_library("download-insert-fails").await;
+        let placed = artifacts_on_disk(&library, "media_download_insert_fails");
+        let file_path = placed.file_path.clone();
+        let prepared = PreparedArtifacts {
+            interim_marker: Some(record_interim_marker(&app, &file_path)),
+            ..placed
+        };
+
+        let missing_channel = CreateMediaRequest {
+            channel_id: 4242,
+            ..request(MediaSourceMode::YtDlp)
+        };
+
+        register_prepared_media(app.handle(), &missing_channel, prepared)
+            .await
+            .expect_err("an insert against a channel that does not exist must fail");
+
+        assert!(!library.join(&file_path).exists());
+        let trashed: Vec<PathBuf> = std::fs::read_dir(
+            library.join(crate::services::library::cleanup::LIBRARY_TRASH_DIR),
+        )
+        .unwrap()
+        .flatten()
+        .map(|run| run.path().join(&file_path))
+        .filter(|path| path.is_file())
+        .collect();
+        assert_eq!(trashed.len(), 1);
+        assert_eq!(markers_naming(&app, &file_path), 0);
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
     #[tokio::test]
     async fn a_registered_move_import_removes_its_source() {
         let (app, library) = app_with_library("move-registered").await;
@@ -1333,6 +1401,7 @@ mod registration {
             thumbnail_path: None,
             is_live: false,
             live_chat_file_path: None,
+            placement_marker: None,
         };
 
         let thumbnail = resolve_downloaded_thumbnail(app.handle(), &request, &downloaded).await;

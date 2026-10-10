@@ -136,6 +136,9 @@ pub(crate) struct PreparedArtifacts {
     /// True when `file_path` is the only copy of the user's file, so neither the failure path nor
     /// the startup sweep may delete it.
     pub(crate) media_file_is_only_copy: bool,
+    /// A crash marker an earlier step already recorded for these artifacts (a download records one
+    /// for its file the moment it is placed). Cleared once the registration's own marker is down.
+    pub(crate) interim_marker: Option<String>,
 }
 
 /// What a caller-supplied thumbnail value actually is, which decides how it is turned into a stored
@@ -522,6 +525,7 @@ async fn prepare_local_artifacts<R: Runtime>(
         live_chat_file_path: None,
         move_source_to_remove: staged.source_to_remove,
         media_file_is_only_copy: staged.library_holds_only_copy,
+        interim_marker: None,
     })
 }
 
@@ -633,6 +637,7 @@ async fn prepare_yt_dlp_artifacts<R: Runtime>(
         live_chat_file_path: normalized_optional(downloaded.live_chat_file_path),
         move_source_to_remove: None,
         media_file_is_only_copy: false,
+        interim_marker: downloaded.placement_marker,
     })
 }
 
@@ -739,8 +744,10 @@ async fn cleanup_artifacts_best_effort_locked<R: Runtime>(
         return;
     }
 
+    // Into the library's trash rather than unlinked. A finished download whose insert failed may be
+    // of something no longer on YouTube.
     report_cleanup_outcome(
-        library::cleanup::cleanup_unreferenced_artifacts_locked(
+        library::cleanup::trash_unreferenced_artifacts_locked(
             app,
             file_path,
             prepared.thumbnail_path.clone(),
@@ -887,11 +894,22 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
 
     let marker = record_marker_best_effort(app, &prepared).await;
 
+    // The marker above names everything the interim one did and more, so the interim one goes once
+    // it is down. If it could not be written, the interim one is still covering the media file and
+    // stays until the outcome below.
+    let interim_marker = if marker.is_some() {
+        clear_marker_best_effort(app, prepared.interim_marker.take()).await;
+        None
+    } else {
+        prepared.interim_marker.take()
+    };
+
     let inserted = insert_prepared_media(app, request, &mut prepared).await;
 
     match inserted {
         Ok(id) => {
             clear_marker_best_effort(app, marker).await;
+            clear_marker_best_effort(app, interim_marker).await;
 
             // Only now, with a row pointing at the library copy, is the Move source no longer the
             // thing standing between the user and losing the file.
@@ -914,6 +932,7 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
             // source is untouched here, since the source is what the user still has.
             cleanup_artifacts_best_effort_locked(app, &prepared).await;
             clear_marker_best_effort(app, marker).await;
+            clear_marker_best_effort(app, interim_marker).await;
 
             Err(error)
         }

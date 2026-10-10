@@ -36,6 +36,11 @@ pub struct DownloadedMediaResult {
     pub thumbnail_path: Option<String>,
     pub is_live: bool,
     pub live_chat_file_path: Option<String>,
+    /// The crash marker the download recorded for its file as soon as it was in the library, which
+    /// the registration replaces with its own. Backend only.
+    #[serde(skip)]
+    #[ts(skip)]
+    pub placement_marker: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, TS)]

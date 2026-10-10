@@ -775,6 +775,81 @@ pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
     execute_plan_locked(app, plan).await
 }
 
+/// Like [`cleanup_unreferenced_artifacts`], but moves what no row references into the library's
+/// `.trash` folder instead of deleting it.
+///
+/// For the artifacts of a media creation that never registered, which is where a finished download
+/// ends up when its insert fails or the process dies before it. The download may be of something that
+/// is no longer on YouTube, so the file is kept for [`ORPHAN_GRACE_PERIOD`] rather than unlinked.
+pub async fn trash_unreferenced_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
+    file_path: Option<String>,
+    thumbnail_path: Option<String>,
+    live_chat_file_path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
+
+    trash_unreferenced_artifacts_locked(app, file_path, thumbnail_path, live_chat_file_path).await
+}
+
+/// The body of [`trash_unreferenced_artifacts`], for a caller that already holds
+/// [`MEDIA_REGISTRATION_LOCK`] (see [`cleanup_unreferenced_artifacts_locked`]).
+pub(crate) async fn trash_unreferenced_artifacts_locked<R: Runtime>(
+    app: &AppHandle<R>,
+    file_path: Option<String>,
+    thumbnail_path: Option<String>,
+    live_chat_file_path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    let pool = shared_pool(app).await?;
+
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|error| db_error("failed to acquire a database connection", error))?;
+
+    let mut plan =
+        plan_unreferenced_artifacts(&mut conn, file_path, thumbnail_path, live_chat_file_path)
+            .await?;
+
+    drop(conn);
+
+    if plan.deletable.is_empty() {
+        return Ok(report_for_nothing_deletable(plan));
+    }
+
+    let library_dir = configured_library_dir(app).await;
+
+    drop_paths_referenced_again(&pool, &mut plan).await;
+
+    let library_dir = match library_dir {
+        Ok(dir) => dir,
+        Err(error) => {
+            logger::error(
+                "library_cleanup",
+                format!("cannot move artifacts to the trash, library is not available: {error}"),
+            );
+
+            return Ok(report_for_unavailable_library(plan));
+        }
+    };
+
+    let display_dir = thumb_display_dir(app).ok();
+    let skipped_shared_paths = plan.skipped_shared_paths;
+
+    let mut report = run_blocking(move || {
+        Ok(move_orphans_to_trash_sync(
+            &library_dir,
+            display_dir.as_deref(),
+            plan.deletable,
+        ))
+    })
+    .await?;
+
+    report.skipped_shared_paths = skipped_shared_paths;
+
+    Ok(report)
+}
+
 /// The orphans `remove_orphan_artifacts` may delete. Files under `video/`, `audio/` and
 /// `thumbnails/` that no row references and that carry the name the app gives what it writes
 /// (`media_<sha256>.<ext>`, `thumb_<sha256>.<ext>`).

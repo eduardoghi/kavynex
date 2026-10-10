@@ -83,6 +83,38 @@ pub fn set_download_pid(run_id: &str, pid: u32) {
     }
 }
 
+/// Forgets the process id of a run whose child has exited. The run itself stays registered while
+/// it places the file, stores the live chat and fetches the thumbnail, which can take minutes, and
+/// the exit handler kills every pid it finds here. A pid kept past its child's exit can by then
+/// belong to an unrelated process.
+pub fn clear_download_pid(run_id: &str) {
+    let mut guard = lock_registry();
+
+    if let Some(handle) = guard.get_mut(run_id) {
+        handle.pid = None;
+    }
+}
+
+/// Calls [`clear_download_pid`] when dropped, so every way out of the child's supervision forgets
+/// the pid with it.
+pub struct DownloadPidGuard {
+    run_id: String,
+}
+
+impl DownloadPidGuard {
+    pub fn new(run_id: &str) -> Self {
+        Self {
+            run_id: run_id.to_string(),
+        }
+    }
+}
+
+impl Drop for DownloadPidGuard {
+    fn drop(&mut self) {
+        clear_download_pid(&self.run_id);
+    }
+}
+
 pub fn unregister_download_run(run_id: &str) {
     let mut guard = lock_registry();
     guard.remove(run_id);
@@ -276,6 +308,23 @@ mod tests {
 
         assert!(pids.contains(&4321));
         assert!(flag.load(Ordering::SeqCst));
+
+        unregister_download_run(run_id);
+    }
+
+    #[test]
+    fn a_pid_is_forgotten_once_its_supervision_ends() {
+        let _serial = serial_guard();
+        let run_id = "test-run-pid-guard";
+
+        register_download_run(run_id).unwrap();
+
+        {
+            set_download_pid(run_id, 9876);
+            let _pid = DownloadPidGuard::new(run_id);
+        }
+
+        assert!(!signal_cancel_all_and_collect_pids().contains(&9876));
 
         unregister_download_run(run_id);
     }

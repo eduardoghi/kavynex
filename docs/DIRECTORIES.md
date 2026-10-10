@@ -179,8 +179,11 @@ soon as the row lands (or the failure path has cleaned the artifacts up), which 
 marker left over from an *earlier* run is a creation the process did not survive.
 
 `lib.rs`'s `spawn_pending_media_sweep` reconciles those shortly after launch by handing the
-paths to the same reference-counting cleanup the Diagnostics path uses, so an artifact a
-registered row still points at is kept and only a genuine orphan is removed. Finding a
+paths to the same reference counting the deletions use, so an artifact a registered row still
+points at is kept, and a genuine orphan is moved to the library's `.trash` folder rather than
+deleted (a finished download may be of something no longer on YouTube). A yt-dlp download records
+a marker for its file the moment it is placed, before the live chat and the thumbnail, and the
+registration replaces it with its own. Finding a
 `pending-media/` marker on a healthy install means a media import died midway; the sweep
 handles it on the next launch and nothing needs to be deleted by hand.
 

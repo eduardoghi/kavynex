@@ -52,20 +52,28 @@ impl BoundedSemaphore {
             ));
         }
 
-        // The slot is reserved; on the (practically impossible) permit-acquire failure, give the
-        // slot back so a closed semaphore cannot leak the count. A 'static semaphore is never closed.
+        // The slot is reserved, and held by a guard until the permit takes it over. A caller that
+        // stops waiting (a queued download cancelled through `tokio::select!`) drops this future
+        // inside the await below, and the guard is what gives the slot back then. So does the
+        // (practically impossible) permit-acquire failure. A 'static semaphore is never closed.
+        let reservation = SlotReservation {
+            in_flight: &self.in_flight,
+        };
+
         match self.semaphore.acquire().await {
-            Ok(permit) => Ok(BoundedSemaphorePermit {
-                _permit: permit,
-                in_flight: &self.in_flight,
-            }),
-            Err(_) => {
-                self.in_flight.fetch_sub(1, Ordering::SeqCst);
-                Err(AppError::from_code(
-                    too_busy_code,
-                    "the concurrency gate is unavailable",
-                ))
+            Ok(permit) => {
+                // The permit releases the slot from here on.
+                std::mem::forget(reservation);
+
+                Ok(BoundedSemaphorePermit {
+                    _permit: permit,
+                    in_flight: &self.in_flight,
+                })
             }
+            Err(_) => Err(AppError::from_code(
+                too_busy_code,
+                "the concurrency gate is unavailable",
+            )),
         }
     }
 
@@ -77,6 +85,17 @@ impl BoundedSemaphore {
 
 /// Releases the in-flight slot (and the underlying permit) when dropped, on every exit path of the
 /// guarded operation.
+/// An in-flight slot claimed while its caller waits for a permit. Released on drop.
+struct SlotReservation {
+    in_flight: &'static AtomicUsize,
+}
+
+impl Drop for SlotReservation {
+    fn drop(&mut self) {
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 #[derive(Debug)]
 pub struct BoundedSemaphorePermit {
     _permit: SemaphorePermit<'static>,
@@ -138,5 +157,23 @@ mod tests {
         // The freed slot admits exactly one more caller.
         let _c = GATE.acquire(BUSY).await.unwrap();
         assert_eq!(GATE.in_flight_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_caller_that_stops_waiting_gives_its_slot_back() {
+        static GATE: BoundedSemaphore = BoundedSemaphore::new(1, 2);
+
+        let _running = GATE.acquire(BUSY).await.unwrap();
+
+        // Queued behind the running caller, then abandoned, the way a cancelled download leaves
+        // the queue.
+        let waited = tokio::time::timeout(
+            std::time::Duration::from_millis(20),
+            GATE.acquire(BUSY),
+        )
+        .await;
+        assert!(waited.is_err());
+
+        assert_eq!(GATE.in_flight_count(), 1);
     }
 }
