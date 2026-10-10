@@ -15,6 +15,7 @@ const NO_NOTICES = {
     pendingMediaAbandoned: null,
     importedMissingFiles: null,
     importApplyFailed: false,
+    databaseDisplaced: false,
 };
 let backendNotices: Record<string, unknown> = { ...NO_NOTICES };
 
@@ -82,7 +83,7 @@ describe("useImportedDatabaseAlert", () => {
         expect(message).toContain("42 files that are not");
         expect(message).toContain("Nothing was deleted");
         expect(message).toContain("Diagnostics");
-        expect(message).toContain("undo the import");
+        expect(message).toContain("An import can be undone");
     });
 
     it("reads a single missing file as singular", async () => {

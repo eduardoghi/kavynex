@@ -339,6 +339,33 @@ pub async fn read_machine_paths(db_file: &Path) -> AppResult<MachinePaths> {
     })
 }
 
+/// [`read_machine_paths`] without touching the file or its sidecars.
+///
+/// For a database about to be set aside as evidence. A normal open can checkpoint the write-ahead log
+/// into the file, or delete it, on close, and the log is what holds the commits a damaged database
+/// never checkpointed. Opened read-only and immutable, SQLite reads the main file alone and writes
+/// nothing, so the settings can lag what the log holds, which for two folder paths is acceptable.
+pub(super) async fn read_machine_paths_untouched(db_file: &Path) -> AppResult<MachinePaths> {
+    let options = SqliteConnectOptions::new()
+        .filename(db_file)
+        .create_if_missing(false)
+        .read_only(true)
+        .immutable(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .map_err(|error| backup_error("failed to read the database's settings", error))?;
+    let settings = get_app_settings_from_pool(&pool).await;
+    pool.close().await;
+    let settings = settings?;
+
+    Ok(MachinePaths {
+        library_path: settings.library_path.unwrap_or_default(),
+        external_backup_dir: settings.external_backup_dir.unwrap_or_default(),
+    })
+}
+
 /// Prepares the staged copy for the swap. Its triggers and views are replaced by the app's own (see
 /// `db_schema::reset_triggers_and_views`), and then `paths`, when given, are written in, so the
 /// database that is swapped in keeps this machine's folders.
@@ -352,7 +379,10 @@ pub async fn read_machine_paths(db_file: &Path) -> AppResult<MachinePaths> {
 ///
 /// Only `key` and `value` are written, the two columns the import validation guarantees. The file
 /// can be from an older schema that the migrations bring up to date only after the swap.
-async fn prepare_staged_database(db_file: &Path, paths: Option<&MachinePaths>) -> AppResult<()> {
+pub(super) async fn prepare_staged_database(
+    db_file: &Path,
+    paths: Option<&MachinePaths>,
+) -> AppResult<()> {
     let options = SqliteConnectOptions::new()
         .filename(db_file)
         .create_if_missing(false)
@@ -589,10 +619,24 @@ fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
     })?;
 
     // The log goes with the file it belongs to, under the name SQLite looks for beside it, so the
-    // displaced copy opens with every committed transaction. The shared-memory index is rebuilt on
+    // displaced copy opens with every committed transaction. One that cannot be moved stops the
+    // recovery. Left under the live name, it would be replayed into the database renamed in next,
+    // since SQLite checks frames against the log's own header and not against the file. The import
+    // then stays pending and is tried again on the next launch. The shared-memory index is rebuilt on
     // open and is only dropped.
-    let _ = std::fs::rename(sibling(db_path, "-wal"), sibling(&displaced, "-wal"));
+    let live_wal = sibling(db_path, "-wal");
+
+    if live_wal.exists() {
+        std::fs::rename(&live_wal, sibling(&displaced, "-wal")).map_err(|error| {
+            backup_error(
+                "failed to set aside the write-ahead log of the database found at the database path",
+                error,
+            )
+        })?;
+    }
+
     let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+    crate::services::startup_notices::record_database_displaced();
 
     logger::error(
         "db_backup",

@@ -16,6 +16,7 @@ const NO_NOTICES = {
     pendingMediaAbandoned: null,
     importedMissingFiles: null,
     importApplyFailed: false,
+    databaseDisplaced: false,
 };
 let backendNotices: Record<string, unknown> = { ...NO_NOTICES };
 

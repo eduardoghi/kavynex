@@ -6,6 +6,7 @@ const NO_NOTICES: StartupNotices = {
     pendingMediaAbandoned: null,
     importedMissingFiles: null,
     importApplyFailed: false,
+    databaseDisplaced: false,
 };
 
 // Each take is answered by hand, so a test decides the order the answers arrive in.

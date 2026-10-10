@@ -13,6 +13,7 @@ const NONE: StartupNotices = {
     pendingMediaAbandoned: null,
     importedMissingFiles: null,
     importApplyFailed: false,
+    databaseDisplaced: false,
 };
 
 let held: StartupNotices = { ...NONE };
@@ -26,6 +27,7 @@ function merge(into: StartupNotices, taken: StartupNotices): StartupNotices {
                 : (into.pendingMediaAbandoned ?? 0) + (taken.pendingMediaAbandoned ?? 0),
         importedMissingFiles: taken.importedMissingFiles ?? into.importedMissingFiles,
         importApplyFailed: into.importApplyFailed || taken.importApplyFailed,
+        databaseDisplaced: into.databaseDisplaced || taken.databaseDisplaced,
     };
 }
 

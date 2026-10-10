@@ -27,6 +27,9 @@ pub struct StartupNotices {
     /// A staged database import could not be applied at startup, so the previous database is
     /// still the one in use.
     pub import_apply_failed: bool,
+    /// An interrupted import was recovered, and the database found at the database path was set
+    /// aside as `kavynex.db.displaced-*` rather than deleted.
+    pub database_displaced: bool,
 }
 
 fn pending() -> &'static Mutex<StartupNotices> {
@@ -55,6 +58,10 @@ pub fn record_pending_media_abandoned(abandoned: usize) {
 
 pub fn record_imported_missing_files(missing: usize) {
     update(|notices| notices.imported_missing_files = Some(missing));
+}
+
+pub fn record_database_displaced() {
+    update(|notices| notices.database_displaced = true);
 }
 
 pub fn record_import_apply_failed() {

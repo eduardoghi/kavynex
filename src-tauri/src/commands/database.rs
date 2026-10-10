@@ -90,7 +90,13 @@ pub async fn restore_database_from_backup<R: Runtime>(app: AppHandle<R>) -> AppR
     ensure_closed_before_restore(db.is_initialized())?;
 
     let path = database_path(&app)?;
-    db_backup::restore_database_from_backup(&path).await
+    db_backup::restore_database_from_backup(&path).await?;
+
+    // A snapshot can be older than the library folder, which the same check after an import is
+    // there to say. Run once the frontend has reloaded onto the restored database.
+    crate::spawn_post_import_library_check(app.clone());
+
+    Ok(())
 }
 
 /// Exports a consistent snapshot of the database to a user-chosen path. Portable, so it can

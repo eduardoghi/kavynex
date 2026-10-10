@@ -282,7 +282,7 @@ struct ImportedDatabaseMissingFilesEvent {
 /// and then fails in the player one video at a time. This runs the same check Diagnostics does,
 /// once, right after the swap. Best effort. A library that is not configured, or a check that
 /// cannot run, is logged and never affects startup.
-fn spawn_post_import_library_check(app_handle: AppHandle) {
+pub(crate) fn spawn_post_import_library_check<R: tauri::Runtime>(app_handle: AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(POST_IMPORT_LIBRARY_CHECK_DELAY_SECS)).await;
 
@@ -570,7 +570,11 @@ pub fn run() {
                     // database aside as its undo snapshot.
                     match services::db_backup::resume_interrupted_restore(&db_path) {
                         Ok(true) => {
-                            services::logger::info("app", "resumed an interrupted database restore")
+                            services::logger::info(
+                                "app",
+                                "resumed an interrupted database restore",
+                            );
+                            spawn_post_import_library_check(app_handle.clone());
                         }
                         Ok(false) => {}
                         Err(error) => services::logger::error(

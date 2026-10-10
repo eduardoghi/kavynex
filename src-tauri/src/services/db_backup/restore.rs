@@ -213,6 +213,19 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         }
     };
 
+    // This machine's library and mirror folders, read from the database being replaced while it can
+    // still be read, without touching it or its log (see `read_machine_paths_untouched`). A snapshot from before a library move names the old folder, which the move
+    // emptied, and restoring it as it is made the library look gone. Same rule as an import
+    // (`import::MachinePaths`). A database too damaged to read its settings leaves the snapshot's.
+    let machine_paths = if db_path.exists() {
+        super::import::read_machine_paths_untouched(db_path)
+            .await
+            .ok()
+            .filter(|paths| !paths.library_path.trim().is_empty())
+    } else {
+        None
+    };
+
     // Stage the restored file first so the live database is never left missing on failure. The
     // copy is a full-file read/write of a possibly large database; run it off the async runtime so
     // a slow disk (a network share, a cloud-synced folder) never stalls a Tokio worker thread.
@@ -231,6 +244,16 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
             crate::services::filesystem::fsync_file(&copy_dest)
         })
         .await?;
+    }
+
+    if let Some(paths) = machine_paths.as_ref() {
+        if let Err(error) = super::import::prepare_staged_database(&staged, Some(paths)).await {
+            logger::warn(
+                "db_backup",
+                format!("the restored database keeps the snapshot's folders: {error}"),
+            );
+        }
+        crate::services::filesystem::fsync_file(&staged)?;
     }
 
     // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than

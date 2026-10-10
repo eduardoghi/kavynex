@@ -315,6 +315,7 @@ const startupNoticesSchema = z.object({
     pendingMediaAbandoned: z.number().nullable(),
     importedMissingFiles: z.number().nullable(),
     importApplyFailed: z.boolean(),
+    databaseDisplaced: z.boolean(),
 });
 
 // A schema per command whose result is structured. Typing each entry as

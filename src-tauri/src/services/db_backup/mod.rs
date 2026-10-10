@@ -259,6 +259,22 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
         swap_marker_path(db_path),
     ]);
 
+    // What an import recovery set aside (`import::displace_database`), named by a unique suffix, so
+    // read from the directory rather than spelled out. Nothing removes these, which is why their
+    // size belongs in the total the user sees.
+    if let (Some(dir), Some(name)) = (db_path.parent(), db_path.file_name()) {
+        let prefix = format!("{}.displaced-", name.to_string_lossy());
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            paths.extend(
+                entries
+                    .flatten()
+                    .filter(|entry| entry.file_name().to_string_lossy().starts_with(&prefix))
+                    .map(|entry| entry.path()),
+            );
+        }
+    }
+
     paths
 }
 

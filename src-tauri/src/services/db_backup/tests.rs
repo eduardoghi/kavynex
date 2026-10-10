@@ -597,6 +597,40 @@ fn an_old_swap_marker_ends_the_window_whatever_the_set_aside_file_says() {
 }
 
 #[tokio::test]
+async fn a_restore_keeps_this_machines_folders_rather_than_the_snapshots() {
+    // A snapshot from before a library move names the folder the move emptied.
+    let dir = temp_dir("restore-machine-paths");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "kept").await;
+    set_setting(&db, "library_path", "/old/library").await;
+    assert!(backup_database(&db).await.unwrap());
+
+    set_setting(&db, "library_path", "/new/library").await;
+    set_setting(&db, "external_backup_dir", "/mirror").await;
+
+    restore_database_from_backup(&db).await.unwrap();
+
+    let paths = read_machine_paths(&db).await.unwrap();
+    assert_eq!(paths.library_path, "/new/library");
+    assert_eq!(paths.external_backup_dir, "/mirror");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+async fn set_setting(db: &Path, key: &str, value: &str) {
+    let pool = open(db).await.unwrap();
+    sqlx::query(
+        "INSERT INTO app_settings (key, value) VALUES (?, ?)          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(key)
+    .bind(value)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
 async fn restore_rotates_previous_corrupt_snapshots_instead_of_discarding_them() {
     let dir = temp_dir("restore-corrupt-rotate");
     let db = dir.join("kavynex.db");

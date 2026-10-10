@@ -17,4 +17,9 @@ importedMissingFiles: number | null,
  * A staged database import could not be applied at startup, so the previous database is
  * still the one in use.
  */
-importApplyFailed: boolean, };
+importApplyFailed: boolean, 
+/**
+ * An interrupted import was recovered, and the database found at the database path was set
+ * aside as `kavynex.db.displaced-*` rather than deleted.
+ */
+databaseDisplaced: boolean, };
