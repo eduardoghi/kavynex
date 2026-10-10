@@ -26,14 +26,14 @@ vi.mock("../../utils/media-utils", () => ({
 }));
 
 vi.mock("../../services/library-service", () => ({
-    openExternalUrl: vi.fn().mockResolvedValue(undefined),
+    openYoutubeVideo: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-import { openExternalUrl } from "../../services/library-service";
+import { openYoutubeVideo } from "../../services/library-service";
 import { logError } from "../../utils/app-logger";
 
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
@@ -230,9 +230,7 @@ describe("useMediaPlayer", () => {
             await result.current.openInYoutube();
         });
 
-        expect(openExternalUrl).toHaveBeenCalledWith(
-            "https://www.youtube.com/watch?v=yt-777"
-        );
+        expect(openYoutubeVideo).toHaveBeenCalledWith("yt-777");
     });
 
     it("does nothing when youtube url does not exist", async () => {
@@ -246,11 +244,11 @@ describe("useMediaPlayer", () => {
             await result.current.openInYoutube();
         });
 
-        expect(openExternalUrl).not.toHaveBeenCalled();
+        expect(openYoutubeVideo).not.toHaveBeenCalled();
     });
 
     it("swallows youtube open error and logs it", async () => {
-        vi.mocked(openExternalUrl).mockRejectedValueOnce(new Error("boom"));
+        vi.mocked(openYoutubeVideo).mockRejectedValueOnce(new Error("boom"));
 
         const media = createMediaRow({
             id: 60,
@@ -280,7 +278,7 @@ describe("useMediaPlayer", () => {
             expect.any(String),
             expect.any(String),
             expect.any(Error),
-            { mediaId: media.id, url: "https://www.youtube.com/watch?v=yt-999" }
+            { mediaId: media.id, youtubeVideoId: "yt-999" }
         );
     });
 

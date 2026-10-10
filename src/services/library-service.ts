@@ -1,4 +1,3 @@
-import { openUrl } from "../lib/tauri-platform";
 import { pickFolder } from "./file-dialog-service";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
@@ -196,26 +195,24 @@ export async function openLogDirectory(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.OPEN_LOG_DIRECTORY);
 }
 
-export async function openExternalUrl(url: string): Promise<void> {
-    const normalizedUrl = normalizeString(url);
+// Opens a video's YouTube page in the system browser. The backend builds the URL from the id.
+export async function openYoutubeVideo(videoId: string): Promise<void> {
+    const normalizedVideoId = normalizeString(videoId);
 
-    if (!normalizedUrl) {
-        throw new ClientError("URL is required.");
+    if (!normalizedVideoId) {
+        throw new ClientError("A YouTube video id is required.");
     }
 
-    // Only allow http(s) links to reach the system opener. Blocks file:, javascript:
-    // and custom-scheme URLs from being opened, even if a caller passes an untrusted value.
-    let parsedUrl: URL;
+    await invokeVoid(TAURI_COMMANDS.OPEN_YOUTUBE_VIDEO, { videoId: normalizedVideoId });
+}
 
-    try {
-        parsedUrl = new URL(normalizedUrl);
-    } catch {
-        throw new ClientError("Invalid URL.");
+// Opens a channel's YouTube page (by its UC... id) in the system browser.
+export async function openYoutubeChannel(channelId: string): Promise<void> {
+    const normalizedChannelId = normalizeString(channelId);
+
+    if (!normalizedChannelId) {
+        throw new ClientError("A YouTube channel id is required.");
     }
 
-    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-        throw new ClientError("Only http and https URLs can be opened.");
-    }
-
-    await openUrl(normalizedUrl);
+    await invokeVoid(TAURI_COMMANDS.OPEN_YOUTUBE_CHANNEL, { channelId: normalizedChannelId });
 }

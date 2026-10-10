@@ -4,6 +4,10 @@ export const TAURI_COMMANDS = {
     // Takes no arguments, deliberately. The backend resolves the log directory from `app_log_dir()`
     // so there is no path for a caller to redirect. See src-tauri/src/commands/logging.rs.
     OPEN_LOG_DIRECTORY: "open_log_directory",
+    // Take an id, not a URL. The backend builds the YouTube URL and refuses anything that is not an
+    // id, so the renderer holds no opener permission. See src-tauri/src/commands/external.rs.
+    OPEN_YOUTUBE_VIDEO: "open_youtube_video",
+    OPEN_YOUTUBE_CHANNEL: "open_youtube_channel",
 
     OPEN_FOLDER_DIALOG: "open_folder_dialog",
     OPEN_FILE_DIALOG: "open_file_dialog",

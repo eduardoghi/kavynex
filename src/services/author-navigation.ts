@@ -1,4 +1,4 @@
-import { openExternalUrl } from "./library-service";
+import { openYoutubeChannel } from "./library-service";
 import { logError } from "../utils/app-logger";
 
 /**
@@ -14,7 +14,7 @@ export async function openAuthorYoutubeChannel(channelId: string): Promise<void>
     }
 
     try {
-        await openExternalUrl(`https://www.youtube.com/channel/${encodeURIComponent(normalized)}`);
+        await openYoutubeChannel(normalized);
     } catch (error) {
         logError("author-channel", "Failed to open author channel on YouTube.", error, {
             channelId: normalized,

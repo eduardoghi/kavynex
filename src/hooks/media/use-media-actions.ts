@@ -9,13 +9,12 @@ import { executeMarkMediaUnwatched } from "../../use-cases/mark-media-unwatched"
 import { useAsyncFlag } from "../use-async-flag";
 import { usePerIdAsyncFlag } from "../use-per-id-async-flag";
 import { logError } from "../../utils/app-logger";
-import { openExternalUrl, openFileLocation } from "../../services/library-service";
+import { openFileLocation, openYoutubeVideo } from "../../services/library-service";
 import {
     cancelMediaDownload,
     commentsRefreshRunId,
 } from "../../services/media-download-service";
 import { refreshMediaComments, updateMediaTitle } from "../../services/media-service";
-import { buildYoutubeWatchUrl } from "../../utils/youtube";
 import { updateItemById } from "../../utils/update-item-by-id";
 import { useMemoObject } from "../use-memo-object";
 
@@ -435,7 +434,7 @@ export function useMediaActions({
             }
 
             try {
-                await openExternalUrl(buildYoutubeWatchUrl(youtubeVideoId));
+                await openYoutubeVideo(youtubeVideoId);
             } catch (error) {
                 logError("media-actions", "Failed to open media source on YouTube.", error, {
                     mediaId: media.id,

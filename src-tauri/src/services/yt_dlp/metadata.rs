@@ -833,7 +833,7 @@ fn normalize_comment_metadata(comment: YtDlpCommentMetadata) -> Option<YtDlpComm
     })
 }
 
-fn is_valid_youtube_video_id(value: &str) -> bool {
+pub(crate) fn is_valid_youtube_video_id(value: &str) -> bool {
     value.len() == 11
         && value
             .bytes()

@@ -34,6 +34,8 @@ export type TauriCommandReturns = {
     check_external_tools: ExternalToolsStatus;
     log_frontend_error: void;
     open_log_directory: void;
+    open_youtube_video: void;
+    open_youtube_channel: void;
 
     // The chosen path, or null when the dialog was cancelled.
     open_folder_dialog: string | null;

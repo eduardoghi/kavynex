@@ -46,7 +46,7 @@ actually act on what it says.
    alone, which is a cross-compile on an arm64 runner and cannot execute its own output. A failure
    in either turns the run red with assets already on the draft, which is the intended outcome.
    The draft is published by hand, and a red run must not be published. What the webview check
-   deliberately does not reach is the four plugin grants, because exercising any of them has a side
+   deliberately does not reach is the three plugin grants, because exercising any of them has a side
    effect a CI runner cannot take; step 6 below is the checklist that covers them by hand.
 4. The workflow creates a **draft** GitHub release tagged `v<version>` whose body is a single
    line pointing at the release page, and uploads the built installers plus signed updater
@@ -105,10 +105,10 @@ published, and because the updater half of the list does not behave realisticall
       **Export database** opens the save dialog. They are backend commands (`commands/dialog.rs`),
       and these two cover the folder picker and the save dialog, the two shapes no other picker
       shares. Cancelling either changes nothing.
-- [ ] **`opener:allow-open-url`**: in the player, **Open source on YouTube** launches the browser on
-      a media that has a YouTube source. Also the only caller of `openUrl`. This grant carries a URL
-      allow-list (`youtube.com`, `youtu.be`), so the check proves the scope still matches the URLs
-      the app builds, not merely that the permission is present.
+- [ ] **The system opener** (no grant, a backend command like the pickers): in the player, **Open
+      source on YouTube** launches the browser on a media that has a YouTube source, and clicking a
+      comment author opens their channel. `commands/external.rs` builds both URLs, and these two
+      clicks are its only callers.
 - [ ] **`process:allow-restart`**: Settings > Database > **Import database**, pick a database, then
       **Replace and restart**. The app relaunches once the swap is staged. `relaunch` has three
       callers and the updater is only one of them, so this grant does **not** have to wait for a real

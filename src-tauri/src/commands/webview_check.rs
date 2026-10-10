@@ -25,12 +25,12 @@
 //! reports nothing, which the watchdog in `lib.rs` turns into a non-zero exit rather than a hang.
 //!
 //! **What it does not cover, stated plainly.** The plugin grants that cannot be exercised without
-//! a human or a side effect. `opener:allow-open-url` (would launch a browser), the two `updater:`
-//! grants (would reach the network) and `process:allow-restart` (would restart the app). Those are
-//! checked by hand instead, once per release, against the installed artifact. `docs/RELEASING.md` step 6 names the click that
-//! exercises each one. Worth reading before assuming a grant here is unverified, because two of them
-//! are cheaper to confirm than they look (`process:allow-restart` is reached by the database import,
-//! not only by an update). What is covered here is the renderer booting, the two `core:*` grants,
+//! a human or a side effect. The two `updater:` grants (would reach the network) and
+//! `process:allow-restart` (would restart the app). Those are checked by hand instead, once per
+//! release, against the installed artifact. `docs/RELEASING.md` step 6 names the click that
+//! exercises each one. Worth reading before assuming a grant here is unverified, because
+//! `process:allow-restart` is cheaper to confirm than it looks (the database import reaches it, not
+//! only an update). What is covered here is the renderer booting, the two `core:*` grants,
 //! IPC into this crate's own commands, and the asset protocol end to end.
 
 use std::path::{Path, PathBuf};

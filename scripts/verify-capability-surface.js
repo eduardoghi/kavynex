@@ -11,8 +11,8 @@
 // without its permission surfaces "on the first click a user makes". Nothing before this ran the
 // ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
 // `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
-// the three grants it can exercise without a side effect. The four plugin grants cannot be probed
-// that way (a browser launch, two network calls, a restart), so they are checked by hand
+// the three grants it can exercise without a side effect. The three plugin grants cannot be probed
+// that way (two network calls and a restart), so they are checked by hand
 // against the installed artifact, once per release, from the checklist in `docs/RELEASING.md` step 6.
 //
 // This closes the *declaration* half instead, which is where that drift actually happens, and it
@@ -65,7 +65,6 @@ export const DECLARED_CAPABILITY_SURFACE = [
         permissions: ["core:event:allow-listen", "core:event:allow-unlisten"],
     },
     { binding: "getVersion", module: "@tauri-apps/api/app", permissions: ["core:app:allow-version"] },
-    { binding: "openUrl", module: "@tauri-apps/plugin-opener", permissions: ["opener:allow-open-url"] },
     { binding: "relaunch", module: "@tauri-apps/plugin-process", permissions: ["process:allow-restart"] },
     // `check` hands back an `Update` whose `downloadAndInstall` is the only other updater call the app
     // makes. The plugin's default set would also grant the separate `download` and `install` halves,
@@ -112,10 +111,9 @@ export function extractTauriBindings(sourceContent) {
 
 // Every permission identifier granted across the capability files, deduplicated.
 //
-// A grant is either a bare identifier string or an object carrying a scope (`opener:allow-open-url`
-// with its three allowed URLs). Only the identifier is read here. Whether that scope is *right* is a
-// judgment this gate deliberately does not make, and the URL list is pinned separately by the
-// threat-model review.
+// A grant is either a bare identifier string or an object carrying a scope. Only the identifier is
+// read here. Whether a scope is *right* is a judgment this gate deliberately does not make. None of
+// the current grants carries one.
 export function extractGrantedPermissions(capabilitySources) {
     const granted = new Set();
 

@@ -22,7 +22,7 @@ vi.mock("../../services/media-service", () => ({
 }));
 
 vi.mock("../../services/library-service", () => ({
-    openExternalUrl: vi.fn().mockResolvedValue(undefined),
+    openYoutubeVideo: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("./use-media-actions", () => ({

@@ -8,14 +8,6 @@
     "permissions": [
         "core:app:allow-version",
         "core:event:allow-listen",
-        "core:event:allow-unlisten",
-        {
-            "identifier": "opener:allow-open-url",
-            "allow": [
-                { "url": "https://www.youtube.com/*" },
-                { "url": "https://youtube.com/*" },
-                { "url": "https://youtu.be/*" }
-            ]
-        }
+        "core:event:allow-unlisten"
     ]
 }

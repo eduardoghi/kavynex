@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { openUrl } from "../lib/tauri-platform";
 import { pickFolder } from "./file-dialog-service";
 import {
     invokeCommand,
@@ -15,20 +14,17 @@ import {
     ensureDirectoryExists,
     getLibrarySummary,
     migrateLibraryDirectory,
-    openExternalUrl,
     openFileLocation,
     openLibraryDirectory,
     openLogDirectory,
+    openYoutubeChannel,
+    openYoutubeVideo,
     resolveExistingDirectory,
     verifyLibraryContent,
 } from "./library-service";
 
 vi.mock("./file-dialog-service", () => ({
     pickFolder: vi.fn(),
-}));
-
-vi.mock("../lib/tauri-platform", () => ({
-    openUrl: vi.fn(),
 }));
 
 vi.mock("../lib/tauri-client", () => ({
@@ -42,38 +38,31 @@ vi.mock("../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
-const openUrlMock = vi.mocked(openUrl);
 const invokeVoidMock = vi.mocked(invokeVoid);
 
-describe("openExternalUrl", () => {
+describe("openYoutubeVideo / openYoutubeChannel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        openUrlMock.mockResolvedValue(null as never);
+        invokeVoidMock.mockResolvedValue(undefined);
     });
 
-    it("opens https urls", async () => {
-        await openExternalUrl("https://www.youtube.com/watch?v=abc");
-        expect(openUrlMock).toHaveBeenCalledWith("https://www.youtube.com/watch?v=abc");
+    it("sends only the trimmed id, never a URL", async () => {
+        await openYoutubeVideo("  dQw4w9WgXcQ ");
+        await openYoutubeChannel(" UCuAXFkgsw1L7xaCfnd5JJOw ");
+
+        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.OPEN_YOUTUBE_VIDEO, {
+            videoId: "dQw4w9WgXcQ",
+        });
+        expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.OPEN_YOUTUBE_CHANNEL, {
+            channelId: "UCuAXFkgsw1L7xaCfnd5JJOw",
+        });
     });
 
-    it("opens http urls", async () => {
-        await openExternalUrl("http://example.com/");
-        expect(openUrlMock).toHaveBeenCalledWith("http://example.com/");
-    });
+    it("rejects a blank id without invoking", async () => {
+        await expect(openYoutubeVideo("   ")).rejects.toThrow("A YouTube video id is required.");
+        await expect(openYoutubeChannel("")).rejects.toThrow("A YouTube channel id is required.");
 
-    it("rejects non-http schemes without opening them", async () => {
-        for (const url of ["file:///etc/passwd", "javascript:alert(1)", "ftp://host/x"]) {
-            await expect(openExternalUrl(url)).rejects.toThrow();
-        }
-
-        expect(openUrlMock).not.toHaveBeenCalled();
-    });
-
-    it("rejects empty and malformed urls", async () => {
-        await expect(openExternalUrl("   ")).rejects.toThrow("URL is required.");
-        await expect(openExternalUrl("not a url")).rejects.toThrow("Invalid URL.");
-
-        expect(openUrlMock).not.toHaveBeenCalled();
+        expect(invokeVoidMock).not.toHaveBeenCalled();
     });
 });
 

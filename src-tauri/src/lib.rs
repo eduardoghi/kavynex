@@ -680,6 +680,8 @@ pub fn run() {
             commands::dialog::save_file_dialog,
             commands::logging::log_frontend_error,
             commands::logging::open_log_directory,
+            commands::external::open_youtube_video,
+            commands::external::open_youtube_channel,
             commands::webview_check::begin_webview_check,
             commands::webview_check::report_webview_check,
             commands::settings::get_app_settings,

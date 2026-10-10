@@ -1,6 +1,6 @@
 // The single IPC seam. The only module that calls into our own Rust backend, wrapping Tauri's
 // `invoke`/`listen` with consistent error normalization (parseAppError). Tauri's *platform*
-// capabilities (dialogs, opener, process, updater, app version, asset URLs) live in the sibling
+// capabilities (process, updater, app version, asset URLs) live in the sibling
 // `tauri-platform.ts`. Between them these two modules are the only files allowed to import
 // `@tauri-apps` at all, enforced by eslint.config.js. See tauri-platform.ts for the rationale.
 import { Channel, invoke } from "@tauri-apps/api/core";

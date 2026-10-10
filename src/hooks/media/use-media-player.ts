@@ -7,7 +7,7 @@ import {
     isMediaWatched,
 } from "../../utils/media-utils";
 import { buildYoutubeWatchUrl } from "../../utils/youtube";
-import { openExternalUrl } from "../../services/library-service";
+import { openYoutubeVideo } from "../../services/library-service";
 import { logError } from "../../utils/app-logger";
 import { useMemoObject } from "../use-memo-object";
 
@@ -92,19 +92,21 @@ export function useMediaPlayer({
     }, []);
 
     const openInYoutube = useCallback(async (): Promise<void> => {
-        if (!activeYoutubeUrl) {
+        const youtubeVideoId = activeMedia?.youtube_video_id?.trim() ?? "";
+
+        if (!youtubeVideoId) {
             return;
         }
 
         try {
-            await openExternalUrl(activeYoutubeUrl);
+            await openYoutubeVideo(youtubeVideoId);
         } catch (error) {
             logError("media-player", "Failed to open media source on YouTube.", error, {
                 mediaId: activeMedia?.id ?? null,
-                url: activeYoutubeUrl,
+                youtubeVideoId,
             });
         }
-    }, [activeMedia?.id, activeYoutubeUrl]);
+    }, [activeMedia?.id, activeMedia?.youtube_video_id]);
 
     return useMemoObject({
         viewMode,

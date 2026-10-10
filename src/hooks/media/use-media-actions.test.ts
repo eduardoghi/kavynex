@@ -20,7 +20,7 @@ vi.mock("../../use-cases/mark-media-unwatched", () => ({
 }));
 
 vi.mock("../../services/library-service", () => ({
-    openExternalUrl: vi.fn(),
+    openYoutubeVideo: vi.fn(),
     openFileLocation: vi.fn(),
 }));
 
@@ -37,7 +37,7 @@ vi.mock("../../services/media-download-service", () => ({
 import { executeDeleteMedia } from "../../use-cases/delete-media";
 import { executeMarkMediaWatched } from "../../use-cases/mark-media-watched";
 import { executeMarkMediaUnwatched } from "../../use-cases/mark-media-unwatched";
-import { openExternalUrl, openFileLocation } from "../../services/library-service";
+import { openFileLocation, openYoutubeVideo } from "../../services/library-service";
 import { refreshMediaComments, updateMediaTitle } from "../../services/media-service";
 import { cancelMediaDownload } from "../../services/media-download-service";
 
@@ -658,7 +658,7 @@ describe("useMediaActions", () => {
             })
         );
 
-        vi.mocked(openExternalUrl).mockResolvedValue(undefined);
+        vi.mocked(openYoutubeVideo).mockResolvedValue(undefined);
 
         const { result } = renderHook(() =>
             useMediaActions({
@@ -677,9 +677,7 @@ describe("useMediaActions", () => {
             await result.current.openMediaSourceInYoutube(mediaPlayer.activeMedia!);
         });
 
-        expect(openExternalUrl).toHaveBeenCalledWith(
-            "https://www.youtube.com/watch?v=abc123"
-        );
+        expect(openYoutubeVideo).toHaveBeenCalledWith("abc123");
     });
 
     it("refreshes a second media while the first refresh is still in flight", async () => {
@@ -992,7 +990,7 @@ describe("useMediaActions", () => {
         expect(onError).toHaveBeenCalledWith(
             "This media does not have a YouTube source."
         );
-        expect(openExternalUrl).not.toHaveBeenCalled();
+        expect(openYoutubeVideo).not.toHaveBeenCalled();
     });
 
     it("trims youtube video id before opening", async () => {
@@ -1000,7 +998,7 @@ describe("useMediaActions", () => {
             createMediaRow({ youtube_video_id: "  abc123  " })
         );
 
-        vi.mocked(openExternalUrl).mockResolvedValue(undefined);
+        vi.mocked(openYoutubeVideo).mockResolvedValue(undefined);
 
         const { result } = renderHook(() =>
             useMediaActions({
@@ -1019,9 +1017,7 @@ describe("useMediaActions", () => {
             await result.current.openMediaSourceInYoutube(mediaPlayer.activeMedia!);
         });
 
-        expect(openExternalUrl).toHaveBeenCalledWith(
-            "https://www.youtube.com/watch?v=abc123"
-        );
+        expect(openYoutubeVideo).toHaveBeenCalledWith("abc123");
     });
 
     it("closes player when the deleted media is active", async () => {

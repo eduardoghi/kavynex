@@ -763,8 +763,7 @@ That surface is granted as the exact list the app uses, not a preset:
 - `core:app:allow-version`: `getVersion`, for the version shown in Settings.
 - `core:event:allow-listen` / `core:event:allow-unlisten`: `listen`, for the yt-dlp progress and
   database-integrity events the backend emits.
-- `opener:allow-open-url`, scoped to the three YouTube hosts, and, in `desktop.json`,
-  `updater:allow-check`, `updater:allow-download-and-install` and `process:allow-restart`. The
+- In `desktop.json`, `updater:allow-check`, `updater:allow-download-and-install` and `process:allow-restart`. The
   updater's default set would also grant its standalone `download` and `install` commands, which the
   app never calls.
 
@@ -778,6 +777,13 @@ became readable through `asset:`. The pickers are backend commands instead (`com
 where nothing touches the scope. They return the path and grant nothing, so the renderer holds no
 `dialog:` permission at all.
 
+The system opener went the same way. The renderer used to call `openUrl` with a URL it built, under
+`opener:allow-open-url` scoped to the YouTube hosts. On Windows the opener hands that string to the
+shell, so the scope's glob was all that stood between a URL and the shell's own parsing of it. The
+app only ever opens a video's watch page and an author's channel page, so `commands/external.rs`
+now takes the id, checks it is 11 (video) or `UC` plus 22 (channel) characters of `[A-Za-z0-9_-]`,
+and builds the URL itself. The renderer holds no `opener:` permission.
+
 `convertFileSrc` and `Channel` appear in no grant because they need none. The first builds a URL
 string in the renderer, and the second is part of the IPC mechanism rather than a command. What
 serves an `asset:` URL is the scope described below, not a permission.
@@ -788,8 +794,9 @@ job from the Rust side. A launch hook that focuses the existing window, and a wi
 that persists size and position. Neither is reachable from `src/lib/`, so neither belongs in
 `capabilities/`, and adding one would be granting a permission nothing calls. This is stated rather
 than left to be inferred from the absence, because the list above otherwise reads as a complete
-accounting of the plugin surface and a reader counting six plugins against four grants deserves the
-answer here rather than in a diff. If either ever grows a call from the seam, its permission joins
+accounting of the plugin surface and a reader counting six plugins against the grants above
+deserves the answer here rather than in a diff. The dialog and opener plugins are the same case,
+driven from Rust as described above. If either ever grows a call from the seam, its permission joins
 the list, and the failure mode if that is forgotten is the loud one described below.
 
 The list started as the scaffolded `core:default` and stayed that way through four rounds of
@@ -836,9 +843,9 @@ A renderer that never loads at all reports nothing, which a watchdog turns into 
 naming that outcome rather than a hang. The case that covers a bundle the webview refuses or a
 CSP that blocks the entry script.
 
-The four plugin grants cannot be probed that way at all, because none can be exercised without a
-side effect. `opener:allow-open-url` would launch a browser, the two `updater:` grants would reach the
-network, and `process:allow-restart` would restart the app.
+The three plugin grants cannot be probed that way at all, because none can be exercised without a
+side effect. The two `updater:` grants would reach the network, and `process:allow-restart` would
+restart the app.
 
 What covers them instead is a second gate on a different question.
 `scripts/verify-capability-surface.js` (`ci.yml`, on every push) reads the two seam files and the

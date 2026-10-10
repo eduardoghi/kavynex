@@ -1,7 +1,8 @@
-// The single place the frontend touches Tauri's *platform* capabilities. The system opener,
-// process relaunch, the updater, the app version, and asset URL conversion. File dialogs are not
-// here. They are backend commands (services/file-dialog-service.ts), because the dialog plugin's
-// own commands add every picked path to the asset scope.
+// The single place the frontend touches Tauri's *platform* capabilities. Process relaunch, the
+// updater, the app version, and asset URL conversion. File dialogs and the system opener are not
+// here. They are backend commands (services/file-dialog-service.ts, and openYoutubeVideo in
+// services/library-service.ts), because the dialog plugin's own commands add every picked path to
+// the asset scope and the opener's would take any URL the renderer builds.
 // Calls into our own Rust backend (commands and events) go through the sibling IPC seam,
 // `tauri-client.ts`, instead.
 //
@@ -23,6 +24,5 @@
 
 export { convertFileSrc } from "@tauri-apps/api/core";
 export { getVersion } from "@tauri-apps/api/app";
-export { openUrl } from "@tauri-apps/plugin-opener";
 export { relaunch } from "@tauri-apps/plugin-process";
 export { check as checkForAppUpdate, type Update } from "@tauri-apps/plugin-updater";

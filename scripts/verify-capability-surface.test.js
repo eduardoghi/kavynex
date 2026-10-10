@@ -107,7 +107,7 @@ describe("extractTauriBindings", () => {
 
 describe("extractGrantedPermissions", () => {
     it("reads both the bare and the scoped grant shapes", () => {
-        // A scoped grant (the opener's three YouTube URLs) is an object; only its identifier is the
+        // A scoped grant is an object, and only its identifier is the
         // permission. Reading only strings would silently drop it and report it as missing.
         const granted = extractGrantedPermissions([
             {
@@ -173,7 +173,7 @@ describe("verifyCapabilitySurface", () => {
         // silently does nothing, on the first click a user makes.
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
-        ].filter((identifier) => identifier !== "opener:allow-open-url");
+        ].filter((identifier) => identifier !== "process:allow-restart");
 
         const result = verifyCapabilitySurface({
             seams: completeSeams(),
@@ -182,7 +182,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("opener:allow-open-url");
+        expect(result.message).toContain("process:allow-restart");
         expect(result.message).toContain("silently does nothing");
     });
 
@@ -243,7 +243,7 @@ describe("verifyCapabilitySurface", () => {
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
         ].map((identifier) =>
-            identifier === "opener:allow-open-url" ? "opener:allow-open-ulr" : identifier
+            identifier === "process:allow-restart" ? "process:allow-restrat" : identifier
         );
 
         const result = verifyCapabilitySurface({
@@ -253,7 +253,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("opener:allow-open-ulr");
+        expect(result.message).toContain("process:allow-restrat");
     });
 
     it("reports the identifier check as skipped when no ACL manifest is available", () => {
