@@ -461,12 +461,44 @@ fn is_usable_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// The name a derivative is written under until FFmpeg has finished it. The final name is a cache
+/// hit for every later call, so a frame cut short (a failed run, the app-exit sweep killing it, a
+/// full disk) must never sit under it. Same extension, since FFmpeg picks its encoder from it.
+fn partial_derivative_path(out_path: &Path) -> std::path::PathBuf {
+    let name = out_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    out_path.with_file_name(format!(
+        ".partial-{}-{name}",
+        crate::utils::naming::unique_temp_suffix()
+    ))
+}
+
 /// Runs FFmpeg to produce `out_path`, bounded by [`DISPLAY_THUMBNAIL_TIMEOUT`] and killed as a
 /// process tree if it overruns. Returns whether a usable file resulted.
+///
+/// FFmpeg writes a scratch file that becomes `out_path` only when it exits successfully with a
+/// non-empty result (see [`partial_derivative_path`]).
 ///
 /// Output is discarded rather than captured. Nothing reads it, and letting FFmpeg inherit closed
 /// pipes avoids the drain-two-streams machinery the paths that *do* report stderr need.
 fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path) -> bool {
+    let partial = partial_derivative_path(out_path);
+    let finished = run_display_ffmpeg(ffmpeg, source_path, &partial);
+
+    if finished && is_usable_file(&partial) && std::fs::rename(&partial, out_path).is_ok() {
+        return true;
+    }
+
+    let _ = std::fs::remove_file(&partial);
+    false
+}
+
+/// Runs FFmpeg writing to `partial`, and says whether it exited successfully in time.
+fn run_display_ffmpeg(ffmpeg: &str, source_path: &Path, partial: &Path) -> bool {
+    let out_path = partial;
     let mut command = std::process::Command::new(ffmpeg);
     command.args(build_display_thumbnail_args(source_path, out_path));
     command.stdout(std::process::Stdio::null());
@@ -491,7 +523,7 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
 
     loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => return status.success(),
             Ok(None) => {}
             Err(_) => return false,
         }
@@ -499,22 +531,11 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
         if std::time::Instant::now() >= deadline {
             kill_process_tree_blocking(pid);
             let _ = child.wait();
-
-            // A killed run can still have created a partial file. Drop it so the next call retries
-            // instead of caching a truncated image forever.
-            let _ = std::fs::remove_file(out_path);
             return false;
         }
 
         std::thread::sleep(DISPLAY_THUMBNAIL_POLL);
     }
-
-    if is_usable_file(out_path) {
-        return true;
-    }
-
-    let _ = std::fs::remove_file(out_path);
-    false
 }
 
 /// Resolves the display-sized copy of one library-relative thumbnail path, generating it if it is

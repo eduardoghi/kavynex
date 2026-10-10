@@ -844,3 +844,58 @@ fn a_missing_source_yields_no_derivative_rather_than_an_error() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_derivative_is_written_under_a_scratch_name_beside_its_final_one() {
+    let out = std::path::Path::new("/cache/thumb-display/abc-w640.jpg");
+    let partial = partial_derivative_path(out);
+
+    assert_eq!(partial.parent(), out.parent());
+    let name = partial.file_name().unwrap().to_string_lossy().into_owned();
+    assert!(name.starts_with(".partial-"), "{name}");
+    assert!(name.ends_with("-abc-w640.jpg"), "{name}");
+}
+
+// A stand-in for FFmpeg that writes part of a frame to its output and then fails, the shape a full
+// disk or a kill leaves. A shell script, so Unix only.
+#[cfg(unix)]
+#[test]
+fn a_run_that_fails_after_writing_leaves_no_cache_entry() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = std::env::temp_dir().join(format!(
+        "kavynex-display-partial-{}",
+        crate::utils::naming::unique_temp_suffix()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    let ffmpeg = dir.join("ffmpeg");
+    std::fs::write(
+        &ffmpeg,
+        "#!/bin/sh
+for last; do :; done
+printf 'half a frame' > \"$last\"
+exit 1
+",
+    )
+    .unwrap();
+    std::fs::set_permissions(&ffmpeg, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let source = dir.join("thumb.jpg");
+    std::fs::write(&source, b"image").unwrap();
+    let out = dir.join("thumb-w640.jpg");
+
+    assert!(!generate_display_thumbnail(
+        &ffmpeg.to_string_lossy(),
+        &source,
+        &out
+    ));
+    assert!(!out.exists(), "a failed run must not leave a cache hit");
+
+    let leftovers: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(".partial-"))
+        .collect();
+    assert!(leftovers.is_empty(), "the scratch file is removed too");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
