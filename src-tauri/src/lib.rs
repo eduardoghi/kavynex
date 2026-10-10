@@ -602,7 +602,8 @@ pub fn run() {
             // (see register_library_asset_scope).
             match app.path().app_cache_dir() {
                 Ok(cache_dir) => {
-                    commands::security::register_cache_asset_scope(&app_handle, &cache_dir)
+                    commands::security::register_cache_asset_scope(&app_handle, &cache_dir);
+                    utils::process::init_private_child_working_dir(&cache_dir);
                 }
                 Err(error) => {
                     services::logger::warn(

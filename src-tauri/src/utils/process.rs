@@ -126,12 +126,43 @@ pub fn pin_working_dir(command: &mut std::process::Command, dir: &std::path::Pat
     command.current_dir(dir);
 }
 
-/// Where a child starts when the caller has no directory of its own for the run (the version
-/// health checks, the metadata-only yt-dlp runs). The process temp directory is per user, always
-/// exists, and is not a place a launcher chooses, which is all the pin above needs from it.
-pub fn default_child_working_dir() -> std::path::PathBuf {
-    std::env::temp_dir()
+/// The empty folder [`default_child_working_dir`] answers with once startup has made it.
+static PRIVATE_CHILD_WORKING_DIR: std::sync::OnceLock<std::path::PathBuf> =
+    std::sync::OnceLock::new();
+
+/// The cache subfolder made at startup for [`default_child_working_dir`].
+pub const CHILD_WORKING_DIR_NAME: &str = "child-cwd";
+
+/// Makes `cache_dir/child-cwd` and has [`default_child_working_dir`] answer with it from then on.
+/// Called once from setup. A folder that cannot be made leaves the fallback in place.
+pub fn init_private_child_working_dir(cache_dir: &std::path::Path) {
+    let dir = cache_dir.join(CHILD_WORKING_DIR_NAME);
+
+    if std::fs::create_dir_all(&dir).is_ok() {
+        let _ = PRIVATE_CHILD_WORKING_DIR.set(dir);
+    }
 }
+
+/// Where a child starts when the caller has no directory of its own for the run (the version
+/// health checks, the metadata, format and comment yt-dlp runs).
+///
+/// An empty folder in the app's cache, made at startup. The process temp directory was used before
+/// it, and is where any program unpacks what it runs, so on Windows a `ffprobe.exe` or `deno.exe`
+/// left there was found by yt-dlp's lookups by bare name, which search the working directory first.
+/// The temp directory stays as the fallback for a run before setup (tests, the smoke checks).
+pub fn default_child_working_dir() -> std::path::PathBuf {
+    PRIVATE_CHILD_WORKING_DIR
+        .get()
+        .cloned()
+        .unwrap_or_else(std::env::temp_dir)
+}
+
+/// Keeps a Windows child from finding programs in its working directory when it looks one up by
+/// bare name. Honored by `CreateProcess` without a path, `cmd.exe` and Python's `shutil.which`, which
+/// is how yt-dlp probes for `ffmpeg`, `ffprobe` and `deno`. Pinning the working directory decides
+/// which folder that is. This takes it out of the search.
+#[cfg(windows)]
+const NO_CWD_IN_EXE_SEARCH: (&str, &str) = ("NoDefaultCurrentDirectoryInExePath", "1");
 
 /// Variables an AppImage's launcher sets for the app's own bundled libraries and runtimes. A child
 /// inheriting them is a system yt-dlp or FFmpeg loading the bundle's copies, built against other
@@ -169,6 +200,8 @@ pub fn configure_child(command: &mut std::process::Command) {
     command.stdin(std::process::Stdio::null());
     hide_console(command);
     configure_process_group_blocking(command);
+    #[cfg(windows)]
+    command.env(NO_CWD_IN_EXE_SEARCH.0, NO_CWD_IN_EXE_SEARCH.1);
 
     for name in env_to_clear(running_inside_appimage()) {
         command.env_remove(name);
@@ -182,6 +215,8 @@ pub fn configure_child_async(command: &mut tokio::process::Command) {
     command.kill_on_drop(true);
     hide_console_async(command);
     configure_process_group(command);
+    #[cfg(windows)]
+    command.env(NO_CWD_IN_EXE_SEARCH.0, NO_CWD_IN_EXE_SEARCH.1);
 
     for name in env_to_clear(running_inside_appimage()) {
         command.env_remove(name);
@@ -587,6 +622,33 @@ mod tests {
         // `current_dir` on a missing directory fails the spawn, so the fallback has to be a
         // directory that is there on every machine without the app creating it.
         assert!(default_child_working_dir().is_dir());
+    }
+
+    #[test]
+    fn once_made_the_private_folder_is_where_children_start() {
+        let cache = std::env::temp_dir().join(format!(
+            "kavynex-child-cwd-test-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+
+        init_private_child_working_dir(&cache);
+
+        // Set once per process, so another test may have won the race. Either way the answer is a
+        // folder that exists and is not the shared temp directory.
+        let dir = default_child_working_dir();
+        assert!(dir.is_dir());
+        assert!(dir.ends_with(CHILD_WORKING_DIR_NAME));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_child_does_not_search_its_working_directory_for_programs() {
+        let mut command = std::process::Command::new("yt-dlp");
+        configure_child(&mut command);
+
+        assert!(command.get_envs().any(|(name, value)| {
+            name == NO_CWD_IN_EXE_SEARCH.0 && value == Some(std::ffi::OsStr::new("1"))
+        }));
     }
 
     // Spawns a real child. The whole point of the syscall version is that it no longer depends on a

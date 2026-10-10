@@ -170,6 +170,12 @@ as a burst of FFmpeg runs on the next scroll. It is bounded by total size instea
 (`DISPLAY_CACHE_MAX_BYTES` in `services/thumbnail/display.rs`). A cache that fits is left entirely
 alone whatever its age, and one that does not is trimmed oldest-first until it fits.
 
+`child-cwd/` is an empty folder made at startup (`utils::process::init_private_child_working_dir`)
+for the yt-dlp and FFmpeg runs that have no directory of their own (the format listing, the
+comment fetch, the version checks) to start in. It holds nothing. It exists so those runs do not
+start in the shared temp directory, where any program can leave an executable that a lookup by
+bare name would find.
+
 A fifth, `pending-media/`, is created by `services/pending_media.rs` rather than
 `temp_paths.rs`, and holds something different again, one `pending-*.json`
 marker per media creation that has already written its artifacts into the library but has
