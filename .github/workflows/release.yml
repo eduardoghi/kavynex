@@ -81,7 +81,7 @@ jobs:
               # moving "stable".
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
-                  toolchain: 1.96.0
+                  toolchain: 1.99.0
 
             # Pin the tool version (keep in sync with ci.yml). An unpinned `cargo install` builds
             # whatever the latest release happens to be at dispatch time, so the code executing on
@@ -282,7 +282,7 @@ jobs:
               # deterministic compiler that does not drift with upstream releases.
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
-                  toolchain: 1.96.0
+                  toolchain: 1.99.0
                   components: rustfmt, clippy
                   targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
@@ -718,7 +718,7 @@ jobs:
               # Pinned to match the build (keep in sync with rust-toolchain.toml).
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
-                  toolchain: 1.96.0
+                  toolchain: 1.99.0
 
             # Pin the tool version (keep in sync when bumping), same reasoning as the cargo-audit /
             # cargo-deny pins in the audit job. An unpinned `cargo install` builds whatever the latest
