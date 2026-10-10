@@ -11,7 +11,7 @@ import {
     formatCommentPublishedAt,
     isCommentTextTruncated,
     type CommentTreeNode,
-} from "./comment-tree";
+} from "../../utils/comment-tree";
 
 // The note under a comment the backend cut at its ceiling. One string, so a test can assert the
 // exact line and the number is formatted once.

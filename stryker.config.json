@@ -13,7 +13,7 @@
     "tauri_client_comment": "MEASURED AND DEFERRED, recorded so the next person does not re-measure it. src/lib/tauri-client.ts is the other half of the seam and scored 25.00% total / 100.00% covered on 2026-08-02: 2 killed, 0 survivors, 6 mutants with NO COVERAGE. Zero survivors is why it is not a gap in the tests that exist, and the 25% is why it is not in the list: every uncovered mutant sits inside `streamLiveChatFile`, whose test does exist, so this is perTest failing to attribute coverage rather than an untested function, the same misattribution the library-folder-section note above warns about, in the other direction. Adding it today would put six permanently-uncovered mutants in the report and teach whoever reads it to skip that file. Find out why the attribution is lost first. The entry can then go in on its own numbers.",
     "mutate": [
         "src/utils/**/*.ts",
-        "src/hooks/**/*.ts",
+        "src/hooks/**/*.{ts,tsx}",
         "src/use-cases/**/*.ts",
         "src/services/**/*.ts",
         "src/repositories/**/*.ts",

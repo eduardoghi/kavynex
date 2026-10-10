@@ -3,7 +3,7 @@ import { Button, Stack, rem } from "@mantine/core";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { CommentContent } from "./comment-content";
-import { type CommentTreeNode } from "./comment-tree";
+import { type CommentTreeNode } from "../../utils/comment-tree";
 
 // A single comment can have hundreds of replies; cap how many are mounted at once, mirroring the
 // top-level thread cap in comments-panel, so expanding one thread does not build an unbounded DOM.

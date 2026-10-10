@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { MediaCommentRow } from "../../types/media";
-import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
+import type { MediaCommentRow } from "../types/media";
+import { MAX_COMMENT_TEXT_CHARS } from "../constants/comment-text";
 import {
     buildCommentTree,
     countCommentsInTree,

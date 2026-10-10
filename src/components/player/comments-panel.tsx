@@ -27,7 +27,7 @@ import {
     normalizeSearchValue,
     sortCommentTree,
     type CommentSortMode,
-} from "./comment-tree";
+} from "../../utils/comment-tree";
 import { toUnionValue } from "../../utils/guards";
 import { formatCount } from "../../utils/pluralize";
 

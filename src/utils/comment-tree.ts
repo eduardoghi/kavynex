@@ -1,8 +1,8 @@
 // Pure comment-thread logic (tree building, sorting, filtering, timestamp parsing) shared by
 // the comments panel. Kept free of React so it can be unit-tested in isolation.
-import type { MediaCommentRow } from "../../types/media";
-import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
-import { formatPublishedDate } from "../../utils/media-utils";
+import type { MediaCommentRow } from "../types/media";
+import { MAX_COMMENT_TEXT_CHARS } from "../constants/comment-text";
+import { formatPublishedDate } from "./media-utils";
 
 // True when a stored comment body is at the backend's ceiling, which is the only way it can be
 // that long. YouTube caps a comment at 10,000 characters, so a body at 16,000 is one the backend

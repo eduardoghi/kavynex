@@ -495,7 +495,7 @@ mod tests {
 
     /// The ceiling both sides assert against. The player marks a stored comment as truncated by
     /// its length reaching this number (`isCommentTextTruncated` in
-    /// `src/components/player/comment-tree.ts`), so the two constants have to move together, and
+    /// `src/utils/comment-tree.ts`), so the two constants have to move together, and
     /// the fixture is what holds them to it.
     fn shared_comment_text_limit() -> usize {
         let raw = include_str!(concat!(

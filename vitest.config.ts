@@ -19,6 +19,17 @@ export default defineConfig({
             // re-run of the suite or a read through the HTML report.
             reporter: ["text", "html", "json-summary"],
             reportsDirectory: resolve(rootDir, "coverage"),
+            // Named explicitly because v8 coverage otherwise reports only the files some test
+            // imported, so a module no test touches is missing from the report rather than at 0%,
+            // and the floors below never see it.
+            include: ["src/**/*.{ts,tsx}"],
+            exclude: [
+                "src/**/*.test.{ts,tsx}",
+                "src/**/*.d.ts",
+                "src/test/**",
+                "src/types/**",
+                "src/main.tsx",
+            ],
             // Enforced only when coverage runs (pnpm test:coverage / CI), so the plain
             // `pnpm test` loop stays fast. These floors sit well below the current numbers
             // on purpose. They catch a large coverage regression without making routine

@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { MediaCommentRow } from "../../types/media";
 import type { LiveChatMessageItem } from "../../services/live-chat-service";
-import type { CommentTreeNode } from "./comment-tree";
+import type { CommentTreeNode } from "../../utils/comment-tree";
 import { CommentContent } from "./comment-content";
 import { RemoteImage } from "./remote-image";
 import { RemoteImagesProvider } from "./remote-images-context";

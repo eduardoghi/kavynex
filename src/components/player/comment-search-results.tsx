@@ -3,7 +3,7 @@ import { Badge, Box, rem } from "@mantine/core";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
 import { CommentContent } from "./comment-content";
-import type { FlatCommentRow } from "./comment-tree";
+import type { FlatCommentRow } from "../../utils/comment-tree";
 
 // A context-only row (see comment-tree.filterCommentTree) is a thread ancestor kept only so a
 // real match below it still reads in context. It is not itself a search result. Dimming it and
