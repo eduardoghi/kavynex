@@ -12,7 +12,8 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, Runtime};
 
 use crate::constants::{
-    TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY, TEMP_DIR_YT_DLP, TEMP_DIR_YT_DLP_THUMB,
+    RECOVERED_DOWNLOADS_DIR, TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY, TEMP_DIR_YT_DLP,
+    TEMP_DIR_YT_DLP_THUMB,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -64,6 +65,16 @@ pub fn yt_dlp_thumb_temp_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBu
         app,
         TEMP_DIR_YT_DLP_THUMB,
         AppErrorCode::CreateTempThumbRootFailed,
+    )
+}
+
+/// Where a finished download that could not be placed into the library is kept (see
+/// `RECOVERED_DOWNLOADS_DIR`).
+pub fn recovered_downloads_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+    ensure_temp_subdir(
+        app,
+        RECOVERED_DOWNLOADS_DIR,
+        AppErrorCode::CreateTempRootDirFailed,
     )
 }
 

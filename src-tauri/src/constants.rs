@@ -54,6 +54,11 @@ pub const TEMP_DIR_THUMB_DISPLAY: &str = "thumb-display";
 // in that window; see services/pending_media.rs.
 pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
 
+// Holds a finished download that could not be placed into the library (a disconnected drive, a full
+// disk). Not a temp directory despite living in the cache. Nothing sweeps it, because the file may be
+// the only copy left of a video that is gone from YouTube, so it stays until the user removes it.
+pub const RECOVERED_DOWNLOADS_DIR: &str = "recovered-downloads";
+
 /// The cache subdirectories whose files the webview actually renders, and therefore the only ones
 /// the asset protocol is authorized to serve (`commands::security::managed_cache_scope_dirs`).
 ///

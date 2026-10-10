@@ -564,6 +564,94 @@ async fn store_live_chat<R: Runtime>(
     ))))
 }
 
+/// Moves `file` into `dir` under its own name, or under a prefixed one when that name is taken, and
+/// returns where it went.
+fn move_into_dir_without_overwriting(file: &Path, dir: &Path) -> AppResult<PathBuf> {
+    let file_name = file.file_name().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::InvalidDownloadedFile,
+            "downloaded file has no valid name",
+        )
+    })?;
+
+    let mut destination = dir.join(file_name);
+
+    if destination.exists() {
+        destination = dir.join(format!(
+            "{}-{}",
+            unique_temp_suffix(),
+            file_name.to_string_lossy()
+        ));
+    }
+
+    fs::rename(file, &destination).map_err(|e| {
+        AppError::fs_error(
+            AppErrorCode::FileRenameFailed,
+            "failed to keep the downloaded file",
+            &destination,
+            &e,
+        )
+    })?;
+
+    Ok(destination)
+}
+
+/// Keeps a finished download that could not be placed into the library, and returns `error` with
+/// where the file went added to its details.
+///
+/// The run's temp directory is removed when the run ends, and the download in it is often the
+/// expensive part, sometimes the only chance at all (a video since removed, a replay that expired).
+/// A disconnected library drive or a full disk is a reason to fail the creation, not to throw the
+/// file away, so it is moved to `recovered-downloads/` in the cache, which nothing sweeps.
+async fn keep_unplaced_download<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    downloaded_temp: PathBuf,
+    error: AppError,
+) -> AppError {
+    let kept = match crate::services::temp_paths::recovered_downloads_dir(app) {
+        Ok(dir) => {
+            run_blocking(move || move_into_dir_without_overwriting(&downloaded_temp, &dir)).await
+        }
+        Err(dir_error) => Err(dir_error),
+    };
+
+    match kept {
+        Ok(kept_at) => {
+            let name = logger::redact_path(&kept_at);
+
+            emit_download_log_infallible(
+                app,
+                run_id,
+                format!(
+                    "The download could not be added to the library. The file was kept as {name} in the recovered-downloads folder of the app's cache directory."
+                ),
+                "system",
+            );
+
+            let details = match error.details.as_deref() {
+                Some(details) if !details.trim().is_empty() => {
+                    format!("{details}. The downloaded file was kept as recovered-downloads/{name}")
+                }
+                _ => format!("the downloaded file was kept as recovered-downloads/{name}"),
+            };
+
+            AppError {
+                details: Some(details),
+                ..error
+            }
+        }
+        Err(keep_error) => {
+            logger::warn(
+                "yt_dlp",
+                format!("could not keep a download that failed to reach the library: {keep_error}"),
+            );
+
+            error
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -1135,8 +1223,18 @@ pub async fn download_media_from_url_async<R: Runtime>(
         let downloaded_temp =
             find_downloaded_media_file(&temp_dir, &file_name_prefix, expected_ext.as_deref())?;
 
-        let (final_destination, kept_existing) =
-            place_downloaded_file_async(downloaded_temp, media_dir, library_dir.clone()).await?;
+        let placement =
+            place_downloaded_file_async(downloaded_temp.clone(), media_dir, library_dir.clone())
+                .await;
+
+        let (final_destination, kept_existing) = match placement {
+            Ok(placed) => placed,
+            Err(error) => {
+                return Err(
+                    keep_unplaced_download(app, &normalized_run_id, downloaded_temp, error).await,
+                );
+            }
+        };
 
         if kept_existing {
             // The destination already held a file for this exact video+format, so the fresh
@@ -1264,6 +1362,53 @@ mod tests {
             "kavynex-download-test-{suffix}-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn an_unplaced_download_is_moved_under_its_own_name() {
+        let run_dir = unique_temp_dir("unplaced-run");
+        let kept_dir = unique_temp_dir("unplaced-kept");
+        fs::create_dir_all(&run_dir).unwrap();
+        fs::create_dir_all(&kept_dir).unwrap();
+        let downloaded = run_dir.join("youtube_abc_18.mp4");
+        fs::write(&downloaded, b"finished download").unwrap();
+
+        let kept = move_into_dir_without_overwriting(&downloaded, &kept_dir).unwrap();
+
+        assert_eq!(kept, kept_dir.join("youtube_abc_18.mp4"));
+        assert_eq!(fs::read(&kept).unwrap(), b"finished download");
+        assert!(!downloaded.exists());
+
+        let _ = fs::remove_dir_all(run_dir);
+        let _ = fs::remove_dir_all(kept_dir);
+    }
+
+    #[test]
+    fn an_unplaced_download_never_replaces_one_kept_earlier() {
+        let run_dir = unique_temp_dir("unplaced-again-run");
+        let kept_dir = unique_temp_dir("unplaced-again-kept");
+        fs::create_dir_all(&run_dir).unwrap();
+        fs::create_dir_all(&kept_dir).unwrap();
+        fs::write(kept_dir.join("youtube_abc_18.mp4"), b"kept before").unwrap();
+        let downloaded = run_dir.join("youtube_abc_18.mp4");
+        fs::write(&downloaded, b"kept now").unwrap();
+
+        let kept = move_into_dir_without_overwriting(&downloaded, &kept_dir).unwrap();
+
+        assert_ne!(kept, kept_dir.join("youtube_abc_18.mp4"));
+        assert!(kept
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .ends_with("-youtube_abc_18.mp4"));
+        assert_eq!(fs::read(&kept).unwrap(), b"kept now");
+        assert_eq!(
+            fs::read(kept_dir.join("youtube_abc_18.mp4")).unwrap(),
+            b"kept before"
+        );
+
+        let _ = fs::remove_dir_all(run_dir);
+        let _ = fs::remove_dir_all(kept_dir);
     }
 
     #[test]
