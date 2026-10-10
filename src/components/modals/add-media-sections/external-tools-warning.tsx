@@ -1,6 +1,7 @@
-import { Alert, List, Text } from "@mantine/core";
+import { Alert, Group, List, Text } from "@mantine/core";
 import { AlertTriangle } from "lucide-react";
 import type { ExternalToolName } from "../../../hooks/use-external-tools-availability";
+import { AppButton } from "../../ui/app-button";
 
 // What each tool is for, so the warning says what will actually break rather than only naming a
 // missing binary. Neither line mentions a source mode. The hook already decided which tools matter
@@ -12,12 +13,16 @@ const TOOL_PURPOSE: Record<ExternalToolName, string> = {
 
 type ExternalToolsWarningProps = {
     missingTools: readonly ExternalToolName[];
+    isChecking?: boolean;
+    onCheckAgain?: () => void;
 };
 
 // Shown at the top of the import form when a tool the import needs is not available, so the user
 // finds out before filling anything in rather than when the download refuses to start.
 export function ExternalToolsWarning({
     missingTools,
+    isChecking = false,
+    onCheckAgain,
 }: ExternalToolsWarningProps): JSX.Element | null {
     if (missingTools.length === 0) {
         return null;
@@ -45,10 +50,24 @@ export function ExternalToolsWarning({
 
             <Text size="sm" mt="xs">
                 {missingTools.length === 1
-                    ? "Install it and make sure it is on your PATH, or put the executable in the app's tools folder, then reopen this window."
-                    : "Install them and make sure they are on your PATH, or put the executables in the app's tools folder, then reopen this window."}{" "}
+                    ? "Install it, or put the executable in the app's tools folder, then check again."
+                    : "Install them, or put the executables in the app's tools folder, then check again."}{" "}
                 Diagnostics shows where Kavynex looked.
             </Text>
+
+            {onCheckAgain && (
+                <Group mt="xs">
+                    <AppButton
+                        type="button"
+                        appVariant="secondary"
+                        size="xs"
+                        loading={isChecking}
+                        onClick={onCheckAgain}
+                    >
+                        Check again
+                    </AppButton>
+                </Group>
+            )}
         </Alert>
     );
 }

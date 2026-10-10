@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getExternalToolsStatus } from "../services/diagnostics-external-tools";
 import type { ExternalToolsStatus } from "../types/diagnostics";
 import type { MediaSourceMode } from "../types/media";
@@ -36,6 +36,9 @@ export function missingToolsForMode(
 
 type UseExternalToolsAvailabilityReturn = {
     missingTools: readonly ExternalToolName[];
+    isChecking: boolean;
+    // Probes again without closing the modal, for the user who just installed the missing tool.
+    recheck: () => void;
 };
 
 // Checks yt-dlp and ffmpeg while `enabled` is true (the import modal being open), so the form can
@@ -53,6 +56,10 @@ export function useExternalToolsAvailability(
     sourceMode: MediaSourceMode
 ): UseExternalToolsAvailabilityReturn {
     const [status, setStatus] = useState<ExternalToolsStatus | null>(null);
+    const [isChecking, setIsChecking] = useState(false);
+    // Bumped by recheck. Part of the effect's dependencies, so a recheck runs the same probe the
+    // modal opening does, through the same superseded-answer guard.
+    const [checkRequest, setCheckRequest] = useState(0);
 
     // Discards the answer to a check that was superseded while it was in flight. Reopening the
     // modal starts a new one, and probing spawns two processes, so the responses can land out of
@@ -64,11 +71,13 @@ export function useExternalToolsAvailability(
             // Cleared so a reopen re-checks rather than showing what was true last time. The
             // usual reason to close this modal after seeing the warning is to go install the tool.
             setStatus(null);
+            setIsChecking(false);
             return;
         }
 
         const checkId = checkIdRef.current + 1;
         checkIdRef.current = checkId;
+        setIsChecking(true);
 
         void (async () => {
             try {
@@ -79,9 +88,17 @@ export function useExternalToolsAvailability(
                 }
             } catch (error) {
                 logError("add-media", "Failed to check the external tools.", error);
+            } finally {
+                if (checkIdRef.current === checkId) {
+                    setIsChecking(false);
+                }
             }
         })();
-    }, [enabled]);
+    }, [enabled, checkRequest]);
+
+    const recheck = useCallback((): void => {
+        setCheckRequest((current) => current + 1);
+    }, []);
 
     // The source mode is applied here rather than inside the effect above, which is what keeps
     // switching modes from spawning another probe. The probe's answer is the same either way, and
@@ -92,5 +109,5 @@ export function useExternalToolsAvailability(
         [status, sourceMode]
     );
 
-    return useMemoObject({ missingTools });
+    return useMemoObject({ missingTools, isChecking, recheck });
 }

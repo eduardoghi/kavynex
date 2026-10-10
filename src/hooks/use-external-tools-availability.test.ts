@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
     missingToolsForMode,
@@ -128,5 +128,24 @@ describe("useExternalToolsAvailability", () => {
         // A failure to probe is not evidence that a tool is missing, and warning about it in the
         // import form would be alarming about the wrong thing.
         expect(result.current.missingTools).toEqual([]);
+    });
+
+    it("probes again on recheck and clears the warning once the tool is found", async () => {
+        vi.mocked(getExternalToolsStatus)
+            .mockResolvedValueOnce(toolsStatus(true, false))
+            .mockResolvedValueOnce(toolsStatus(true, true));
+
+        const { result } = renderHook(() => useExternalToolsAvailability(true, "local"));
+
+        await waitFor(() => expect(result.current.missingTools).toEqual(["ffmpeg"]));
+        expect(result.current.isChecking).toBe(false);
+
+        act(() => {
+            result.current.recheck();
+        });
+
+        await waitFor(() => expect(result.current.missingTools).toEqual([]));
+        expect(getExternalToolsStatus).toHaveBeenCalledTimes(2);
+        expect(result.current.isChecking).toBe(false);
     });
 });

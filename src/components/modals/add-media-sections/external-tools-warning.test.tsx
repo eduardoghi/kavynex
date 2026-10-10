@@ -1,5 +1,5 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ExternalToolsWarning } from "./external-tools-warning";
 import { renderWithMantine } from "../../../test/test-utils";
 
@@ -25,5 +25,18 @@ describe("ExternalToolsWarning", () => {
 
         expect(screen.getByText("yt-dlp and ffmpeg were not found")).toBeInTheDocument();
         expect(screen.getByText(/Install them/)).toBeInTheDocument();
+    });
+
+    it("offers to check again so the user can stay in the form after installing", () => {
+        const onCheckAgain = vi.fn();
+
+        renderWithMantine(
+            <ExternalToolsWarning missingTools={["ffmpeg"]} onCheckAgain={onCheckAgain} />
+        );
+
+        screen.getByRole("button", { name: "Check again" }).click();
+
+        expect(onCheckAgain).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText(/reopen this window/)).not.toBeInTheDocument();
     });
 });

@@ -114,7 +114,7 @@ export function AddMediaModal({
 
     // Probed while the modal is open rather than on every launch. It spawns both binaries, and the
     // answer only matters to someone who is about to import something.
-    const { missingTools } = useExternalToolsAvailability(opened, sourceMode);
+    const toolsAvailability = useExternalToolsAvailability(opened, sourceMode);
 
     const canSubmit = isUrlMode
         ? mediaUrl.trim() !== "" && selectedYtDlpFormatId.trim() !== ""
@@ -206,7 +206,11 @@ export function AddMediaModal({
                     type="always"
                 >
                     <Stack gap="md" pr="xs">
-                        <ExternalToolsWarning missingTools={missingTools} />
+                        <ExternalToolsWarning
+                            missingTools={toolsAvailability.missingTools}
+                            isChecking={toolsAvailability.isChecking}
+                            onCheckAgain={toolsAvailability.recheck}
+                        />
 
                         <SegmentedControl
                             value={sourceMode}
