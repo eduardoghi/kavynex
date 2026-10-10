@@ -654,6 +654,15 @@ async fn keep_unplaced_download<R: Runtime>(
     }
 }
 
+/// How long a killed download may keep running before it is killed again.
+const KILL_GRACE: Duration = Duration::from_secs(10);
+
+/// Whether a kill requested `since_kill` ago has not taken, so it is time for the second one. Once
+/// per run, since the second one includes the direct kill, which cannot fail to reach the child.
+fn kill_is_overdue(since_kill: Option<Duration>, already_forced: bool) -> bool {
+    !already_forced && since_kill.is_some_and(|elapsed| elapsed >= KILL_GRACE)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -1047,6 +1056,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
         });
 
         let mut cancel_requested = false;
+        let mut kill_requested_at: Option<Instant> = None;
+        let mut kill_forced = false;
         let mut stalled = false;
         let mut timed_out = false;
         let mut last_observed_temp_size: u64 = 0;
@@ -1123,6 +1134,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
 
             if (user_cancelled || stalled || timed_out) && !cancel_requested {
                 cancel_requested = true;
+                kill_requested_at = Some(Instant::now());
 
                 if let Some(pid) = child_pid {
                     crate::utils::process::kill_process_tree(pid).await;
@@ -1131,6 +1143,20 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 }
             }
 
+            // The tree kill can fail without a word (taskkill could not start, or gave up after its
+            // own bound), and after a cancel nothing else ends this loop, since the stall and runtime
+            // checks above stand down once the user cancelled. The run would then hold its download
+            // slot until the app restarts. So a child still running well after the kill is killed
+            // again, directly as well as by tree.
+            if kill_is_overdue(kill_requested_at.map(|at| at.elapsed()), kill_forced) {
+                kill_forced = true;
+
+                if let Some(pid) = child_pid {
+                    crate::utils::process::kill_process_tree(pid).await;
+                }
+
+                let _ = child.start_kill();
+            }
 
             match timeout(Duration::from_millis(YT_DLP_WAIT_POLL_MILLIS), child.wait()).await {
                 Ok(wait_result) => {
@@ -1358,6 +1384,17 @@ mod tests {
             "kavynex-download-test-{suffix}-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn a_kill_is_repeated_once_it_has_had_its_grace_period() {
+        assert!(!kill_is_overdue(None, false), "nothing was killed yet");
+        assert!(!kill_is_overdue(Some(KILL_GRACE / 2), false));
+        assert!(kill_is_overdue(Some(KILL_GRACE), false));
+        assert!(
+            !kill_is_overdue(Some(KILL_GRACE * 3), true),
+            "the second kill is not repeated"
+        );
     }
 
     #[test]
