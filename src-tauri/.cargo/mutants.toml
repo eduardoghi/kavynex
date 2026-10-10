@@ -215,6 +215,10 @@ exclude_re = [
     'replace > with (==|<|>=) in apply_migration_14',
     # cfg-split: #[cfg(windows)], and so is the test that pins it. The gate runs on ubuntu.
     'is_batch_shim_extension',
+    # cfg-split: #[cfg(windows)], like the retry loop in retry_while_held that calls it, so neither
+    # the function nor its match guard compiles on the ubuntu runner. One pattern covers both, since
+    # the guard's mutants name the function in their description.
+    'is_held_by_another_program',
     # Equivalent: re-runs a migration the database is already at, and every migration is idempotent,
     # so only the work is wasted. The `== N` direction is deliberately NOT excluded: that one skips a
     # migration outright, and it survived undetected until 2026-07-28. See the doc.
