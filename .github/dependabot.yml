@@ -70,6 +70,19 @@ updates:
                   - "minor"
                   - "patch"
 
+    # Bumps the channel in rust-toolchain.toml. The workflows pin the same version in their
+    # `toolchain:` inputs, which this cannot see, so its PR fails scripts/verify-rust-toolchain.js
+    # in CI until they are moved to match. That failure is the reminder, not a broken PR.
+    - package-ecosystem: rust-toolchain
+      directory: "/"
+      schedule:
+          interval: weekly
+      open-pull-requests-limit: 10
+      cooldown:
+          default-days: 5
+      commit-message:
+          prefix: "build"
+
     - package-ecosystem: github-actions
       directory: "/"
       schedule:

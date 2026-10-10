@@ -72,12 +72,15 @@ unless you `cd src-tauri` first):
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all`: format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
 
-Repository consistency (plain Node, no install needed. CI runs all six on every push):
+Repository consistency (plain Node, no install needed. CI runs all seven on every push):
 
 - `node scripts/verify-release-version.js`: fails when `package.json`,
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
 - `node scripts/verify-node-version.js`: fails when the Node version in `.nvmrc` and the
   `node-version:` values in the workflows disagree.
+- `node scripts/verify-rust-toolchain.js`: fails when the channel in `rust-toolchain.toml` and the
+  `toolchain:` inputs in the workflows disagree, or when one cargo tool is installed at two
+  versions across the workflows.
 - `node scripts/verify-tauri-package-versions.js`: fails when an `@tauri-apps/*` npm package and
   the Rust crate it pairs with (`@tauri-apps/api` with `tauri`, `@tauri-apps/plugin-<name>` with
   `tauri-plugin-<name>`) are on different major.minor releases in the lockfiles, which `tauri build`

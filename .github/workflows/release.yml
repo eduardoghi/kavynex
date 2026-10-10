@@ -6,9 +6,10 @@ on:
 # Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
 # more escalate in their own `permissions:` block: publish-tauri and sbom-upload get contents write,
 # attest-installers and checksums get id-token/attestations write (checksums also contents write).
-# Nothing that compiles third-party code holds id-token. The audit and sbom jobs, which compile third-party tools, stay read-only. Declaring the
-# read-only default here means a job added later without its own block inherits read-only rather than the
-# repository/organization default, so a new job cannot silently gain write access.
+# Nothing that compiles third-party code holds id-token. The audit and sbom jobs, which compile
+# third-party tools, stay read-only. Declaring the read-only default here means a job added later
+# without its own block inherits read-only rather than the repository/organization default, so a
+# new job cannot silently gain write access.
 permissions:
     contents: read
 

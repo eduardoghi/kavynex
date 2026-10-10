@@ -53,6 +53,12 @@ jobs:
             - name: Verify Node version consistency
               run: node scripts/verify-node-version.js
 
+            # The same for the Rust toolchain (rust-toolchain.toml against every workflow's
+            # `toolchain:` input) and for each `cargo install <tool>@<version>` pin, which several
+            # workflows repeat.
+            - name: Verify Rust toolchain and cargo tool pins
+              run: node scripts/verify-rust-toolchain.js
+
             # `tauri build` refuses an @tauri-apps npm package and its Rust crate on different
             # major.minor releases, and nothing in this workflow runs `tauri build`, so the skew
             # used to surface only in release.yml. Dependabot bumps the two sides in separate PRs,
@@ -268,7 +274,11 @@ jobs:
                 # silently moves to a new major OS (the 2026-07-14 run already resolved
                 # `macos-latest` to macos-26-arm64), and CI is only worth anything here if it tests
                 # on what the release actually builds on.
-                platform: [ubuntu-26.04, windows-2025, macos-26]
+                #
+                # The two arm64 legs are here because the release builds and ships them too, and
+                # until they were added an arm-only compile error or test failure surfaced for the
+                # first time inside a release run.
+                platform: [ubuntu-26.04, ubuntu-26.04-arm, windows-2025, windows-11-arm, macos-26]
         runs-on: ${{ matrix.platform }}
         # Never let a job run toward the 6h default: a hang fails in bounded time.
         timeout-minutes: 30
@@ -301,7 +311,7 @@ jobs:
             # WebKit/GTK dev headers built against and dynamically linked at runtime against the
             # user's own system libraries, never shipped in the bundle.
             - name: Install Linux dependencies
-              if: matrix.platform == 'ubuntu-26.04'
+              if: startsWith(matrix.platform, 'ubuntu-')
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf lld

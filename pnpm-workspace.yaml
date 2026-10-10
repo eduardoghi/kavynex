@@ -6,10 +6,11 @@ packages:
 # A legitimate dependency should always come from the registry.
 blockExoticSubdeps: true
 
-# Refuse to install any package version published less than 2 days ago, so a freshly
+# Refuse to install any package version published less than 5 days ago, so a freshly
 # compromised release is not picked up before the community can flag it. The committed
-# lockfile is verified against this on every install.
-minimumReleaseAge: 2880
+# lockfile is verified against this on every install. Five days matches Dependabot's cooldown
+# (.github/dependabot.yml), so a dependency added by hand waits as long as one Dependabot bumps.
+minimumReleaseAge: 7200
 
 # Both entries below are **floors, not pins**, and the difference is the whole point of writing them
 # this way. An exact version here raises the minimum today and freezes the package forever after.
