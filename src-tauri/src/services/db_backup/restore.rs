@@ -169,15 +169,18 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
                 );
                 continue;
             }
+            // Stops the restore instead of passing over the snapshot. A file another program holds
+            // says nothing about its contents, and moving on would restore one up to six days older
+            // and report success. Trying again once the hold is gone gets the newest one.
             QuickCheck::Unreadable(detail) => {
                 logger::warn(
                     "db_backup",
                     format!(
-                        "restore: passed over {}, which could not be read: {detail}",
+                        "restore: stopped at {}, which could not be read: {detail}",
                         logger::redact_path(&candidate)
                     ),
                 );
-                continue;
+                return Err(super::database_unreadable_error(detail));
             }
         }
 

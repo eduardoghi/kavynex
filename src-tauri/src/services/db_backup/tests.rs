@@ -2083,6 +2083,36 @@ async fn a_database_another_process_holds_is_unreadable_not_damaged() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[cfg(windows)]
+#[tokio::test]
+async fn a_restore_stops_at_a_held_snapshot_instead_of_taking_an_older_one() {
+    let dir = temp_dir("restore-held");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "older").await;
+    std::fs::copy(&db, generation_backup_path(&db, 1)).unwrap();
+    seed_kavynex_db(&dir.join("newer.db"), "newer").await;
+    std::fs::rename(dir.join("newer.db"), backup_path(&db)).unwrap();
+    std::fs::write(&db, b"not a database").unwrap();
+
+    let held = hold_exclusively(&backup_path(&db));
+    let error = restore_database_from_backup(&db)
+        .await
+        .expect_err("the newest snapshot is only held, not damaged");
+    drop(held);
+
+    assert_eq!(error.code, AppErrorCode::DatabaseUnavailable.as_str());
+    assert_eq!(
+        std::fs::read(&db).unwrap(),
+        b"not a database",
+        "nothing was restored"
+    );
+
+    restore_database_from_backup(&db).await.unwrap();
+    assert_eq!(read_title(&db).await, "newer");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
     let dir = temp_dir("import");
