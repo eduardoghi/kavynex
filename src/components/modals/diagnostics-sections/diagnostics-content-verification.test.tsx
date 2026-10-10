@@ -143,6 +143,32 @@ describe("DiagnosticsContentVerification", () => {
         expect(
             screen.getByText(/1 file\(s\) could not be checked because their names/)
         ).toBeInTheDocument();
+        expect(screen.getByText(/This is not a clean result/)).toBeInTheDocument();
+        expect(screen.queryByText(/^All 9 checked file/)).not.toBeInTheDocument();
+    });
+
+    it("never presents a run whose files could not be read as a clean result", () => {
+        // A drive that drops mid-run turns every remaining file into "unreadable". With nothing
+        // corrupt and nothing unverifiable, this used to read "All 0 checked file(s) match".
+        hookState = {
+            running: false,
+            progress: null,
+            result: {
+                status: "done",
+                report: report({
+                    checked: 3,
+                    verified: 0,
+                    unreadable: 3,
+                    unreadableExamples: ["video/media_abc.mp4"],
+                }),
+            },
+        };
+
+        renderWithMantine(<DiagnosticsContentVerification libraryPath="/library" />);
+
+        expect(screen.getByText(/3 could not be checked/)).toBeInTheDocument();
+        expect(screen.getByText(/This is not a clean result/)).toBeInTheDocument();
+        expect(screen.queryByText(/^All 0 checked file/)).not.toBeInTheDocument();
     });
 
     it("shows a failure message", () => {

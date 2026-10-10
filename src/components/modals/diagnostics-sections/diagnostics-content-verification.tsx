@@ -61,6 +61,22 @@ function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element
         );
     }
 
+    // Nothing failed the comparison, but something was not compared. A drive that dropped
+    // mid-run turns every file after it into "unreadable", so this must not read as a clean
+    // result either, whatever the verified count says.
+    if (report.unreadable > 0 || report.unverifiable > 0) {
+        return (
+            <Group gap={6} c="dimmed">
+                <AlertTriangle size={16} />
+                <Text size="sm">
+                    {report.verified} file(s) match the content they were saved with.{" "}
+                    {report.unreadable + report.unverifiable} could not be checked, listed below.
+                    This is not a clean result.
+                </Text>
+            </Group>
+        );
+    }
+
     return (
         <Group gap={6} c="green">
             <CheckCircle2 size={16} />
@@ -170,8 +186,9 @@ export function DiagnosticsContentVerification({
                     {result.report.unverifiable > 0 && (
                         <Text size="xs" c="dimmed">
                             {result.report.unverifiable} file(s) could not be checked because their
-                            names do not record the content they hold. Files Kavynex saved always do;
-                            these were most likely added or renamed by hand.
+                            names do not record the content they hold. That is the case for
+                            downloads saved by Kavynex 1.7.0 and earlier, and for files added or
+                            renamed by hand.
                         </Text>
                     )}
                 </Stack>
