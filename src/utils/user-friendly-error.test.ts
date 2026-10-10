@@ -174,11 +174,14 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     ],
 
     ["READ_DIR_FAILED", "Could not read the selected folder."],
-    ["CREATE_DIR_FAILED", "Could not create the selected folder."],
-    ["OPEN_DIR_FAILED", "Could not open the selected folder."],
-    ["OPEN_PATH_FAILED", "Could not open the selected path."],
-    ["WRITE_FILE_FAILED", "Could not write the file."],
-    ["DELETE_FILE_FAILED", "Could not delete the file."],
+    [
+        "FILE_COPY_FAILED",
+        "A file could not be copied. Check that the drive has free space and is still connected, then try again.",
+    ],
+    [
+        "SOURCE_FILE_NOT_FOUND",
+        "The file is no longer where it was. It may have been moved or deleted, or be on a drive that is not connected.",
+    ],
 ];
 
 describe("toUserFriendlyError", () => {

@@ -140,13 +140,9 @@ const INTERNAL_BACKEND_CODES = new Set([
     // services/filesystem.rs. The atomic copy/replace primitives and the post-download file
     // matching. Every one is an I/O failure mid-operation, where the detail line (the OS error) is
     // the diagnostic and a rephrasing would add nothing.
-    "SOURCE_FILE_NOT_FOUND",
     "INVALID_SOURCE_FILE",
     "FILE_OPEN_FAILED",
     "FILE_READ_FAILED",
-    "FILE_COPY_FAILED",
-    "FILE_RENAME_FAILED",
-    "FILE_MOVE_FAILED",
     "SOURCE_FILE_REMOVE_FAILED",
     "SOURCE_METADATA_FAILED",
     "DESTINATION_METADATA_FAILED",
@@ -160,7 +156,6 @@ const INTERNAL_BACKEND_CODES = new Set([
 
     // Writing into and unlinking from the managed library subdirectories.
     "CREATE_MEDIA_DIR_FAILED",
-    "REMOVE_MEDIA_FAILED",
     "CREATE_THUMBNAILS_DIR_FAILED",
     "REMOVE_THUMBNAIL_FAILED",
     // The compression step itself. The two live chat failures a user meets while opening a replay

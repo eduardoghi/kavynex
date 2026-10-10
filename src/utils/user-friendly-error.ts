@@ -1,4 +1,6 @@
 import { parseAppError, type AppErrorShape } from "./app-error";
+import type { AppErrorCode } from "../types/generated/AppErrorCode";
+import type { KnownErrorCode } from "../constants/error-codes";
 import {
     APP_ERROR_CODE,
     CLIENT_ERROR_CODE,
@@ -94,7 +96,10 @@ const DEFAULT_ERROR_MESSAGE = "Unknown error.";
 const GENERIC_BACKEND_ERROR_MESSAGE =
     "The operation could not be completed. If it keeps happening, check the app log file for details. Diagnostics shows where Kavynex keeps its files.";
 
-const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
+// Keyed by the codes the backend can send (the ts-rs AppErrorCode union) and the frontend-only
+// ones, so a key the backend never emits, or a typo, fails `tsc` instead of sitting in the map as a
+// message nobody can reach.
+const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, string>> = {
     [APP_ERROR_CODE]: DEFAULT_ERROR_MESSAGE,
     [INVALID_INPUT_ERROR_CODE]: "Invalid input.",
 
@@ -281,25 +286,36 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "Kavynex could not open the log folder. Diagnostics shows its path, so it can still be opened by hand.",
     FOLDER_OPEN_FAILED: "Kavynex could not open that folder in the file manager.",
     KEPT_FOLDER_EMPTY: "That folder no longer holds any files. Refresh Diagnostics to update the report.",
-    // The codes below are not (yet) emitted by the Rust backend (see src-tauri/src/error.rs)
-    // and are kept as bare literals rather than added to KnownErrorCode.
-    CREATE_DIR_FAILED: "Could not create the selected folder.",
-    OPEN_DIR_FAILED: "Could not open the selected folder.",
-    OPEN_PATH_FAILED: "Could not open the selected path.",
-    WRITE_FILE_FAILED: "Could not write the file.",
-    DELETE_FILE_FAILED: "Could not delete the file.",
+
+    // The file operations behind adding, moving and deleting media. A full or disconnected drive
+    // and a file held by another program are the likely causes, and the user can act on both,
+    // which "check the app log file" did not tell them. The OS error stays in the details below.
+    FILE_COPY_FAILED:
+        "A file could not be copied. Check that the drive has free space and is still connected, then try again.",
+    FILE_MOVE_FAILED:
+        "A file could not be moved. Check that the drive has free space and is still connected, and that no other program is using the file.",
+    FILE_RENAME_FAILED:
+        "A file in the library folder could not be renamed. Another program (an antivirus scan or a sync tool) may be using it. Try again in a moment.",
+    SOURCE_FILE_NOT_FOUND:
+        "The file is no longer where it was. It may have been moved or deleted, or be on a drive that is not connected.",
+    REMOVE_MEDIA_FAILED:
+        "A file could not be deleted from the library folder. Another program may be using it, so it was left in place.",
 };
+
+function friendlyMessageFor(code: string): string | undefined {
+    return (FRIENDLY_ERROR_MESSAGES as Record<string, string | undefined>)[code];
+}
 
 // Backend AppError codes are SCREAMING_SNAKE_CASE tokens. `parseAppError` assigns a thrown JS
 // Error or a bare string the APP_ERROR code, so a code that reaches here matching this shape
 // but absent from the catalog above is always a real backend error code that simply has not
 // been catalogued yet, never an ad-hoc human message we would want to surface verbatim.
 function isUncataloguedBackendCode(code: string): boolean {
-    return !(code in FRIENDLY_ERROR_MESSAGES) && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code);
+    return friendlyMessageFor(code) === undefined && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code);
 }
 
 function resolveFriendlyMessage(parsed: AppErrorShape): string {
-    const mappedMessage = FRIENDLY_ERROR_MESSAGES[parsed.code];
+    const mappedMessage = friendlyMessageFor(parsed.code);
 
     if (mappedMessage) {
         return mappedMessage;
