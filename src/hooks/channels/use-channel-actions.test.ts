@@ -368,6 +368,90 @@ describe("useChannelActions", () => {
         expect(setSelectedChannelId).not.toHaveBeenCalled();
     });
 
+    it("reports a created channel as created when only the list reload fails", async () => {
+        // Reporting "Failed to create channel" here sent the user back to create it again, into
+        // CHANNEL_ALREADY_EXISTS.
+        vi.mocked(createChannel).mockResolvedValueOnce(10);
+        vi.mocked(listAllChannels).mockRejectedValueOnce(new Error("database is locked"));
+        const onNotice = vi.fn();
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let created = false;
+
+        await act(async () => {
+            created = await result.current.createChannelAction("Canal A", "@canala", "none", "");
+        });
+
+        expect(created).toBe(true);
+        expect(setSelectedChannelId).toHaveBeenCalledWith(10);
+        expect(setNewChannelName).toHaveBeenCalledWith("");
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError).not.toHaveBeenCalledWith("Failed to create channel.");
+        expect(onError).toHaveBeenCalledWith(expect.stringMatching(/was created/));
+    });
+
+    it("creates the channel and says so when the YouTube avatar cannot be downloaded", async () => {
+        vi.mocked(downloadChannelAvatarFromHandle).mockRejectedValueOnce(new Error("offline"));
+        vi.mocked(createChannel).mockResolvedValueOnce(11);
+        vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+        const onNotice = vi.fn();
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let created = false;
+
+        await act(async () => {
+            created = await result.current.createChannelAction(
+                "Canal A",
+                "@canala",
+                "youtube",
+                ""
+            );
+        });
+
+        expect(created).toBe(true);
+        expect(createChannel).toHaveBeenCalledWith("Canal A", "@canala", null);
+        expect(onError).not.toHaveBeenCalled();
+        expect(onNotice).toHaveBeenCalledWith(expect.stringMatching(/without an avatar/));
+    });
+
     it("returns false when manual avatar mode has no library path", async () => {
         const { result } = renderHook(() =>
             useChannelActions({

@@ -5,8 +5,6 @@ import { resolveErrorMessage } from "../../utils/error-message";
 import { useAsyncFlag } from "../use-async-flag";
 import { useRequestGuard } from "../use-request-guard";
 import {
-    createChannel,
-    ensureChannelCanBeCreated,
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
@@ -18,6 +16,7 @@ import {
 } from "../../services/thumbnail-service";
 import { logError } from "../../utils/app-logger";
 import { leftoverFilesNotice } from "../../utils/leftover-files-notice";
+import { executeCreateChannel, type CreateChannelAvatar } from "../../use-cases/create-channel";
 
 type UseChannelActionsOptions = {
     libraryPath: string;
@@ -131,55 +130,41 @@ export function useChannelActions({
             const normalizedLibraryPath = libraryPath.trim();
 
             const created = await runCreateChannel(async () => {
-                try {
-                    // Before the avatar, which is written or downloaded into the library. Refused
-                    // after that, the file would stay there with no channel pointing at it.
-                    await ensureChannelCanBeCreated(normalizedName, normalizedYoutubeHandle);
+                let avatar: CreateChannelAvatar = { mode: "none" };
 
-                    let finalAvatarPath: string | null = null;
-
-                    if (avatarMode === "manual") {
-                        if (!normalizedAvatarPath) {
-                            onError("Select an avatar file before creating the channel.");
-                            return false;
-                        }
-
-                        if (!normalizedLibraryPath) {
-                            onError("Choose a library folder before importing a manual avatar.");
-                            return false;
-                        }
-
-                        finalAvatarPath = await persistThumbnailFile(
-                            normalizedAvatarPath,
-                            normalizedLibraryPath
-                        );
-                    } else if (avatarMode === "youtube") {
-                        if (!normalizedLibraryPath) {
-                            onError("Choose a library folder before importing a YouTube avatar.");
-                            return false;
-                        }
-
-                        finalAvatarPath = await downloadChannelAvatarFromHandle(
-                            normalizedYoutubeHandle,
-                            normalizedLibraryPath
-                        );
+                if (avatarMode === "manual") {
+                    if (!normalizedAvatarPath) {
+                        onError("Select an avatar file before creating the channel.");
+                        return false;
                     }
 
-                    const createdId = await createChannel(
+                    if (!normalizedLibraryPath) {
+                        onError("Choose a library folder before importing a manual avatar.");
+                        return false;
+                    }
+
+                    avatar = {
+                        mode: "manual",
+                        sourcePath: normalizedAvatarPath,
+                        libraryPath: normalizedLibraryPath,
+                    };
+                } else if (avatarMode === "youtube") {
+                    if (!normalizedLibraryPath) {
+                        onError("Choose a library folder before importing a YouTube avatar.");
+                        return false;
+                    }
+
+                    avatar = { mode: "youtube", libraryPath: normalizedLibraryPath };
+                }
+
+                let result;
+
+                try {
+                    result = await executeCreateChannel(
                         normalizedName,
                         normalizedYoutubeHandle,
-                        finalAvatarPath
+                        avatar
                     );
-
-                    const items = await listAllChannels();
-
-                    setChannels(items);
-                    setSelectedChannelId(createdId);
-                    setNewChannelName("");
-                    setNewYoutubeHandle("");
-                    setNewChannelAvatarMode("none");
-                    setNewChannelAvatarPath("");
-                    return true;
                 } catch (error) {
                     logError("channels", "Failed to create channel.", error, {
                         name: normalizedName,
@@ -191,6 +176,40 @@ export function useChannelActions({
                     onError(resolveErrorMessage(error, "Failed to create channel."));
                     return false;
                 }
+
+                // The channel exists from here on, so nothing below may report the creation as
+                // failed. That used to send the user back to create it again, into
+                // CHANNEL_ALREADY_EXISTS.
+                setSelectedChannelId(result.channelId);
+                setNewChannelName("");
+                setNewYoutubeHandle("");
+                setNewChannelAvatarMode("none");
+                setNewChannelAvatarPath("");
+
+                if (result.avatarFailure !== null) {
+                    logError(
+                        "channels",
+                        "Created the channel without its YouTube avatar.",
+                        result.avatarFailure,
+                        { youtubeHandle: normalizedYoutubeHandle }
+                    );
+                    onNotice?.(
+                        "The channel was created without an avatar, because the YouTube avatar " +
+                            "could not be downloaded. You can set one later from the channel menu."
+                    );
+                }
+
+                try {
+                    setChannels(await listAllChannels());
+                } catch (error) {
+                    logError("channels", "Failed to reload channels after creating one.", error);
+                    onError(
+                        "The channel was created, but the channel list could not be reloaded. " +
+                            "Restart the app if it does not show up."
+                    );
+                }
+
+                return true;
             });
 
             return created ?? false;
@@ -198,6 +217,7 @@ export function useChannelActions({
         [
             libraryPath,
             onError,
+            onNotice,
             runCreateChannel,
             setChannels,
             setNewChannelAvatarMode,
