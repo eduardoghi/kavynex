@@ -529,6 +529,20 @@ live connection pool is a singleton that cannot be reopened mid-session:
    and importing an older library has to keep working, which it does because the swap is followed
    by v11's backfill.
 
+   The rows are checked as well. `PRAGMA foreign_key_check` must come back empty, and every stored
+   file path (`file_path`, `thumbnail_path`, `live_chat_file_path`, `avatar_path`, each where the
+   schema has it) must be a relative path under one of the managed folders. The app writes nothing
+   else, and the renderer builds image URLs from those values, so an absolute `\\host\share` path in
+   a hostile file would make Windows authenticate to that host as soon as the channel list drew its
+   avatars.
+
+   The staged copy's triggers and views are dropped, and the app's own triggers recreated, before
+   anything writes to it (`db_schema::reset_triggers_and_views`). A trigger the file brought along
+   would otherwise run with every later write, the settings write described next included, and one
+   named like an app trigger would survive `ensure_schema`, whose `CREATE TRIGGER IF NOT EXISTS`
+   keeps the body already there. Below `TRIGGERS_COMPLETE_FROM_VERSION` the triggers are left to the
+   migrations that create them after the swap.
+
    The staged copy keeps this machine's `library_path` and `external_backup_dir`, written into it
    before the rename (`MachinePaths`). They describe the machine, not the library, and the file
    brings the folders of whatever machine exported it. Taken as they were, the library pointed at a
@@ -546,8 +560,8 @@ live connection pool is a singleton that cannot be reopened mid-session:
    undo brings back.
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls
    `apply_pending_database_import`. If a staged file exists, the current database is
-   moved aside to `.pre-import` (a safety net, not deleted), the staged file's `-wal`/
-   `-shm` sidecars are dropped, and the staged file is renamed into place as the new
+   moved aside to `.pre-import` (a safety net, not deleted), the previous database's `-wal`/
+   `-shm` sidecars are dropped (the staged copy has none), and the staged file is renamed into place as the new
    `kavynex.db`. If that rename fails, the previous database is rolled back from
    `.pre-import` so the app is never left without one to open. A failure here is logged
    but never blocks startup. The move-aside is a rename, not a copy, so `.pre-import` can be

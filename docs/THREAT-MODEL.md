@@ -229,6 +229,14 @@ case has limited blast radius:
   (`stage_database_import_undo`) reuses that function with the `.pre-import` snapshot, whose
   extension it would reject; that source is written by the backend and never comes from IPC.
 
+  The file's *contents* are untrusted too, since a database can come from anyone. Its triggers and
+  views are replaced by the app's own before the staged copy is first written
+  (`db_schema::reset_triggers_and_views`), so a trigger cannot rewrite `library_path` or
+  `external_backup_dir` after the import has set this machine's values, and the import is refused
+  when a stored file path is not a relative path under a managed folder or a foreign key names a
+  missing row. The renderer additionally refuses to turn a network-shaped stored path into a URL
+  (`utils/media-utils.ts::resolveStoredPath`).
+
 ### The three library-reading commands are guarded
 
 `get_library_summary`, `check_library_integrity` and `open_path_in_system` take a `library_path`

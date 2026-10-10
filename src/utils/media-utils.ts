@@ -170,7 +170,10 @@ export function resolveStoredPath(
 ): string | null {
     const normalizedStoredPath = storedPath?.trim() ?? "";
 
-    if (!normalizedStoredPath) {
+    // A row never stores a network path, since the backend writes library-relative paths and an
+    // imported database is refused when it holds anything else. One reaching here anyway is not
+    // turned into a URL, because loading `\\host\share\x.png` makes Windows authenticate to `host`.
+    if (!normalizedStoredPath || /^[\\/]{2}/.test(normalizedStoredPath)) {
         return null;
     }
 

@@ -2093,3 +2093,147 @@ async fn is_schema_migration_pending_reflects_user_version() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A database built by the real `ensure_schema`, so it carries the app's own triggers.
+async fn seed_current_schema_db(path: &Path) -> SqlitePool {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    crate::services::db_schema::ensure_schema(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    pool
+}
+
+async fn trigger_and_view_names(path: &Path) -> Vec<String> {
+    let pool = open(path).await.unwrap();
+    let names: Vec<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type IN ('trigger', 'view') ORDER BY name",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    names.into_iter().map(|(name,)| name).collect()
+}
+
+#[tokio::test]
+async fn an_imported_database_keeps_only_the_apps_own_triggers() {
+    // A trigger the file brought along runs with every later write, the settings write the import
+    // itself makes included, so this one would have put the mirror folder back on a share right
+    // after the import set this machine's. A view is dropped too, since the app defines none.
+    let dir = temp_dir("import-foreign-triggers");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let source = dir.join("incoming.db");
+    let pool = seed_current_schema_db(&source).await;
+    let own_triggers = trigger_and_view_names(&source).await;
+    for statement in [
+        "CREATE TRIGGER evil_settings AFTER UPDATE ON app_settings BEGIN \
+         UPDATE app_settings SET value = '//attacker/share' WHERE key = 'external_backup_dir'; END",
+        "CREATE VIEW evil_view AS SELECT * FROM videos",
+    ] {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+    }
+    pool.close().await;
+
+    let local = MachinePaths {
+        library_path: r"C:\This machine\Library".to_string(),
+        external_backup_dir: r"E:\Mirror".to_string(),
+    };
+
+    stage_database_import(&db, &source, Some(&local))
+        .await
+        .unwrap();
+
+    let staged = import_staged_path(&db);
+    assert_eq!(read_machine_paths(&staged).await.unwrap(), local);
+    assert_eq!(trigger_and_view_names(&staged).await, own_triggers);
+    assert!(!own_triggers.is_empty());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn an_imported_database_naming_files_outside_the_library_is_refused() {
+    let dir = temp_dir("import-absolute-paths");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    for stored in [
+        "//attacker/share/avatar.png",
+        r"\\attacker\share\avatar.png",
+        r"C:\Users\me\avatar.png",
+        "../outside/avatar.png",
+        "avatar.png",
+    ] {
+        let source = dir.join(format!(
+            "incoming-{}.db",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        let pool = seed_current_schema_db(&source).await;
+        sqlx::query("UPDATE channels SET avatar_path = ? WHERE id = 1")
+            .bind(stored)
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+
+        let error = stage_database_import(&db, &source, None)
+            .await
+            .expect_err("a stored path outside the managed folders must be refused");
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::DatabaseImportInvalid.as_str(),
+            "{stored}"
+        );
+    }
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn an_imported_database_whose_rows_point_at_nothing_is_refused() {
+    let dir = temp_dir("import-orphans");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let source = dir.join("incoming.db");
+    let pool = seed_current_schema_db(&source).await;
+    let mut conn = pool.acquire().await.unwrap();
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type) \
+         VALUES (999, 'orphan', 'orphan', 'video/media_x.mp4', 'video')",
+    )
+    .execute(&mut *conn)
+    .await
+    .unwrap();
+    drop(conn);
+    pool.close().await;
+
+    let error = stage_database_import(&db, &source, None)
+        .await
+        .expect_err("a media whose channel is gone must be refused");
+
+    assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

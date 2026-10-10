@@ -165,6 +165,28 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         ));
     }
 
+    // A row whose foreign key names nothing (a media of a channel that is gone, a comment of a media
+    // that is gone) passes everything above. Nothing in the app reconciles one afterwards, and the
+    // first write that touches it fails the constraint.
+    let violations = sqlx::query("PRAGMA foreign_key_check")
+        .fetch_all(pool)
+        .await
+        .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+    if !violations.is_empty() {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected database has rows that point at media or channels it does not contain",
+        ));
+    }
+
+    if count_unmanaged_stored_paths(pool).await? > 0 {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected database names files outside the library's own folders",
+        ));
+    }
+
     let (user_version,): (i64,) = sqlx::query_as("PRAGMA user_version")
         .fetch_one(pool)
         .await
@@ -244,6 +266,59 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// How many file paths stored in the database do not name a file inside one of the library's
+/// managed folders.
+///
+/// Every path the app writes is relative and under `video/`, `audio/`, `thumbnails/` or
+/// `live_chat/`, and the write boundaries refuse anything else. An imported file never went through
+/// them. The backend contains such a path when it uses it, but the renderer builds image URLs from
+/// the stored value, and an absolute `\\host\share\x.png` there makes Windows authenticate to that
+/// host as soon as the channel list draws its avatars.
+async fn count_unmanaged_stored_paths(pool: &SqlitePool) -> AppResult<usize> {
+    // Each column is read only where the file has it. An older schema lacks some of them, and the
+    // migrations add them after the swap.
+    const PATH_COLUMNS: [(&str, &str, &str); 4] = [
+        ("videos", "file_path", "SELECT file_path FROM videos"),
+        (
+            "videos",
+            "thumbnail_path",
+            "SELECT thumbnail_path FROM videos",
+        ),
+        (
+            "videos",
+            "live_chat_file_path",
+            "SELECT live_chat_file_path FROM videos",
+        ),
+        (
+            "channels",
+            "avatar_path",
+            "SELECT avatar_path FROM channels",
+        ),
+    ];
+
+    let mut unmanaged = 0;
+
+    for (table, column, query) in PATH_COLUMNS {
+        if !crate::services::db_schema::table_has_column(pool, table, column).await? {
+            continue;
+        }
+
+        let stored: Vec<(Option<String>,)> = sqlx::query_as(query)
+            .fetch_all(pool)
+            .await
+            .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+        unmanaged += stored
+            .iter()
+            .filter_map(|(path,)| path.as_deref())
+            .filter(|path| !path.trim().is_empty())
+            .filter(|path| crate::utils::path::ensure_managed_library_relative_path(path).is_err())
+            .count();
+    }
+
+    Ok(unmanaged)
+}
+
 /// The two settings that describe this machine rather than the library: where the library folder
 /// is, and where the daily external mirror goes.
 ///
@@ -271,7 +346,12 @@ pub async fn read_machine_paths(db_file: &Path) -> AppResult<MachinePaths> {
     })
 }
 
-/// Writes `paths` into the staged copy, so the database that is swapped in keeps this machine's.
+/// Prepares the staged copy for the swap. Its triggers and views are replaced by the app's own (see
+/// `db_schema::reset_triggers_and_views`), and then `paths`, when given, are written in, so the
+/// database that is swapped in keeps this machine's folders.
+///
+/// The triggers go first because the settings write below is the first write the file sees, and a
+/// trigger the file brought along would fire on it.
 ///
 /// Opened in rollback-journal mode so the write leaves no `-wal` sidecar next to the staged file,
 /// which only the `.db` itself is carried across from. The live pool switches it back to WAL when
@@ -279,7 +359,7 @@ pub async fn read_machine_paths(db_file: &Path) -> AppResult<MachinePaths> {
 ///
 /// Only `key` and `value` are written, the two columns the import validation guarantees. The file
 /// can be from an older schema that the migrations bring up to date only after the swap.
-async fn write_machine_paths(db_file: &Path, paths: &MachinePaths) -> AppResult<()> {
+async fn prepare_staged_database(db_file: &Path, paths: Option<&MachinePaths>) -> AppResult<()> {
     let options = SqliteConnectOptions::new()
         .filename(db_file)
         .create_if_missing(false)
@@ -292,30 +372,42 @@ async fn write_machine_paths(db_file: &Path, paths: &MachinePaths) -> AppResult<
         .map_err(|error| backup_error("failed to open the staged import", error))?;
 
     let result = async {
-        let mut tx = pool.begin().await?;
-        for (key, value) in [
-            (LIBRARY_PATH_KEY, &paths.library_path),
-            (EXTERNAL_BACKUP_DIR_KEY, &paths.external_backup_dir),
-        ] {
-            sqlx::query(
-                "INSERT INTO app_settings (key, value) VALUES (?, ?)                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            )
-            .bind(key)
-            .bind(value)
-            .execute(&mut *tx)
-            .await?;
+        let mut tx = pool
+            .begin()
+            .await
+            .map_err(|error| backup_error("failed to prepare the staged import", error))?;
+
+        crate::services::db_schema::reset_triggers_and_views(&mut tx).await?;
+
+        if let Some(paths) = paths {
+            for (key, value) in [
+                (LIBRARY_PATH_KEY, &paths.library_path),
+                (EXTERNAL_BACKUP_DIR_KEY, &paths.external_backup_dir),
+            ] {
+                sqlx::query(
+                    "INSERT INTO app_settings (key, value) VALUES (?, ?)                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                )
+                .bind(key)
+                .bind(value)
+                .execute(&mut *tx)
+                .await
+                .map_err(|error| {
+                    backup_error(
+                        "failed to write this machine's folders into the import",
+                        error,
+                    )
+                })?;
+            }
         }
-        tx.commit().await
+
+        tx.commit()
+            .await
+            .map_err(|error| backup_error("failed to prepare the staged import", error))
     }
     .await;
     pool.close().await;
 
-    result.map_err(|error| {
-        backup_error(
-            "failed to write this machine's folders into the import",
-            error,
-        )
-    })
+    result
 }
 
 /// Validates a user-provided database file and stages it for import. The swap is deferred to
@@ -417,13 +509,13 @@ pub async fn stage_database_import(
         .await?;
     }
 
-    // Before the rename, so the staged slot only ever holds a database that already carries them.
-    if let Some(paths) = machine_paths {
-        if let Err(error) = write_machine_paths(&staging_tmp, paths).await {
-            let _ = std::fs::remove_file(&staging_tmp);
-            return Err(error);
-        }
+    // Before the rename, so the staged slot only ever holds a database already in that state.
+    if let Err(error) = prepare_staged_database(&staging_tmp, machine_paths).await {
+        let _ = std::fs::remove_file(&staging_tmp);
+        return Err(error);
+    }
 
+    {
         let written = staging_tmp.clone();
         run_blocking(move || crate::services::filesystem::fsync_file(&written)).await?;
     }

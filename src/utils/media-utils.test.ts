@@ -293,6 +293,13 @@ describe("media-utils", () => {
             expect(resolveStoredPath(null, "/library/base")).toBeNull();
             expect(resolveStoredPath("   ", "/library/base")).toBeNull();
         });
+
+        it("never resolves a network path, whichever separators spell it", () => {
+            expect(resolveStoredPath("\\\\attacker\\share\\a.png", "/library/base")).toBeNull();
+            expect(resolveStoredPath("//attacker/share/a.png", "/library/base")).toBeNull();
+            expect(resolveStoredPath("\\/attacker\\share\\a.png", "/library/base")).toBeNull();
+            expect(resolveStoredPath("  //attacker/share/a.png", "/library/base")).toBeNull();
+        });
     });
 
     describe("fileSrcFromAbsolutePath", () => {

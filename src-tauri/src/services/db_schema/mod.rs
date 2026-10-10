@@ -7,6 +7,55 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// `ensure_schema` whenever the schema changes.
 pub(crate) const SCHEMA_VERSION: i64 = 15;
 
+/// The version from which a database holds every trigger in `TRIGGER_DDLS` without a migration
+/// still to create it. v13 creates them and v14 re-runs the whole list, so a database below 14 gets
+/// them on its next `ensure_schema`. A migration that adds a trigger raises this to its own version.
+pub(crate) const TRIGGERS_COMPLETE_FROM_VERSION: i64 = 14;
+
+/// Drops every trigger and view in the database and recreates the app's own triggers when no
+/// migration is left to do it (see [`TRIGGERS_COMPLETE_FROM_VERSION`]). Run on an imported
+/// database before anything writes to it.
+///
+/// The app defines no views, and its triggers are the ones in `TRIGGER_DDLS`. Anything else came
+/// with the file. A foreign trigger runs with every later write, so one on `app_settings` or on
+/// `videos` could rewrite the library folder or the mirror folder after the import has replaced
+/// them with this machine's. One named like an app trigger would also survive `ensure_schema`,
+/// whose `CREATE TRIGGER IF NOT EXISTS` keeps whatever body is already there.
+pub(crate) async fn reset_triggers_and_views(conn: &mut SqliteConnection) -> AppResult<()> {
+    let objects: Vec<(String, String)> = sqlx::query_as(
+        "SELECT type, name FROM sqlite_master WHERE type IN ('trigger', 'view') ORDER BY name",
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .map_err(|error| db_error("failed to list triggers and views", error))?;
+
+    for (kind, name) in objects {
+        let keyword = if kind == "view" { "VIEW" } else { "TRIGGER" };
+        let statement = format!("DROP {keyword} IF EXISTS \"{}\"", name.replace('"', "\"\""));
+
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&mut *conn)
+            .await
+            .map_err(|error| db_error("failed to drop a trigger or view", error))?;
+    }
+
+    let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
+        .fetch_one(&mut *conn)
+        .await
+        .map_err(|error| db_error("failed to read schema version", error))?;
+
+    if version >= TRIGGERS_COMPLETE_FROM_VERSION {
+        for &(_, ddl) in TRIGGER_DDLS {
+            sqlx::query(ddl)
+                .execute(&mut *conn)
+                .await
+                .map_err(|error| db_error("failed to create trigger", error))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Version produced by the idempotent baseline reconcile (`apply_baseline_schema`).
 /// It stays fixed even as `SCHEMA_VERSION` grows. Every database created before
 /// versioned migrations existed sits at `user_version <= 6`, so the baseline runs
