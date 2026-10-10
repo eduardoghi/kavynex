@@ -204,6 +204,44 @@ describe("useChannelMediaList", () => {
         expect(result.current.hasMore).toBe(false);
     });
 
+    it("stops offering more after a page fails, until the query is applied again", async () => {
+        // The grid asks for the next page whenever the last row is visible and nothing is loading.
+        // With `hasMore` still true after a failure it asked again as soon as the request settled,
+        // and kept doing so, reopening the error dialog every time.
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 })], 2)
+        );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        vi.mocked(listChannelMediaPage).mockRejectedValueOnce(new Error("database is busy"));
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(result.current.loadMoreFailed).toBe(true);
+        expect(result.current.hasMore).toBe(false);
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 })], 2)
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        expect(result.current.loadMoreFailed).toBe(false);
+        expect(result.current.hasMore).toBe(true);
+    });
+
     it("does not loadMore past the total", async () => {
         vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
             page([createMediaRow({ id: 1 })], 1)

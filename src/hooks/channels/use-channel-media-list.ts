@@ -33,6 +33,9 @@ type UseChannelMediaListReturn = {
     // load runs unfiltered, which (because filters reset per channel) is always the first load.
     channelTotal: number;
     hasMore: boolean;
+    // A page after the first failed to load. Automatic paging stops until the query changes, the
+    // list is reloaded or `loadMore` is called on purpose.
+    loadMoreFailed: boolean;
     isLoadingMedia: boolean;
     isLoadingMore: boolean;
     setMediaItems: React.Dispatch<React.SetStateAction<MediaRow[]>>;
@@ -67,6 +70,7 @@ export function useChannelMediaList({
     // reads it. State as well as a ref because the ref is what `loadMore` reads without becoming a
     // dependency, and this is what a render has to see.
     const [loadedCount, setLoadedCount] = useState(0);
+    const [loadMoreFailed, setLoadMoreFailed] = useState(false);
 
     const requestGuard = useRequestGuard();
     const filtersRef = useRef<MediaQueryFilters | null>(null);
@@ -121,7 +125,11 @@ export function useChannelMediaList({
     // Derived from the rows handed out rather than from the rows kept, for the reason above. A
     // deduplicated append leaves the list shorter than the cursor, and reading `mediaItems.length`
     // here would leave "load more" enabled against an offset that has nothing left to give.
-    const hasMore = loadedCount < total;
+    //
+    // A failed page also ends it. The grid asks for the next page whenever the last row is visible
+    // and nothing is loading, so a failure that left this true asked again as soon as the request
+    // settled, forever, each time logging the error and reopening the error dialog.
+    const hasMore = loadedCount < total && !loadMoreFailed;
 
     // The cursor and its rendered copy always move together, so they are set through one helper
     // rather than at seven call sites. A ref left behind by a `setLoadedCount` that forgot it is a
@@ -138,6 +146,7 @@ export function useChannelMediaList({
         loadingMoreRef.current = false;
         setIsLoadingMedia(false);
         setIsLoadingMore(false);
+        setLoadMoreFailed(false);
         setMediaItems([]);
         setTotal(0);
         setChannelTotal(0);
@@ -157,6 +166,7 @@ export function useChannelMediaList({
             const requestId = requestGuard.begin();
             lastRequestIdRef.current = requestId;
             setIsLoadingMedia(true);
+            setLoadMoreFailed(false);
 
             // Switching channels. Drop the previous channel's page (and its counts) so they do not
             // flash before the new load resolves. A filter change on the same channel keeps the
@@ -231,6 +241,7 @@ export function useChannelMediaList({
         const requestId = lastRequestIdRef.current;
         loadingMoreRef.current = true;
         setIsLoadingMore(true);
+        setLoadMoreFailed(false);
 
         try {
             const page = await listChannelMediaPage(channelId, {
@@ -264,6 +275,7 @@ export function useChannelMediaList({
                 return;
             }
 
+            setLoadMoreFailed(true);
             logError("media-list", "Failed to load more channel media.", error, { channelId });
             onError(resolveErrorMessage(error, "Failed to load more media."));
         } finally {
@@ -356,6 +368,7 @@ export function useChannelMediaList({
         total,
         channelTotal,
         hasMore,
+        loadMoreFailed,
         isLoadingMedia,
         isLoadingMore,
         setMediaItems,
