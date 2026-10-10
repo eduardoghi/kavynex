@@ -168,11 +168,10 @@ jobs:
             # finding does not block all CI. RUSTSEC advisories are covered separately
             # by the cargo-audit job.
             #
-            # Not `pnpm audit`. npm retired the legacy audit endpoints on 2026-07-15 and every
-            # pnpm release (10.34.5 and 11.13.0 both verified) still calls them, so that command
-            # now fails with HTTP 410 whether or not an advisory exists. The script queries
-            # osv.dev (the same GitHub Advisory data, via the source osv-scanner wraps) and
-            # keeps the same high/critical bar. See scripts/check-js-advisories.js.
+            # Not `pnpm audit`, which npm's retired audit endpoints broke from 2026-07-15 until
+            # pnpm 11.13.1. The script queries osv.dev (the same GitHub Advisory data, via the
+            # source osv-scanner wraps) and keeps the same high/critical bar without depending on
+            # the package manager's audit client. See scripts/check-js-advisories.js.
             - name: Audit production JS dependencies
               run: pnpm run advisories:check
 

@@ -1,11 +1,11 @@
 // Fails when an npm dependency carries a known high/critical security advisory.
 //
-// This replaces `pnpm audit`, which stopped working entirely on 2026-07-15. npm retired the
-// legacy audit endpoints (`/-/npm/v1/security/audits` and `/-/npm/v1/security/audits/quick`) and
-// every pnpm release still calls them, so `pnpm audit` now exits non-zero with
-// ERR_PNPM_AUDIT_BAD_RESPONSE (HTTP 410) regardless of whether any advisory exists. Verified
-// against pnpm 10.34.5 and 11.13.0 (the latest at the time of writing). Upgrading pnpm does not
-// fix it, so the gate had to move off that command rather than wait.
+// This replaced `pnpm audit` while that command was broken. npm retired the legacy audit endpoints
+// on 2026-07-15, and pnpm 10.34.5 and 11.13.0 failed with ERR_PNPM_AUDIT_BAD_RESPONSE (HTTP 410)
+// whether or not an advisory existed. `pnpm audit` works again with pnpm 11.13.1 (checked on
+// 2026-10-08). The gate stays here anyway, since it does not depend on the package manager's
+// audit client, and that client is what broke without warning last time. `pnpm audit` is a fine
+// cross-check by hand.
 //
 // Data comes from OSV (osv.dev), Google's aggregator of the same GitHub Advisory data npm audit
 // reports, queried over its public batch API. That is the source `osv-scanner` itself wraps, and

@@ -50,8 +50,9 @@ Frontend:
   `src/types/generated/`, the build output and Stryker's sandboxes are ignored.
 - `pnpm advisories:check`: fails on a high/critical security advisory in the production
   dependency tree, querying osv.dev (add `--dev` for the toolchain tree, which CI reports but
-  does not gate on). This replaced `pnpm audit`, which npm's retired audit endpoints broke for
-  every pnpm version. See `scripts/check-js-advisories.js`.
+  does not gate on). It replaced `pnpm audit` while npm's retired audit endpoints had broken it.
+  `pnpm audit` works again with the pinned pnpm and is a fine cross-check, and the gate stays on
+  osv.dev so it does not depend on that client. See `scripts/check-js-advisories.js`.
 - `pnpm licenses:check`: fails on a production dependency whose license is not allow-listed.
 - `pnpm test`: Vitest in watch mode.
 - `pnpm test:run`: Vitest, single run (what CI uses).
