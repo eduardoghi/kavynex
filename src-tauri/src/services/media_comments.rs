@@ -15,6 +15,12 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// The two must stay in sync), a db_schema test pins the DDL value against this constant.
 pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
+/// Upper bound on every other text field of a comment (author, handle, channel id, avatar URL, the
+/// relative time, the date, the ids). Real values are a few dozen characters, a URL a couple of
+/// hundred. The text has its own ceiling above, and without one here a payload could carry a
+/// megabyte in the author's name of each of its hundred thousand comments.
+pub(crate) const MAX_COMMENT_FIELD_CHARS: usize = 512;
+
 /// Upper bound on how many comments one media may be handed in a single merge.
 ///
 /// The body of each comment is capped above; this caps the count, which was the one input from the
@@ -84,7 +90,7 @@ fn normalize_optional_text(value: &Option<String>) -> Option<String> {
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
+        .map(|value| truncate_to_chars(value, MAX_COMMENT_FIELD_CHARS))
 }
 
 fn sqlite_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
@@ -189,7 +195,7 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
                 if trimmed.is_empty() {
                     "Unknown author".to_owned()
                 } else {
-                    trimmed.to_owned()
+                    truncate_to_chars(trimmed, MAX_COMMENT_FIELD_CHARS)
                 }
             };
 
@@ -616,6 +622,33 @@ mod tests {
 
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].text.chars().count(), MAX_COMMENT_TEXT_CHARS);
+    }
+
+    #[test]
+    fn prepare_comment_rows_caps_every_other_field() {
+        let long = "b".repeat(MAX_COMMENT_FIELD_CHARS + 100);
+        let mut comment = sample_comment("text");
+        comment.author_name = long.clone();
+        comment.author_thumbnail = Some(long.clone());
+        comment.time_text = Some(long);
+
+        let rows = prepare_comment_rows(vec![comment]);
+
+        assert_eq!(rows[0].author_name.chars().count(), MAX_COMMENT_FIELD_CHARS);
+        assert_eq!(
+            rows[0]
+                .author_thumbnail
+                .as_deref()
+                .map(|value| value.chars().count()),
+            Some(MAX_COMMENT_FIELD_CHARS)
+        );
+        assert_eq!(
+            rows[0]
+                .time_text
+                .as_deref()
+                .map(|value| value.chars().count()),
+            Some(MAX_COMMENT_FIELD_CHARS)
+        );
     }
 
     #[test]

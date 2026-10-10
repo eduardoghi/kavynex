@@ -68,6 +68,11 @@ pub async fn mark_media_as_unwatched(db: State<'_, Db>, media_id: i64) -> AppRes
     repo::mark_media_as_unwatched(&pool, media_id).await
 }
 
+/// The longest duration or playback position taken from the renderer, 30 days in seconds. Longer
+/// than any recording a person keeps, and short enough that the columns never hold a value the
+/// player's time formatting was not written for.
+const MAX_MEDIA_SECONDS: i64 = 30 * 24 * 60 * 60;
+
 /// Records the duration the renderer measured for a media that has already been created.
 ///
 /// The probe runs after `create_media` returns, not inside it. It decodes the file through a media
@@ -76,8 +81,8 @@ pub async fn mark_media_as_unwatched(db: State<'_, Db>, media_id: i64) -> AppRes
 /// sit between the crash marker and the insert, where a source that never fired `loadedmetadata` nor
 /// `error` would hang the whole creation with the marker on disk.
 ///
-/// A negative or absurd value is refused rather than stored. It arrives over IPC, and a duration is
-/// only ever a count of seconds.
+/// A non-positive value, or one past [`MAX_MEDIA_SECONDS`], is stored as unknown rather than as
+/// given. It arrives over IPC, and a duration is only ever a count of seconds.
 #[tauri::command]
 pub async fn update_media_duration(
     db: State<'_, Db>,
@@ -87,7 +92,8 @@ pub async fn update_media_duration(
     // A media element reports a non-finite or non-positive duration for a file it could not read,
     // which the renderer already maps to "unknown"; normalizing the same way here means the column
     // holds either a real measurement or nothing, never a zero that renders as "0:00".
-    let duration_seconds = duration_seconds.filter(|seconds| *seconds > 0);
+    let duration_seconds =
+        duration_seconds.filter(|seconds| *seconds > 0 && *seconds <= MAX_MEDIA_SECONDS);
 
     let pool = db.pool().await?;
     repo::update_media_duration(&pool, media_id, duration_seconds).await
@@ -107,7 +113,7 @@ pub async fn update_media_progress(
     media_id: i64,
     progress_seconds: i64,
 ) -> AppResult<()> {
-    let progress_seconds = progress_seconds.max(0);
+    let progress_seconds = progress_seconds.clamp(0, MAX_MEDIA_SECONDS);
 
     let pool = db.pool().await?;
     repo::update_media_progress(&pool, media_id, progress_seconds).await

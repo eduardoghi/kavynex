@@ -188,6 +188,12 @@ const MAX_SEARCH_TERM_CHARS: usize = 200;
 /// backup is ever truncated.
 const MAX_MEDIA_COMMENTS_LOADED: i64 = 50_000;
 
+/// Upper bound on the comment text one load carries, in characters, next to the row count above.
+/// Each text is capped at `MAX_COMMENT_TEXT_CHARS` (16 000), so 50 000 rows alone still allowed some
+/// 800 million characters through IPC in the worst case. Real comments average a few hundred
+/// characters, so this is far above any real backup and only stops a pathological one.
+const MAX_MEDIA_COMMENT_TEXT_LOADED: i64 = 32_000_000;
+
 const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, media_type, \
     youtube_video_id, watched_at, published_at, duration_seconds, progress_seconds, has_comments, \
     comments_count, comments_state, is_live, has_live_chat, live_chat_file_path, created_at";
@@ -410,12 +416,17 @@ pub async fn list_media_comments_by_media_id(
             author_channel_id, author_thumbnail, text, like_count, reply_count,
             is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at,
             created_at
-         FROM video_comments
-         WHERE video_id = ?
+         FROM (
+             SELECT *, SUM(LENGTH(text)) OVER (ORDER BY id ASC) AS text_loaded
+             FROM video_comments
+             WHERE video_id = ?
+         )
+         WHERE text_loaded <= ?
          ORDER BY id ASC
          LIMIT ?",
     )
     .bind(media_id)
+    .bind(MAX_MEDIA_COMMENT_TEXT_LOADED)
     .bind(MAX_MEDIA_COMMENTS_LOADED)
     .fetch_all(pool)
     .await

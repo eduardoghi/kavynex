@@ -305,12 +305,26 @@ pub(crate) fn normalize_create_media_request(
         }
     }
 
+    // A calendar date, the shape the form's date field produces and the one a yt-dlp upload date is
+    // normalized to. The sort by publication date compares the column as text, so anything else
+    // stored here would sort somewhere arbitrary.
+    let published_at = normalized_optional(request.published_at);
+
+    if let Some(date) = published_at.as_deref() {
+        if chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_err() || date.len() != 10 {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidMediaCreationArguments,
+                "the publication date must be a date written as YYYY-MM-DD",
+            ));
+        }
+    }
+
     Ok(CreateMediaRequest {
         title,
         source_value,
         library_path,
         thumbnail_source_path: normalized_optional(request.thumbnail_source_path),
-        published_at: normalized_optional(request.published_at),
+        published_at,
         yt_dlp_run_id,
         yt_dlp_format_id,
         yt_dlp_youtube_video_id: normalized_optional(request.yt_dlp_youtube_video_id),

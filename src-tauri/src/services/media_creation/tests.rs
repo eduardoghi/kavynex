@@ -177,6 +177,29 @@ fn normalizing_trims_every_stored_value() {
 }
 
 #[test]
+fn a_publication_date_that_is_not_a_calendar_date_is_refused() {
+    for value in [
+        "2026-13-01",
+        "2026-02-30",
+        "yesterday",
+        "2026-1-1",
+        "2026-01-01T00:00:00Z",
+    ] {
+        let request = CreateMediaRequest {
+            published_at: Some(value.to_string()),
+            ..request(MediaSourceMode::Local)
+        };
+
+        let error = normalize_create_media_request(request)
+            .expect_err(&format!("{value} is not a YYYY-MM-DD date"));
+        assert_eq!(
+            error.code,
+            AppErrorCode::InvalidMediaCreationArguments.as_str()
+        );
+    }
+}
+
+#[test]
 fn a_blank_optional_value_normalizes_to_absent_rather_than_an_empty_string() {
     // An empty string is not the same as "not supplied" downstream. A blank youtube id stored
     // verbatim would sit in the partial unique index as a present value and collide with the
