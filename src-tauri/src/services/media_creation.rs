@@ -1024,12 +1024,6 @@ fn drop_vanished_sidecar(slot: &mut Option<String>, kind: &str) {
     }
 }
 
-/// Refuses a yt-dlp source whose video is already registered for this channel, before downloading it.
-///
-/// The id comes from the metadata fetch the format picker already ran, so this costs one query and
-/// saves a whole download. The guarantee is the partial unique index on
-/// `(channel_id, youtube_video_id)`. This is the difference between failing now and failing
-/// after a gigabyte.
 /// True when the pre-check applies. A yt-dlp source whose video id was resolved up front.
 ///
 /// Pure, and extracted, because inverting the mode comparison is silent in both directions. A local
@@ -1061,6 +1055,12 @@ async fn ensure_channel_exists<R: Runtime>(app: &AppHandle<R>, channel_id: i64) 
     Ok(())
 }
 
+/// Refuses a yt-dlp source whose video is already registered for this channel, before downloading it.
+///
+/// The id comes from the metadata fetch the format picker already ran, so this costs one query and
+/// saves a whole download. The guarantee is the partial unique index on
+/// `(channel_id, youtube_video_id)`. This is the difference between failing now and failing
+/// after a gigabyte.
 async fn ensure_youtube_media_is_new<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,

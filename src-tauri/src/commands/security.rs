@@ -63,10 +63,8 @@ pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
 /// derivatives the grid draws (`thumb-display/`). See
 /// [`crate::constants::WEBVIEW_READABLE_CACHE_DIRS`] for why the other three are excluded.
 ///
-/// The sibling of [`managed_asset_scope_dirs`], and it exists for the same reason. The cache root is
-/// never granted. On Windows that root is the parent of the log directory and of the WebView2
-/// profile, so granting it recursively (which is what this replaced), authorized the renderer to
-/// read a tree that has nothing to do with rendering a thumbnail.
+/// The sibling of [`managed_asset_scope_dirs`], for the same reason. The cache root is never granted,
+/// since on Windows it is the parent of the log directory and of the WebView2 profile.
 pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
     crate::constants::WEBVIEW_READABLE_CACHE_DIRS
         .iter()
@@ -109,12 +107,8 @@ pub fn register_cache_asset_scope<R: Runtime>(app: &AppHandle<R>, cache_root: &P
 /// exist. A directory that cannot be created is logged and dropped rather than returned, so the
 /// caller never tries to grant a path that is not there.
 ///
-/// Split out of [`register_cache_asset_scope`] because it is the whole of what that function does
-/// that a test can observe. The grant itself needs a live `AppHandle`, so the mutation run reported
-/// `replace register_cache_asset_scope with ()` as surviving. The entire body could become a no-op
-/// (no directories created, nothing authorized, every thumbnail preview and display derivative
-/// silently unreadable), and the suite would not notice. It still cannot observe the grant, but the
-/// creation is now one call from a test, which is the half that has an effect on disk.
+/// Split out of [`register_cache_asset_scope`] because it is the part a test can observe. The grant
+/// itself needs a live `AppHandle`.
 fn prepare_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
     let mut prepared = Vec::new();
 

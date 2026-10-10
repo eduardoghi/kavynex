@@ -66,13 +66,10 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
         PathBuf::from(base_library).join(candidate)
     };
 
-    // Refuse UNC / network locations before any filesystem call. Both `path` and
-    // `library_path` arrive over IPC, and the containment check below cannot be trusted to
-    // catch this because `library_path` is caller-supplied too. An attacker who drives IPC can
-    // pass a `\\host\share` as both, making `starts_with` trivially true. Rejecting here (and
-    // before the `canonicalize` calls, which is what would trigger the SMB/NTLM handshake),
-    // closes that. The cost is that a library kept on a network share loses only the "reveal in
-    // file manager" convenience; playback, import and download are unaffected.
+    // Refuse UNC / network locations before any filesystem call. `path` arrives over IPC, and the
+    // `canonicalize` calls below are what would trigger the SMB/NTLM handshake for a
+    // `\\host\share` spelling. The cost is that a library kept on a network share loses only the
+    // "reveal in file manager" convenience; playback, import and download are unaffected.
     if is_network_path(base_library) || is_network_path(&resolved_path.to_string_lossy()) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidMediaPath,

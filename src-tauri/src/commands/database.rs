@@ -19,21 +19,11 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// operating on a file being renamed underneath). Extracted so both branches are unit-testable
 /// without a live pool. `is_open` is `Db::is_initialized`, re-read under the restore lock.
 ///
-/// The refusal message is worth reading against how this command is actually reached, because it
-/// used to tell the user to do the wrong thing. There is exactly one caller
-/// (`use-app-bootstrap.ts`'s recovery modal, opened after `ensure_database_ready` failed). Nothing
-/// in Settings offers a manual restore. So an open pool here does not mean "you are trying to
-/// restore at a bad moment". It means the database opened successfully after the failed startup
-/// attempt, which is what happens when the failure was transient (a lock held by an antivirus scan,
-/// a file momentarily busy) and one of the background tasks that open the pool on their own (the
-/// pending-media sweep at 30s, the periodic backup at 60s, the integrity check at 120s) got in
-/// afterwards.
-///
-/// The old message said "restart the app before restoring from backup", which is the wrong
-/// instruction in that state. Restoring would replace a working database with an older snapshot,
-/// and the user who followed it would restart, find the app opening normally, and have no idea
-/// whether anything was restored. Refusing is correct, and telling them there is nothing to
-/// restore is the honest way to say so.
+/// The only caller is the recovery modal `use-app-bootstrap.ts` opens after `ensure_database_ready`
+/// failed. An open pool then means the database opened after all, because the failure was transient
+/// (a lock held by an antivirus scan) and a background task that opens the pool on its own got in
+/// afterwards. Restoring would replace a working database with an older snapshot, so the message
+/// says there is nothing to restore rather than asking for a restart.
 fn ensure_closed_before_restore(is_open: bool) -> AppResult<()> {
     if is_open {
         return Err(AppError::from_code(
