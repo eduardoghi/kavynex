@@ -1,3 +1,4 @@
+use crate::services::chosen_folders::FolderPurpose;
 use tauri::State;
 
 use crate::services::database::{
@@ -55,7 +56,11 @@ pub async fn set_app_settings(
         // so a made-up `\\host\share` is refused without an SMB handshake. See
         // services::chosen_folders.
         if !trimmed_library_path.is_empty() {
-            crate::services::chosen_folders::ensure_chosen(&trimmed_library_path, &[])?;
+            crate::services::chosen_folders::ensure_chosen(
+                FolderPurpose::Library,
+                &trimmed_library_path,
+                &[],
+            )?;
         }
 
         // The database file lives directly in the app config directory, so its parent is that
@@ -101,6 +106,7 @@ pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResu
         let stored = get_app_settings_from_pool(&pool).await?;
 
         crate::services::chosen_folders::ensure_chosen(
+            FolderPurpose::ExternalBackup,
             &trimmed,
             &[stored.external_backup_dir.as_deref()],
         )?;
@@ -229,7 +235,10 @@ mod tests {
         let library = unique_test_dir("stored-gone");
         fs::create_dir_all(&library).unwrap();
         let library_path = library.to_string_lossy().to_string();
-        crate::services::chosen_folders::record(&library_path);
+        crate::services::chosen_folders::record(
+            crate::services::chosen_folders::FolderPurpose::Library,
+            &library_path,
+        );
 
         let webview = test_webview(memory_db());
 
@@ -254,9 +263,15 @@ mod tests {
         let stored = unique_test_dir("stored-present");
         fs::create_dir_all(&stored).unwrap();
         let missing = unique_test_dir("new-missing");
-        crate::services::chosen_folders::record(&stored.to_string_lossy());
+        crate::services::chosen_folders::record(
+            crate::services::chosen_folders::FolderPurpose::Library,
+            &stored.to_string_lossy(),
+        );
         // Picked, so what refuses it below is the folder being gone, not where it came from.
-        crate::services::chosen_folders::record(&missing.to_string_lossy());
+        crate::services::chosen_folders::record(
+            crate::services::chosen_folders::FolderPurpose::Library,
+            &missing.to_string_lossy(),
+        );
 
         let webview = test_webview(memory_db());
 
@@ -317,7 +332,10 @@ mod tests {
     fn set_external_backup_dir_persists_and_reads_back_over_ipc() {
         let dir = unique_test_dir("ext-ipc");
         fs::create_dir_all(&dir).unwrap();
-        crate::services::chosen_folders::record(&dir.to_string_lossy());
+        crate::services::chosen_folders::record(
+            crate::services::chosen_folders::FolderPurpose::ExternalBackup,
+            &dir.to_string_lossy(),
+        );
 
         let webview = test_webview(memory_db());
 
@@ -345,7 +363,10 @@ mod tests {
     fn set_external_backup_dir_rejects_a_missing_directory_over_ipc() {
         let missing = unique_test_dir("ext-ipc-missing");
         // Picked, so what refuses it is the folder being gone.
-        crate::services::chosen_folders::record(&missing.to_string_lossy());
+        crate::services::chosen_folders::record(
+            crate::services::chosen_folders::FolderPurpose::ExternalBackup,
+            &missing.to_string_lossy(),
+        );
         let webview = test_webview(memory_db());
 
         let error = invoke(

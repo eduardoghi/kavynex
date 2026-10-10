@@ -17,8 +17,8 @@ describe("file-dialog-service", () => {
     it("asks the backend for a folder", async () => {
         invokeMock.mockResolvedValueOnce("D:/Library");
 
-        await expect(pickFolder()).resolves.toBe("D:/Library");
-        expect(invokeMock).toHaveBeenCalledWith("open_folder_dialog", { title: null });
+        await expect(pickFolder("library")).resolves.toBe("D:/Library");
+        expect(invokeMock).toHaveBeenCalledWith("open_folder_dialog", { purpose: "library" });
     });
 
     it("asks the backend for a file with the filters the caller names", async () => {
@@ -59,7 +59,7 @@ describe("file-dialog-service", () => {
 
     it("returns the choice trimmed, and null for a cancelled or blank one", async () => {
         invokeMock.mockResolvedValueOnce("  E:/Kavynex backups  ");
-        await expect(pickFolder()).resolves.toBe("E:/Kavynex backups");
+        await expect(pickFolder("externalBackup")).resolves.toBe("E:/Kavynex backups");
 
         invokeMock.mockResolvedValueOnce(null);
         await expect(pickFile()).resolves.toBeNull();

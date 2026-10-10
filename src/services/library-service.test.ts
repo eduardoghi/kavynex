@@ -315,6 +315,7 @@ describe("chooseLibraryDirectory", () => {
     it("asks the backend's folder picker and returns its answer", async () => {
         vi.mocked(pickFolder).mockResolvedValueOnce("D:/Library");
         await expect(chooseLibraryDirectory()).resolves.toBe("D:/Library");
+        expect(pickFolder).toHaveBeenCalledWith("library");
 
         vi.mocked(pickFolder).mockResolvedValueOnce(null);
         await expect(chooseLibraryDirectory()).resolves.toBeNull();

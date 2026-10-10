@@ -56,7 +56,7 @@ export function createEmptyLibrarySummary(): LibrarySummaryInfo {
 }
 
 export async function chooseLibraryDirectory(): Promise<string | null> {
-    return pickFolder();
+    return pickFolder("library");
 }
 
 export async function ensureDirectoryExists(path: string): Promise<string> {

@@ -1,8 +1,9 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand } from "../lib/tauri-client";
 import type { FileDialogFilter } from "../types/generated/FileDialogFilter";
+import type { FolderPurpose } from "../types/generated/FolderPurpose";
 
-export type { FileDialogFilter };
+export type { FileDialogFilter, FolderPurpose };
 
 // The native pickers, opened by the backend (commands/dialog.rs). They used to come from the dialog
 // plugin straight from the renderer, and the plugin adds whatever the user picks to the asset
@@ -17,10 +18,10 @@ function normalizePicked(picked: string | null): string | null {
     return trimmed || null;
 }
 
-export async function pickFolder(title?: string): Promise<string | null> {
-    return normalizePicked(
-        await invokeCommand(TAURI_COMMANDS.OPEN_FOLDER_DIALOG, { title: title ?? null })
-    );
+// The backend titles the dialog after the purpose and accepts the folder afterwards for that
+// purpose only (services/chosen_folders.rs).
+export async function pickFolder(purpose: FolderPurpose): Promise<string | null> {
+    return normalizePicked(await invokeCommand(TAURI_COMMANDS.OPEN_FOLDER_DIALOG, { purpose }));
 }
 
 export async function pickFile(

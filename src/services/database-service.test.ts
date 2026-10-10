@@ -114,6 +114,7 @@ describe("chooseExternalBackupDirectory", () => {
     it("asks the backend's folder picker and returns its answer", async () => {
         vi.mocked(pickFolder).mockResolvedValueOnce("E:/Kavynex backups");
         await expect(chooseExternalBackupDirectory()).resolves.toBe("E:/Kavynex backups");
+        expect(pickFolder).toHaveBeenCalledWith("externalBackup");
 
         vi.mocked(pickFolder).mockResolvedValueOnce(null);
         await expect(chooseExternalBackupDirectory()).resolves.toBeNull();

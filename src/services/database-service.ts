@@ -44,7 +44,7 @@ export async function exportDatabase(destinationPath: string): Promise<void> {
  * Returns the chosen path, or null if the dialog was cancelled.
  */
 export async function chooseExternalBackupDirectory(): Promise<string | null> {
-    return pickFolder();
+    return pickFolder("externalBackup");
 }
 
 /**

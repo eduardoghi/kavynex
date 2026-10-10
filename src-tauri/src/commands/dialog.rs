@@ -15,6 +15,7 @@ use tauri::{Runtime, Window};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder, FilePath};
 use ts_rs::TS;
 
+use crate::services::chosen_folders::FolderPurpose;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -74,12 +75,17 @@ fn picked_path(picked: Option<FilePath>) -> AppResult<Option<String>> {
         .transpose()
 }
 
-/// Opens a folder picker. Resolves to the chosen folder, or `None` when cancelled.
+/// Opens a folder picker for `purpose`. Resolves to the chosen folder, or `None` when cancelled.
+///
+/// The title comes from the purpose rather than from the renderer, so the dialog always says what
+/// the folder will be used as, and the folder is accepted afterwards for that purpose only.
 #[tauri::command]
 pub async fn open_folder_dialog<R: Runtime>(
     window: Window<R>,
-    title: Option<String>,
+    purpose: FolderPurpose,
 ) -> AppResult<Option<String>> {
+    let title = Some(purpose.dialog_title().to_string());
+
     // The blocking pick waits on the user for as long as the dialog is open, so it runs on the
     // blocking pool rather than holding an async worker.
     let picked =
@@ -91,7 +97,7 @@ pub async fn open_folder_dialog<R: Runtime>(
     // The commands that persist or create a folder accept only what the user picked here (or what
     // is already stored). See services::chosen_folders.
     if let Some(path) = picked.as_deref() {
-        crate::services::chosen_folders::record(path);
+        crate::services::chosen_folders::record(purpose, path);
     }
 
     Ok(picked)

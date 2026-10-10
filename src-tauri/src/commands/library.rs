@@ -1,3 +1,4 @@
+use crate::services::chosen_folders::FolderPurpose;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, Runtime, State};
 
@@ -60,7 +61,7 @@ pub async fn ensure_directory_exists(db: State<'_, Db>, path: String) -> AppResu
     let ensured = run_blocking(move || library::paths::ensure_directory_exists_sync(&path)).await?;
 
     // The canonical spelling is what the frontend stores next, so it is allowed too.
-    crate::services::chosen_folders::record(&ensured);
+    crate::services::chosen_folders::record(FolderPurpose::Library, &ensured);
 
     Ok(ensured)
 }
@@ -70,14 +71,18 @@ pub async fn ensure_directory_exists(db: State<'_, Db>, path: String) -> AppResu
 /// they answered for any path on disk (whether it exists, whether it is a folder), and one of them
 /// created folders wherever it was pointed. See services::chosen_folders.
 async fn ensure_folder_was_chosen(db: &State<'_, Db>, path: &str) -> AppResult<()> {
-    if crate::services::chosen_folders::ensure_chosen(path, &[]).is_ok() {
+    if crate::services::chosen_folders::ensure_chosen(FolderPurpose::Library, path, &[]).is_ok() {
         return Ok(());
     }
 
     let pool = db.pool().await?;
     let stored = crate::services::database::get_app_settings_from_pool(&pool).await?;
 
-    crate::services::chosen_folders::ensure_chosen(path, &[stored.library_path.as_deref()])
+    crate::services::chosen_folders::ensure_chosen(
+        FolderPurpose::Library,
+        path,
+        &[stored.library_path.as_deref()],
+    )
 }
 
 #[tauri::command]
@@ -87,7 +92,7 @@ pub async fn resolve_existing_directory(db: State<'_, Db>, path: String) -> AppR
     let resolved =
         run_blocking(move || library::paths::resolve_existing_directory_sync(&path)).await?;
 
-    crate::services::chosen_folders::record(&resolved);
+    crate::services::chosen_folders::record(FolderPurpose::Library, &resolved);
 
     Ok(resolved)
 }
@@ -125,7 +130,7 @@ pub async fn migrate_library_directory<R: Runtime>(
     // The destination is where the whole library is copied and then kept, so it must be a folder
     // the user picked, not one the renderer named. Checked before anything resolves it. See
     // services::chosen_folders.
-    crate::services::chosen_folders::ensure_chosen(&new_library_path, &[])?;
+    crate::services::chosen_folders::ensure_chosen(FolderPurpose::Library, &new_library_path, &[])?;
 
     // Keep the old path (already the canonical form register_library_asset_scope authorized)
     // so its asset-scope grant can be withdrawn once the migration actually moves the library.
@@ -194,7 +199,7 @@ pub async fn migrate_library_directory<R: Runtime>(
     // true for first-time setup (no prior library), where `old_dir_for_scope` is empty and
     // there is nothing to forbid.
     // The frontend stores the folder the migration ended in, so that spelling is allowed too.
-    crate::services::chosen_folders::record(&result.final_library_path);
+    crate::services::chosen_folders::record(FolderPurpose::Library, &result.final_library_path);
 
     if result.changed && !old_dir_for_scope.is_empty() {
         revoke_directory_from_asset_scope(&app, &old_dir_for_scope);
@@ -511,7 +516,7 @@ mod tests {
         let dir = unique_test_dir("command-ensure");
         // Runs before a library is configured (it is what the folder-change flow calls on a
         // candidate), so what admits the folder is that the user picked it.
-        crate::services::chosen_folders::record(&dir.to_string_lossy());
+        crate::services::chosen_folders::record(FolderPurpose::Library, &dir.to_string_lossy());
         let webview = test_webview(memory_db());
 
         let response = invoke(
@@ -701,7 +706,7 @@ mod tests {
     #[test]
     fn resolve_existing_directory_command_maps_a_missing_dir_to_an_error_over_ipc() {
         let missing = unique_test_dir("command-missing");
-        crate::services::chosen_folders::record(&missing.to_string_lossy());
+        crate::services::chosen_folders::record(FolderPurpose::Library, &missing.to_string_lossy());
         let webview = test_webview(memory_db());
 
         // A non-existent path must come back as a structured AppError (code preserved across

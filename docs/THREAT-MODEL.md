@@ -351,6 +351,11 @@ mirror. What they confine is where the value came from. Each accepts only a fold
 itself handed out, or the one the settings already store, and refuses anything else as
 `INVALID_INPUT` (`services/chosen_folders.rs`).
 
+The record is kept per purpose (`FolderPurpose`, library or external backup). The renderer asks the
+picker for one, the backend titles the dialog after it, and the folder is accepted afterwards for
+that purpose only. A folder the user picked as the backup mirror is not accepted as the library or as
+the library's new home, so what the user was told the folder was for is what it is used for.
+
 What counts as handed out is a short list. The answer of the backend's folder picker
 (`commands/dialog.rs::open_folder_dialog`), the canonical spelling the two helpers return for a
 folder already allowed (which is what the frontend persists next), and the folder a migration ended
