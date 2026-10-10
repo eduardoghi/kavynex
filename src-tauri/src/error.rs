@@ -453,6 +453,57 @@ pub type AppResult<T> = Result<T, AppError>;
 mod tests {
     use super::*;
 
+    /// `FooBarBaz` as `FOO_BAR_BAZ`, the way ts-rs's `rename_all = "SCREAMING_SNAKE_CASE"` spells a
+    /// variant in the generated union.
+    fn screaming_snake(variant: &str) -> String {
+        let mut out = String::new();
+
+        for (index, character) in variant.chars().enumerate() {
+            if character.is_ascii_uppercase() && index > 0 {
+                out.push('_');
+            }
+
+            out.push(character.to_ascii_uppercase());
+        }
+
+        out
+    }
+
+    #[test]
+    fn every_wire_code_is_its_variant_name_and_in_the_frontend_union() {
+        // `as_str` is typed by hand, while the frontend's union is generated from the variant names.
+        // A typo in one arm would compile and leave the frontend comparing against a code the
+        // backend never sends, with nothing failing. So each arm is read from this file and held to
+        // its variant's name, and the arms and the union must list the same codes.
+        let source = include_str!("error.rs");
+        let union = include_str!("../../src/types/generated/AppErrorCode.ts");
+
+        let arms: Vec<(String, String)> = source
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                let rest = line.strip_prefix("Self::")?;
+                let (variant, code) = rest.split_once(" => \"")?;
+                let code = code.strip_suffix("\",")?;
+                Some((variant.to_string(), code.to_string()))
+            })
+            .collect();
+
+        assert!(arms.len() > 100, "the arms were not found in error.rs");
+
+        for (variant, code) in &arms {
+            assert_eq!(&screaming_snake(variant), code, "Self::{variant}");
+        }
+
+        let mut generated: Vec<&str> = union.split('"').skip(1).step_by(2).collect();
+        generated.sort_unstable();
+
+        let mut wire: Vec<&str> = arms.iter().map(|(_, code)| code.as_str()).collect();
+        wire.sort_unstable();
+
+        assert_eq!(wire, generated);
+    }
+
     #[test]
     fn fs_error_redacts_the_path_to_its_final_component() {
         // fs_error is the one place that wires logger::redact_path into an AppError's `details`.
