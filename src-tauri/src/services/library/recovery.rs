@@ -44,13 +44,7 @@ pub fn commit_marker_path(config_dir: &Path) -> PathBuf {
 /// filesystems a crash right after the create can lose the new entry even though the file's own
 /// bytes were fsynced, so the marker would be absent on reboot despite `sync_all` succeeding.
 pub fn write_commit_marker(marker_path: &Path, new_library_path: &str) -> std::io::Result<()> {
-    use std::io::Write;
-
-    let mut file = std::fs::File::create(marker_path)?;
-    file.write_all(new_library_path.trim().as_bytes())?;
-    file.sync_all()?;
-    crate::services::filesystem::fsync_parent_dir(marker_path);
-    Ok(())
+    crate::services::filesystem::write_file_durably(marker_path, new_library_path.trim().as_bytes())
 }
 
 /// Removes the commit marker. Best effort. A failure only leaves a stale marker that the next

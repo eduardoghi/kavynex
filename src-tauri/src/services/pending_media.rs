@@ -103,18 +103,30 @@ pub(crate) fn sanitize_pending_artifacts(
     }
 }
 
-/// Parses a marker's contents, dropping any path it should not name. Returns `None` for a marker
-/// that does not parse or that names nothing usable, so a damaged file is skipped rather than
-/// failing the whole sweep.
-pub(crate) fn decode_marker(contents: &str) -> Option<PendingMediaArtifacts> {
-    let parsed: PendingMediaArtifacts = serde_json::from_str(contents).ok()?;
+/// Parses a marker's contents, dropping any path it should not name.
+///
+/// The two ways a marker yields nothing are kept apart, because the sweep treats them in opposite
+/// ways. `Ok(None)` is a marker that parsed and names nothing usable, which has no work behind it
+/// and is dropped. `Err` is one that does not parse, a file the sweep cannot read rather than one
+/// it has read and found empty, so it is left in place and reported, since what it named may still
+/// be in the library.
+pub(crate) fn parse_marker(
+    contents: &str,
+) -> Result<Option<PendingMediaArtifacts>, serde_json::Error> {
+    let parsed: PendingMediaArtifacts = serde_json::from_str(contents)?;
     let sanitized = sanitize_pending_artifacts(parsed);
 
     if sanitized.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    Some(sanitized)
+    Ok(Some(sanitized))
+}
+
+/// [`parse_marker`], with both kinds of "nothing" folded into `None`.
+#[cfg(test)]
+pub(crate) fn decode_marker(contents: &str) -> Option<PendingMediaArtifacts> {
+    parse_marker(contents).ok().flatten()
 }
 
 /// True for a file name this module wrote. The sweep only consumes its own markers, so an
@@ -331,24 +343,12 @@ pub fn record_pending_media_artifacts<R: Runtime>(
 /// Writes the marker durably. Contents, `sync_all`, then a parent-directory fsync. Split out so the
 /// caller can roll its live-marker registration back on failure without duplicating the error mapping.
 fn write_marker_file(marker: &Path, contents: &str) -> AppResult<()> {
-    use std::io::Write;
-
-    let write_failed = |e: std::io::Error| {
+    crate::services::filesystem::write_file_durably(marker, contents.as_bytes()).map_err(|e| {
         AppError::from_code(
             AppErrorCode::FileOpenFailed,
             format!("failed to write the pending media marker: {e}"),
         )
-    };
-
-    let mut file = fs::File::create(marker).map_err(write_failed)?;
-
-    file.write_all(contents.as_bytes())
-        .and_then(|_| file.sync_all())
-        .map_err(write_failed)?;
-
-    crate::services::filesystem::fsync_parent_dir(marker);
-
-    Ok(())
+    })
 }
 
 /// Rewrites a marker with an incremented attempt count, so the ceiling survives a restart.
@@ -462,8 +462,8 @@ fn read_pending_markers<R: Runtime>(
         }
 
         match fs::read_to_string(&path).ok().as_deref() {
-            Some(contents) => match decode_marker(contents) {
-                Some(artifacts) if marker_retries_are_exhausted(artifacts.attempts) => {
+            Some(contents) => match parse_marker(contents) {
+                Ok(Some(artifacts)) if marker_retries_are_exhausted(artifacts.attempts) => {
                     // Already given up on by an earlier launch. Offering it again would re-run the
                     // cleanup that has failed every time, and (since the sweep reports abandoning
                     // it) would put an error line and a user-facing notice on every launch for the
@@ -472,10 +472,19 @@ fn read_pending_markers<R: Runtime>(
                     // removes.
                     continue;
                 }
-                Some(artifacts) => markers.push((name, artifacts)),
+                Ok(Some(artifacts)) => markers.push((name, artifacts)),
                 // A marker that names nothing usable has no work behind it; drop the file so it is
                 // not re-read on every launch.
-                None => markers.push((name, PendingMediaArtifacts::default())),
+                Ok(None) => markers.push((name, PendingMediaArtifacts::default())),
+                // Not the same thing. What it named cannot be read, so it is not known to be
+                // nothing, and deleting it would leave whatever it named in the library with no
+                // record. Left in place, and Diagnostics still lists the files as unreferenced.
+                Err(error) => logger::warn(
+                    "pending_media",
+                    format!(
+                        "the pending media marker {name} could not be parsed and was left in place: {error}"
+                    ),
+                ),
             },
             None => logger::warn(
                 "pending_media",
@@ -1115,5 +1124,133 @@ mod tests {
         ] {
             assert!(!is_marker_file_name(name), "should not match: {name}");
         }
+    }
+
+    /// A mock app with a real schema and a library folder, which is what the sweep's cleanup reads.
+    async fn app_with_library(label: &str) -> (tauri::App<tauri::test::MockRuntime>, PathBuf) {
+        use tauri::Manager;
+
+        let library =
+            std::env::temp_dir().join(format!("kavynex_sweep_{label}_{}", unique_temp_suffix()));
+        fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
+
+        let app = mock_app();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let mut settings = crate::services::database::get_app_settings_from_pool(&pool)
+            .await
+            .unwrap();
+        settings.library_path = Some(library.to_string_lossy().to_string());
+        crate::services::database::set_app_settings_in_pool(&pool, &settings)
+            .await
+            .unwrap();
+
+        app.manage(crate::services::database::Db::from_pool(pool));
+
+        (app, library)
+    }
+
+    /// Writes a leftover marker naming `relative`, dated before this process started so the sweep
+    /// treats it as a previous run's.
+    fn leftover_marker_naming(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        relative: &str,
+    ) -> PathBuf {
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(app.handle()).unwrap().join(&name);
+        let contents = serde_json::to_string(&artifacts(Some(relative), None, None)).unwrap();
+
+        fs::write(&marker, contents).unwrap();
+        set_modified_before_process_start(&marker);
+
+        marker
+    }
+
+    #[tokio::test]
+    async fn the_sweep_removes_what_an_unfinished_creation_left_and_clears_its_marker() {
+        let (app, library) = app_with_library("orphan").await;
+        let relative = format!("video/media_orphan_{}.mp4", unique_temp_suffix());
+        fs::write(library.join(&relative), b"left behind").unwrap();
+        let marker = leftover_marker_naming(&app, &relative);
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert!(
+            !library.join(&relative).exists(),
+            "nothing references it, so it goes"
+        );
+        assert!(!marker.exists(), "a reconciled marker is cleared");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_keeps_a_file_a_registered_media_still_uses() {
+        let (app, library) = app_with_library("referenced").await;
+        let relative = format!("video/media_kept_{}.mp4", unique_temp_suffix());
+        fs::write(library.join(&relative), b"registered").unwrap();
+
+        let pool = crate::services::database::shared_pool(app.handle())
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 'Kept', 'kept', ?, 'video')",
+        )
+        .bind(&relative)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let marker = leftover_marker_naming(&app, &relative);
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert!(
+            library.join(&relative).exists(),
+            "a referenced file is never removed"
+        );
+        assert!(!marker.exists(), "the marker is cleared either way");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_marker_that_does_not_parse_is_left_in_place() {
+        // A crash halfway through a rewrite used to leave a file like this, and it was read as a
+        // marker naming nothing and deleted, with whatever it named still in the library.
+        let app = mock_app();
+        let handle = app.handle();
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(handle).unwrap().join(&name);
+        fs::write(&marker, r#"{"file_path":"video/media_cut_sh"#).unwrap();
+        set_modified_before_process_start(&marker);
+
+        let offered = read_pending_markers(handle)
+            .unwrap()
+            .into_iter()
+            .any(|(marker_name, _)| marker_name == name);
+
+        assert!(!offered, "an unreadable marker is not handed to the sweep");
+        assert!(marker.exists());
+
+        let _ = fs::remove_file(&marker);
+    }
+
+    #[test]
+    fn parsing_tells_an_empty_marker_from_an_unreadable_one() {
+        assert!(matches!(parse_marker("{}"), Ok(None)));
+        assert!(parse_marker("{\"file_path\":").is_err());
     }
 }

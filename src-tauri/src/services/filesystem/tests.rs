@@ -1025,3 +1025,22 @@ fn a_read_only_source_is_copied_into_a_writable_file() {
 
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_durable_write_replaces_the_file_and_leaves_no_staging_copy() {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("marker.json");
+    fs::write(&path, b"old contents that are longer").unwrap();
+
+    write_file_durably(&path, b"new").unwrap();
+
+    assert_eq!(fs::read(&path).unwrap(), b"new");
+    assert_eq!(
+        fs::read_dir(&dir).unwrap().count(),
+        1,
+        "only the file itself is left"
+    );
+
+    let _ = fs::remove_dir_all(dir);
+}

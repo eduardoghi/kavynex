@@ -45,15 +45,8 @@ pub(super) fn import_applying_marker_path(db_path: &Path) -> PathBuf {
 /// can lose the entry on common Linux/Unix filesystems even though the bytes were fsynced, so the
 /// marker the recovery in `apply_pending_database_import` reads would be absent on reboot.
 pub(super) fn write_import_applying_marker(marker: &Path) -> AppResult<()> {
-    use std::io::Write;
-
-    let mut file = std::fs::File::create(marker)
-        .map_err(|error| backup_error("failed to mark the import as in progress", error))?;
-    file.write_all(b"import swap in progress\n")
-        .and_then(|_| file.sync_all())
-        .map_err(|error| backup_error("failed to mark the import as in progress", error))?;
-    crate::services::filesystem::fsync_parent_dir(marker);
-    Ok(())
+    crate::services::filesystem::write_file_durably(marker, b"import swap in progress\n")
+        .map_err(|error| backup_error("failed to mark the import as in progress", error))
 }
 
 async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {

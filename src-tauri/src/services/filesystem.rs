@@ -154,6 +154,42 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
 #[cfg(not(any(unix, windows)))]
 fn fsync_parent_dir(_path: &Path) {}
 
+/// Writes `contents` to `path` so that a crash leaves either the previous file or the new one, never
+/// a truncated mix, and so that the new one survives a power loss once this returns.
+///
+/// The bytes go to a hidden sibling first, are flushed, and only then take the name, and the
+/// directory entry is flushed after the rename. Writing in place truncated the file before the new
+/// bytes were down, so a crash in between left an empty or half-written file under the real name.
+/// For the crash markers that is the one file their recovery reads.
+pub(crate) fn write_file_durably(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let parent = path.parent().ok_or_else(|| {
+        std::io::Error::new(ErrorKind::InvalidInput, "the file has no parent directory")
+    })?;
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let staging = parent.join(format!(".{file_name}.tmp-{}", unique_temp_suffix()));
+
+    let written = (|| {
+        let mut file = fs::File::create(&staging)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&staging, path)
+    })();
+
+    if let Err(error) = written {
+        let _ = fs::remove_file(&staging);
+        return Err(error);
+    }
+
+    fsync_parent_dir(path);
+    Ok(())
+}
+
 fn file_paths_have_same_content(left: &Path, right: &Path) -> AppResult<bool> {
     file_paths_have_same_content_using(left, right, None)
 }
