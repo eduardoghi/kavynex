@@ -863,6 +863,9 @@ jobs:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   VERSION=$(node -p "require('./package.json').version")
+                  # A dispatch retried over a draft that already got this far downloaded the previous
+                  # attempt's SHA256SUMS.txt with the rest, and it would be hashed into the new one.
+                  rm -f assets/SHA256SUMS.txt
                   (cd assets && sha256sum -- * > ../SHA256SUMS.txt)
                   cat SHA256SUMS.txt
                   gh release upload "v$VERSION" SHA256SUMS.txt --clobber
