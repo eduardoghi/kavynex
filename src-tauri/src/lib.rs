@@ -669,6 +669,8 @@ pub fn run() {
             commands::library::cancel_library_verification,
             commands::library::cancel_library_migration,
             commands::library::open_path_in_system,
+            commands::library::get_kept_files_summary,
+            commands::library::open_kept_folder,
             commands::media::create_media,
             commands::live_chat::stream_live_chat_file,
             commands::live_chat::cancel_live_chat_stream,

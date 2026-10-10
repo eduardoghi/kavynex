@@ -75,7 +75,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   and the convention above is back to being about readability alone.
 
   What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
-  `startup_notices.rs`, `database.rs`, `binaries.rs`,
+  `kept_files.rs`, `startup_notices.rs`, `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `filesystem.rs`, `live_chat_storage.rs`,
   `media_comments.rs`, `media_creation.rs`, `pending_media.rs`, `process_registry.rs`,
   `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.

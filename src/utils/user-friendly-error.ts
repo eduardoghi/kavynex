@@ -279,6 +279,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     // the app log file, and this is the failure to open the folder holding it.
     [LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE]:
         "Kavynex could not open the log folder. Diagnostics shows its path, so it can still be opened by hand.",
+    FOLDER_OPEN_FAILED: "Kavynex could not open that folder in the file manager.",
+    KEPT_FOLDER_EMPTY: "That folder no longer holds any files. Refresh Diagnostics to update the report.",
     // The codes below are not (yet) emitted by the Rust backend (see src-tauri/src/error.rs)
     // and are kept as bare literals rather than added to KnownErrorCode.
     CREATE_DIR_FAILED: "Could not create the selected folder.",

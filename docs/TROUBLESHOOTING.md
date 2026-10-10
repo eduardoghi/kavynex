@@ -224,6 +224,14 @@ the drive first and the question does not come up.
 exact-string match because it could not be canonicalized. That line is the app noting it could not
 confirm where the folder really is, which is exactly what an absent drive looks like from inside.)
 
+## A download finished, but the media was not added to the library
+
+When the file cannot be moved into the library (the library's drive was disconnected during the
+download, or it filled up), Kavynex keeps it instead of discarding it, in the recovered downloads
+folder (`DIRECTORIES.md` lists it per OS). Diagnostics reports it and has an **Open folder** button.
+Reconnect the drive or free some space, then add the file with **Add media > Local file**. Nothing
+deletes these files, so remove them yourself once they are imported.
+
 ## Adding a video again downloads nothing, or downloads and then keeps the old file
 
 Both are deliberate, and which one you see depends on whether the video is going back into the

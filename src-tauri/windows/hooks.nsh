@@ -25,7 +25,7 @@
     ; never prompt.
     ${If} $DeleteAppDataCheckboxState = 1
     ${AndIf} $UpdateMode <> 1
-        MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "You ticked Delete the application data.$\r$\n$\r$\nThat removes the Kavynex database and every automatic backup of it. Your channels, titles, watched state and every saved comment go with it, and comments saved for a video that is no longer on YouTube cannot be downloaded again.$\r$\n$\r$\nYour library folder (the media files, thumbnails and live chat replays) is not touched either way, but without the database Kavynex cannot tell which video each file belongs to.$\r$\n$\r$\nDelete the database and its backups?" IDYES +2
+        MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "You ticked Delete the application data.$\r$\n$\r$\nThat removes the Kavynex database, every automatic backup of it, and any download that could not be added to the library. Your channels, titles, watched state and every saved comment go with it, and comments saved for a video that is no longer on YouTube cannot be downloaded again.$\r$\n$\r$\nYour library folder (the media files, thumbnails and live chat replays) is not touched either way, but without the database Kavynex cannot tell which video each file belongs to.$\r$\n$\r$\nDelete the database and its backups?" IDYES +2
         StrCpy $DeleteAppDataCheckboxState 0
     ${EndIf}
 !macroend

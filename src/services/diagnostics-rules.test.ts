@@ -85,6 +85,7 @@ function baseDiagnostics(): AppDiagnostics {
             orphan_live_chat_examples: [],
         },
         orphanRemoval: null,
+        keptFiles: { libraryTrash: null, recoveredDownloads: { files: 0, bytes: 0 } },
     };
 }
 
@@ -798,5 +799,39 @@ describe("buildDiagnosticsOverview", () => {
 
         expect(overview.status).toBe("warning");
         expect(overview.headline).toBe("Attention needed");
+    });
+});
+
+describe("kept files", () => {
+    it("reports downloads that could not be added to the library", () => {
+        const issues = buildDiagnosticsIssues({
+            ...baseDiagnostics(),
+            keptFiles: { libraryTrash: null, recoveredDownloads: { files: 2, bytes: 2048 } },
+        });
+
+        const issue = issues.find((item) => item.code === "RECOVERED_DOWNLOADS_PRESENT");
+        expect(issue?.severity).toBe("warning");
+        expect(issue?.description).toContain("2 downloaded files");
+    });
+
+    it("reports a library trash that holds files, and nothing for an empty one", () => {
+        const holding = buildDiagnosticsIssues({
+            ...baseDiagnostics(),
+            keptFiles: {
+                libraryTrash: { files: 1, bytes: 10 },
+                recoveredDownloads: { files: 0, bytes: 0 },
+            },
+        });
+        const empty = buildDiagnosticsIssues({
+            ...baseDiagnostics(),
+            keptFiles: {
+                libraryTrash: { files: 0, bytes: 0 },
+                recoveredDownloads: { files: 0, bytes: 0 },
+            },
+        });
+
+        expect(holding.map((item) => item.code)).toContain("LIBRARY_TRASH_HOLDS_FILES");
+        expect(empty.map((item) => item.code)).not.toContain("LIBRARY_TRASH_HOLDS_FILES");
+        expect(empty.map((item) => item.code)).not.toContain("RECOVERED_DOWNLOADS_PRESENT");
     });
 });

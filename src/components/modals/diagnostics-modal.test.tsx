@@ -93,6 +93,7 @@ function createSummary(): DiagnosticsSummary {
                 orphan_live_chat_examples: [],
             },
             orphanRemoval: null,
+            keptFiles: { libraryTrash: null, recoveredDownloads: { files: 0, bytes: 0 } },
         },
         issues: [
             {

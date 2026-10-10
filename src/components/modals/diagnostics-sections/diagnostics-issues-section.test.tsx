@@ -149,6 +149,35 @@ describe("DiagnosticsIssuesSection", () => {
         expect(onRemoveOrphans).toHaveBeenCalledTimes(1);
     });
 
+    it("opens the folder an issue about kept files names", () => {
+        const onOpenKeptFolder = vi.fn();
+        const issues: DiagnosticsIssue[] = [
+            {
+                code: "RECOVERED_DOWNLOADS_PRESENT",
+                severity: "warning",
+                title: "Some downloads could not be added to the library",
+                description: "1 downloaded file was kept.",
+            },
+            {
+                code: "LIBRARY_TRASH_HOLDS_FILES",
+                severity: "info",
+                title: "The library trash holds files",
+                description: "1 file.",
+            },
+        ];
+
+        renderWithMantine(
+            <DiagnosticsIssuesSection issues={issues} onOpenKeptFolder={onOpenKeptFolder} />
+        );
+
+        const buttons = screen.getAllByRole("button", { name: "Open folder" });
+        expect(buttons).toHaveLength(2);
+
+        fireEvent.click(buttons[0]!);
+        fireEvent.click(buttons[1]!);
+        expect(onOpenKeptFolder.mock.calls).toEqual([["recoveredDownloads"], ["libraryTrash"]]);
+    });
+
     it("offers no removal without a handler or without a removable orphan issue", () => {
         const liveChatOnly: DiagnosticsIssue[] = [
             {

@@ -1,8 +1,9 @@
 import { Anchor, Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
-import { AlertTriangle, Info, Trash2 } from "lucide-react";
+import { AlertTriangle, FolderOpen, Info, Trash2 } from "lucide-react";
 import type {
     DiagnosticsIssue,
     DiagnosticsMediaTarget,
+    KeptFolder,
     OrphanRemovalPlan,
     OrphanRemovalRefusal,
 } from "../../../types/diagnostics";
@@ -22,6 +23,12 @@ const ORPHAN_REMOVAL_REFUSAL_TEXT: Record<OrphanRemovalRefusal, string> = {
         "Removing these files is not offered while most of the library's files are unreferenced. That usually means the database is older than the folder or belongs to another library.",
 };
 
+// The issues that name a folder the app keeps files in, and which folder each one opens.
+const KEPT_FOLDER_BY_ISSUE_CODE: Readonly<Record<string, KeptFolder>> = {
+    RECOVERED_DOWNLOADS_PRESENT: "recoveredDownloads",
+    LIBRARY_TRASH_HOLDS_FILES: "libraryTrash",
+};
+
 type DiagnosticsIssuesSectionProps = {
     issues: DiagnosticsIssue[];
     // When given, example paths that map to an existing media row become clickable and jump to
@@ -39,6 +46,9 @@ type DiagnosticsIssuesSectionProps = {
     // What the removal would take and whether the backend allows it. The action is offered only
     // when there is something to take and no refusal.
     orphanRemoval?: OrphanRemovalPlan | null;
+    // When given, the issues that name a kept folder (the recovered downloads, the library trash)
+    // offer to open it.
+    onOpenKeptFolder?: (folder: KeptFolder) => void;
 };
 
 // One example path rendered as a link. Extracted because the two link branches below differ only in
@@ -132,6 +142,7 @@ export function DiagnosticsIssuesSection({
     onRemoveOrphans,
     removingOrphans = false,
     orphanRemoval = null,
+    onOpenKeptFolder,
 }: DiagnosticsIssuesSectionProps): JSX.Element | null {
     const removeOrphansIssueCode =
         orphanRemoval && orphanRemoval.files > 0
@@ -241,6 +252,25 @@ export function DiagnosticsIssuesSection({
                                             disabled={removingOrphans}
                                         >
                                             Remove orphan files
+                                        </AppButton>
+                                    )}
+
+                                    {onOpenKeptFolder && KEPT_FOLDER_BY_ISSUE_CODE[issue.code] && (
+                                        <AppButton
+                                            type="button"
+                                            appVariant="secondary"
+                                            size="xs"
+                                            mt="sm"
+                                            leftSection={<FolderOpen size={14} />}
+                                            onClick={() => {
+                                                const folder = KEPT_FOLDER_BY_ISSUE_CODE[issue.code];
+
+                                                if (folder) {
+                                                    onOpenKeptFolder(folder);
+                                                }
+                                            }}
+                                        >
+                                            Open folder
                                         </AppButton>
                                     )}
                                 </Box>

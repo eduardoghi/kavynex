@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
 import {
     openFileLocation,
+    openKeptFolder as openKeptFolderInSystem,
     openLogDirectory as openLogDirectoryInSystem,
     removeOrphanLibraryFiles,
 } from "../services/library-service";
-import type { DiagnosticsSummary } from "../types/diagnostics";
+import type { DiagnosticsSummary, KeptFolder } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
@@ -48,6 +49,8 @@ export type DiagnosticsController = {
     // folder is kept), then reloads the report. The one action here that changes the library.
     removeOrphanFiles: () => Promise<void>;
     isRemovingOrphanFiles: boolean;
+    // Opens the recovered downloads folder or the library trash, from the issue that reports it.
+    openKeptFolder: (folder: KeptFolder) => Promise<void>;
 };
 
 export function useDiagnostics({
@@ -72,6 +75,7 @@ export function useDiagnostics({
     // otherwise spawn two file-manager windows onto the same file.
     const revealPathFlag = useAsyncFlag();
     const removeOrphansFlag = useAsyncFlag();
+    const keptFolderFlag = useAsyncFlag();
     const hasLoadedSinceOpenRef = useRef(false);
     const previousLibraryPathRef = useRef(libraryPath);
     const previousImportModeRef = useRef(importMode);
@@ -173,6 +177,21 @@ export function useDiagnostics({
         [libraryPath, onError, revealPathFlag]
     );
 
+    // Same shape as openLogDirectory. The flag only stops a double click from opening two windows.
+    const openKeptFolder = useCallback(
+        async (folder: KeptFolder): Promise<void> => {
+            await keptFolderFlag.runWithFlag(async () => {
+                try {
+                    await openKeptFolderInSystem(folder);
+                } catch (error) {
+                    logError("diagnostics", "Failed to open a kept folder.", error, { folder });
+                    onError(resolveErrorMessage(error, "Failed to open the folder."));
+                }
+            });
+        },
+        [keptFolderFlag, onError]
+    );
+
     const removeOrphanFiles = useCallback(async (): Promise<void> => {
         const ran = await removeOrphansFlag.runWithFlag(async () => {
             try {
@@ -236,5 +255,6 @@ export function useDiagnostics({
         revealLibraryPath,
         removeOrphanFiles,
         isRemovingOrphanFiles: removeOrphansFlag.isRunning,
+        openKeptFolder,
     });
 }

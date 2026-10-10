@@ -1,4 +1,5 @@
 import { pickFolder } from "./file-dialog-service";
+import type { KeptFolder } from "../types/generated/KeptFolder";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     invokeCommand,
@@ -196,6 +197,12 @@ export async function removeOrphanLibraryFiles(): Promise<ArtifactCleanupReport>
 // reject, so this is a direct call rather than a validating wrapper.
 export async function openLogDirectory(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.OPEN_LOG_DIRECTORY);
+}
+
+// Opens the library trash or the recovered downloads folder. The backend derives the folder from
+// the settings and from Tauri, so all this sends is which one.
+export async function openKeptFolder(folder: KeptFolder): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.OPEN_KEPT_FOLDER, { folder });
 }
 
 // Opens a video's YouTube page in the system browser. The backend builds the URL from the id.

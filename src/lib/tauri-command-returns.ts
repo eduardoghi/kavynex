@@ -21,6 +21,7 @@ import type {
     MediaRepositoryStats,
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
+import type { KeptFilesSummary } from "../types/generated/KeptFilesSummary";
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
@@ -35,6 +36,8 @@ export type TauriCommandReturns = {
     check_external_tools: ExternalToolsStatus;
     log_frontend_error: void;
     open_log_directory: void;
+    get_kept_files_summary: KeptFilesSummary;
+    open_kept_folder: void;
     take_startup_notices: StartupNotices;
     open_youtube_video: void;
     open_youtube_channel: void;

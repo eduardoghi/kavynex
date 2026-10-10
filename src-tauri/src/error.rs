@@ -144,6 +144,10 @@ pub enum AppErrorCode {
     // asked to reach when reporting a bug, so a failure there deserves to be identifiable in the
     // very log it failed to open.
     LogDirectoryOpenFailed,
+    // A kept folder (the library trash, the recovered downloads) could not be opened, or holds
+    // nothing to open.
+    FolderOpenFailed,
+    KeptFolderEmpty,
 
     SourceThumbnailNotFound,
     InvalidSourceThumbnail,
@@ -306,6 +310,8 @@ impl AppErrorCode {
             Self::MediaImportCancelled => "MEDIA_IMPORT_CANCELLED",
 
             Self::LogDirectoryOpenFailed => "LOG_DIRECTORY_OPEN_FAILED",
+            Self::FolderOpenFailed => "FOLDER_OPEN_FAILED",
+            Self::KeptFolderEmpty => "KEPT_FOLDER_EMPTY",
             Self::SourceThumbnailNotFound => "SOURCE_THUMBNAIL_NOT_FOUND",
             Self::InvalidSourceThumbnail => "INVALID_SOURCE_THUMBNAIL",
             Self::InvalidThumbnailFile => "INVALID_THUMBNAIL_FILE",

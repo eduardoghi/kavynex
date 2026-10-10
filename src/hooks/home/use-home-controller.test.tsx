@@ -298,6 +298,7 @@ const mockDiagnosticsState = {
     revealLibraryPath: vi.fn(),
     removeOrphanFiles: vi.fn().mockResolvedValue(undefined),
     isRemovingOrphanFiles: false,
+    openKeptFolder: vi.fn(),
 };
 
 const mockUiGuards = {
@@ -387,9 +388,11 @@ describe("useHomeController", () => {
         vi.mocked(useHomeLibraryPanel).mockReturnValue(mockLibraryPanelState);
         vi.mocked(useAppBootstrap).mockReturnValue({
             open: false,
+            reason: "damaged",
             backedUpAtMs: null,
             isRestoring: false,
             restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+            startEmpty: vi.fn().mockResolvedValue(undefined),
             dismiss: vi.fn(),
         });
     });

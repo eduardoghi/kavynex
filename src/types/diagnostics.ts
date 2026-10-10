@@ -55,6 +55,8 @@ export type AppDiagnostics = {
     liveChatIntegrity: LiveChatIntegrityReport;
     // What "Remove orphan files" would do, decided by the backend. Null when the check did not run.
     orphanRemoval: OrphanRemovalPlan | null;
+    // What the library trash and the recovered downloads folder hold.
+    keptFiles: KeptFilesSummary;
 };
 
 export type DiagnosticsIssueSeverity = "info" | "warning" | "error";
@@ -67,8 +69,17 @@ import type { DiagnosticsMediaTarget } from "./generated/DiagnosticsMediaTarget"
 import type { LibraryIntegrityCheck } from "./generated/LibraryIntegrityCheck";
 import type { OrphanRemovalPlan } from "./generated/OrphanRemovalPlan";
 import type { OrphanRemovalRefusal } from "./generated/OrphanRemovalRefusal";
+import type { KeptFilesSummary } from "./generated/KeptFilesSummary";
+import type { KeptFolder } from "./generated/KeptFolder";
 
-export type { DiagnosticsMediaTarget, LibraryIntegrityCheck, OrphanRemovalPlan, OrphanRemovalRefusal };
+export type {
+    DiagnosticsMediaTarget,
+    KeptFilesSummary,
+    KeptFolder,
+    LibraryIntegrityCheck,
+    OrphanRemovalPlan,
+    OrphanRemovalRefusal,
+};
 
 export type DiagnosticsIssueExample = {
     path: string;

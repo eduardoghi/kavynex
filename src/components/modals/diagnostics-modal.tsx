@@ -1,7 +1,11 @@
 import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
 import { FolderOpen, RefreshCcw } from "lucide-react";
 import { useState } from "react";
-import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
+import type {
+    DiagnosticsMediaTarget,
+    DiagnosticsSummary,
+    KeptFolder,
+} from "../../types/diagnostics";
 import { formatBytes } from "../../utils/media-utils";
 import { formatCount } from "../../utils/pluralize";
 import { AppButton } from "../ui/app-button";
@@ -29,6 +33,8 @@ type DiagnosticsModalProps = {
     // confirmation. Optional for the same reason as the two above.
     onRemoveOrphanFiles?: () => Promise<void>;
     removingOrphanFiles?: boolean;
+    // Opens the recovered downloads folder or the library trash. Optional for the same reason.
+    onOpenKeptFolder?: (folder: KeptFolder) => void;
 };
 
 export function DiagnosticsModal({
@@ -43,6 +49,7 @@ export function DiagnosticsModal({
     openingLogFolder = false,
     onRemoveOrphanFiles,
     removingOrphanFiles = false,
+    onOpenKeptFolder,
 }: DiagnosticsModalProps): JSX.Element {
     const [confirmRemoveOrphansOpen, setConfirmRemoveOrphansOpen] = useState(false);
     const showInitialLoading = loading && !summary;
@@ -177,6 +184,7 @@ export function DiagnosticsModal({
                                         }
                                         removingOrphans={removingOrphanFiles}
                                         orphanRemoval={orphanRemoval}
+                                        onOpenKeptFolder={onOpenKeptFolder}
                                     />
                                 </>
                             )}

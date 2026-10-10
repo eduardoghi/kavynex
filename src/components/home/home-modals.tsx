@@ -223,6 +223,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         openingLogFolder={diagnostics.isOpeningLogDirectory}
                         onRemoveOrphanFiles={diagnostics.removeOrphanFiles}
                         removingOrphanFiles={diagnostics.isRemovingOrphanFiles}
+                        onOpenKeptFolder={(folder) => void diagnostics.openKeptFolder(folder)}
                     />
                 </Suspense>
             ) : null}

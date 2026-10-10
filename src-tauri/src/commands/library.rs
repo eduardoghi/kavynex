@@ -385,6 +385,49 @@ pub async fn verify_library_content(
         })
 }
 
+/// How many files the library trash and the recovered downloads folder hold, for Diagnostics.
+#[tauri::command]
+pub async fn get_kept_files_summary<R: Runtime>(
+    app: AppHandle<R>,
+) -> AppResult<crate::services::kept_files::KeptFilesSummary> {
+    let library_dir = crate::services::library::guard::configured_library_dir(&app)
+        .await
+        .ok();
+    let recovered = crate::services::kept_files::recovered_downloads_dir(&app)?;
+
+    run_blocking(move || {
+        Ok(crate::services::kept_files::KeptFilesSummary {
+            library_trash: library_dir.map(|library_dir| {
+                crate::services::kept_files::library_trash_dir(&library_dir)
+                    .map(|trash| crate::services::kept_files::folder_summary(&trash))
+                    .unwrap_or_default()
+            }),
+            recovered_downloads: crate::services::kept_files::folder_summary(&recovered),
+        })
+    })
+    .await
+}
+
+/// Opens the library trash or the recovered downloads folder in the file manager. Takes which one,
+/// never a path, so the folder is always the one the settings and Tauri name.
+#[tauri::command]
+pub async fn open_kept_folder<R: Runtime>(
+    app: AppHandle<R>,
+    folder: crate::services::kept_files::KeptFolder,
+) -> AppResult<()> {
+    use crate::services::kept_files::{self, KeptFolder};
+
+    let dir = match folder {
+        KeptFolder::LibraryTrash => {
+            let library_dir = crate::services::library::guard::configured_library_dir(&app).await?;
+            kept_files::library_trash_dir(&library_dir)
+        }
+        KeptFolder::RecoveredDownloads => Some(kept_files::recovered_downloads_dir(&app)?),
+    };
+
+    run_blocking(move || kept_files::reveal_kept_folder(dir)).await
+}
+
 /// Asks a running library migration to stop copying. Same contract as
 /// `cancel_library_verification` below. A no-op when nothing runs.
 #[tauri::command]

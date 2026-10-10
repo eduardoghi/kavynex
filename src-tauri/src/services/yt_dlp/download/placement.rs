@@ -247,14 +247,15 @@ pub(super) fn move_into_dir_without_overwriting(file: &Path, dir: &Path) -> AppR
 /// The run's temp directory is removed when the run ends, and the download in it is often the
 /// expensive part, sometimes the only chance at all (a video since removed, a replay that expired).
 /// A disconnected library drive or a full disk is a reason to fail the creation, not to throw the
-/// file away, so it is moved to `recovered-downloads/` in the cache, which nothing sweeps.
+/// file away, so it is moved to `recovered-downloads/` in the app's local data directory, which
+/// nothing sweeps and Diagnostics shows (see `services::kept_files`).
 pub(super) async fn keep_unplaced_download<R: Runtime>(
     app: &AppHandle<R>,
     run_id: &str,
     downloaded_temp: PathBuf,
     error: AppError,
 ) -> AppError {
-    let kept = match crate::services::temp_paths::recovered_downloads_dir(app) {
+    let kept = match crate::services::kept_files::recovered_downloads_dir(app) {
         Ok(dir) => {
             run_blocking(move || move_into_dir_without_overwriting(&downloaded_temp, &dir)).await
         }
@@ -269,7 +270,7 @@ pub(super) async fn keep_unplaced_download<R: Runtime>(
                 app,
                 run_id,
                 format!(
-                    "The download could not be added to the library. The file was kept as {name} in the recovered-downloads folder of the app's cache directory."
+                    "The download could not be added to the library. The file was kept as {name} in the recovered downloads folder, which Diagnostics can open."
                 ),
                 "system",
             );

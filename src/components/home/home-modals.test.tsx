@@ -220,6 +220,7 @@ function createDiagnostics(): DiagnosticsController {
         revealLibraryPath: vi.fn().mockResolvedValue(undefined),
         removeOrphanFiles: vi.fn().mockResolvedValue(undefined),
         isRemovingOrphanFiles: false,
+        openKeptFolder: vi.fn(),
     };
 }
 

@@ -5,6 +5,7 @@ import type {
     DiagnosticsIssue,
     DiagnosticsSummary,
     ExternalToolsStatus,
+    KeptFilesSummary,
     LibraryIntegrityReport,
     LibrarySummaryInfo,
     LiveChatIntegrityReport,
@@ -25,6 +26,7 @@ import { createEmptyLibrarySummary } from "./library-service";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getRuntimeDiagnosticsInfo } from "./diagnostics-runtime";
 import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
+import { getKeptFilesSummary } from "./diagnostics-kept-files";
 
 type GetDiagnosticsInput = {
     libraryPath: string;
@@ -75,6 +77,13 @@ function defaultLibrarySummary(): LibrarySummaryInfo {
 function defaultLiveChatStorageSummary(): LiveChatStorageInfo {
     return {
         live_chat_files: 0,
+    };
+}
+
+function defaultKeptFilesSummary(): KeptFilesSummary {
+    return {
+        libraryTrash: null,
+        recoveredDownloads: { files: 0, bytes: 0 },
     };
 }
 
@@ -184,6 +193,11 @@ function diagnosticChecks(libraryPath: string, libraryUnreachable: boolean) {
             label: "media statistics",
             run: () => getMediaRepositoryStats(),
         },
+        keptFiles: {
+            code: "KEPT_FILES",
+            label: "kept files",
+            run: () => getKeptFilesSummary(),
+        },
         libraryIntegrity: {
             code: "LIBRARY_INTEGRITY",
             label: "library integrity",
@@ -286,6 +300,7 @@ export async function getDiagnosticsSummary(
         libraryIntegrity: libraryIntegrityResult.report,
         liveChatIntegrity: deriveLiveChatIntegrity(libraryIntegrityResult.report),
         orphanRemoval: libraryIntegrityResult.orphanRemoval,
+        keptFiles: settledValue(settled.keptFiles, defaultKeptFilesSummary()),
     };
 
     const issues = sortDiagnosticsIssues([

@@ -45,6 +45,9 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   full `integrity_check` passed. It throttles that check to once a week (`db_backup/integrity.rs`); the
   automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
   path to catch subtler damage a `quick_check` would pass.
+- `kavynex.db.swapped-at`: when an import, its undo or a restore last replaced the database, in
+  seconds since the epoch. The orphan removal refuses for 30 days after it. The set-aside database's
+  own modification time cannot answer that, since a rename keeps the time of its last write.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
   (the snapshot being vacuumed, before it is promoted to `.bak`), `.import-staged` /
   `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
@@ -252,6 +255,24 @@ media files and thumbnails among them to the library's `.trash` folder
 (`library::cleanup::remove_orphan_artifacts`, which refuses while a media is being added). The
 marker itself is safe to delete by hand once nothing references its files.
 
+## App local data directory. Recovered downloads
+
+`app.path().app_local_data_dir()` holds one folder, `recovered-downloads/`
+(`services/kept_files.rs`):
+
+- Windows: `%LOCALAPPDATA%\com.kavynex.app\recovered-downloads` (the same folder as the cache root
+  on Windows, so do not delete the cache folder whole there)
+- macOS: `~/Library/Application Support/com.kavynex.app/recovered-downloads`
+- Linux: `~/.local/share/com.kavynex.app/recovered-downloads`
+
+A download that finished but could not be moved into the library (its drive was not connected, the
+disk was full) is kept here under the name yt-dlp gave it, and nothing ever deletes it, since it may
+be the only copy left of a video gone from YouTube. Diagnostics reports how many files it holds and
+opens the folder. Import a file from there as a local file, or delete it once it is not needed.
+It is not in the cache directory because the cache is what this document and `PRIVACY.md` call safe
+to delete, and what OS cleaners empty. It is not in the roaming config directory because a video is
+far too large for a roaming profile to carry.
+
 ## App log directory (`kavynex.log`)
 
 `app.path().app_log_dir()` is where `services/logger.rs` writes:
@@ -295,7 +316,9 @@ Inside the library directory, media services create these subfolders on demand:
   folder per run that keeps each file's library-relative path (`video/media_<sha256>.mp4`, say).
   The startup sweep (`temp_cleanup::cleanup_library_leftovers_sync`) deletes a run folder once it
   is 30 days old (`ORPHAN_GRACE_PERIOD`). To bring a file back, move it to the same path under the
-  library folder. A file already in the library under that name is the same bytes.
+  library folder. A file already in the library under that name is the same bytes. Diagnostics
+  reports what the trash holds and opens it, since a folder whose name starts with a dot is hidden
+  by default on macOS and Linux. A library move carries the trash along with the media folders.
 
   The removal takes only `media_<sha256>`/`thumb_<sha256>` files no row names, never one written in
   the last hour (a thumbnail or avatar lands a call before its row), and is refused for 30 days after

@@ -4,6 +4,8 @@ export const TAURI_COMMANDS = {
     // Takes no arguments, deliberately. The backend resolves the log directory from `app_log_dir()`
     // so there is no path for a caller to redirect. See src-tauri/src/commands/logging.rs.
     OPEN_LOG_DIRECTORY: "open_log_directory",
+    GET_KEPT_FILES_SUMMARY: "get_kept_files_summary",
+    OPEN_KEPT_FOLDER: "open_kept_folder",
     // What the background startup tasks found for the user, taken once. See
     // src-tauri/src/services/startup_notices.rs.
     TAKE_STARTUP_NOTICES: "take_startup_notices",

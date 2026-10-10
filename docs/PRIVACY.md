@@ -67,7 +67,12 @@ in-app flows:
   temporary previews and a smaller copy of each thumbnail the grid has drawn, so a card decodes a
   few hundred pixels instead of the stored image's full resolution. Deleting a media removes its
   copy along with it, and the whole folder is safe to delete at any time. Anything still needed is regenerated the
-  next time it is drawn. `DIRECTORIES.md` lists where it is per OS.
+  next time it is drawn. `DIRECTORIES.md` lists where it is per OS. On Windows the cache shares its
+  folder with `recovered-downloads/`, so delete the subfolders listed there rather than the whole
+  folder.
+- **Recovered downloads** are downloads that finished but could not be moved into the library, kept
+  in the app's local data directory until you remove them. Diagnostics says when there are any and
+  opens the folder.
 
 The database's automatic `.bak` snapshots live next to the database itself, on the same disk, so a
 drive failure takes them with it. To guard against that, **Settings > Database > Automatic external

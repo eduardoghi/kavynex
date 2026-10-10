@@ -6,6 +6,8 @@ import type {
     DiagnosticsOverview,
     DiagnosticsOverviewStatus,
 } from "../types/diagnostics";
+import { formatBytes } from "../utils/media-utils";
+import { formatCount } from "../utils/pluralize";
 
 // How old a yt-dlp release has to be before the diagnostics mention it. Deliberately generous.
 // yt-dlp ships very often, so a stricter threshold would nag about a version that still works,
@@ -65,6 +67,7 @@ const LIBRARY_CONTENT_ISSUE_CODES: ReadonlySet<string> = new Set([
     "CORRUPT_THUMBNAIL_FILES_ON_DISK",
     "ORPHAN_MEDIA_FILES",
     "ORPHAN_THUMBNAIL_FILES",
+    "LIBRARY_TRASH_HOLDS_FILES",
     "INVALID_PATH_REFERENCES",
     "MISSING_LIVE_CHAT_FILES",
     "CORRUPT_LIVE_CHAT_FILES",
@@ -441,6 +444,26 @@ export function buildDiagnosticsIssues(
             severity: "info",
             title: "Some non-live media items have a live chat file linked",
             description: `${subject} not marked as live but still have a live chat replay file linked.`,
+        });
+    }
+
+    const recovered = input.keptFiles.recoveredDownloads;
+    if (recovered.files > 0) {
+        issues.push({
+            code: "RECOVERED_DOWNLOADS_PRESENT",
+            severity: "warning",
+            title: "Some downloads could not be added to the library",
+            description: `${formatCount(recovered.files, "downloaded file")} (${formatBytes(recovered.bytes)}) finished but could not be moved into the library, usually because its drive was not connected or was full. They are kept in the recovered downloads folder and nothing deletes them. Open the folder to import them as local files, or remove the ones you do not need.`,
+        });
+    }
+
+    const trash = input.keptFiles.libraryTrash;
+    if (trash && trash.files > 0) {
+        issues.push({
+            code: "LIBRARY_TRASH_HOLDS_FILES",
+            severity: "info",
+            title: "The library trash holds files",
+            description: `${formatCount(trash.files, "file")} (${formatBytes(trash.bytes)}) moved aside by Remove orphan files or by a media creation that did not finish. Each run is deleted 30 days after it was moved. To keep a file, move it back to the same path inside the library folder.`,
         });
     }
 

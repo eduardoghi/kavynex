@@ -17,6 +17,7 @@ pub mod db_schema;
 // there mean either a cross-family import or a second copy of the three platform branches.
 pub mod file_manager;
 pub mod filesystem;
+pub mod kept_files;
 pub mod library;
 pub mod live_chat_storage;
 pub mod logger;
