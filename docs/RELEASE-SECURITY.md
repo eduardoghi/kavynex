@@ -219,6 +219,10 @@ This is a known, accepted risk rather than an oversight, and it is structural. `
 does not separate building from signing, so the two cannot be split into a job that holds the
 secret and a job that does not. What is done about it:
 
+- The JavaScript tree does not run there. `tauri build` would run the `beforeBuildCommand`, and with
+  it `pnpm build` (tsc, Vite, Rolldown, the PostCSS plugins), a far larger set of packages than the
+  Rust tree. The frontend is built in an earlier step without the key, and `tauri-action` gets
+  `KAVYNEX_FRONTEND_PREBUILT=1`, so `scripts/before-build.js` only checks that `dist/` exists.
 - Every action is pinned to a full commit SHA, so a tag cannot be repointed at new code.
 - The signing secrets live in the `release` environment, which only `main` may deploy to, and only
   `publish-tauri` names it. A workflow run on any other branch, including one whose copy of
