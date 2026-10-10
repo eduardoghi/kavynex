@@ -125,11 +125,11 @@ async function loadInto(
     listMediaPageMock.mockResolvedValueOnce(page(items, total));
 
     await act(async () => {
-        await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        await result.current.list.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
     });
 
     await waitFor(() => {
-        expect(result.current.mediaItems).toHaveLength(items.length);
+        expect(result.current.list.mediaItems).toHaveLength(items.length);
     });
 }
 
@@ -143,10 +143,10 @@ describe("useMediaLibrary", () => {
     it("threads through the mocked collaborator hooks", () => {
         const { result } = renderMediaLibrary(null);
 
-        expect(result.current.addMediaOpen).toBe(false);
-        expect(result.current.confirmDeleteMediaOpen).toBe(false);
-        expect(typeof result.current.markAsWatched).toBe("function");
-        expect(typeof result.current.requestDeleteMedia).toBe("function");
+        expect(result.current.adding.addMediaOpen).toBe(false);
+        expect(result.current.deletion.confirmDeleteMediaOpen).toBe(false);
+        expect(typeof result.current.itemActions.markAsWatched).toBe("function");
+        expect(typeof result.current.deletion.requestDeleteMedia).toBe("function");
     });
 
     it("loads a page for the selected channel when a query is applied", async () => {
@@ -158,20 +158,20 @@ describe("useMediaLibrary", () => {
             7,
             expect.objectContaining({ offset: 0 })
         );
-        expect(result.current.mediaItems).toEqual([createMediaRow({ id: 1 })]);
-        expect(result.current.mediaTotal).toBe(1);
-        expect(result.current.channelMediaTotal).toBe(1);
+        expect(result.current.list.mediaItems).toEqual([createMediaRow({ id: 1 })]);
+        expect(result.current.list.mediaTotal).toBe(1);
+        expect(result.current.list.channelMediaTotal).toBe(1);
     });
 
     it("does not query and stays empty while there is no selected channel", async () => {
         const { result } = renderMediaLibrary(null);
 
         await act(async () => {
-            await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+            await result.current.list.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
 
         expect(listMediaPageMock).not.toHaveBeenCalled();
-        expect(result.current.mediaItems).toEqual([]);
+        expect(result.current.list.mediaItems).toEqual([]);
     });
 
     it("queries the updated channel after selectedChannelId changes across a re-render", async () => {
@@ -182,7 +182,7 @@ describe("useMediaLibrary", () => {
         listMediaPageMock.mockResolvedValueOnce(page([createMediaRow({ id: 99 })], 1));
 
         await act(async () => {
-            await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+            await result.current.list.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
 
         expect(listMediaPageMock).toHaveBeenCalledWith(
@@ -191,7 +191,7 @@ describe("useMediaLibrary", () => {
         );
 
         await waitFor(() => {
-            expect(result.current.mediaItems).toEqual([createMediaRow({ id: 99 })]);
+            expect(result.current.list.mediaItems).toEqual([createMediaRow({ id: 99 })]);
         });
     });
 
@@ -204,11 +204,11 @@ describe("useMediaLibrary", () => {
         ]);
 
         await act(async () => {
-            await result.current.saveMediaProgress(1, 42.9);
+            await result.current.itemActions.saveMediaProgress(1, 42.9);
         });
 
         expect(persistMediaProgressMock).toHaveBeenCalledWith(1, 42.9);
-        expect(result.current.mediaItems).toEqual([
+        expect(result.current.list.mediaItems).toEqual([
             expect.objectContaining({ id: 1, progress_seconds: 42 }),
             expect.objectContaining({ id: 2, progress_seconds: 50 }),
         ]);
@@ -220,10 +220,10 @@ describe("useMediaLibrary", () => {
         await loadInto(result, [createMediaRow({ id: 1, progress_seconds: 10 })]);
 
         await act(async () => {
-            await result.current.saveMediaProgress(1, -5);
+            await result.current.itemActions.saveMediaProgress(1, -5);
         });
 
-        expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
+        expect(result.current.list.mediaItems[0]!.progress_seconds).toBe(0);
     });
 
     it("updates the active media's progress when it matches the saved media id", async () => {
@@ -236,7 +236,7 @@ describe("useMediaLibrary", () => {
         });
 
         await act(async () => {
-            await result.current.saveMediaProgress(5, 33);
+            await result.current.itemActions.saveMediaProgress(5, 33);
         });
 
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(33);
@@ -251,10 +251,10 @@ describe("useMediaLibrary", () => {
             );
         });
 
-        const before = result.current.saveMediaProgress;
+        const before = result.current.itemActions.saveMediaProgress;
 
         await act(async () => {
-            await result.current.saveMediaProgress(5, 33);
+            await result.current.itemActions.saveMediaProgress(5, 33);
         });
 
         // The save updates the active media's progress. Previously that recreated
@@ -262,7 +262,7 @@ describe("useMediaLibrary", () => {
         // the player's persistProgress and made its timeupdate effect re-run, resetting the 10s
         // throttle clock on every save. The reference must now survive the save.
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(33);
-        expect(result.current.saveMediaProgress).toBe(before);
+        expect(result.current.itemActions.saveMediaProgress).toBe(before);
     });
 
     it("does not touch active media progress when the saved media id does not match", async () => {
@@ -275,7 +275,7 @@ describe("useMediaLibrary", () => {
         });
 
         await act(async () => {
-            await result.current.saveMediaProgress(999, 33);
+            await result.current.itemActions.saveMediaProgress(999, 33);
         });
 
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(0);
@@ -290,30 +290,30 @@ describe("useMediaLibrary", () => {
         ]);
 
         act(() => {
-            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]!);
+            result.current.mediaPlayer.openPlayer(result.current.list.mediaItems[0]!);
         });
 
-        const listBeforeSave = result.current.mediaItems;
+        const listBeforeSave = result.current.list.mediaItems;
 
         await act(async () => {
-            await result.current.saveMediaProgress(5, 90);
+            await result.current.itemActions.saveMediaProgress(5, 90);
         });
 
         // The active media reflects the save immediately (its progress is read on reopen)...
         expect(result.current.mediaPlayer.activeMedia?.progress_seconds).toBe(90);
         // ...but the media-list array keeps its identity during playback, so the hidden library
         // grid is not retriggered on every periodic save.
-        expect(result.current.mediaItems).toBe(listBeforeSave);
-        expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
+        expect(result.current.list.mediaItems).toBe(listBeforeSave);
+        expect(result.current.list.mediaItems[0]!.progress_seconds).toBe(0);
 
         // Closing the player reconciles the stashed progress into the list in one pass.
         act(() => {
             result.current.mediaPlayer.closePlayer();
         });
 
-        expect(result.current.mediaItems[0]!.progress_seconds).toBe(90);
+        expect(result.current.list.mediaItems[0]!.progress_seconds).toBe(90);
         // The media that was not playing is untouched.
-        expect(result.current.mediaItems[1]!.progress_seconds).toBe(12);
+        expect(result.current.list.mediaItems[1]!.progress_seconds).toBe(12);
     });
 
     it("does not resurrect progress on a watched item when flushing on close", async () => {
@@ -328,11 +328,11 @@ describe("useMediaLibrary", () => {
         ]);
 
         act(() => {
-            result.current.mediaPlayer.openPlayer(result.current.mediaItems[0]!);
+            result.current.mediaPlayer.openPlayer(result.current.list.mediaItems[0]!);
         });
 
         await act(async () => {
-            await result.current.saveMediaProgress(5, 90);
+            await result.current.itemActions.saveMediaProgress(5, 90);
         });
 
         act(() => {
@@ -340,7 +340,7 @@ describe("useMediaLibrary", () => {
         });
 
         // A watched media stays at 0; the deferred 90s position is discarded on flush.
-        expect(result.current.mediaItems[0]!.progress_seconds).toBe(0);
+        expect(result.current.list.mediaItems[0]!.progress_seconds).toBe(0);
     });
 
     it("clears the media list and closes the player", () => {
@@ -357,7 +357,7 @@ describe("useMediaLibrary", () => {
         });
 
         expect(result.current.mediaPlayer.activeMedia).toBeNull();
-        expect(result.current.mediaItems).toEqual([]);
+        expect(result.current.list.mediaItems).toEqual([]);
     });
 
     it("recreates clearMediaAndPlayer when the media player object changes across renders", () => {

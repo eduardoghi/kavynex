@@ -72,9 +72,9 @@ type HomeSecondaryModalsProps = {
     uiGuards: HomeUiGuardsController;
     onOpenDiagnosticsMedia: (target: DiagnosticsMediaTarget) => void;
     confirmDeleteMediaOpen: boolean;
-    mediaToDelete: MediaLibraryController["mediaToDelete"];
+    mediaToDelete: MediaLibraryController["deletion"]["mediaToDelete"];
     isDeletingMedia: boolean;
-    closeDeleteMediaModal: MediaLibraryController["closeDeleteMediaModal"];
+    closeDeleteMediaModal: MediaLibraryController["deletion"]["closeDeleteMediaModal"];
     // A download, an import or a comment fetch is running (see SettingsModal).
     isMediaWorkRunning: boolean;
 };
@@ -297,22 +297,22 @@ export function HomeModals({
     uiGuards,
     onOpenDiagnosticsMedia,
 }: HomeModalsProps): JSX.Element {
-    const addMediaForm = media.addMediaForm;
+    const addMediaForm = media.adding.addMediaForm;
 
     return (
         <>
             <AddMediaModalWithTerminal
-                terminal={media.ytDlpTerminalStore}
-                opened={media.addMediaOpen}
+                terminal={media.adding.ytDlpTerminalStore}
+                opened={media.adding.addMediaOpen}
                 onClose={() => void uiGuards.closeAddMediaModalSafely()}
                 form={addMediaForm}
                 importMode={settings.settings.importMode}
-                loading={media.isAddingMedia}
-                isCancellingYtDlp={media.isCancellingYtDlp}
-                isFetchingComments={media.isFetchingComments}
-                isYtDlpRunning={media.isYtDlpRunning}
+                loading={media.adding.isAddingMedia}
+                isCancellingYtDlp={media.adding.isCancellingYtDlp}
+                isFetchingComments={media.adding.isFetchingComments}
+                isYtDlpRunning={media.adding.isYtDlpRunning}
                 onAdd={() => void mediaActions.addMedia()}
-                onCancelYtDlpDownload={() => void media.cancelYtDlpDownload()}
+                onCancelYtDlpDownload={() => void media.adding.cancelYtDlpDownload()}
             />
 
             <HomeSecondaryModals
@@ -324,14 +324,14 @@ export function HomeModals({
                 databaseRecovery={databaseRecovery}
                 uiGuards={uiGuards}
                 onOpenDiagnosticsMedia={onOpenDiagnosticsMedia}
-                confirmDeleteMediaOpen={media.confirmDeleteMediaOpen}
-                mediaToDelete={media.mediaToDelete}
-                isDeletingMedia={media.isDeletingMedia}
-                closeDeleteMediaModal={media.closeDeleteMediaModal}
+                confirmDeleteMediaOpen={media.deletion.confirmDeleteMediaOpen}
+                mediaToDelete={media.deletion.mediaToDelete}
+                isDeletingMedia={media.deletion.isDeletingMedia}
+                closeDeleteMediaModal={media.deletion.closeDeleteMediaModal}
                 isMediaWorkRunning={
-                    media.isAddingMedia ||
-                    media.isYtDlpRunning ||
-                    media.commentsInFlight.size > 0
+                    media.adding.isAddingMedia ||
+                    media.adding.isYtDlpRunning ||
+                    media.itemActions.commentsInFlight.size > 0
                 }
             />
         </>

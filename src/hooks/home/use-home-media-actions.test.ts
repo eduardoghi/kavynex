@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { useHomeMediaActions } from "./use-home-media-actions";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
+import { nestMediaLibrary } from "../../test/factories/media-library";
 
 describe("useHomeMediaActions", () => {
     function createDiagnosticsState(overrides?: Partial<any>) {
@@ -24,7 +25,7 @@ describe("useHomeMediaActions", () => {
     }
 
     function createMediaLibrary(overrides?: Partial<any>) {
-        return {
+        return nestMediaLibrary({
             mediaItems: [],
 
             addMediaOpen: false,
@@ -130,7 +131,7 @@ describe("useHomeMediaActions", () => {
             clearMediaAndPlayer: vi.fn(),
 
             ...overrides,
-        };
+        });
     }
 
     beforeEach(() => {
@@ -155,7 +156,7 @@ describe("useHomeMediaActions", () => {
             await result.current.addMedia();
         });
 
-        expect(mediaLibrary.addMedia).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.adding.addMedia).toHaveBeenCalledTimes(1);
         expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
@@ -177,7 +178,7 @@ describe("useHomeMediaActions", () => {
             await result.current.addMedia();
         });
 
-        expect(mediaLibrary.addMedia).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.adding.addMedia).toHaveBeenCalledTimes(1);
         expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
     });
 
@@ -199,7 +200,7 @@ describe("useHomeMediaActions", () => {
             await result.current.confirmDeleteMedia();
         });
 
-        expect(mediaLibrary.confirmDeleteMedia).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.deletion.confirmDeleteMedia).toHaveBeenCalledTimes(1);
         expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
     });
 
@@ -243,7 +244,7 @@ describe("useHomeMediaActions", () => {
             await result.current.markAsWatched(15);
         });
 
-        expect(mediaLibrary.markAsWatched).toHaveBeenCalledWith(15);
+        expect(mediaLibrary.itemActions.markAsWatched).toHaveBeenCalledWith(15);
         expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
     });
 
@@ -265,7 +266,7 @@ describe("useHomeMediaActions", () => {
             await result.current.markAsUnwatched(20);
         });
 
-        expect(mediaLibrary.markAsUnwatched).toHaveBeenCalledWith(20);
+        expect(mediaLibrary.itemActions.markAsUnwatched).toHaveBeenCalledWith(20);
         expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
     });
 
@@ -288,7 +289,7 @@ describe("useHomeMediaActions", () => {
             await result.current.editMediaTitle(media, "New title");
         });
 
-        expect(mediaLibrary.editTitle).toHaveBeenCalledWith(media, "New title");
+        expect(mediaLibrary.itemActions.editTitle).toHaveBeenCalledWith(media, "New title");
         expect(diagnosticsState.reloadDiagnostics).toHaveBeenCalledTimes(1);
     });
 
@@ -311,7 +312,7 @@ describe("useHomeMediaActions", () => {
             await result.current.editMediaTitle(media, "New title");
         });
 
-        expect(mediaLibrary.editTitle).toHaveBeenCalledWith(media, "New title");
+        expect(mediaLibrary.itemActions.editTitle).toHaveBeenCalledWith(media, "New title");
         expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
@@ -325,14 +326,14 @@ describe("useHomeMediaActions", () => {
             })
         );
 
-        vi.mocked(mediaLibrary.editTitle).mockResolvedValueOnce(false);
+        vi.mocked(mediaLibrary.itemActions.editTitle).mockResolvedValueOnce(false);
         let saved: boolean | undefined;
         await act(async () => {
             saved = await result.current.editMediaTitle({ id: 7 } as any, "New title");
         });
         expect(saved).toBe(false);
 
-        vi.mocked(mediaLibrary.editTitle).mockResolvedValueOnce(true);
+        vi.mocked(mediaLibrary.itemActions.editTitle).mockResolvedValueOnce(true);
         await act(async () => {
             saved = await result.current.editMediaTitle({ id: 7 } as any, "New title");
         });
@@ -360,7 +361,7 @@ describe("useHomeMediaActions", () => {
             await result.current.saveMediaProgress(23, 12.5);
         });
 
-        expect(mediaLibrary.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
+        expect(mediaLibrary.itemActions.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
         expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
@@ -382,12 +383,12 @@ describe("useHomeMediaActions", () => {
             await result.current.saveMediaProgress(23, 12.5);
         });
 
-        expect(mediaLibrary.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
+        expect(mediaLibrary.itemActions.saveMediaProgress).toHaveBeenCalledWith(23, 12.5);
         expect(diagnosticsState.reloadDiagnostics).not.toHaveBeenCalled();
     });
 
     describe("dependency freshness across rerenders", () => {
-        it("calls mediaLibrary.addMedia from the latest render", async () => {
+        it("calls mediaLibrary.adding.addMedia from the latest render", async () => {
             const diagnosticsState = createDiagnosticsState({
                 diagnosticsOpen: false,
             });
@@ -406,7 +407,10 @@ describe("useHomeMediaActions", () => {
             );
 
             const newAddMedia = vi.fn().mockResolvedValue(undefined);
-            const nextMediaLibrary = { ...mediaLibrary, addMedia: newAddMedia };
+            const nextMediaLibrary = {
+                ...mediaLibrary,
+                adding: { ...mediaLibrary.adding, addMedia: newAddMedia },
+            };
 
             rerender({
                 diagnosticsState,
@@ -419,10 +423,10 @@ describe("useHomeMediaActions", () => {
             });
 
             expect(newAddMedia).toHaveBeenCalledTimes(1);
-            expect(mediaLibrary.addMedia).not.toHaveBeenCalled();
+            expect(mediaLibrary.adding.addMedia).not.toHaveBeenCalled();
         });
 
-        it("calls mediaLibrary.confirmDeleteMedia from the latest render", async () => {
+        it("calls mediaLibrary.deletion.confirmDeleteMedia from the latest render", async () => {
             const diagnosticsState = createDiagnosticsState({
                 diagnosticsOpen: false,
             });
@@ -443,7 +447,7 @@ describe("useHomeMediaActions", () => {
             const newConfirmDeleteMedia = vi.fn().mockResolvedValue(undefined);
             const nextMediaLibrary = {
                 ...mediaLibrary,
-                confirmDeleteMedia: newConfirmDeleteMedia,
+                deletion: { ...mediaLibrary.deletion, confirmDeleteMedia: newConfirmDeleteMedia },
             };
 
             rerender({
@@ -457,7 +461,7 @@ describe("useHomeMediaActions", () => {
             });
 
             expect(newConfirmDeleteMedia).toHaveBeenCalledTimes(1);
-            expect(mediaLibrary.confirmDeleteMedia).not.toHaveBeenCalled();
+            expect(mediaLibrary.deletion.confirmDeleteMedia).not.toHaveBeenCalled();
         });
 
         it("calls confirmDeleteChannelFlow from the latest render", async () => {
@@ -494,7 +498,7 @@ describe("useHomeMediaActions", () => {
             expect(confirmDeleteChannelFlow).not.toHaveBeenCalled();
         });
 
-        it("calls mediaLibrary.markAsWatched from the latest render", async () => {
+        it("calls mediaLibrary.itemActions.markAsWatched from the latest render", async () => {
             const diagnosticsState = createDiagnosticsState({
                 diagnosticsOpen: false,
             });
@@ -513,7 +517,10 @@ describe("useHomeMediaActions", () => {
             );
 
             const newMarkAsWatched = vi.fn().mockResolvedValue(undefined);
-            const nextMediaLibrary = { ...mediaLibrary, markAsWatched: newMarkAsWatched };
+            const nextMediaLibrary = {
+                ...mediaLibrary,
+                itemActions: { ...mediaLibrary.itemActions, markAsWatched: newMarkAsWatched },
+            };
 
             rerender({
                 diagnosticsState,
@@ -526,10 +533,10 @@ describe("useHomeMediaActions", () => {
             });
 
             expect(newMarkAsWatched).toHaveBeenCalledWith(15);
-            expect(mediaLibrary.markAsWatched).not.toHaveBeenCalled();
+            expect(mediaLibrary.itemActions.markAsWatched).not.toHaveBeenCalled();
         });
 
-        it("calls mediaLibrary.markAsUnwatched from the latest render", async () => {
+        it("calls mediaLibrary.itemActions.markAsUnwatched from the latest render", async () => {
             const diagnosticsState = createDiagnosticsState({
                 diagnosticsOpen: false,
             });
@@ -548,7 +555,10 @@ describe("useHomeMediaActions", () => {
             );
 
             const newMarkAsUnwatched = vi.fn().mockResolvedValue(undefined);
-            const nextMediaLibrary = { ...mediaLibrary, markAsUnwatched: newMarkAsUnwatched };
+            const nextMediaLibrary = {
+                ...mediaLibrary,
+                itemActions: { ...mediaLibrary.itemActions, markAsUnwatched: newMarkAsUnwatched },
+            };
 
             rerender({
                 diagnosticsState,
@@ -561,10 +571,10 @@ describe("useHomeMediaActions", () => {
             });
 
             expect(newMarkAsUnwatched).toHaveBeenCalledWith(20);
-            expect(mediaLibrary.markAsUnwatched).not.toHaveBeenCalled();
+            expect(mediaLibrary.itemActions.markAsUnwatched).not.toHaveBeenCalled();
         });
 
-        it("calls mediaLibrary.editTitle from the latest render", async () => {
+        it("calls mediaLibrary.itemActions.editTitle from the latest render", async () => {
             const diagnosticsState = createDiagnosticsState({
                 diagnosticsOpen: false,
             });
@@ -583,7 +593,10 @@ describe("useHomeMediaActions", () => {
             );
 
             const newEditTitle = vi.fn().mockResolvedValue(undefined);
-            const nextMediaLibrary = { ...mediaLibrary, editTitle: newEditTitle };
+            const nextMediaLibrary = {
+                ...mediaLibrary,
+                itemActions: { ...mediaLibrary.itemActions, editTitle: newEditTitle },
+            };
 
             rerender({
                 diagnosticsState,
@@ -598,10 +611,10 @@ describe("useHomeMediaActions", () => {
             });
 
             expect(newEditTitle).toHaveBeenCalledWith(media, "Fresh title");
-            expect(mediaLibrary.editTitle).not.toHaveBeenCalled();
+            expect(mediaLibrary.itemActions.editTitle).not.toHaveBeenCalled();
         });
 
-        it("calls mediaLibrary.saveMediaProgress from the latest render", async () => {
+        it("calls mediaLibrary.itemActions.saveMediaProgress from the latest render", async () => {
             const diagnosticsState = createDiagnosticsState({
                 diagnosticsOpen: false,
             });
@@ -622,7 +635,7 @@ describe("useHomeMediaActions", () => {
             const newSaveMediaProgress = vi.fn().mockResolvedValue(undefined);
             const nextMediaLibrary = {
                 ...mediaLibrary,
-                saveMediaProgress: newSaveMediaProgress,
+                itemActions: { ...mediaLibrary.itemActions, saveMediaProgress: newSaveMediaProgress },
             };
 
             rerender({
@@ -636,7 +649,7 @@ describe("useHomeMediaActions", () => {
             });
 
             expect(newSaveMediaProgress).toHaveBeenCalledWith(23, 12.5);
-            expect(mediaLibrary.saveMediaProgress).not.toHaveBeenCalled();
+            expect(mediaLibrary.itemActions.saveMediaProgress).not.toHaveBeenCalled();
         });
 
         it("reloads diagnostics using the latest diagnosticsState after a rerender", async () => {

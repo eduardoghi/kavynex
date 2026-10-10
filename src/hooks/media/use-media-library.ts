@@ -15,7 +15,8 @@ import { updateItemById } from "../../utils/update-item-by-id";
 import { isMediaWatched } from "../../utils/media-utils";
 import { useMemoObject } from "../use-memo-object";
 
-export type MediaLibraryController = {
+// The channel's media list and its paging.
+export type MediaListSlice = {
     mediaItems: MediaRow[];
     // Rows matching the active filters across the whole channel (for "X of Y").
     mediaTotal: number;
@@ -27,15 +28,40 @@ export type MediaLibraryController = {
     // Why the first page of the current query failed, or null. The grid keeps the rows it had and
     // offers reloadMedia.
     mediaLoadError: string | null;
+    isLoadingMedia: boolean;
     isLoadingMoreMedia: boolean;
+    applyMediaQuery: (filters: MediaQueryFilters) => Promise<void>;
+    loadMoreMedia: () => Promise<void>;
+    reloadMedia: () => Promise<void>;
+};
+
+// The add-media modal, its form and the download or import it starts.
+export type AddingMediaSlice = {
     addMediaOpen: boolean;
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
     closeAddMediaModal: () => Promise<void>;
+    isAddingMedia: boolean;
+    isCancellingYtDlp: boolean;
+    isFetchingComments: boolean;
+    ytDlpTerminalStore: YtDlpTerminalStore;
+    isYtDlpRunning: boolean;
+    addMediaForm: AddMediaFormController;
+    addMedia: () => Promise<void>;
+    cancelYtDlpDownload: () => Promise<void>;
+};
+
+// The delete confirmation for one media.
+export type DeletingMediaSlice = {
     confirmDeleteMediaOpen: boolean;
     mediaToDelete: MediaRow | null;
-    isLoadingMedia: boolean;
-    isAddingMedia: boolean;
     isDeletingMedia: boolean;
+    requestDeleteMedia: (media: MediaRow) => void;
+    confirmDeleteMedia: () => Promise<void>;
+    closeDeleteMediaModal: () => void;
+};
+
+// What a card or the player does to one media.
+export type MediaItemActionsSlice = {
     // The media ids whose comments are being refreshed, rather than one "something is refreshing"
     // flag. A shared flag both dropped the second refresh and disabled the button that would have
     // retried it, so the two have to be per media together. Guarding one row while marking every
@@ -46,17 +72,6 @@ export type MediaLibraryController = {
     // busy.
     watchedActionInFlight: ReadonlySet<number>;
     isUpdatingTitle: boolean;
-    isCancellingYtDlp: boolean;
-    isFetchingComments: boolean;
-    ytDlpTerminalStore: YtDlpTerminalStore;
-    isYtDlpRunning: boolean;
-    addMediaForm: AddMediaFormController;
-    mediaPlayer: MediaPlayerController;
-    applyMediaQuery: (filters: MediaQueryFilters) => Promise<void>;
-    loadMoreMedia: () => Promise<void>;
-    reloadMedia: () => Promise<void>;
-    addMedia: () => Promise<void>;
-    cancelYtDlpDownload: () => Promise<void>;
     markAsWatched: (mediaId: number) => Promise<void>;
     markAsUnwatched: (mediaId: number) => Promise<void>;
     refreshComments: (media: MediaRow) => Promise<void>;
@@ -65,9 +80,16 @@ export type MediaLibraryController = {
     openMediaFileLocation: (media: MediaRow) => Promise<void>;
     openMediaSourceInYoutube: (media: MediaRow) => Promise<void>;
     saveMediaProgress: (mediaId: number, progressSeconds: number) => Promise<void>;
-    requestDeleteMedia: (media: MediaRow) => void;
-    confirmDeleteMedia: () => Promise<void>;
-    closeDeleteMediaModal: () => void;
+};
+
+// Split by what each part is for, so a consumer names the slice it reads. It was one object of
+// some forty-five members, and every field added to any of these flows widened it.
+export type MediaLibraryController = {
+    list: MediaListSlice;
+    adding: AddingMediaSlice;
+    deletion: DeletingMediaSlice;
+    itemActions: MediaItemActionsSlice;
+    mediaPlayer: MediaPlayerController;
     clearMediaAndPlayer: () => void;
 };
 
@@ -222,43 +244,49 @@ export function useMediaLibrary({
     // via applyMediaQuery, which is why there is no load-on-channel-change effect here anymore.
     // useChannelMediaList clears itself when no channel is selected.
 
-    // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
-    return useMemoObject({
+    // Each slice is memoized on its own fields, so a consumer of one slice does not re-render when
+    // another changes, and the controller is memoized on the slices.
+    const list = useMemoObject<MediaListSlice>({
         mediaItems: mediaList.mediaItems,
         mediaTotal: mediaList.total,
         channelMediaTotal: mediaList.channelTotal,
         hasMoreMedia: mediaList.hasMore,
         loadMoreMediaFailed: mediaList.loadMoreFailed,
         mediaLoadError: mediaList.loadError,
-        isLoadingMoreMedia: mediaList.isLoadingMore,
-
-        addMediaOpen: addMediaWorkflow.addMediaOpen,
-        setAddMediaOpen: addMediaWorkflow.setAddMediaOpen,
-        closeAddMediaModal: addMediaWorkflow.closeAddMediaModal,
-
-        confirmDeleteMediaOpen: mediaActions.confirmDeleteMediaOpen,
-        mediaToDelete: mediaActions.mediaToDelete,
-
         isLoadingMedia: mediaList.isLoadingMedia,
-        isAddingMedia: addMediaWorkflow.isAddingMedia,
-        isDeletingMedia: mediaActions.isDeletingMedia,
-        commentsInFlight: mediaActions.commentsInFlight,
-        watchedActionInFlight: mediaActions.watchedActionInFlight,
-        isUpdatingTitle: mediaActions.isUpdatingTitle,
-        isCancellingYtDlp: addMediaWorkflow.isCancellingYtDlp,
-        isFetchingComments: addMediaWorkflow.isFetchingComments,
-
-        ytDlpTerminalStore: addMediaWorkflow.ytDlpTerminalStore,
-        isYtDlpRunning: addMediaWorkflow.isYtDlpRunning,
-
-        addMediaForm: addMediaWorkflow.addMediaForm,
-        mediaPlayer,
-
+        isLoadingMoreMedia: mediaList.isLoadingMore,
         applyMediaQuery: mediaList.applyQuery,
         loadMoreMedia: mediaList.loadMore,
         reloadMedia: mediaList.reloadMedia,
+    });
+
+    const adding = useMemoObject<AddingMediaSlice>({
+        addMediaOpen: addMediaWorkflow.addMediaOpen,
+        setAddMediaOpen: addMediaWorkflow.setAddMediaOpen,
+        closeAddMediaModal: addMediaWorkflow.closeAddMediaModal,
+        isAddingMedia: addMediaWorkflow.isAddingMedia,
+        isCancellingYtDlp: addMediaWorkflow.isCancellingYtDlp,
+        isFetchingComments: addMediaWorkflow.isFetchingComments,
+        ytDlpTerminalStore: addMediaWorkflow.ytDlpTerminalStore,
+        isYtDlpRunning: addMediaWorkflow.isYtDlpRunning,
+        addMediaForm: addMediaWorkflow.addMediaForm,
         addMedia: addMediaWorkflow.addMedia,
         cancelYtDlpDownload: addMediaWorkflow.cancelYtDlpDownload,
+    });
+
+    const deletion = useMemoObject<DeletingMediaSlice>({
+        confirmDeleteMediaOpen: mediaActions.confirmDeleteMediaOpen,
+        mediaToDelete: mediaActions.mediaToDelete,
+        isDeletingMedia: mediaActions.isDeletingMedia,
+        requestDeleteMedia: mediaActions.requestDeleteMedia,
+        confirmDeleteMedia: mediaActions.confirmDeleteMedia,
+        closeDeleteMediaModal: mediaActions.closeDeleteMediaModal,
+    });
+
+    const itemActions = useMemoObject<MediaItemActionsSlice>({
+        commentsInFlight: mediaActions.commentsInFlight,
+        watchedActionInFlight: mediaActions.watchedActionInFlight,
+        isUpdatingTitle: mediaActions.isUpdatingTitle,
         markAsWatched: mediaActions.markAsWatched,
         markAsUnwatched: mediaActions.markAsUnwatched,
         refreshComments: mediaActions.refreshComments,
@@ -267,11 +295,14 @@ export function useMediaLibrary({
         openMediaFileLocation: mediaActions.openMediaFileLocation,
         openMediaSourceInYoutube: mediaActions.openMediaSourceInYoutube,
         saveMediaProgress,
+    });
 
-        requestDeleteMedia: mediaActions.requestDeleteMedia,
-        confirmDeleteMedia: mediaActions.confirmDeleteMedia,
-        closeDeleteMediaModal: mediaActions.closeDeleteMediaModal,
-
+    return useMemoObject<MediaLibraryController>({
+        list,
+        adding,
+        deletion,
+        itemActions,
+        mediaPlayer,
         clearMediaAndPlayer,
     });
 }

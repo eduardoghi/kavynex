@@ -108,9 +108,9 @@ export function useHomeController(): HomeController {
         mediaPlayer: mediaLibrary.mediaPlayer,
         homeMediaActions,
         onError: errorState.showError,
-        refreshComments: mediaLibrary.refreshComments,
-        cancelRefreshComments: mediaLibrary.cancelRefreshComments,
-        commentsInFlight: mediaLibrary.commentsInFlight,
+        refreshComments: mediaLibrary.itemActions.refreshComments,
+        cancelRefreshComments: mediaLibrary.itemActions.cancelRefreshComments,
+        commentsInFlight: mediaLibrary.itemActions.commentsInFlight,
         libraryPath,
     });
 
@@ -129,10 +129,10 @@ export function useHomeController(): HomeController {
 
     const libraryPanelState = useHomeLibraryPanel({
         selectedChannel: channelsState.selectedChannel,
-        channelMediaTotal: mediaLibrary.channelMediaTotal,
+        channelMediaTotal: mediaLibrary.list.channelMediaTotal,
         viewMode: mediaLibrary.mediaPlayer.viewMode,
-        isLoadingMedia: mediaLibrary.isLoadingMedia,
-        isAddingMedia: mediaLibrary.isAddingMedia,
+        isLoadingMedia: mediaLibrary.list.isLoadingMedia,
+        isAddingMedia: mediaLibrary.adding.isAddingMedia,
         isMigratingLibraryPath: settingsState.isMigratingLibraryPath,
         libraryPath,
         isLibraryUnreachable: settingsState.isLibraryUnreachable,

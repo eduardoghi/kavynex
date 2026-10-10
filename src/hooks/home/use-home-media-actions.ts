@@ -33,15 +33,15 @@ export function useHomeMediaActions({
     // eslint-disable) while still not depending on the whole object, whose identity changes
     // every render.
     const { diagnosticsOpen, reloadDiagnostics } = diagnosticsState;
+    const { addMedia: addMediaAction } = mediaLibrary.adding;
+    const { confirmDeleteMedia: confirmDeleteMediaAction } = mediaLibrary.deletion;
     const {
-        addMedia: addMediaAction,
-        confirmDeleteMedia: confirmDeleteMediaAction,
         markAsWatched: markAsWatchedAction,
         markAsUnwatched: markAsUnwatchedAction,
         watchedActionInFlight,
         editTitle,
         saveMediaProgress: saveMediaProgressAction,
-    } = mediaLibrary;
+    } = mediaLibrary.itemActions;
 
     const refreshDiagnosticsIfOpen = useCallback(async (): Promise<void> => {
         if (!diagnosticsOpen) {

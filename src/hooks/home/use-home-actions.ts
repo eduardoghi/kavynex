@@ -41,8 +41,9 @@ export function useHomeActions({
         channelToDelete,
         confirmDeleteChannel: confirmDeleteChannelAction,
     } = channelsState;
-    const { resetForm: resetAddMediaForm } = mediaLibrary.addMediaForm;
-    const { addMediaOpen, clearMediaAndPlayer, setAddMediaOpen } = mediaLibrary;
+    const { resetForm: resetAddMediaForm } = mediaLibrary.adding.addMediaForm;
+    const { clearMediaAndPlayer } = mediaLibrary;
+    const { addMediaOpen, setAddMediaOpen } = mediaLibrary.adding;
     const {
         disableChannelDeletion,
         channelDeletionDisabledReason,

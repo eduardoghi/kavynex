@@ -146,20 +146,25 @@ function controller(overrides: {
                 activeMedia: overrides.playerMedia ?? null,
                 openPlayer: vi.fn(),
             },
-            openMediaFileLocation: vi.fn(),
-            openMediaSourceInYoutube,
-            isLoadingMedia: false,
-            mediaItems: [item],
-            mediaTotal: 1,
-            channelMediaTotal: 1,
-            hasMoreMedia: false,
-            loadMoreMediaFailed: false,
-            mediaLoadError: null,
-            isLoadingMoreMedia: false,
-            applyMediaQuery: vi.fn(),
-            loadMoreMedia: vi.fn(),
-            setAddMediaOpen: vi.fn(),
-            requestDeleteMedia: vi.fn(),
+            itemActions: {
+                openMediaFileLocation: vi.fn(),
+                openMediaSourceInYoutube,
+            },
+            list: {
+                isLoadingMedia: false,
+                mediaItems: [item],
+                mediaTotal: 1,
+                channelMediaTotal: 1,
+                hasMoreMedia: false,
+                loadMoreMediaFailed: false,
+                mediaLoadError: null,
+                isLoadingMoreMedia: false,
+                applyMediaQuery: vi.fn(),
+                loadMoreMedia: vi.fn(),
+                reloadMedia: vi.fn(),
+            },
+            adding: { setAddMediaOpen: vi.fn() },
+            deletion: { requestDeleteMedia: vi.fn() },
         },
         settings: {
             openSettings: vi.fn(),
@@ -335,7 +340,7 @@ describe("Home", () => {
         expect(ctrl.mediaActions.markAsWatched).toHaveBeenCalledWith(42);
 
         fireEvent.click(screen.getByRole("button", { name: "open source" }));
-        expect(ctrl.media.openMediaSourceInYoutube).toHaveBeenCalledWith(item);
+        expect(ctrl.media.itemActions.openMediaSourceInYoutube).toHaveBeenCalledWith(item);
 
         fireEvent.click(screen.getByRole("button", { name: "back" }));
         expect(ctrl.channels.setSelectedChannelId).toHaveBeenCalledWith(null);

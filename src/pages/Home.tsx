@@ -56,7 +56,7 @@ export default function Home(): JSX.Element {
     // Stable handlers so the memoized MediaCard is not re-rendered by unrelated state
     // changes. Each depends only on the underlying controller action it calls.
     const { markAsWatched, markAsUnwatched } = controller.mediaActions;
-    const { openMediaFileLocation, openMediaSourceInYoutube } = media;
+    const { openMediaFileLocation, openMediaSourceInYoutube } = media.itemActions;
 
     // The two page-local flows that own state (the edit-title modal, the Diagnostics jump-to-media
     // focus) live in their own hooks rather than inline here, so this component stays presentation +
@@ -309,29 +309,29 @@ export default function Home(): JSX.Element {
                                         addMediaDisabledReason={
                                             controller.libraryPanelState.addMediaDisabledReason
                                         }
-                                        isLoadingMedia={media.isLoadingMedia}
+                                        isLoadingMedia={media.list.isLoadingMedia}
                                         isVisible={showLibrary}
-                                        mediaItems={media.mediaItems}
-                                        total={media.mediaTotal}
-                                        channelTotal={media.channelMediaTotal}
-                                        hasMore={media.hasMoreMedia}
-                                        loadMoreFailed={media.loadMoreMediaFailed}
-                                        loadError={media.mediaLoadError}
-                                        onRetryLoad={media.reloadMedia}
-                                        isLoadingMore={media.isLoadingMoreMedia}
-                                        onApplyQuery={media.applyMediaQuery}
-                                        onLoadMore={media.loadMoreMedia}
+                                        mediaItems={media.list.mediaItems}
+                                        total={media.list.mediaTotal}
+                                        channelTotal={media.list.channelMediaTotal}
+                                        hasMore={media.list.hasMoreMedia}
+                                        loadMoreFailed={media.list.loadMoreMediaFailed}
+                                        loadError={media.list.mediaLoadError}
+                                        onRetryLoad={media.list.reloadMedia}
+                                        isLoadingMore={media.list.isLoadingMoreMedia}
+                                        onApplyQuery={media.list.applyMediaQuery}
+                                        onLoadMore={media.list.loadMoreMedia}
                                         activeMediaId={media.mediaPlayer.activeMedia?.id ?? null}
                                         focusMediaId={diagnosticsFocus.focusMediaId}
                                         onFocusMediaHandled={diagnosticsFocus.handleFocusMediaHandled}
                                         libraryPath={controller.libraryPath}
                                         shellBorder={viewState.shellBorder}
                                         shellSurface={viewState.shellSurface}
-                                        onAddMedia={() => media.setAddMediaOpen(true)}
+                                        onAddMedia={() => media.adding.setAddMediaOpen(true)}
                                         onBack={() => channels.setSelectedChannelId(null)}
                                         cardActions={{
                                             onOpenMedia: media.mediaPlayer.openPlayer,
-                                            onRequestDeleteMedia: media.requestDeleteMedia,
+                                            onRequestDeleteMedia: media.deletion.requestDeleteMedia,
                                             onMarkWatched: handleMarkWatched,
                                             onMarkUnwatched: handleMarkUnwatched,
                                             watchedActionInFlight:

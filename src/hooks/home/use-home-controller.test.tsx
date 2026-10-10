@@ -73,6 +73,7 @@ import { useHomeViewState } from "./use-home-view-state";
 import { useHomeLibraryPanel } from "./use-home-library-panel";
 import { checkAppUpdate } from "../../services/app-update-service";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
+import { nestMediaLibrary } from "../../test/factories/media-library";
 
 const mockErrorState = {
     errorOpen: true,
@@ -180,7 +181,7 @@ const mockChannelsState = {
     closeDeleteChannelModal: vi.fn(),
 };
 
-const mockMediaLibrary = {
+const mockMediaLibrary = nestMediaLibrary({
     mediaItems: [],
 
     addMediaOpen: false,
@@ -284,7 +285,7 @@ const mockMediaLibrary = {
     closeDeleteMediaModal: vi.fn(),
 
     clearMediaAndPlayer: vi.fn(),
-};
+});
 
 const mockDiagnosticsState = {
     diagnosticsOpen: false,
@@ -483,10 +484,10 @@ describe("useHomeController", () => {
 
         expect(useHomeLibraryPanel).toHaveBeenCalledWith({
             selectedChannel: mockChannelsState.selectedChannel,
-            channelMediaTotal: mockMediaLibrary.channelMediaTotal,
+            channelMediaTotal: mockMediaLibrary.list.channelMediaTotal,
             viewMode: mockMediaLibrary.mediaPlayer.viewMode,
-            isLoadingMedia: mockMediaLibrary.isLoadingMedia,
-            isAddingMedia: mockMediaLibrary.isAddingMedia,
+            isLoadingMedia: mockMediaLibrary.list.isLoadingMedia,
+            isAddingMedia: mockMediaLibrary.adding.isAddingMedia,
             isMigratingLibraryPath: mockSettingsState.isMigratingLibraryPath,
             libraryPath: mockSettingsState.settings.libraryPath,
             isLibraryUnreachable: mockSettingsState.isLibraryUnreachable,

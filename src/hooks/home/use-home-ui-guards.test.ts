@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useHomeUiGuards } from "./use-home-ui-guards";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
+import { nestMediaLibrary } from "../../test/factories/media-library";
 
 describe("useHomeUiGuards", () => {
     function createSettingsState(overrides?: Partial<any>) {
@@ -40,7 +41,7 @@ describe("useHomeUiGuards", () => {
     }
 
     function createMediaLibrary(overrides?: Partial<any>) {
-        return {
+        return nestMediaLibrary({
             mediaItems: [],
 
             addMediaOpen: true,
@@ -149,7 +150,7 @@ describe("useHomeUiGuards", () => {
             clearMediaAndPlayer: vi.fn(),
 
             ...overrides,
-        };
+        });
     }
 
     function createChannelsState(overrides?: Partial<any>) {
@@ -177,7 +178,7 @@ describe("useHomeUiGuards", () => {
     it("disables library path change while generating thumbnail", () => {
         const mediaLibrary = createMediaLibrary({
             addMediaForm: {
-                ...createMediaLibrary().addMediaForm,
+                ...createMediaLibrary().adding.addMediaForm,
                 isGeneratingThumb: true,
             },
         });
@@ -226,7 +227,7 @@ describe("useHomeUiGuards", () => {
             await result.current.closeAddMediaModalSafely();
         });
 
-        expect(mediaLibrary.closeAddMediaModal).not.toHaveBeenCalled();
+        expect(mediaLibrary.adding.closeAddMediaModal).not.toHaveBeenCalled();
     });
 
     it("closes add media modal when unlocked", async () => {
@@ -244,7 +245,7 @@ describe("useHomeUiGuards", () => {
             await result.current.closeAddMediaModalSafely();
         });
 
-        expect(mediaLibrary.closeAddMediaModal).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.adding.closeAddMediaModal).toHaveBeenCalledTimes(1);
     });
 
     it("shows the migration message when migrating and a library path already exists", () => {
@@ -439,7 +440,7 @@ describe("useHomeUiGuards", () => {
             await result.current.closeAddMediaModalSafely();
         });
 
-        expect(busyMediaLibrary.closeAddMediaModal).not.toHaveBeenCalled();
-        expect(initialMediaLibrary.closeAddMediaModal).not.toHaveBeenCalled();
+        expect(busyMediaLibrary.adding.closeAddMediaModal).not.toHaveBeenCalled();
+        expect(initialMediaLibrary.adding.closeAddMediaModal).not.toHaveBeenCalled();
     });
 });

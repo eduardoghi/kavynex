@@ -114,28 +114,28 @@ describe("media library flows over a faked IPC", () => {
         const { result, onError, onNotice } = renderLibrary();
 
         await act(async () => {
-            await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+            await result.current.list.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
         const listLoads = callsOf("list_media_page").length;
 
         await act(async () => {
-            await result.current.addMediaForm.setSourceMode("local");
+            await result.current.adding.addMediaForm.setSourceMode("local");
         });
         await act(async () => {
-            await result.current.addMediaForm.pickMediaViaDialog();
+            await result.current.adding.addMediaForm.pickMediaViaDialog();
         });
-        expect(result.current.addMediaForm.mediaPath).toBe("/videos/clip.mp4");
+        expect(result.current.adding.addMediaForm.mediaPath).toBe("/videos/clip.mp4");
 
         let adding: Promise<void> = Promise.resolve();
         act(() => {
-            adding = result.current.addMedia();
+            adding = result.current.adding.addMedia();
         });
 
         await waitFor(() => expect(run.isStarted()).toBe(true));
-        expect(result.current.isAddingMedia).toBe(true);
+        expect(result.current.adding.isAddingMedia).toBe(true);
 
         await act(async () => {
-            await result.current.cancelYtDlpDownload();
+            await result.current.adding.cancelYtDlpDownload();
             await adding;
         });
 
@@ -143,7 +143,7 @@ describe("media library flows over a faked IPC", () => {
             "Import cancelled. Nothing was added to your library and the original file was left where it was."
         );
         expect(onError).not.toHaveBeenCalled();
-        expect(result.current.isAddingMedia).toBe(false);
+        expect(result.current.adding.isAddingMedia).toBe(false);
         expect(callsOf("list_media_page")).toHaveLength(listLoads);
     });
 
@@ -177,28 +177,28 @@ describe("media library flows over a faked IPC", () => {
         const { result, onError, onNotice } = renderLibrary();
 
         await act(async () => {
-            await result.current.addMediaForm.setSourceMode("yt-dlp");
+            await result.current.adding.addMediaForm.setSourceMode("yt-dlp");
         });
         act(() => {
-            result.current.addMediaForm.setMediaUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+            result.current.adding.addMediaForm.setMediaUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
         });
         await act(async () => {
-            await result.current.addMediaForm.loadYtDlpFormats();
+            await result.current.adding.addMediaForm.loadYtDlpFormats();
         });
         act(() => {
-            result.current.addMediaForm.setSelectedYtDlpFormatId("18");
+            result.current.adding.addMediaForm.setSelectedYtDlpFormatId("18");
         });
 
         let adding: Promise<void> = Promise.resolve();
         act(() => {
-            adding = result.current.addMedia();
+            adding = result.current.adding.addMedia();
         });
 
         await waitFor(() => expect(run.isStarted()).toBe(true));
-        expect(result.current.isYtDlpRunning).toBe(true);
+        expect(result.current.adding.isYtDlpRunning).toBe(true);
 
         await act(async () => {
-            await result.current.cancelYtDlpDownload();
+            await result.current.adding.cancelYtDlpDownload();
             await adding;
         });
 
@@ -206,8 +206,8 @@ describe("media library flows over a faked IPC", () => {
             "Download cancelled. Nothing was added to your library."
         );
         expect(onError).not.toHaveBeenCalled();
-        expect(result.current.isYtDlpRunning).toBe(false);
-        expect(result.current.isAddingMedia).toBe(false);
+        expect(result.current.adding.isYtDlpRunning).toBe(false);
+        expect(result.current.adding.isAddingMedia).toBe(false);
     });
 
     it("deletes a media and drops it from the list and the counts", async () => {
@@ -223,24 +223,24 @@ describe("media library flows over a faked IPC", () => {
         const { result, onError } = renderLibrary();
 
         await act(async () => {
-            await result.current.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+            await result.current.list.applyMediaQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
-        expect(result.current.mediaTotal).toBe(2);
+        expect(result.current.list.mediaTotal).toBe(2);
 
         act(() => {
-            result.current.requestDeleteMedia(first);
+            result.current.deletion.requestDeleteMedia(first);
         });
-        expect(result.current.confirmDeleteMediaOpen).toBe(true);
+        expect(result.current.deletion.confirmDeleteMediaOpen).toBe(true);
 
         await act(async () => {
-            await result.current.confirmDeleteMedia();
+            await result.current.deletion.confirmDeleteMedia();
         });
 
         expect(callsOf("delete_media_with_artifacts")).toEqual([{ mediaId: 1 }]);
-        expect(result.current.mediaItems.map((item) => item.id)).toEqual([2]);
-        expect(result.current.mediaTotal).toBe(1);
-        expect(result.current.channelMediaTotal).toBe(1);
-        expect(result.current.confirmDeleteMediaOpen).toBe(false);
+        expect(result.current.list.mediaItems.map((item) => item.id)).toEqual([2]);
+        expect(result.current.list.mediaTotal).toBe(1);
+        expect(result.current.list.channelMediaTotal).toBe(1);
+        expect(result.current.deletion.confirmDeleteMediaOpen).toBe(false);
         expect(onError).not.toHaveBeenCalled();
     });
 });

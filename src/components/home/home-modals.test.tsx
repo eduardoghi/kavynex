@@ -13,6 +13,7 @@ import type { DatabaseRecoveryController } from "../../hooks/use-app-bootstrap";
 import type { DiagnosticsController } from "../../hooks/use-diagnostics";
 import type { ErrorModalController } from "../../hooks/use-error-modal";
 import { createYtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
+import { nestMediaLibrary } from "../../test/factories/media-library";
 
 function createAddMediaForm(): AddMediaFormController {
     return {
@@ -121,7 +122,7 @@ function createChannels(): ChannelsController {
 }
 
 function createMedia(): MediaLibraryController {
-    return {
+    return nestMediaLibrary({
         mediaItems: [],
         addMediaOpen: true,
         setAddMediaOpen: vi.fn(),
@@ -163,7 +164,7 @@ function createMedia(): MediaLibraryController {
         confirmDeleteMedia: vi.fn().mockResolvedValue(undefined),
         closeDeleteMediaModal: vi.fn(),
         clearMediaAndPlayer: vi.fn(),
-    };
+    });
 }
 
 function createMediaActions(): HomeMediaActionsController {

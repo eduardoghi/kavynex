@@ -73,8 +73,9 @@ export function useHomeUiGuards({
     // callback below can depend on them directly, instead of passing the whole per-render
     // objects into helper functions called from inside them. This keeps the dependency arrays
     // honest (no eslint-disable) while the computed values stay identical.
-    const { isAddingMedia, isYtDlpRunning, isCancellingYtDlp, closeAddMediaModal } = mediaLibrary;
-    const { isGeneratingThumb, isLoadingYtDlpFormats } = mediaLibrary.addMediaForm;
+    const { isAddingMedia, isYtDlpRunning, isCancellingYtDlp, closeAddMediaModal } =
+        mediaLibrary.adding;
+    const { isGeneratingThumb, isLoadingYtDlpFormats } = mediaLibrary.adding.addMediaForm;
     const { viewMode: playerViewMode } = mediaLibrary.mediaPlayer;
     const { settings, isMigratingLibraryPath } = settingsState;
     const { libraryPath: settingsLibraryPath } = settings;

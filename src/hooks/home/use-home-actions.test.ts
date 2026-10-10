@@ -17,6 +17,10 @@ vi.mock("../../utils/error-message", () => ({
 import { executeDeleteSelectedChannel } from "../../use-cases/delete-selected-channel";
 import { logError } from "../../utils/app-logger";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
+import {
+    nestMediaLibrary,
+    type FlatMediaLibraryController,
+} from "../../test/factories/media-library";
 
 describe("useHomeActions", () => {
     function createErrorState(overrides?: Partial<any>): any {
@@ -108,7 +112,7 @@ describe("useHomeActions", () => {
     }
 
     function createMediaLibrary(overrides?: Partial<any>): any {
-        return {
+        return nestMediaLibrary({
             mediaItems: [],
 
             addMediaOpen: true,
@@ -184,7 +188,6 @@ describe("useHomeActions", () => {
                 openInYoutube: vi.fn(),
             },
 
-            loadMedia: vi.fn(),
             addMedia: vi.fn(),
             cancelYtDlpDownload: vi.fn(),
 
@@ -202,8 +205,9 @@ describe("useHomeActions", () => {
 
             clearMediaAndPlayer: vi.fn(),
 
+            // Only the fields these tests read. useHomeActions touches a handful of them.
             ...overrides,
-        };
+        } as unknown as FlatMediaLibraryController);
     }
 
     function createUiGuards(overrides?: Partial<any>): any {
@@ -390,8 +394,8 @@ describe("useHomeActions", () => {
 
         expect(channelsState.setSelectedChannelId).toHaveBeenCalledWith(null);
         expect(mediaLibrary.clearMediaAndPlayer).toHaveBeenCalledTimes(1);
-        expect(mediaLibrary.addMediaForm.resetForm).toHaveBeenCalledTimes(1);
-        expect(mediaLibrary.setAddMediaOpen).toHaveBeenCalledWith(false);
+        expect(mediaLibrary.adding.addMediaForm.resetForm).toHaveBeenCalledTimes(1);
+        expect(mediaLibrary.adding.setAddMediaOpen).toHaveBeenCalledWith(false);
     });
 
     it("skips resetting the add-media form before deleting a channel when it is not open", async () => {
@@ -420,8 +424,8 @@ describe("useHomeActions", () => {
 
         expect(channelsState.setSelectedChannelId).toHaveBeenCalledWith(null);
         expect(mediaLibrary.clearMediaAndPlayer).toHaveBeenCalledTimes(1);
-        expect(mediaLibrary.addMediaForm.resetForm).not.toHaveBeenCalled();
-        expect(mediaLibrary.setAddMediaOpen).not.toHaveBeenCalled();
+        expect(mediaLibrary.adding.addMediaForm.resetForm).not.toHaveBeenCalled();
+        expect(mediaLibrary.adding.setAddMediaOpen).not.toHaveBeenCalled();
     });
 
     it("captures fresh channel and media state after a rerender before deleting", async () => {
