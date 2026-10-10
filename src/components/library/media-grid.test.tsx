@@ -211,6 +211,57 @@ describe("MediaGrid", () => {
         expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-setsize", "-1");
     });
 
+    it("says the channel failed to load instead of showing it as empty", () => {
+        const onRetryLoad = vi.fn();
+
+        renderWithMantine(
+            <MediaGrid
+                items={[]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                loadError="The database is busy."
+                onRetryLoad={onRetryLoad}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("Could not load this channel's media")).toBeInTheDocument();
+        expect(screen.getByText("The database is busy.")).toBeInTheDocument();
+        expect(screen.queryByText("No media yet")).not.toBeInTheDocument();
+
+        screen.getByRole("button", { name: "Try again" }).click();
+        expect(onRetryLoad).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps the rows it has when a reload fails and offers to retry it", () => {
+        const onRetryLoad = vi.fn();
+
+        renderWithMantine(
+            <MediaGrid
+                items={[createMedia({ id: 1, title: "First" })]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                loadError="The database is busy."
+                onRetryLoad={onRetryLoad}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(
+            screen.getByText("Could not refresh the list. It still shows what was loaded before.")
+        ).toBeInTheDocument();
+        expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+        screen.getByRole("button", { name: "Try again" }).click();
+        expect(onRetryLoad).toHaveBeenCalledTimes(1);
+    });
+
     it("keeps a focus request open while the page it may be on failed to load", () => {
         const onFocusHandled = vi.fn();
 

@@ -53,6 +53,9 @@ type SelectedChannelLibrarySectionProps = {
     hasMore: boolean;
     // A page after the first failed. The grid offers to try it again.
     loadMoreFailed?: boolean;
+    // The first page failed. The grid says so and offers onRetryLoad.
+    loadError?: string | null;
+    onRetryLoad?: () => void;
     isLoadingMore: boolean;
     onApplyQuery: (filters: MediaQueryFilters) => void | Promise<void>;
     onLoadMore: () => void;
@@ -79,6 +82,8 @@ export function SelectedChannelLibrarySection({
     channelTotal,
     hasMore,
     loadMoreFailed = false,
+    loadError = null,
+    onRetryLoad,
     isLoadingMore,
     onApplyQuery,
     onLoadMore,
@@ -319,6 +324,8 @@ export function SelectedChannelLibrarySection({
                 items={mediaItems}
                 hasMore={hasMore}
                 loadMoreFailed={loadMoreFailed}
+                loadError={loadError}
+                onRetryLoad={onRetryLoad}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 activeMediaId={activeMediaId}

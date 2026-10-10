@@ -265,6 +265,7 @@ const mockMediaLibrary = {
     channelMediaTotal: 0,
     hasMoreMedia: false,
     loadMoreMediaFailed: false,
+    mediaLoadError: null,
     isLoadingMoreMedia: false,
     addMedia: vi.fn(),
     cancelYtDlpDownload: vi.fn(),

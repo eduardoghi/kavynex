@@ -24,6 +24,9 @@ export type MediaLibraryController = {
     hasMoreMedia: boolean;
     // A page after the first failed to load. The grid shows a retry row that calls loadMoreMedia.
     loadMoreMediaFailed: boolean;
+    // Why the first page of the current query failed, or null. The grid keeps the rows it had and
+    // offers reloadMedia.
+    mediaLoadError: string | null;
     isLoadingMoreMedia: boolean;
     addMediaOpen: boolean;
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -226,6 +229,7 @@ export function useMediaLibrary({
         channelMediaTotal: mediaList.channelTotal,
         hasMoreMedia: mediaList.hasMore,
         loadMoreMediaFailed: mediaList.loadMoreFailed,
+        mediaLoadError: mediaList.loadError,
         isLoadingMoreMedia: mediaList.isLoadingMore,
 
         addMediaOpen: addMediaWorkflow.addMediaOpen,

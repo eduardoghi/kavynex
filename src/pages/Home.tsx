@@ -316,6 +316,8 @@ export default function Home(): JSX.Element {
                                         channelTotal={media.channelMediaTotal}
                                         hasMore={media.hasMoreMedia}
                                         loadMoreFailed={media.loadMoreMediaFailed}
+                                        loadError={media.mediaLoadError}
+                                        onRetryLoad={media.reloadMedia}
                                         isLoadingMore={media.isLoadingMoreMedia}
                                         onApplyQuery={media.applyMediaQuery}
                                         onLoadMore={media.loadMoreMedia}

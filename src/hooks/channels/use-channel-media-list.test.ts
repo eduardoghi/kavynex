@@ -149,7 +149,7 @@ describe("useChannelMediaList", () => {
         expect(listChannelMediaPage).not.toHaveBeenCalled();
     });
 
-    it("reports a load error", async () => {
+    it("reports a first-page failure through loadError rather than the error dialog", async () => {
         vi.mocked(listChannelMediaPage).mockRejectedValue(new Error("boom"));
 
         const { result } = renderHook(() =>
@@ -160,7 +160,10 @@ describe("useChannelMediaList", () => {
             await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
         });
 
-        expect(onError).toHaveBeenCalledWith("Failed to load channel media.");
+        // The grid shows the failure and a retry in place of the list, so the dialog would only
+        // repeat it on top.
+        expect(result.current.loadError).toBe("Failed to load channel media.");
+        expect(onError).not.toHaveBeenCalled();
         expect(result.current.mediaItems).toEqual([]);
         expect(result.current.isLoadingMedia).toBe(false);
         expect(logError).toHaveBeenCalledWith(
@@ -169,6 +172,47 @@ describe("useChannelMediaList", () => {
             expect.any(Error),
             { channelId: 10 }
         );
+    });
+
+    it("keeps the loaded rows when a reload fails, and stops paging them", async () => {
+        // The reload after adding a media, with the database busy, used to swap a full channel for
+        // the "No media yet" state.
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 250)
+        );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        vi.mocked(listChannelMediaPage).mockRejectedValueOnce(new Error("database is locked"));
+
+        await act(async () => {
+            await result.current.reloadMedia();
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 2]);
+        expect(result.current.total).toBe(250);
+        expect(result.current.loadError).not.toBeNull();
+        // The rows on screen answer the query before the failed one, so the next page of the new
+        // query must not be appended to them.
+        expect(result.current.hasMore).toBe(false);
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 }), createMediaRow({ id: 3 })], 251)
+        );
+
+        await act(async () => {
+            await result.current.reloadMedia();
+        });
+
+        expect(result.current.loadError).toBeNull();
+        expect(result.current.mediaItems).toHaveLength(3);
+        expect(result.current.hasMore).toBe(true);
     });
 
     it("appends the next page on loadMore", async () => {

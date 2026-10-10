@@ -36,6 +36,9 @@ type UseChannelMediaListReturn = {
     // A page after the first failed to load. Automatic paging stops until the query changes, the
     // list is reloaded or `loadMore` is called on purpose, which the grid's retry row does.
     loadMoreFailed: boolean;
+    // Why the last first-page load failed, or null. The rows already on screen stay (a channel
+    // switch has cleared them before the load), and the grid offers a retry through `reloadMedia`.
+    loadError: string | null;
     isLoadingMedia: boolean;
     isLoadingMore: boolean;
     setMediaItems: React.Dispatch<React.SetStateAction<MediaRow[]>>;
@@ -71,6 +74,7 @@ export function useChannelMediaList({
     // dependency, and this is what a render has to see.
     const [loadedCount, setLoadedCount] = useState(0);
     const [loadMoreFailed, setLoadMoreFailed] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     const requestGuard = useRequestGuard();
     const filtersRef = useRef<MediaQueryFilters | null>(null);
@@ -128,8 +132,10 @@ export function useChannelMediaList({
     //
     // A failed page also ends it. The grid asks for the next page whenever the last row is visible
     // and nothing is loading, so a failure that left this true asked again as soon as the request
-    // settled, forever, each time logging the error and reopening the error dialog.
-    const hasMore = loadedCount < total && !loadMoreFailed;
+    // settled, forever, each time logging the error and reopening the error dialog. A failed first
+    // page ends it too, since the rows still shown belong to the query before it, and appending the
+    // new query's pages to them would mix two result sets.
+    const hasMore = loadedCount < total && !loadMoreFailed && loadError === null;
 
     // The cursor and its rendered copy always move together, so they are set through one helper
     // rather than at seven call sites. A ref left behind by a `setLoadedCount` that forgot it is a
@@ -147,6 +153,7 @@ export function useChannelMediaList({
         setIsLoadingMedia(false);
         setIsLoadingMore(false);
         setLoadMoreFailed(false);
+        setLoadError(null);
         setMediaItems([]);
         setTotal(0);
         setChannelTotal(0);
@@ -167,6 +174,7 @@ export function useChannelMediaList({
             lastRequestIdRef.current = requestId;
             setIsLoadingMedia(true);
             setLoadMoreFailed(false);
+            setLoadError(null);
 
             // Switching channels. Drop the previous channel's page (and its counts) so they do not
             // flash before the new load resolves. A filter change on the same channel keeps the
@@ -204,17 +212,19 @@ export function useChannelMediaList({
                     return;
                 }
 
-                setMediaItems([]);
-                setTotal(0);
+                // The rows stay. Replacing them with the empty state told a user whose channel holds
+                // hundreds of videos that it holds none, which is what a reload after adding media
+                // did whenever the database was busy. The grid says the load failed instead and
+                // offers a retry, so the error dialog is not opened on top of it as well.
                 logError("media-list", "Failed to load channel media.", error, { channelId });
-                onError(resolveErrorMessage(error, "Failed to load channel media."));
+                setLoadError(resolveErrorMessage(error, "Failed to load channel media."));
             } finally {
                 if (requestGuard.isCurrent(requestId)) {
                     setIsLoadingMedia(false);
                 }
             }
         },
-        [clearMedia, onError, requestGuard, setLoadedRows]
+        [clearMedia, requestGuard, setLoadedRows]
     );
 
     const loadMore = useCallback(async (): Promise<void> => {
@@ -369,6 +379,7 @@ export function useChannelMediaList({
         channelTotal,
         hasMore,
         loadMoreFailed,
+        loadError,
         isLoadingMedia,
         isLoadingMore,
         setMediaItems,

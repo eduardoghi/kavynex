@@ -34,6 +34,8 @@ export const UI_TEXT = {
         loadingMore: "Loading more",
         loadMoreFailed: "Could not load the rest of the list.",
         loadMoreRetry: "Try again",
+        loadFailedTitle: "Could not load this channel's media",
+        reloadFailed: "Could not refresh the list. It still shows what was loaded before.",
         searchLabel: "Search by title",
         searchPlaceholder: "Search titles",
         typeLabel: "Type",

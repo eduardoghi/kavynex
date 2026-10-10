@@ -30,6 +30,11 @@ type MediaGridProps = {
     // A page after the first failed. Scrolling no longer asks for it (that retried in a loop), so a
     // row at the end of the list offers to, and the list counts as incomplete until it loads.
     loadMoreFailed?: boolean;
+    // The first page of the current query failed, with the reason to show. The grid keeps the rows
+    // it has (none after a channel switch) and offers onRetryLoad instead of the empty state, which
+    // would tell the user the channel holds nothing.
+    loadError?: string | null;
+    onRetryLoad?: () => void;
     loading?: boolean;
     isVisible?: boolean;
     emptyTitle?: string;
@@ -125,6 +130,8 @@ export function MediaGrid({
     isLoadingMore = false,
     onLoadMore,
     loadMoreFailed = false,
+    loadError = null,
+    onRetryLoad,
     loading = false,
     isVisible = true,
     emptyTitle = UI_TEXT.library.emptyTitle,
@@ -355,7 +362,49 @@ export function MediaGrid({
                 </Box>
             )}
 
-            {!loading && !hasItems && (
+            {!loading && loadError !== null && !hasItems && (
+                <Card
+                    withBorder
+                    radius="xl"
+                    p="xl"
+                    style={{ background: shellSurface, borderColor: shellBorder }}
+                >
+                    <Stack gap="xs" align="flex-start" role="alert">
+                        <Title order={4} fw={900}>
+                            {UI_TEXT.library.loadFailedTitle}
+                        </Title>
+
+                        <Text c="dimmed">{loadError}</Text>
+
+                        {onRetryLoad && (
+                            <AppButton type="button" appVariant="secondary" onClick={onRetryLoad}>
+                                {UI_TEXT.library.loadMoreRetry}
+                            </AppButton>
+                        )}
+                    </Stack>
+                </Card>
+            )}
+
+            {!loading && loadError !== null && hasItems && (
+                <Group gap="sm" role="alert">
+                    <Text size="sm" c="dimmed">
+                        {UI_TEXT.library.reloadFailed}
+                    </Text>
+
+                    {onRetryLoad && (
+                        <AppButton
+                            type="button"
+                            appVariant="secondary"
+                            size="xs"
+                            onClick={onRetryLoad}
+                        >
+                            {UI_TEXT.library.loadMoreRetry}
+                        </AppButton>
+                    )}
+                </Group>
+            )}
+
+            {!loading && loadError === null && !hasItems && (
                 <Card
                     withBorder
                     radius="xl"
