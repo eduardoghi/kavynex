@@ -29,7 +29,10 @@ export function useMediaLiveChat(
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        let cancelled = false;
+        // Aborted when the media changes or the player closes. That stops the read on both sides
+        // of the IPC boundary, rather than letting a long replay stream in for a panel that is gone.
+        const controller = new AbortController();
+        const cancelled = (): boolean => controller.signal.aborted;
 
         async function loadLiveChat(): Promise<void> {
             if (!media?.id || !media.live_chat_file_path?.trim() || !media.has_live_chat) {
@@ -43,21 +46,27 @@ export function useMediaLiveChat(
             setError(null);
 
             try {
-                const rows = await readLiveChatMessagesFromFile(media.live_chat_file_path);
+                const rows = await readLiveChatMessagesFromFile(
+                    media.live_chat_file_path,
+                    controller.signal
+                );
 
-                if (!cancelled) {
+                if (!cancelled()) {
                     setLiveChatMessages(rows);
                 }
             } catch (loadFailure) {
-                if (!cancelled) {
-                    setLiveChatMessages([]);
-                    setError(
-                        resolveErrorMessage(
-                            loadFailure,
-                            "Could not load the live chat replay for this media."
-                        )
-                    );
+                // Abandoned on purpose, so neither an error to show nor one to log.
+                if (cancelled()) {
+                    return;
                 }
+
+                setLiveChatMessages([]);
+                setError(
+                    resolveErrorMessage(
+                        loadFailure,
+                        "Could not load the live chat replay for this media."
+                    )
+                );
 
                 logError("media-player", "Failed to load live chat replay from file.", loadFailure, {
                     mediaId: media.id,
@@ -65,7 +74,7 @@ export function useMediaLiveChat(
                     libraryPath,
                 });
             } finally {
-                if (!cancelled) {
+                if (!cancelled()) {
                     setIsLoadingLiveChat(false);
                 }
             }
@@ -74,7 +83,7 @@ export function useMediaLiveChat(
         void loadLiveChat();
 
         return () => {
-            cancelled = true;
+            controller.abort();
         };
     }, [libraryPath, media?.has_live_chat, media?.id, media?.live_chat_file_path]);
 

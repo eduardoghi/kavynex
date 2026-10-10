@@ -11,6 +11,12 @@ vi.mock("../../services/live-chat-service", () => ({
     readLiveChatMessagesFromFile: vi.fn(),
 }));
 
+vi.mock("../../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
+import { logError } from "../../utils/app-logger";
+
 const readMock = vi.mocked(readLiveChatMessagesFromFile);
 
 describe("useMediaLiveChat", () => {
@@ -36,7 +42,10 @@ describe("useMediaLiveChat", () => {
 
         await waitFor(() => expect(result.current.isLoadingLiveChat).toBe(false));
 
-        expect(readMock).toHaveBeenCalledWith("live_chat/clip.live_chat.json.gz");
+        expect(readMock).toHaveBeenCalledWith(
+            "live_chat/clip.live_chat.json.gz",
+            expect.any(AbortSignal)
+        );
         expect(result.current.liveChatMessages).toHaveLength(1);
         expect(result.current.error).toBeNull();
     });
@@ -73,5 +82,35 @@ describe("useMediaLiveChat", () => {
         // media that genuinely has no live chat (rather than showing the empty state).
         expect(result.current.liveChatMessages).toEqual([]);
         expect(result.current.error).not.toBeNull();
+    });
+
+    it("abandons the read when the player closes, without reporting an error", async () => {
+        let signal: AbortSignal | undefined;
+        readMock.mockImplementation((_path, readSignal) => {
+            signal = readSignal;
+            return new Promise((_resolve, reject) => {
+                readSignal?.addEventListener("abort", () =>
+                    reject(new DOMException("abandoned", "AbortError"))
+                );
+            });
+        });
+
+        const { result, unmount } = renderHook(() =>
+            useMediaLiveChat(
+                createMedia({
+                    id: 7,
+                    has_live_chat: 1,
+                    live_chat_file_path: "live_chat/clip.live_chat.json.gz",
+                }),
+                "/library"
+            )
+        );
+
+        await waitFor(() => expect(result.current.isLoadingLiveChat).toBe(true));
+
+        unmount();
+
+        expect(signal?.aborted).toBe(true);
+        expect(logError).not.toHaveBeenCalled();
     });
 });

@@ -221,6 +221,7 @@ describe("streamLiveChatFile", () => {
 
         expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, {
             relativePath: "live_chat/a.json.gz",
+            streamId: expect.any(String),
             onBatch: expect.any(FakeChannel),
         });
 
@@ -250,6 +251,41 @@ describe("streamLiveChatFile", () => {
         await streaming;
 
         expect(settled).toBe(true);
+    });
+
+    it("rejects at once when aborted, ignores later batches and cancels the backend stream", async () => {
+        invokeMock.mockResolvedValue(null);
+        const onLines = vi.fn();
+        const controller = new AbortController();
+
+        const streaming = streamLiveChatFile("live_chat/a.json.gz", onLines, controller.signal);
+        await flushPromises();
+
+        const streamId = (invokeMock.mock.calls[0]?.[1] as { streamId: string }).streamId;
+        const channel = channelPassedAs("onBatch");
+        channel.onmessage({ kind: "batch", lines: ["before"] });
+
+        controller.abort();
+        channel.onmessage({ kind: "batch", lines: ["after"] });
+
+        await expect(streaming).rejects.toMatchObject({ name: "AbortError" });
+        expect(onLines.mock.calls).toEqual([[["before"]]]);
+        expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.CANCEL_LIVE_CHAT_STREAM, {
+            streamId,
+        });
+    });
+
+    it("does not start a read for a signal already aborted", async () => {
+        const controller = new AbortController();
+        controller.abort();
+
+        await expect(
+            streamLiveChatFile("live_chat/a.json.gz", vi.fn(), controller.signal)
+        ).rejects.toMatchObject({ name: "AbortError" });
+        expect(invokeMock).not.toHaveBeenCalledWith(
+            TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE,
+            expect.anything()
+        );
     });
 
     it("drops a malformed message and keeps reading", async () => {

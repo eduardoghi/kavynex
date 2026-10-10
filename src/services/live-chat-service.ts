@@ -39,31 +39,35 @@ export async function migrateLiveChatToLibrary(): Promise<void> {
 // either side of the IPC boundary; only the compact parsed messages below are retained (they must
 // be, so the playback-time window can seek anywhere in the timeline).
 export async function readLiveChatMessagesFromFile(
-    relativePath: string
+    relativePath: string,
+    signal?: AbortSignal
 ): Promise<LiveChatMessageItem[]> {
     const messages: LiveChatMessageItem[] = [];
     let parsedLines = 0;
     let failedLines = 0;
 
-    await streamLiveChatFile(relativePath, (lines) => {
-        for (const line of lines) {
-            if (!line.trim()) {
-                continue;
-            }
+    await streamLiveChatFile(
+        relativePath,
+        (lines) => {
+            for (const line of lines) {
+                if (!line.trim()) {
+                    continue;
+                }
 
-            try {
-                messages.push(...parseLiveChatLine(line));
-                parsedLines += 1;
-            } catch {
-                // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not
-                // abort the whole replay, but it must not vanish silently either. Swallowing each
-                // failure (the previous `catch { continue }`) meant a format drift dropped chat
-                // messages with no signal at all. Count them and warn once below so the loss shows
-                // up in the log (and in any bug report) instead of only as fewer messages.
-                failedLines += 1;
+                try {
+                    messages.push(...parseLiveChatLine(line));
+                    parsedLines += 1;
+                } catch {
+                    // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not
+                    // abort the whole replay, but it must not vanish silently either. Count them
+                    // and warn once below so the loss shows up in the log (and in any bug report)
+                    // instead of only as fewer messages.
+                    failedLines += 1;
+                }
             }
-        }
-    });
+        },
+        signal
+    );
 
     if (failedLines > 0) {
         logWarn("live-chat", "Some live chat replay lines could not be parsed and were skipped.", {

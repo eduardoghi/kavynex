@@ -64,6 +64,7 @@ export type TauriCommandReturns = {
     // marker, inserts the row and clears the marker, and answers with the registered media.
     create_media: CreatedMedia;
     stream_live_chat_file: void;
+    cancel_live_chat_stream: void;
     list_live_chat_files: string[];
     migrate_live_chat_to_library: void;
 

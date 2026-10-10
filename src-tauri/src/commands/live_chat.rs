@@ -1,4 +1,6 @@
+use std::collections::VecDeque;
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, Runtime};
@@ -58,13 +60,76 @@ where
     stream_live_chat_lines(&absolute, batch_lines, emit)
 }
 
+/// How many abandoned stream ids are remembered. A cancel can arrive after its stream already
+/// ended, and then nothing removes its id, so the list is bounded rather than left to grow. The
+/// renderer makes a fresh id per read, so an id that falls off was never going to match again.
+const MAX_ABANDONED_STREAMS: usize = 32;
+
+/// The ids of the streams the renderer no longer wants, checked before each batch is sent.
+fn abandoned_streams() -> &'static Mutex<VecDeque<String>> {
+    static ABANDONED: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+    ABANDONED.get_or_init(|| Mutex::new(VecDeque::new()))
+}
+
+fn mark_stream_abandoned(stream_id: &str) {
+    let mut abandoned = abandoned_streams()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    if abandoned.len() >= MAX_ABANDONED_STREAMS {
+        abandoned.pop_front();
+    }
+
+    abandoned.push_back(stream_id.to_string());
+}
+
+/// Whether `stream_id` was abandoned, forgetting it when it was, since a stream asks only once
+/// it has stopped.
+fn take_stream_abandoned(stream_id: &str) -> bool {
+    let mut abandoned = abandoned_streams()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    match abandoned.iter().position(|id| id == stream_id) {
+        Some(index) => {
+            abandoned.remove(index);
+            true
+        }
+        None => false,
+    }
+}
+
+fn is_stream_abandoned(stream_id: &str) -> bool {
+    abandoned_streams()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .any(|id| id == stream_id)
+}
+
+/// Stops the live chat stream `stream_id` before its next batch. Sent by the renderer when the
+/// player closes or moves to another media mid-read, so a long replay is not read, decompressed
+/// and sent across the IPC boundary for nobody.
+#[tauri::command]
+pub fn cancel_live_chat_stream(stream_id: String) {
+    let stream_id = stream_id.trim();
+
+    if !stream_id.is_empty() {
+        mark_stream_abandoned(stream_id);
+    }
+}
+
 /// Streams a live chat replay file from the library to the frontend over `on_batch`, one batch of
 /// lines at a time (transparently gunzipped), so a long replay is never materialized as one giant
 /// string on either side of the IPC boundary. A terminal `Done` event follows the last batch.
+///
+/// A stream cancelled through [`cancel_live_chat_stream`] stops before its next batch and returns
+/// without `Done`. The renderer has already stopped listening by then.
 #[tauri::command]
 pub async fn stream_live_chat_file<R: Runtime>(
     app: AppHandle<R>,
     relative_path: String,
+    stream_id: String,
     on_batch: Channel<LiveChatStreamEvent>,
 ) -> AppResult<()> {
     let library_dir = configured_library_dir(&app).await?;
@@ -85,11 +150,18 @@ pub async fn stream_live_chat_file<R: Runtime>(
     // whole streamed read would instead block a migration for the entire duration of a (possibly
     // large) replay, which is worse than the transient error it would prevent. See services::library::lock.
     run_blocking(move || {
-        stream_live_chat_relative_sync(
+        let streamed = stream_live_chat_relative_sync(
             &library_dir,
             &relative_path,
             LIVE_CHAT_STREAM_BATCH_LINES,
             |lines| {
+                if is_stream_abandoned(&stream_id) {
+                    return Err(AppError::from_code(
+                        AppErrorCode::LiveChatFileUnreadable,
+                        "the live chat stream was cancelled",
+                    ));
+                }
+
                 on_batch
                     .send(LiveChatStreamEvent::Batch { lines })
                     .map_err(|error| {
@@ -99,7 +171,13 @@ pub async fn stream_live_chat_file<R: Runtime>(
                         )
                     })
             },
-        )?;
+        );
+
+        if take_stream_abandoned(&stream_id) {
+            return Ok(());
+        }
+
+        streamed?;
 
         on_batch.send(LiveChatStreamEvent::Done).map_err(|error| {
             AppError::from_code(
@@ -172,6 +250,41 @@ mod tests {
         })?;
 
         Ok(lines)
+    }
+
+    #[test]
+    fn a_cancelled_stream_is_seen_once_and_others_are_not() {
+        let id = format!("stream-{}", crate::utils::naming::unique_temp_suffix());
+        let other = format!("stream-{}", crate::utils::naming::unique_temp_suffix());
+
+        cancel_live_chat_stream(id.clone());
+
+        assert!(is_stream_abandoned(&id));
+        assert!(!is_stream_abandoned(&other));
+        assert!(take_stream_abandoned(&id));
+        assert!(
+            !take_stream_abandoned(&id),
+            "a stream forgets its cancel once it has stopped"
+        );
+    }
+
+    #[test]
+    fn the_abandoned_list_stays_bounded() {
+        let first = format!("stream-{}", crate::utils::naming::unique_temp_suffix());
+        cancel_live_chat_stream(first.clone());
+
+        for _ in 0..MAX_ABANDONED_STREAMS {
+            cancel_live_chat_stream(format!(
+                "stream-{}",
+                crate::utils::naming::unique_temp_suffix()
+            ));
+        }
+
+        assert!(!is_stream_abandoned(&first));
+        assert!(
+            abandoned_streams().lock().unwrap().len() <= MAX_ABANDONED_STREAMS,
+            "the list never grows past its bound"
+        );
     }
 
     #[test]
@@ -339,7 +452,7 @@ mod tests {
             "stream_live_chat_file",
             serde_json::json!({
                 "relativePath": "live_chat/clip.live_chat.json",
-                "onBatch": "__CHANNEL__:1"
+                "streamId": "test-stream", "onBatch": "__CHANNEL__:1"
             }),
         )
         .unwrap();
@@ -369,7 +482,7 @@ mod tests {
             "stream_live_chat_file",
             serde_json::json!({
                 "relativePath": "live_chat/clip.live_chat.json",
-                "onBatch": "__CHANNEL__:1"
+                "streamId": "test-stream", "onBatch": "__CHANNEL__:1"
             }),
         )
         .unwrap_err();
@@ -394,7 +507,7 @@ mod tests {
             "stream_live_chat_file",
             serde_json::json!({
                 "relativePath": "../secret.json",
-                "onBatch": "__CHANNEL__:1"
+                "streamId": "test-stream", "onBatch": "__CHANNEL__:1"
             }),
         )
         .unwrap_err();
@@ -420,7 +533,7 @@ mod tests {
             "stream_live_chat_file",
             serde_json::json!({
                 "relativePath": "video/media.mp4",
-                "onBatch": "__CHANNEL__:1"
+                "streamId": "test-stream", "onBatch": "__CHANNEL__:1"
             }),
         )
         .unwrap_err();
@@ -450,7 +563,7 @@ mod tests {
             let error = invoke(
                 &webview,
                 "stream_live_chat_file",
-                serde_json::json!({ "relativePath": unc, "onBatch": "__CHANNEL__:1" }),
+                serde_json::json!({ "relativePath": unc, "streamId": "test-stream", "onBatch": "__CHANNEL__:1" }),
             )
             .unwrap_err();
 
@@ -476,7 +589,7 @@ mod tests {
             "stream_live_chat_file",
             serde_json::json!({
                 "relativePath": "live_chat/missing.json",
-                "onBatch": "__CHANNEL__:1"
+                "streamId": "test-stream", "onBatch": "__CHANNEL__:1"
             }),
         )
         .unwrap_err();

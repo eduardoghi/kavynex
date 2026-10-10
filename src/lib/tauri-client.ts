@@ -73,10 +73,18 @@ export async function invokeVoid(
 // at the seam rather than flowing into the parser as the wrong type. That holds for batches only. A
 // message that is not a batch may be the terminal `done`, the one thing that settles the promise, so
 // one this seam cannot read rejects the read instead of leaving the panel loading forever.
+//
+// Aborting `signal` rejects at once with an AbortError, drops any batch still in flight, and asks
+// the backend to stop reading (cancel_live_chat_stream), so leaving the player mid-read does not
+// keep a long replay streaming for nobody.
 export async function streamLiveChatFile(
     relativePath: string,
-    onLines: (lines: string[]) => void
+    onLines: (lines: string[]) => void,
+    signal?: AbortSignal
 ): Promise<void> {
+    signal?.throwIfAborted();
+
+    const streamId = newStreamId();
     const channel = new Channel<LiveChatStreamEvent>();
 
     let signalDone: () => void = () => {};
@@ -122,8 +130,39 @@ export async function streamLiveChatFile(
         }
     };
 
-    await invokeCommand(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, { relativePath, onBatch: channel });
-    await done;
+    const abort = (): void => {
+        if (failed) {
+            return;
+        }
+
+        failed = true;
+        fail(new DOMException("The live chat read was abandoned.", "AbortError"));
+        void invokeVoid(TAURI_COMMANDS.CANCEL_LIVE_CHAT_STREAM, { streamId }).catch(() => {});
+    };
+
+    signal?.addEventListener("abort", abort, { once: true });
+
+    try {
+        const streamed = invokeCommand(TAURI_COMMANDS.STREAM_LIVE_CHAT_FILE, {
+            relativePath,
+            streamId,
+            onBatch: channel,
+        });
+        // Observed here as well, so an abort that settles the race below first does not leave the
+        // command's later outcome reported as unhandled.
+        streamed.catch(() => {});
+
+        await Promise.race([streamed, done]);
+        await done;
+    } finally {
+        signal?.removeEventListener("abort", abort);
+    }
+}
+
+function newStreamId(): string {
+    return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function isLiveChatBatchMessage(message: unknown): boolean {

@@ -31,6 +31,7 @@ export const TAURI_COMMANDS = {
     // src-tauri/src/commands/media.rs for why they were removed rather than left registered.
     CREATE_MEDIA: "create_media",
     STREAM_LIVE_CHAT_FILE: "stream_live_chat_file",
+    CANCEL_LIVE_CHAT_STREAM: "cancel_live_chat_stream",
     LIST_LIVE_CHAT_FILES: "list_live_chat_files",
     MIGRATE_LIVE_CHAT_TO_LIBRARY: "migrate_live_chat_to_library",
 
