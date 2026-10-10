@@ -218,7 +218,7 @@ describe("DatabaseSection", () => {
         renderWithMantine(
             <DatabaseSection
                 {...baseProps({
-                    externalBackupDir: "E:\Backups",
+                    externalBackupDir: "E:\\Backups",
                     externalBackupStatus: { configured: true, reachable: false, mirroredAtMs: null },
                 })}
             />
