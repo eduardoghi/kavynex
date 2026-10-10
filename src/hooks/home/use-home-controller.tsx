@@ -81,6 +81,7 @@ export function useHomeController(): HomeController {
     // since nothing was deleted and the import can be undone.
     useImportedDatabaseAlert({
         onMissingFiles: errorState.showNotice,
+        onImportFailed: errorState.showError,
     });
 
     const uiGuards = useHomeUiGuards({

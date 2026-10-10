@@ -606,8 +606,10 @@ live connection pool is a singleton that cannot be reopened mid-session:
    files the folder does not have, the count is logged and sent to the frontend as
    `imported-database-missing-files`, which shows a notice pointing at Diagnostics and at the undo.
    Only missing files are counted. Orphans and damaged files were in the folder before the import,
-   and Diagnostics reports them as usual. The delay is there because an event sent before the window
-   subscribes is lost.
+   and Diagnostics reports them as usual. The count is also recorded for the frontend to take when
+   it mounts (`services/startup_notices.rs`), so it is not lost when the event goes out before the
+   window subscribes. An import that cannot be applied at all is recorded the same way and shown as
+   an error.
 
 ## Related files
 

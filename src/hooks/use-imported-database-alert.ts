@@ -1,14 +1,16 @@
-import { useEffect } from "react";
 import { EVENT_IMPORTED_DATABASE_MISSING_FILES } from "../constants/events";
 import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
-import { listenValidated } from "../lib/tauri-client";
+import { consumeStartupNotice } from "../services/startup-notices";
 import { formatCount } from "../utils/pluralize";
-import { logError } from "../utils/app-logger";
+import { useStartupNotice } from "./use-startup-notice";
 
 type UseImportedDatabaseAlertOptions = {
     // Surfaces the notice to the user. A notice and not an error, since nothing was deleted. The
     // rows point at files this library folder does not have.
     onMissingFiles: (message: string) => void;
+    // Surfaces a staged import that could not be applied at startup. An error, since the import the
+    // user asked for did not happen.
+    onImportFailed: (message: string) => void;
 };
 
 // Names the two ways forward that exist. Diagnostics lists which files are missing, and the import
@@ -21,52 +23,36 @@ function missingFilesMessage(missing: number): string {
     );
 }
 
-// Subscribes to the backend's imported-database-missing-files event and surfaces it. The backend
-// runs the Diagnostics library check once after an import is applied, and this is what turns its
-// result into something the user sees before opening a video that is not there.
-export function useImportedDatabaseAlert({ onMissingFiles }: UseImportedDatabaseAlertOptions): void {
-    useEffect(() => {
-        // StrictMode double-invokes effects. Guard so a late-resolving listener registered by the
-        // torn-down first pass is cleaned up rather than leaking.
-        let isDisposed = false;
-        let unlisten: (() => void) | null = null;
+const IMPORT_FAILED_MESSAGE =
+    "The database you imported could not be applied, so Kavynex is still using the previous one. " +
+    "Nothing was lost. Try the import again from Settings > Database, and if it fails again the " +
+    "log folder (Diagnostics) has the reason.";
 
-        void (async () => {
-            try {
-                const stop = await listenValidated(
-                    EVENT_IMPORTED_DATABASE_MISSING_FILES,
-                    IPC_EVENT_SCHEMAS.importedDatabaseMissingFiles,
-                    (payload) => {
-                        // The backend only emits with at least one, but the schema only proves the
-                        // count is a number, so a zero must not produce a notice about "0 files".
-                        if (payload.missing < 1) {
-                            return;
-                        }
-
-                        onMissingFiles(missingFilesMessage(payload.missing));
-                    }
-                );
-
-                if (isDisposed) {
-                    stop();
-                    return;
-                }
-
-                unlisten = stop;
-            } catch (error) {
-                // Failing to subscribe must never affect the app. The backend logs the count
-                // regardless.
-                logError(
-                    "db-import",
-                    "Failed to subscribe to the imported-database-missing-files event.",
-                    error
-                );
+// Surfaces what happened to a database import once it was applied at startup. The backend runs the
+// Diagnostics library check once after an import is applied, and this turns its result into
+// something the user sees before opening a video that is not there. A failure to apply at all is
+// recorded before the window exists, so only the take on mount reaches it.
+export function useImportedDatabaseAlert({
+    onMissingFiles,
+    onImportFailed,
+}: UseImportedDatabaseAlertOptions): void {
+    useStartupNotice({
+        event: {
+            name: EVENT_IMPORTED_DATABASE_MISSING_FILES,
+            schema: IPC_EVENT_SCHEMAS.importedDatabaseMissingFiles,
+        },
+        scope: "db-import",
+        show: () => {
+            if (consumeStartupNotice("importApplyFailed")) {
+                onImportFailed(IMPORT_FAILED_MESSAGE);
             }
-        })();
 
-        return () => {
-            isDisposed = true;
-            unlisten?.();
-        };
-    }, [onMissingFiles]);
+            const missing = consumeStartupNotice("importedMissingFiles");
+
+            // The count comes over IPC, so a zero must not produce a notice about "0 files".
+            if (missing !== null && missing >= 1) {
+                onMissingFiles(missingFilesMessage(missing));
+            }
+        },
+    });
 }

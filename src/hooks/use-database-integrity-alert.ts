@@ -1,8 +1,7 @@
-import { useEffect } from "react";
 import { EVENT_DATABASE_INTEGRITY_FAILED } from "../constants/events";
 import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
-import { listenValidated } from "../lib/tauri-client";
-import { logError } from "../utils/app-logger";
+import { consumeStartupNotice } from "../services/startup-notices";
+import { useStartupNotice } from "./use-startup-notice";
 
 type UseDatabaseIntegrityAlertOptions = {
     // Surfaces the corruption warning to the user (the shared error modal).
@@ -17,45 +16,22 @@ const INTEGRITY_FAILURE_MESSAGE =
     "may not load correctly. Export a copy from Settings > Database now, then see \"Kavynex " +
     "reports a corrupted database\" in the troubleshooting guide to restore an automatic backup.";
 
-// Subscribes to the backend's database-integrity-failed event and surfaces it to the user. The
-// background full integrity check runs off the startup critical path and only logs on failure; this
-// is what turns that log line into something the user actually sees (a banner/modal) instead of
-// having to know to open Settings and run the manual check.
+// Surfaces a failed background integrity check. The check runs off the startup critical path and
+// only logs on failure; this is what turns that log line into something the user actually sees (a
+// banner/modal) instead of having to know to open Settings and run the manual check.
 export function useDatabaseIntegrityAlert({
     onIntegrityFailure,
 }: UseDatabaseIntegrityAlertOptions): void {
-    useEffect(() => {
-        // StrictMode double-invokes effects; guard so a late-resolving listener registered by the
-        // torn-down first pass is cleaned up rather than leaking.
-        let isDisposed = false;
-        let unlisten: (() => void) | null = null;
-
-        void (async () => {
-            try {
-                const stop = await listenValidated(
-                    EVENT_DATABASE_INTEGRITY_FAILED,
-                    IPC_EVENT_SCHEMAS.databaseIntegrityFailed,
-                    () => {
-                        onIntegrityFailure(INTEGRITY_FAILURE_MESSAGE);
-                    }
-                );
-
-                if (isDisposed) {
-                    stop();
-                    return;
-                }
-
-                unlisten = stop;
-            } catch (error) {
-                // Failing to subscribe must never affect the app; the failure still reaches the log
-                // file on the backend regardless.
-                logError("db-integrity", "Failed to subscribe to the integrity-failed event.", error);
+    useStartupNotice({
+        event: {
+            name: EVENT_DATABASE_INTEGRITY_FAILED,
+            schema: IPC_EVENT_SCHEMAS.databaseIntegrityFailed,
+        },
+        scope: "db-integrity",
+        show: () => {
+            if (consumeStartupNotice("databaseIntegrityFailed")) {
+                onIntegrityFailure(INTEGRITY_FAILURE_MESSAGE);
             }
-        })();
-
-        return () => {
-            isDisposed = true;
-            unlisten?.();
-        };
-    }, [onIntegrityFailure]);
+        },
+    });
 }

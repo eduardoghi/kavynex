@@ -218,10 +218,11 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
                     ),
                 );
 
-                // Push it to the frontend too, so the user is told proactively (a banner pointing at
-                // Settings > Database) instead of the failure only living in the log file. Fire and
-                // forget. An emit failure (no window yet) must not affect anything, and the log line
-                // above already recorded the problem regardless.
+                // Recorded for the frontend to take, then announced, so the user is told (a banner
+                // pointing at Settings > Database) even when the window was not listening yet. See
+                // services::startup_notices.
+                services::startup_notices::record_database_integrity_failed();
+
                 let _ = app_handle.emit(
                     crate::constants::EVENT_DATABASE_INTEGRITY_FAILED,
                     DatabaseIntegrityFailedEvent {
@@ -295,7 +296,9 @@ fn spawn_post_import_library_check(app_handle: AppHandle) {
                     format!("the imported database references {missing} file(s) missing from the library"),
                 );
 
-                // Fire and forget, like the integrity event. The log line above already recorded it.
+                // Recorded, then announced, like the integrity event.
+                services::startup_notices::record_imported_missing_files(missing);
+
                 let _ = app_handle.emit(
                     crate::constants::EVENT_IMPORTED_DATABASE_MISSING_FILES,
                     ImportedDatabaseMissingFilesEvent { missing },
@@ -574,10 +577,14 @@ pub fn run() {
                             spawn_post_import_library_check(app_handle.clone());
                         }
                         Ok(false) => {}
-                        Err(error) => services::logger::error(
-                            "app",
-                            format!("failed to apply pending database import: {error}"),
-                        ),
+                        Err(error) => {
+                            services::logger::error(
+                                "app",
+                                format!("failed to apply pending database import: {error}"),
+                            );
+                            // The window is not up yet, so this waits for the frontend to take it.
+                            services::startup_notices::record_import_apply_failed();
+                        }
                     }
                 }
                 Err(error) => fail_startup(&format!(
@@ -685,6 +692,7 @@ pub fn run() {
             commands::dialog::save_file_dialog,
             commands::logging::log_frontend_error,
             commands::logging::open_log_directory,
+            commands::startup::take_startup_notices,
             commands::external::open_youtube_video,
             commands::external::open_youtube_channel,
             commands::webview_check::begin_webview_check,

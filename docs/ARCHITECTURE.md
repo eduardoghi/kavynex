@@ -484,6 +484,12 @@ One related path does not go through this hook. `useDatabaseIntegrityAlert` subs
 finds damage a `quick_check` passed. That is a warning pointing at Settings > Database, not a
 recovery flow. The database opened fine.
 
+The startup findings (that one, the media creations the pending-media sweep gave up on, and what an
+applied import left missing or could not apply at all) are recorded in
+`services/startup_notices.rs` before their event goes out. The frontend takes them once on mount and
+again on each event (`hooks/use-startup-notice.ts`), so a finding announced before the window loaded
+is still shown, once.
+
 See `docs/DATABASE.md` for the backup, restore and import rules these three steps follow.
 
 ## Where to look for what

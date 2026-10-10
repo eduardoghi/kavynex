@@ -9,7 +9,35 @@ import { usePendingMediaAlert } from "./use-pending-media-alert";
 let capturedHandler: ((payload: unknown) => void) | null = null;
 const unlisten = vi.fn();
 
+// The backend's held notices, as `take_startup_notices` would return them. `fire` records one there
+// and then fires the event, which is the order the backend uses.
+const NO_NOTICES = {
+    databaseIntegrityFailed: false,
+    pendingMediaAbandoned: null,
+    importedMissingFiles: null,
+    importApplyFailed: false,
+};
+let backendNotices: Record<string, unknown> = { ...NO_NOTICES };
+
+function takeBackendNotices(): Record<string, unknown> {
+    const taken = backendNotices;
+    backendNotices = { ...NO_NOTICES };
+    return taken;
+}
+
+async function flush(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function fire(notices: Record<string, unknown>): Promise<void> {
+    backendNotices = { ...backendNotices, ...notices };
+    capturedHandler?.({});
+    await flush();
+}
+
 vi.mock("../lib/tauri-client", () => ({
+    invokeCommand: vi.fn(async () => takeBackendNotices()),
     listenValidated: vi.fn((_event: string, _schema: unknown, handler: (payload: unknown) => void) => {
         capturedHandler = handler;
         return Promise.resolve(unlisten);
@@ -22,6 +50,7 @@ vi.mock("../utils/app-logger", () => ({
 
 import { listenValidated } from "../lib/tauri-client";
 import { logError } from "../utils/app-logger";
+import { resetStartupNoticesForTests } from "../services/startup-notices";
 
 const listenValidatedMock = vi.mocked(listenValidated);
 const logErrorMock = vi.mocked(logError);
@@ -30,6 +59,8 @@ describe("usePendingMediaAlert", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         capturedHandler = null;
+        backendNotices = { ...NO_NOTICES };
+        resetStartupNoticesForTests();
     });
 
     it("subscribes to the pending-media-abandoned event", async () => {
@@ -44,7 +75,7 @@ describe("usePendingMediaAlert", () => {
         renderHook(() => usePendingMediaAlert({ onArtifactsAbandoned }));
 
         await waitFor(() => expect(capturedHandler).not.toBeNull());
-        capturedHandler?.({ abandoned: 2 });
+        await fire({ pendingMediaAbandoned: 2 });
 
         expect(onArtifactsAbandoned).toHaveBeenCalledTimes(1);
         const message = onArtifactsAbandoned.mock.calls[0]?.[0] as string;
@@ -68,7 +99,7 @@ describe("usePendingMediaAlert", () => {
         renderHook(() => usePendingMediaAlert({ onArtifactsAbandoned }));
 
         await waitFor(() => expect(capturedHandler).not.toBeNull());
-        capturedHandler?.({ abandoned: 1 });
+        await fire({ pendingMediaAbandoned: 1 });
 
         const message = onArtifactsAbandoned.mock.calls[0]?.[0] as string;
         expect(message).toContain("1 unfinished media import ");
@@ -82,8 +113,8 @@ describe("usePendingMediaAlert", () => {
         renderHook(() => usePendingMediaAlert({ onArtifactsAbandoned }));
 
         await waitFor(() => expect(capturedHandler).not.toBeNull());
-        capturedHandler?.({ abandoned: 0 });
-        capturedHandler?.({ abandoned: -3 });
+        await fire({ pendingMediaAbandoned: 0 });
+        await fire({ pendingMediaAbandoned: -3 });
 
         expect(onArtifactsAbandoned).not.toHaveBeenCalled();
     });

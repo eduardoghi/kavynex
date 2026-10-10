@@ -29,6 +29,7 @@ pub mod media_protocol;
 pub mod pending_media;
 pub mod process_registry;
 pub mod ssrf_guard;
+pub mod startup_notices;
 // `temp_cleanup` rather than `cleanup`, because `library::cleanup` already owns that name for a
 // different job. This one sweeps the disposable cache directories, that one reference-counts and
 // unlinks the user's media. docs/ARCHITECTURE.md used to resolve the collision by convention (reach

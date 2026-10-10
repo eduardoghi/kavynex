@@ -1,9 +1,8 @@
-import { useEffect } from "react";
 import { EVENT_PENDING_MEDIA_ABANDONED } from "../constants/events";
 import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
-import { listenValidated } from "../lib/tauri-client";
+import { consumeStartupNotice } from "../services/startup-notices";
 import { formatCount } from "../utils/pluralize";
-import { logError } from "../utils/app-logger";
+import { useStartupNotice } from "./use-startup-notice";
 
 type UsePendingMediaAlertOptions = {
     // Surfaces the notice to the user. A notice and not an error. Nothing is broken and nothing was
@@ -27,57 +26,27 @@ function abandonedMessage(abandoned: number): string {
     );
 }
 
-// Subscribes to the backend's pending-media-abandoned event and surfaces it. The startup sweep
-// reconciles a crashed media creation on the next launch and retries a failure a few times. Once it
-// gives up, the files stay in the library and only a log line records it. This is what turns that
-// into something the user can act on, matching how useDatabaseIntegrityAlert treats the background
-// integrity check.
+// Surfaces the media creations the startup sweep gave up on. The sweep reconciles a crashed
+// creation on the next launch and retries a failure a few times. Once it gives up, the files stay in
+// the library and only a log line records it. This is what turns that into something the user can
+// act on, matching how useDatabaseIntegrityAlert treats the background integrity check.
 export function usePendingMediaAlert({
     onArtifactsAbandoned,
 }: UsePendingMediaAlertOptions): void {
-    useEffect(() => {
-        // StrictMode double-invokes effects. Guard so a late-resolving listener registered by the
-        // torn-down first pass is cleaned up rather than leaking.
-        let isDisposed = false;
-        let unlisten: (() => void) | null = null;
+    useStartupNotice({
+        event: {
+            name: EVENT_PENDING_MEDIA_ABANDONED,
+            schema: IPC_EVENT_SCHEMAS.pendingMediaAbandoned,
+        },
+        scope: "pending-media",
+        show: () => {
+            const abandoned = consumeStartupNotice("pendingMediaAbandoned");
 
-        void (async () => {
-            try {
-                const stop = await listenValidated(
-                    EVENT_PENDING_MEDIA_ABANDONED,
-                    IPC_EVENT_SCHEMAS.pendingMediaAbandoned,
-                    (payload) => {
-                        // The backend only emits with at least one, but the count comes over IPC and
-                        // the schema only proves it is a number, so a zero or negative value must
-                        // not produce a notice claiming "0 unfinished imports".
-                        if (payload.abandoned < 1) {
-                            return;
-                        }
-
-                        onArtifactsAbandoned(abandonedMessage(payload.abandoned));
-                    }
-                );
-
-                if (isDisposed) {
-                    stop();
-                    return;
-                }
-
-                unlisten = stop;
-            } catch (error) {
-                // Failing to subscribe must never affect the app. The sweep's own error-level lines
-                // still record every abandoned marker in the log file regardless.
-                logError(
-                    "pending-media",
-                    "Failed to subscribe to the pending-media-abandoned event.",
-                    error
-                );
+            // The count comes over IPC, so a zero or negative value must not produce a notice
+            // claiming "0 unfinished imports".
+            if (abandoned !== null && abandoned >= 1) {
+                onArtifactsAbandoned(abandonedMessage(abandoned));
             }
-        })();
-
-        return () => {
-            isDisposed = true;
-            unlisten?.();
-        };
-    }, [onArtifactsAbandoned]);
+        },
+    });
 }

@@ -9,7 +9,35 @@ import { useDatabaseIntegrityAlert } from "./use-database-integrity-alert";
 let capturedHandler: ((payload: unknown) => void) | null = null;
 const unlisten = vi.fn();
 
+// The backend's held notices, as `take_startup_notices` would return them. `fire` records one there
+// and then fires the event, which is the order the backend uses.
+const NO_NOTICES = {
+    databaseIntegrityFailed: false,
+    pendingMediaAbandoned: null,
+    importedMissingFiles: null,
+    importApplyFailed: false,
+};
+let backendNotices: Record<string, unknown> = { ...NO_NOTICES };
+
+function takeBackendNotices(): Record<string, unknown> {
+    const taken = backendNotices;
+    backendNotices = { ...NO_NOTICES };
+    return taken;
+}
+
+async function flush(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function fire(notices: Record<string, unknown>): Promise<void> {
+    backendNotices = { ...backendNotices, ...notices };
+    capturedHandler?.({});
+    await flush();
+}
+
 vi.mock("../lib/tauri-client", () => ({
+    invokeCommand: vi.fn(async () => takeBackendNotices()),
     listenValidated: vi.fn(
         async (_eventName: string, _schema: unknown, handler: (payload: unknown) => void) => {
             capturedHandler = handler;
@@ -24,6 +52,7 @@ vi.mock("../utils/app-logger", () => ({
 
 import { listenValidated } from "../lib/tauri-client";
 import { logError } from "../utils/app-logger";
+import { resetStartupNoticesForTests } from "../services/startup-notices";
 
 const listenValidatedMock = vi.mocked(listenValidated);
 const logErrorMock = vi.mocked(logError);
@@ -32,6 +61,8 @@ describe("useDatabaseIntegrityAlert", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         capturedHandler = null;
+        backendNotices = { ...NO_NOTICES };
+        resetStartupNoticesForTests();
     });
 
     it("subscribes to the integrity-failed event", async () => {
@@ -46,7 +77,7 @@ describe("useDatabaseIntegrityAlert", () => {
         renderHook(() => useDatabaseIntegrityAlert({ onIntegrityFailure }));
 
         await waitFor(() => expect(capturedHandler).not.toBeNull());
-        capturedHandler?.({ problems: ["*** in database main"] });
+        await fire({ databaseIntegrityFailed: true });
 
         expect(onIntegrityFailure).toHaveBeenCalledTimes(1);
         const message = onIntegrityFailure.mock.calls[0]?.[0] as string;

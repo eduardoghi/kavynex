@@ -9,6 +9,7 @@ pub mod logging;
 pub mod media;
 pub mod security;
 pub mod settings;
+pub mod startup;
 pub mod thumbnail;
 pub mod videos;
 pub mod webview_check;

@@ -57,6 +57,7 @@ import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLi
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
+import type { StartupNotices } from "../types/generated/StartupNotices";
 
 const mediaTypeSchema = z.enum(["video", "audio"]);
 
@@ -290,6 +291,13 @@ const storedAppSettingsPayloadSchema = z.object({
     externalBackupDir: z.string().nullable(),
 });
 
+const startupNoticesSchema = z.object({
+    databaseIntegrityFailed: z.boolean(),
+    pendingMediaAbandoned: z.number().nullable(),
+    importedMissingFiles: z.number().nullable(),
+    importApplyFailed: z.boolean(),
+});
+
 // A schema per command whose result is structured. Typing each entry as
 // `z.ZodType<TauriCommandReturns[K]>` is what makes a schema that drifts from its command's declared
 // return type a compile error here, rather than a runtime rejection of a valid response. Commands
@@ -326,6 +334,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     check_database_integrity:
         databaseIntegrityReportSchema satisfies z.ZodType<DatabaseIntegrityReport>,
     get_app_settings: storedAppSettingsPayloadSchema satisfies z.ZodType<StoredAppSettingsPayload>,
+    take_startup_notices: startupNoticesSchema satisfies z.ZodType<StartupNotices>,
     list_channels: z.array(channelSchema) satisfies z.ZodType<Channel[]>,
     find_channel_by_youtube_handle: channelSchema.nullable() satisfies z.ZodType<Channel | null>,
     get_channel_by_id: channelSchema.nullable() satisfies z.ZodType<Channel | null>,

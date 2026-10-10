@@ -611,10 +611,11 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
     // One event for the whole sweep, not one per marker. What the user needs to know is that some
     // artifacts were left behind and where to look, which is one sentence however many there are.
     //
-    // Fire and forget, exactly like the integrity event. An emit failure (no window yet. This runs
-    // 30 seconds after launch, so there normally is one, but nothing guarantees it) must not affect
-    // the sweep, and the `error`-level lines above have already recorded each marker regardless.
+    // Recorded for the frontend to take, then announced, so a window that was not listening yet
+    // still shows it (see services::startup_notices). An emit failure must not affect the sweep.
     if abandoned_markers > 0 {
+        crate::services::startup_notices::record_pending_media_abandoned(abandoned_markers);
+
         let _ = app.emit(
             crate::constants::EVENT_PENDING_MEDIA_ABANDONED,
             PendingMediaAbandonedEvent {

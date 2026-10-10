@@ -29,11 +29,13 @@ import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLi
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
+import type { StartupNotices } from "../types/generated/StartupNotices";
 
 export type TauriCommandReturns = {
     check_external_tools: ExternalToolsStatus;
     log_frontend_error: void;
     open_log_directory: void;
+    take_startup_notices: StartupNotices;
     open_youtube_video: void;
     open_youtube_channel: void;
 
