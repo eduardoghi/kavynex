@@ -764,7 +764,9 @@ That surface is granted as the exact list the app uses, not a preset:
 - `core:event:allow-listen` / `core:event:allow-unlisten`: `listen`, for the yt-dlp progress and
   database-integrity events the backend emits.
 - `opener:allow-open-url`, scoped to the three YouTube hosts, and, in `desktop.json`,
-  `updater:default` and `process:allow-restart`.
+  `updater:allow-check`, `updater:allow-download-and-install` and `process:allow-restart`. The
+  updater's default set would also grant its standalone `download` and `install` commands, which the
+  app never calls.
 
 The file and folder pickers are not on that list, and that is a security decision rather than a
 smaller list for its own sake. The dialog plugin's renderer-facing `open` and `save` add every path
@@ -834,8 +836,8 @@ A renderer that never loads at all reports nothing, which a watchdog turns into 
 naming that outcome rather than a hang. The case that covers a bundle the webview refuses or a
 CSP that blocks the entry script.
 
-The three plugin grants cannot be probed that way at all, because none can be exercised without a
-side effect. `opener:allow-open-url` would launch a browser, `updater:default` would reach the
+The four plugin grants cannot be probed that way at all, because none can be exercised without a
+side effect. `opener:allow-open-url` would launch a browser, the two `updater:` grants would reach the
 network, and `process:allow-restart` would restart the app.
 
 What covers them instead is a second gate on a different question.

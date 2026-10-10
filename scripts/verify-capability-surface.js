@@ -12,7 +12,7 @@
 // ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
 // `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
 // the three grants it can exercise without a side effect. The four plugin grants cannot be probed
-// that way (a file picker, a browser launch, a network call, a restart), so they are checked by hand
+// that way (a browser launch, two network calls, a restart), so they are checked by hand
 // against the installed artifact, once per release, from the checklist in `docs/RELEASING.md` step 6.
 //
 // This closes the *declaration* half instead, which is where that drift actually happens, and it
@@ -67,7 +67,14 @@ export const DECLARED_CAPABILITY_SURFACE = [
     { binding: "getVersion", module: "@tauri-apps/api/app", permissions: ["core:app:allow-version"] },
     { binding: "openUrl", module: "@tauri-apps/plugin-opener", permissions: ["opener:allow-open-url"] },
     { binding: "relaunch", module: "@tauri-apps/plugin-process", permissions: ["process:allow-restart"] },
-    { binding: "check", module: "@tauri-apps/plugin-updater", permissions: ["updater:default"] },
+    // `check` hands back an `Update` whose `downloadAndInstall` is the only other updater call the app
+    // makes. The plugin's default set would also grant the separate `download` and `install` halves,
+    // which nothing here calls.
+    {
+        binding: "check",
+        module: "@tauri-apps/plugin-updater",
+        permissions: ["updater:allow-check", "updater:allow-download-and-install"],
+    },
 ];
 
 // Every value binding a file imports or re-exports from an `@tauri-apps` module, with the module it

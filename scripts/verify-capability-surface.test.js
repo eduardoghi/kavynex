@@ -48,7 +48,10 @@ const ACL_MANIFEST = {
     dialog: { permissions: { "allow-open": {}, "allow-save": {} } },
     opener: { permissions: { "allow-open-url": {} } },
     process: { permissions: { "allow-restart": {} } },
-    updater: { permissions: { "allow-check": {} }, default_permission: { permissions: [] } },
+    updater: {
+        permissions: { "allow-check": {}, "allow-download-and-install": {} },
+        default_permission: { permissions: [] },
+    },
 };
 
 describe("extractTauriBindings", () => {

@@ -114,7 +114,7 @@ published, and because the updater half of the list does not behave realisticall
       callers and the updater is only one of them, so this grant does **not** have to wait for a real
       update to be verified. **Use a throwaway install or export your database first.** The import
       keeps a safety copy and **Undo last import** reverts it, but do not let that be the only copy.
-- [ ] **`updater:default`, the check half**: Settings > Application update > **Check for updates**
+- [ ] **`updater:allow-check`**: Settings > Application update > **Check for updates**
       returns an answer. "Kavynex is already up to date" counts. What matters is that it answers
       rather than failing, since an ACL refusal surfaces as an error.
 - [ ] **The uninstaller's second confirmation** (Windows, `-setup.exe` only): uninstall the draft
@@ -126,12 +126,9 @@ published, and because the updater half of the list does not behave realisticall
       never prompt. That is the failure a tauri-cli bump can introduce, and this is the only place it
       is caught.
 
-`updater:default` is a preset, and it is worth knowing what the item above does and does not prove.
-The set grants four permissions (`allow-check`, `allow-download`, `allow-install`,
-`allow-download-and-install`). Clicking **Check for updates** exercises the first. The app never calls
-the standalone download or install commands at all, so those two are granted and unused. The fourth
-is the one that installs an update, and it cannot be exercised before publishing, because it needs a
-published release newer than the version running.
+The updater holds two grants, and the item above exercises only `allow-check`. The other,
+`allow-download-and-install`, is the one that installs an update, and it cannot be exercised before
+publishing, because it needs a published release newer than the version running.
 
 So it is verified backwards, on the next cycle. Install the previous release, let it offer this one,
 and take the update. That single action covers `allow-download-and-install` **and** the
