@@ -1687,6 +1687,26 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_message_keeps_only_the_end_of_a_long_stderr() {
+        // The cause is at the end, and the message reaches the modal and one line of the log.
+        let stderr = (0..100)
+            .map(|index| format!("line {index}: {}", "x".repeat(2000)))
+            .chain(std::iter::once("ERROR: the real cause".to_string()))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let DownloadTermination::Failed(message) =
+            classify_download_termination(false, false, false, &stderr)
+        else {
+            panic!("a non-zero exit is a failure");
+        };
+
+        assert!(message.ends_with("ERROR: the real cause"), "{message}");
+        assert!(message.len() < 2000, "{} bytes", message.len());
+        assert!(!message.contains("line 0:"));
+    }
+
+    #[test]
     fn download_is_stalled_only_after_threshold_of_silence() {
         let threshold = YT_DLP_STALL_TIMEOUT_SECS * 1000;
 

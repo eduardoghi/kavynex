@@ -95,13 +95,41 @@ fn append_line_locked(path: &Path, line: &str) {
     append_line(path, line);
 }
 
+/// The most characters one log entry keeps. A message is usually a sentence. One that carries a
+/// child process's output can be megabytes, and a single entry over the rotation size pushed the
+/// previous log out whole.
+const MAX_MESSAGE_CHARS: usize = 16 * 1024;
+
+/// One log line out of `message`. A line break in it is written as `\n` and any other control
+/// character as a space, so the text a process printed cannot start what reads as a new entry with
+/// its own timestamp and level, and the entry is cut at [`MAX_MESSAGE_CHARS`].
+fn single_line(message: &str) -> String {
+    let mut line = String::with_capacity(message.len().min(MAX_MESSAGE_CHARS));
+
+    for (count, ch) in message.chars().enumerate() {
+        if count == MAX_MESSAGE_CHARS {
+            line.push_str("... (truncated)");
+            break;
+        }
+
+        match ch {
+            '\n' => line.push_str("\\n"),
+            '\r' => line.push_str("\\r"),
+            ch if ch.is_control() => line.push(' '),
+            ch => line.push(ch),
+        }
+    }
+
+    line
+}
+
 fn write(level: &str, scope: &str, message: &str) {
     let line = format!(
         "[{}] [{}] [{}] {}",
         timestamp_string(),
         level,
         scope,
-        message
+        single_line(message)
     );
 
     eprintln!("{line}");
@@ -207,6 +235,28 @@ mod tests {
         assert!(!backup_path(&path).exists());
 
         let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_log_entry_stays_on_one_line_whatever_the_message_carries() {
+        let forged = "download failed\n[2026-10-10T00:00:00Z] [INFO] [app] all good\r\tdone";
+
+        assert_eq!(
+            single_line(forged),
+            "download failed\\n[2026-10-10T00:00:00Z] [INFO] [app] all good\\r done"
+        );
+    }
+
+    #[test]
+    fn a_huge_log_entry_is_cut_rather_than_rotating_the_log_away() {
+        let huge = "x".repeat(MAX_MESSAGE_CHARS * 4);
+        let line = single_line(&huge);
+
+        assert!(line.ends_with("... (truncated)"));
+        assert_eq!(
+            line.chars().count(),
+            MAX_MESSAGE_CHARS + "... (truncated)".len()
+        );
     }
 
     #[test]

@@ -273,12 +273,14 @@ pub(super) fn classify_download_termination(
     }
 
     if !exit_success {
-        let trimmed = captured_stderr.trim();
-
-        let message = if trimmed.is_empty() {
-            "yt-dlp download failed".to_string()
-        } else {
-            format!("yt-dlp download failed: {trimmed}")
+        // The tail only. The buffer holds up to a hundred lines of up to 64 KiB, and the message
+        // reaches the error event, the modal and one line of the log, where a single failure that
+        // size rotated the previous log away. The lines were redacted as they were read.
+        let message = match crate::utils::process::process_output_tail(captured_stderr, |line| {
+            line.to_string()
+        }) {
+            Some(tail) => format!("yt-dlp download failed: {tail}"),
+            None => "yt-dlp download failed".to_string(),
         };
 
         return DownloadTermination::Failed(message);
