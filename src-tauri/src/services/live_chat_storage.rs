@@ -1024,7 +1024,10 @@ mod tests {
         fs::write(source.join("a.live_chat.json"), b"hello").unwrap();
 
         assert!(migrate_live_chat_files(&app_data, &library, || Some(())).is_err());
-        assert!(!library.exists(), "the library folder must not be recreated");
+        assert!(
+            !library.exists(),
+            "the library folder must not be recreated"
+        );
         assert!(source.join("a.live_chat.json").exists());
 
         let _ = fs::remove_dir_all(&app_data);

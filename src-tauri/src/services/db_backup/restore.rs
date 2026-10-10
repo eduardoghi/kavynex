@@ -41,10 +41,27 @@ pub(super) fn corrupt_wal_path(db_path: &Path) -> PathBuf {
 /// without the most recent part of the library, which is the part someone inspecting it wants. An
 /// older `.corrupt-wal` belonged to the generation that was just rotated away, so it is removed
 /// either way rather than left paired with a database it does not match.
-fn set_aside_corrupt_wal(db_path: &Path) {
+///
+/// A log that cannot be moved is deleted instead, and one that can be neither moved nor deleted is
+/// an error. Left under the live name, SQLite would replay the damaged database's frames into the
+/// snapshot about to be renamed in, since it checks frames against the log's own header and not
+/// against the database file.
+fn set_aside_corrupt_wal(db_path: &Path) -> AppResult<()> {
     let corrupt_wal = corrupt_wal_path(db_path);
     let _ = std::fs::remove_file(&corrupt_wal);
-    let _ = std::fs::rename(sibling(db_path, "-wal"), &corrupt_wal);
+
+    let live_wal = sibling(db_path, "-wal");
+
+    if !live_wal.exists() || std::fs::rename(&live_wal, &corrupt_wal).is_ok() {
+        return Ok(());
+    }
+
+    std::fs::remove_file(&live_wal).map_err(|error| {
+        backup_error(
+            "the damaged database's write-ahead log could not be moved or removed",
+            error,
+        )
+    })
 }
 
 /// The database set aside by the most recent restore is `.corrupt` (generation 0); earlier ones
@@ -94,6 +111,14 @@ pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
     if db_path.exists() || !staged.exists() {
         return Ok(false);
     }
+
+    // A restore that died before setting the damaged database's log aside left it under the live
+    // name, where it would be replayed into the snapshot. Moved only when it is there, since a
+    // `.corrupt-wal` already in place is the one that run set aside for the same database.
+    if sibling(db_path, "-wal").exists() {
+        set_aside_corrupt_wal(db_path)?;
+    }
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
 
     std::fs::rename(&staged, db_path)
         .map_err(|error| backup_error("failed to resume an interrupted restore", error))?;
@@ -224,7 +249,9 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         }
     }
 
-    set_aside_corrupt_wal(db_path);
+    // On failure the staged snapshot is kept, so the next launch finishes the restore through
+    // resume_interrupted_restore once the log can be moved.
+    set_aside_corrupt_wal(db_path)?;
     let _ = std::fs::remove_file(sibling(db_path, "-shm"));
 
     std::fs::rename(&staged, db_path)

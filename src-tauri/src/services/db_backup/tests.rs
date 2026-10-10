@@ -598,6 +598,37 @@ async fn resume_finishes_a_restore_interrupted_before_the_final_rename() {
 }
 
 #[tokio::test]
+async fn resume_sets_aside_the_damaged_databases_log_before_renaming_the_snapshot_in() {
+    // A restore that died right after moving the database aside left its `-wal` under the live
+    // name. Renamed in beside it, the snapshot would have the damaged database's frames replayed
+    // into it on the next open.
+    let dir = temp_dir("resume-restore-wal");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    simulate_restore_interrupted_after_moving_db_aside(&db, &backup_path(&db));
+    std::fs::write(
+        dir.join("kavynex.db-wal"),
+        b"frames of the damaged database",
+    )
+    .unwrap();
+    std::fs::write(dir.join("kavynex.db-shm"), b"index").unwrap();
+
+    assert!(resume_interrupted_restore(&db).unwrap());
+
+    assert!(!dir.join("kavynex.db-wal").exists());
+    assert!(!dir.join("kavynex.db-shm").exists());
+    assert_eq!(
+        std::fs::read(restore::corrupt_wal_path(&db)).unwrap(),
+        b"frames of the damaged database"
+    );
+    assert_eq!(read_single_value(&db).await, "hello");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn resume_is_a_noop_on_a_normal_launch() {
     let dir = temp_dir("resume-noop");
     let db = dir.join("kavynex.db");

@@ -250,6 +250,27 @@ pub(crate) fn sqlite_result_code_means_damage(code: i32) -> bool {
     matches!(code & 0xff, 11 | 26)
 }
 
+/// Whether an error already turned into an `AppError` came from SQLite reporting the file damaged.
+///
+/// A migration's statements go through [`db_error`], which keeps the driver's text as the details
+/// (`error returned from database: (code: 11) database disk image is malformed`) but not the error
+/// itself, so the code is read back out of that text.
+pub(crate) fn app_error_means_damage(error: &AppError) -> bool {
+    let text = format!(
+        "{} {}",
+        error.message,
+        error.details.as_deref().unwrap_or_default()
+    );
+
+    text.match_indices("(code: ").any(|(index, prefix)| {
+        text[index + prefix.len()..]
+            .split(')')
+            .next()
+            .and_then(|code| code.trim().parse::<i32>().ok())
+            .is_some_and(sqlite_result_code_means_damage)
+    })
+}
+
 /// The raw driver message for a SQLite database error, if it carries one. For a constraint
 /// violation this is text like `UNIQUE constraint failed: videos.youtube_video_id`, which lets a
 /// caller tell *which* constraint fired instead of assuming it, so a unique violation can be mapped
@@ -405,11 +426,16 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
     // A migration that fails rolls back to the version it started from, so the database is as it
     // was and an older backup would carry the same data into the same failure. Reported under its
     // own code for the same reason as the snapshot above. A database too new for this build keeps
-    // its code, which the frontend answers with "update the app".
+    // its code, which the frontend answers with "update the app". A migration that ran into damage
+    // the quick_check above did not catch keeps the plain error, which is the one the startup
+    // recovery offers a restore for.
     crate::services::db_schema::ensure_schema(&pool)
         .await
         .map_err(|error| {
-            if !migration_pending || error.code == AppErrorCode::DatabaseSchemaTooNew.as_str() {
+            if !migration_pending
+                || error.code == AppErrorCode::DatabaseSchemaTooNew.as_str()
+                || app_error_means_damage(&error)
+            {
                 return error;
             }
 
@@ -946,6 +972,32 @@ mod tests {
     #[test]
     fn an_error_that_is_not_from_sqlite_is_never_damage() {
         assert!(!sqlite_error_means_damage(&sqlx::Error::PoolTimedOut));
+    }
+
+    #[test]
+    fn a_migration_error_carrying_a_damage_code_is_read_as_damage() {
+        // What db_error leaves behind when a migration statement hits a corrupt page.
+        let corrupt = db_error(
+            "failed to rebuild the videos table",
+            "error returned from database: (code: 11) database disk image is malformed",
+        );
+        assert!(app_error_means_damage(&corrupt));
+
+        let not_a_database = db_error(
+            "failed to read the schema",
+            "error returned from database: (code: 26) file is not a database",
+        );
+        assert!(app_error_means_damage(&not_a_database));
+
+        let full_disk = db_error(
+            "failed to rebuild the videos table",
+            "error returned from database: (code: 13) database or disk is full",
+        );
+        assert!(!app_error_means_damage(&full_disk));
+        assert!(!app_error_means_damage(&db_error(
+            "no code here",
+            "plain text"
+        )));
     }
 
     #[cfg(windows)]
