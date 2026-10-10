@@ -56,7 +56,7 @@ pub async fn find_channel_by_youtube_handle(
     sqlx::query_as::<_, ChannelRow>(
         "SELECT id, name, youtube_handle, avatar_path, created_at
          FROM channels
-         WHERE youtube_handle = ?
+         WHERE youtube_handle = ? COLLATE NOCASE
          LIMIT 1",
     )
     .bind(youtube_handle)
@@ -87,26 +87,40 @@ pub async fn insert_channel(
     youtube_handle: &str,
     avatar_path: Option<&str>,
 ) -> AppResult<i64> {
-    let result =
-        sqlx::query("INSERT INTO channels (name, youtube_handle, avatar_path) VALUES (?, ?, ?)")
-            .bind(name)
-            .bind(youtube_handle)
-            .bind(avatar_path)
-            .execute(pool)
-            .await
-            .map_err(|error| {
-                // youtube_handle is the only UNIQUE column, so a surfacing unique violation is a
-                // duplicate handle. Map it to the same friendly code the frontend pre-check
-                // raises, closing the check-then-act race with a consistent message.
-                if is_unique_violation(&error) {
-                    return AppError::from_code(
-                        AppErrorCode::ChannelAlreadyExists,
-                        "a channel with this YouTube handle already exists",
-                    );
-                }
+    // YouTube handles are case-insensitive, so `@Foo` and `@foo` are one channel, while the column's
+    // UNIQUE compares them as text. The check is in the same statement as the insert so two adds
+    // cannot both pass it. The UNIQUE stays behind it for the exact spelling.
+    let result = sqlx::query(
+        "INSERT INTO channels (name, youtube_handle, avatar_path)
+         SELECT ?, ?, ?
+         WHERE NOT EXISTS (SELECT 1 FROM channels WHERE youtube_handle = ? COLLATE NOCASE)",
+    )
+    .bind(name)
+    .bind(youtube_handle)
+    .bind(avatar_path)
+    .bind(youtube_handle)
+    .execute(pool)
+    .await
+    .map_err(|error| {
+        // youtube_handle is the only UNIQUE column, so a surfacing unique violation is a
+        // duplicate handle. Map it to the same friendly code the frontend pre-check
+        // raises, closing the check-then-act race with a consistent message.
+        if is_unique_violation(&error) {
+            return AppError::from_code(
+                AppErrorCode::ChannelAlreadyExists,
+                "a channel with this YouTube handle already exists",
+            );
+        }
 
-                db_error("failed to insert channel", error)
-            })?;
+        db_error("failed to insert channel", error)
+    })?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::from_code(
+            AppErrorCode::ChannelAlreadyExists,
+            "a channel with this YouTube handle already exists",
+        ));
+    }
 
     let inserted_id = result.last_insert_rowid();
 
@@ -125,28 +139,45 @@ pub async fn update_channel_name_and_handle(
     name: &str,
     youtube_handle: &str,
 ) -> AppResult<()> {
-    let result = sqlx::query("UPDATE channels SET name = ?, youtube_handle = ? WHERE id = ?")
-        .bind(name)
-        .bind(youtube_handle)
-        .bind(channel_id)
-        .execute(pool)
-        .await
-        .map_err(|error| {
-            // Same UNIQUE column as insert_channel, so a rename onto a handle another channel
-            // already holds must report the same actionable code. Without this it fell through
-            // to db_error's generic AppError, whose details the frontend deliberately suppresses,
-            // leaving the user with an unactionable message for a fixable mistake.
-            if is_unique_violation(&error) {
-                return AppError::from_code(
-                    AppErrorCode::ChannelAlreadyExists,
-                    "a channel with this YouTube handle already exists",
-                );
-            }
+    // The same case-insensitive rule as insert_channel, in the same statement as the update.
+    let result = sqlx::query(
+        "UPDATE channels SET name = ?, youtube_handle = ?
+         WHERE id = ?
+           AND NOT EXISTS (
+               SELECT 1 FROM channels WHERE youtube_handle = ? COLLATE NOCASE AND id <> ?
+           )",
+    )
+    .bind(name)
+    .bind(youtube_handle)
+    .bind(channel_id)
+    .bind(youtube_handle)
+    .bind(channel_id)
+    .execute(pool)
+    .await
+    .map_err(|error| {
+        // Same UNIQUE column as insert_channel, so a rename onto a handle another channel
+        // already holds must report the same actionable code. Without this it fell through
+        // to db_error's generic AppError, whose details the frontend deliberately suppresses,
+        // leaving the user with an unactionable message for a fixable mistake.
+        if is_unique_violation(&error) {
+            return AppError::from_code(
+                AppErrorCode::ChannelAlreadyExists,
+                "a channel with this YouTube handle already exists",
+            );
+        }
 
-            db_error("failed to update channel name and handle", error)
-        })?;
+        db_error("failed to update channel name and handle", error)
+    })?;
 
     if result.rows_affected() == 0 {
+        // Either the channel is gone or another one holds the handle in another case.
+        if get_channel_by_id(pool, channel_id).await?.is_some() {
+            return Err(AppError::from_code(
+                AppErrorCode::ChannelAlreadyExists,
+                "a channel with this YouTube handle already exists",
+            ));
+        }
+
         return Err(AppError::invalid_input("channel not found"));
     }
 
@@ -330,5 +361,50 @@ mod tests {
         let channel = get_channel_by_id(&pool, id).await.unwrap().unwrap();
         assert_eq!(channel.name, "New");
         assert_eq!(channel.youtube_handle, "@new");
+    }
+
+    #[tokio::test]
+    async fn a_handle_that_differs_only_in_case_is_the_same_channel() {
+        let pool = create_test_pool().await;
+        insert_channel(&pool, "Alice", "@Alice", None)
+            .await
+            .unwrap();
+
+        let error = insert_channel(&pool, "Alice again", "@alice", None)
+            .await
+            .expect_err("YouTube handles ignore case");
+
+        assert_eq!(error.code, AppErrorCode::ChannelAlreadyExists.as_str());
+        assert!(find_channel_by_youtube_handle(&pool, "@ALICE")
+            .await
+            .unwrap()
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn a_rename_onto_another_channels_handle_in_another_case_is_refused() {
+        let pool = create_test_pool().await;
+        insert_channel(&pool, "Alice", "@alice", None)
+            .await
+            .unwrap();
+        let bob = insert_channel(&pool, "Bob", "@bob", None).await.unwrap();
+
+        let error = update_channel_name_and_handle(&pool, bob, "Bob", "@ALICE")
+            .await
+            .expect_err("the handle belongs to Alice");
+
+        assert_eq!(error.code, AppErrorCode::ChannelAlreadyExists.as_str());
+    }
+
+    #[tokio::test]
+    async fn a_channel_can_change_the_case_of_its_own_handle() {
+        let pool = create_test_pool().await;
+        let alice = insert_channel(&pool, "Alice", "@alice", None)
+            .await
+            .unwrap();
+
+        update_channel_name_and_handle(&pool, alice, "Alice", "@Alice")
+            .await
+            .expect("its own handle in another case is not a conflict");
     }
 }
