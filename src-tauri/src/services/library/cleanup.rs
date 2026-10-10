@@ -936,6 +936,8 @@ fn library_relative(base: &Path, relative: &str) -> std::path::PathBuf {
     path
 }
 
+/// Whether `path` was modified within [`RECENT_WRITE_WINDOW`]. A copy into the library is stamped
+/// with the time it was made (`filesystem::copy_bytes_whole`), so this is when the file arrived.
 fn was_written_recently(path: &Path) -> bool {
     std::fs::metadata(path)
         .and_then(|metadata| metadata.modified())

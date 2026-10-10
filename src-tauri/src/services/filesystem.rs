@@ -262,9 +262,20 @@ const CANCELLABLE_COPY_CHUNK_BYTES: usize = 1024 * 1024;
 /// the platform (`copy_file_range`/`sendfile` on Linux, `CopyFileEx` on Windows), which is
 /// materially faster than moving the bytes through userspace, and it is also why it cannot be
 /// interrupted. It returns when the whole file has been copied and not before.
+///
+/// The copy is stamped with the time it was made. `CopyFileEx` carries the source's modification
+/// time over, so an avatar persisted from an old image arrived looking years old, and the orphan
+/// removal, which spares a file written in the last hour because its row lands a call later, read it
+/// as long abandoned.
 fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
     fs::copy(source, temp_destination)
         .and_then(|_| make_owner_writable(temp_destination))
+        .and_then(|_| {
+            fs::OpenOptions::new()
+                .write(true)
+                .open(temp_destination)?
+                .set_modified(std::time::SystemTime::now())
+        })
         .map_err(|e| {
             AppError::fs_error(
                 AppErrorCode::FileCopyFailed,

@@ -543,6 +543,36 @@ fn clean_matching_files_in_dir_removes_only_prefix_matches() {
 }
 
 #[test]
+fn a_copy_is_dated_when_it_was_made_rather_than_when_its_source_was() {
+    // Windows' CopyFileEx keeps the source's modification time, and the orphan removal reads that
+    // time to spare what was written in the last hour.
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("old.jpg");
+    let destination = dir.join("copy.jpg");
+    fs::write(&source, b"image").unwrap();
+    let years_ago = std::time::SystemTime::now() - Duration::from_secs(3 * 365 * 24 * 60 * 60);
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&source)
+        .unwrap()
+        .set_modified(years_ago)
+        .unwrap();
+
+    copy_file_atomic(&source, &destination).unwrap();
+
+    let age = std::time::SystemTime::now()
+        .duration_since(fs::metadata(&destination).unwrap().modified().unwrap())
+        .unwrap_or_default();
+    assert!(
+        age < Duration::from_secs(60 * 60),
+        "the copy reads as old: {age:?}"
+    );
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn copy_file_atomic_writes_destination_with_source_content() {
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).unwrap();
