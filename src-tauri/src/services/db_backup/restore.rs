@@ -17,8 +17,8 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 use super::snapshot::backup_candidates;
 use super::{
-    backup_error, database_quick_check_ok, database_schema_version, rotate_generations, sibling,
-    BACKUP_IN_PROGRESS,
+    backup_error, database_quick_check_retrying, database_schema_version, rotate_generations,
+    sibling, QuickCheck, BACKUP_IN_PROGRESS,
 };
 
 pub(super) const CORRUPT_ROTATED_GENERATIONS: usize = 2;
@@ -157,8 +157,28 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     let mut skipped_newer_schema = false;
 
     for candidate in backup_candidates(db_path) {
-        if !database_quick_check_ok(&candidate).await {
-            continue;
+        match database_quick_check_retrying(&candidate).await {
+            QuickCheck::Healthy => {}
+            QuickCheck::Damaged => {
+                logger::warn(
+                    "db_backup",
+                    format!(
+                        "restore: passed over {}, which fails quick_check",
+                        logger::redact_path(&candidate)
+                    ),
+                );
+                continue;
+            }
+            QuickCheck::Unreadable(detail) => {
+                logger::warn(
+                    "db_backup",
+                    format!(
+                        "restore: passed over {}, which could not be read: {detail}",
+                        logger::redact_path(&candidate)
+                    ),
+                );
+                continue;
+            }
         }
 
         // Refuse a backup whose schema is newer than this build supports. Restoring it would only

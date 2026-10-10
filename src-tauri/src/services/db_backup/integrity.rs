@@ -132,11 +132,41 @@ pub fn integrity_check_is_due(db_path: &Path) -> bool {
     )
 }
 
+/// The marker a failed full check leaves, and a passing one or a database swap removes. While it is
+/// there the daily backup does not rotate (see `snapshot::backup_database`), so the generations taken
+/// before the damage are not replaced one a day by copies of a database that passes `quick_check`
+/// and fails this check.
+pub(super) fn integrity_failed_marker_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".integrity-failed")
+}
+
+/// Records that the full check found damage. Best effort.
+pub fn mark_integrity_check_failed(db_path: &Path) {
+    if let Err(error) = std::fs::File::create(integrity_failed_marker_path(db_path)) {
+        logger::warn(
+            "db_integrity",
+            format!("failed to record the failed integrity check: {error}"),
+        );
+    }
+}
+
+/// Whether the last full check of the database at `db_path` found damage nothing has cleared since.
+pub fn integrity_check_failed(db_path: &Path) -> bool {
+    integrity_failed_marker_path(db_path).exists()
+}
+
+/// Drops the failed-check marker, for a database that passed or was replaced.
+pub(super) fn clear_integrity_failure(db_path: &Path) {
+    let _ = std::fs::remove_file(integrity_failed_marker_path(db_path));
+}
+
 /// Records that a full integrity check just passed, so [`integrity_check_is_due`] throttles the
 /// next one for a week. Best effort. A marker that cannot be written only means the check runs
 /// again next launch, which is harmless. Called only after a clean check, never after a failing
 /// one, so a damaged database stays flagged on every launch until it is restored.
 pub fn mark_integrity_check_passed(db_path: &Path) {
+    clear_integrity_failure(db_path);
+
     let marker = integrity_check_marker_path(db_path);
 
     if let Err(error) = std::fs::File::create(&marker) {

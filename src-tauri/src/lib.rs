@@ -222,6 +222,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
                 // pointing at Settings > Database) even when the window was not listening yet. See
                 // services::startup_notices.
                 services::startup_notices::record_database_integrity_failed();
+                services::db_backup::mark_integrity_check_failed(&db_path);
 
                 let _ = app_handle.emit(
                     crate::constants::EVENT_DATABASE_INTEGRITY_FAILED,

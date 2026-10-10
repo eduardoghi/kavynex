@@ -167,6 +167,41 @@ async fn read_title(path: &Path) -> String {
 }
 
 #[tokio::test]
+async fn a_failed_full_check_keeps_the_rotation_still_until_a_check_passes() {
+    // The damage a full check finds passes quick_check, so each daily run would otherwise rotate
+    // out a generation taken before it.
+    let dir = temp_dir("integrity-failed");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+
+    mark_integrity_check_failed(&db);
+    assert!(!backup_database(&db).await.unwrap());
+    assert!(!backup_path(&db).exists());
+
+    mark_integrity_check_passed(&db);
+    assert!(!integrity_check_failed(&db));
+    assert!(backup_database(&db).await.unwrap());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_replaced_database_drops_the_failed_check_of_the_one_before() {
+    let dir = temp_dir("integrity-failed-swap");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    mark_integrity_check_failed(&db);
+    std::fs::write(&db, b"not a database").unwrap();
+    restore_database_from_backup(&db).await.unwrap();
+
+    assert!(!integrity_check_failed(&db));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn backup_skips_when_source_missing() {
     let dir = temp_dir("missing");
     let db = dir.join("kavynex.db");
@@ -392,6 +427,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.import-staged.tmp",
             "kavynex.db.import-applying",
             "kavynex.db.integrity-checked",
+            "kavynex.db.integrity-failed",
             "kavynex.db.swapped-at",
         ]
         .iter()

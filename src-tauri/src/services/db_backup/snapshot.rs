@@ -248,6 +248,18 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
+    // A database whose last full check found damage is not snapshotted until a check passes or it is
+    // replaced. It passes `quick_check`, so without this each day would rotate out one generation
+    // taken before the damage in favor of a copy of it.
+    if super::integrity::integrity_check_failed(db_path) {
+        pool.close().await;
+        logger::warn(
+            "db_backup",
+            "skipping backup: the last full integrity check found damage, so the older snapshots are kept",
+        );
+        return Ok(false);
+    }
+
     // An empty database is never rotated over a snapshot that holds a library. Each daily run would
     // otherwise push out one good generation, and a week later none would be left. That is what a
     // database file recreated empty (a quarantine, a profile reset, starting over on purpose) does
@@ -273,6 +285,25 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         .await;
     pool.close().await;
     vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
+
+    // The snapshot is checked before anything is rotated for it. Rotation drops the oldest
+    // generation, which must not happen for a file that is not a sound copy.
+    let snapshot_is_healthy = match open(&temp).await {
+        Ok(snapshot) => {
+            let healthy = is_healthy(&snapshot).await;
+            snapshot.close().await;
+            healthy
+        }
+        Err(_) => false,
+    };
+
+    if !snapshot_is_healthy {
+        let _ = std::fs::remove_file(&temp);
+        return Err(backup_error(
+            "failed to snapshot database",
+            "the snapshot failed quick_check, so the existing generations were kept",
+        ));
+    }
 
     // The flush, the rotation and the promotion are blocking filesystem work, and the flush of a
     // freshly vacuumed database can take seconds on a slow or scanned disk. Off the async runtime,

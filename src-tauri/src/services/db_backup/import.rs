@@ -428,11 +428,16 @@ pub async fn stage_database_import(
         ));
     }
 
-    let pool = open(source_path).await.map_err(|_| {
-        AppError::from_code(
-            AppErrorCode::DatabaseImportInvalid,
-            "the selected file is not a valid database",
-        )
+    // A file another program is holding is reported as that, rather than as not being a database.
+    let pool = super::connect(source_path).await.map_err(|error| {
+        if crate::services::database::sqlite_error_means_damage(&error) {
+            AppError::from_code(
+                AppErrorCode::DatabaseImportInvalid,
+                "the selected file is not a valid database",
+            )
+        } else {
+            super::database_unreadable_error(error.to_string())
+        }
     })?;
     let validation = validate_import_source(&pool).await;
 

@@ -255,6 +255,7 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
         sibling(db_path, ".import-staged.tmp"),
         import::import_applying_marker_path(db_path),
         integrity::integrity_check_marker_path(db_path),
+        integrity::integrity_failed_marker_path(db_path),
         swap_marker_path(db_path),
     ]);
 
@@ -303,6 +304,49 @@ pub async fn database_quick_check(db_path: &Path) -> QuickCheck {
         Ok(_) => QuickCheck::Damaged,
         Err(error) => quick_check_failure(&error),
     }
+}
+
+/// [`database_quick_check`] on a pool that is already open.
+pub(super) async fn pool_quick_check(pool: &SqlitePool) -> QuickCheck {
+    match sqlx::query_as::<_, (String,)>("PRAGMA quick_check")
+        .fetch_one(pool)
+        .await
+    {
+        Ok((verdict,)) if verdict == "ok" => QuickCheck::Healthy,
+        Ok(_) => QuickCheck::Damaged,
+        Err(error) => quick_check_failure(&error),
+    }
+}
+
+/// How many times a snapshot that could not be read is tried before it is passed over, and how long
+/// apart. A file written a moment ago is exactly what an antivirus scan is still holding open, and
+/// passing over the newest snapshot for that restores one up to six days older.
+const UNREADABLE_ATTEMPTS: u32 = 3;
+const UNREADABLE_RETRY_DELAY: Duration = Duration::from_millis(500);
+
+/// [`database_quick_check`], tried again while the file cannot be read.
+pub(super) async fn database_quick_check_retrying(db_path: &Path) -> QuickCheck {
+    let mut verdict = database_quick_check(db_path).await;
+
+    for _ in 1..UNREADABLE_ATTEMPTS {
+        if !matches!(verdict, QuickCheck::Unreadable(_)) {
+            break;
+        }
+
+        tokio::time::sleep(UNREADABLE_RETRY_DELAY).await;
+        verdict = database_quick_check(db_path).await;
+    }
+
+    verdict
+}
+
+/// The error for a database that could not be read, as opposed to one found damaged.
+pub(super) fn database_unreadable_error(detail: impl Into<String>) -> AppError {
+    AppError::from_code_with_details(
+        crate::AppErrorCode::DatabaseUnavailable,
+        "the database could not be read, which usually means another program is holding it",
+        detail.into(),
+    )
 }
 
 fn quick_check_failure(error: &sqlx::Error) -> QuickCheck {
@@ -374,8 +418,8 @@ pub use restore::{restore_database_from_backup, resume_interrupted_restore};
 // The full `PRAGMA integrity_check` and its background throttle live in the `integrity` submodule.
 mod integrity;
 pub use integrity::{
-    integrity_check_is_due, mark_integrity_check_passed, run_full_integrity_check,
-    DatabaseIntegrityReport,
+    integrity_check_failed, integrity_check_is_due, mark_integrity_check_failed,
+    mark_integrity_check_passed, run_full_integrity_check, DatabaseIntegrityReport,
 };
 // The integrity tests now live in `integrity.rs` itself, so the `#[cfg(test)] use` that used to
 // pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with
@@ -410,6 +454,9 @@ pub(super) fn swap_marker_path(db_path: &Path) -> PathBuf {
 /// written leaves [`database_swapped_within`] reading the modification time of the set-aside
 /// database, as it did before the marker existed.
 pub(super) fn record_database_swap(db_path: &Path) {
+    // A failed full check described the database that was just replaced.
+    integrity::clear_integrity_failure(db_path);
+
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

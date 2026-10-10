@@ -254,7 +254,19 @@ pub async fn undo_database_import<R: Runtime>(app: AppHandle<R>) -> AppResult<()
 #[tauri::command]
 pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<DatabaseIntegrityReport> {
     let pool = db.pool().await?;
-    db_backup::run_full_integrity_check(&pool).await
+    let report = db_backup::run_full_integrity_check(&pool).await?;
+
+    // The same bookkeeping as the weekly background check, so a check the user ran stops (or
+    // resumes) the daily backup's rotation the same way. A test database has no path to write to.
+    if !db.path().as_os_str().is_empty() {
+        if report.ok {
+            db_backup::mark_integrity_check_passed(db.path());
+        } else {
+            db_backup::mark_integrity_check_failed(db.path());
+        }
+    }
+
+    Ok(report)
 }
 
 #[cfg(test)]

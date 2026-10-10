@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 // constants would let that pair drift silently.
 use super::snapshot::BACKUP_MIN_INTERVAL_SECS;
 use super::{
-    backup_error, escape_sql_literal, is_healthy, is_recent, open, rotate_generations, sibling,
+    backup_error, database_unreadable_error, escape_sql_literal, is_recent, open, pool_quick_check,
+    rotate_generations, sibling, QuickCheck,
 };
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -41,12 +42,20 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
 
     let pool = open(db_path).await?;
 
-    if !is_healthy(&pool).await {
-        pool.close().await;
-        return Err(AppError::from_code(
-            AppErrorCode::AppError,
-            "cannot export a database that fails an integrity check",
-        ));
+    match pool_quick_check(&pool).await {
+        QuickCheck::Healthy => {}
+        QuickCheck::Damaged => {
+            pool.close().await;
+            return Err(AppError::from_code(
+                AppErrorCode::AppError,
+                "cannot export a database that fails an integrity check",
+            ));
+        }
+        // A lock is not damage, and the message must not send the user to restore a backup.
+        QuickCheck::Unreadable(detail) => {
+            pool.close().await;
+            return Err(database_unreadable_error(detail));
+        }
     }
 
     // VACUUM INTO fails if its target file already exists, so it always writes to a fresh
