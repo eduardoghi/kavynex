@@ -126,6 +126,7 @@ pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
     // launch could find the database missing again and re-run this from a staging file that the
     // rename appeared to consume.
     crate::services::filesystem::fsync_parent_dir(db_path);
+    super::record_database_swap(db_path);
 
     logger::warn(
         "db_backup",
@@ -258,6 +259,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         .map_err(|error| backup_error("failed to restore database from backup", error))?;
     // Flush the directory entry so the restored database is durably in place, not just staged.
     crate::services::filesystem::fsync_parent_dir(db_path);
+    super::record_database_swap(db_path);
 
     logger::info(
         "db_backup",

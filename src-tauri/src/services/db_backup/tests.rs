@@ -392,6 +392,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.import-staged.tmp",
             "kavynex.db.import-applying",
             "kavynex.db.integrity-checked",
+            "kavynex.db.swapped-at",
         ]
         .iter()
         .map(|name| name.to_string()),
@@ -512,6 +513,49 @@ async fn restore_replaces_corrupt_database_and_preserves_it() {
     // The corrupt copy is preserved for inspection, not deleted.
     assert!(corrupt_path(&db).exists());
     assert_eq!(std::fs::read(corrupt_path(&db)).unwrap(), b"not a database");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_restore_of_a_database_nobody_wrote_for_weeks_still_reads_as_a_recent_swap() {
+    // The set-aside database keeps the time of its last write, which a rename does not change.
+    // Read from that, a database untouched for weeks made the swap look weeks old, and the orphan
+    // removal's 30-day refusal never applied.
+    let dir = temp_dir("swap-recent");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    std::fs::write(&db, b"not a database").unwrap();
+    let weeks_ago = SystemTime::now() - Duration::from_secs(60 * 24 * 60 * 60);
+    filetime_set(&db, weeks_ago);
+
+    restore_database_from_backup(&db).await.unwrap();
+
+    let thirty_days = Duration::from_secs(30 * 24 * 60 * 60);
+    assert!(database_swapped_within(&db, thirty_days));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_old_swap_marker_ends_the_window_whatever_the_set_aside_file_says() {
+    let dir = temp_dir("swap-old");
+    let db = dir.join("kavynex.db");
+    std::fs::write(corrupt_path(&db), b"set aside a moment ago").unwrap();
+
+    let sixty_days_ago = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        - 60 * 24 * 60 * 60;
+    std::fs::write(swap_marker_path(&db), sixty_days_ago.to_string()).unwrap();
+
+    assert!(!database_swapped_within(
+        &db,
+        Duration::from_secs(30 * 24 * 60 * 60)
+    ));
 
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -255,6 +255,7 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
         sibling(db_path, ".import-staged.tmp"),
         import::import_applying_marker_path(db_path),
         integrity::integrity_check_marker_path(db_path),
+        swap_marker_path(db_path),
     ]);
 
     paths
@@ -399,19 +400,60 @@ pub use import::{
     apply_pending_database_import, database_import_undo_available, read_machine_paths,
     stage_database_import, stage_database_import_undo, MachinePaths,
 };
-/// Whether the database at `db_path` replaced another one within `window`, by an import (which
-/// leaves `.pre-import` behind) or a restore (which leaves `.corrupt`). Both are renames of the
-/// database that was in use, so their modification time is when that database last changed, which
-/// is at most moments before the swap.
+/// The file recording when the database at `db_path` was last replaced by an import, an undo or a
+/// restore, as seconds since the epoch.
+pub(super) fn swap_marker_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".swapped-at")
+}
+
+/// Records that the database at `db_path` was just replaced. Best effort. A marker that cannot be
+/// written leaves [`database_swapped_within`] reading the modification time of the set-aside
+/// database, as it did before the marker existed.
+pub(super) fn record_database_swap(db_path: &Path) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    if let Err(error) = crate::services::filesystem::write_file_durably(
+        &swap_marker_path(db_path),
+        now.to_string().as_bytes(),
+    ) {
+        logger::warn(
+            "db_backup",
+            format!("could not record when the database was replaced: {error}"),
+        );
+    }
+}
+
+/// Whether `swapped_at` (seconds since the epoch) is within `window` of `now`. A time in the future
+/// counts as recent, so a clock that moved back cannot end the window early.
+fn swap_is_within(now: SystemTime, swapped_at: SystemTime, window: Duration) -> bool {
+    now.duration_since(swapped_at)
+        .map_or(true, |age| age < window)
+}
+
+/// Whether the database at `db_path` replaced another one within `window`, by an import or a
+/// restore.
+///
+/// Read from the marker the swap writes. The set-aside database (`.pre-import`, `.corrupt`) keeps
+/// the modification time of its last write, because a rename does not change it, so a restore of a
+/// database nothing had written for weeks read as a swap from weeks ago and let the orphan removal
+/// run at once. Those times are only the answer for a swap made before the marker existed.
 pub(crate) fn database_swapped_within(db_path: &Path, window: Duration) -> bool {
+    let now = SystemTime::now();
+
+    if let Some(secs) = std::fs::read_to_string(swap_marker_path(db_path))
+        .ok()
+        .and_then(|text| text.trim().parse::<u64>().ok())
+    {
+        return swap_is_within(now, UNIX_EPOCH + Duration::from_secs(secs), window);
+    }
+
     [pre_import_path(db_path), restore::corrupt_path(db_path)]
         .iter()
         .filter_map(|path| std::fs::metadata(path).ok()?.modified().ok())
-        .any(|modified| {
-            SystemTime::now()
-                .duration_since(modified)
-                .map_or(true, |age| age < window)
-        })
+        .any(|modified| swap_is_within(now, modified, window))
 }
 
 // The parent module's import tests reach these internals; test-only so a non-test build does

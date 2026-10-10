@@ -618,6 +618,7 @@ fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path)
     })?;
 
     crate::services::filesystem::fsync_parent_dir(db_path);
+    super::record_database_swap(db_path);
     remove_import_applying_marker(marker);
     crate::services::filesystem::fsync_parent_dir(marker);
 
@@ -739,6 +740,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // removal closes the window down to the swap itself; a crash strictly between the two flushes is
     // the residual non-atomic rename+unlink window, the same shape the rest of this module accepts.
     crate::services::filesystem::fsync_parent_dir(db_path);
+    super::record_database_swap(db_path);
 
     remove_import_applying_marker(&marker);
     crate::services::filesystem::fsync_parent_dir(&marker);
