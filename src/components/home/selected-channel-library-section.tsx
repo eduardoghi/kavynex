@@ -51,6 +51,8 @@ type SelectedChannelLibrarySectionProps = {
     // Rows in the channel with no filter applied (decides the empty-vs-no-results message).
     channelTotal: number;
     hasMore: boolean;
+    // A page after the first failed. The grid offers to try it again.
+    loadMoreFailed?: boolean;
     isLoadingMore: boolean;
     onApplyQuery: (filters: MediaQueryFilters) => void | Promise<void>;
     onLoadMore: () => void;
@@ -76,6 +78,7 @@ export function SelectedChannelLibrarySection({
     total,
     channelTotal,
     hasMore,
+    loadMoreFailed = false,
     isLoadingMore,
     onApplyQuery,
     onLoadMore,
@@ -315,6 +318,7 @@ export function SelectedChannelLibrarySection({
             <MediaGrid
                 items={mediaItems}
                 hasMore={hasMore}
+                loadMoreFailed={loadMoreFailed}
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 activeMediaId={activeMediaId}

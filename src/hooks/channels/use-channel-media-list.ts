@@ -34,7 +34,7 @@ type UseChannelMediaListReturn = {
     channelTotal: number;
     hasMore: boolean;
     // A page after the first failed to load. Automatic paging stops until the query changes, the
-    // list is reloaded or `loadMore` is called on purpose.
+    // list is reloaded or `loadMore` is called on purpose, which the grid's retry row does.
     loadMoreFailed: boolean;
     isLoadingMedia: boolean;
     isLoadingMore: boolean;

@@ -183,6 +183,58 @@ describe("MediaGrid", () => {
         expect(onFocusHandled).toHaveBeenCalledTimes(1);
     });
 
+    it("offers to retry a page that failed instead of asking again on scroll", () => {
+        const onLoadMore = vi.fn();
+
+        renderWithMantine(
+            <MediaGrid
+                items={[createMedia({ id: 1, title: "First" })]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                hasMore={false}
+                loadMoreFailed
+                onLoadMore={onLoadMore}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText("Could not load the rest of the list.")).toBeInTheDocument();
+        expect(onLoadMore).not.toHaveBeenCalled();
+
+        screen.getByRole("button", { name: "Try again" }).click();
+        expect(onLoadMore).toHaveBeenCalledTimes(1);
+
+        // Incomplete, so the set size is still unknown.
+        expect(screen.getAllByRole("listitem")[0]).toHaveAttribute("aria-setsize", "-1");
+    });
+
+    it("keeps a focus request open while the page it may be on failed to load", () => {
+        const onFocusHandled = vi.fn();
+
+        renderWithMantine(
+            <MediaGrid
+                items={[createMedia({ id: 1, title: "First" })]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                focusMediaId={999}
+                isListSettled
+                hasMore={false}
+                loadMoreFailed
+                onLoadMore={vi.fn()}
+                onFocusHandled={onFocusHandled}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(onFocusHandled).not.toHaveBeenCalled();
+    });
+
     it("keeps waiting for the target while the list does not answer the current query yet", () => {
         // On a channel switch the grid mounts holding nothing, or the previous channel's rows, with
         // no more pages to load. Giving up then dropped the jump before the target channel loaded.

@@ -153,6 +153,7 @@ function controller(overrides: {
             mediaTotal: 1,
             channelMediaTotal: 1,
             hasMoreMedia: false,
+            loadMoreMediaFailed: false,
             isLoadingMoreMedia: false,
             applyMediaQuery: vi.fn(),
             loadMoreMedia: vi.fn(),

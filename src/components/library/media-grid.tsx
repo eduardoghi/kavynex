@@ -3,6 +3,7 @@ import { Box, Card, Group, Stack, Text, Title, VisuallyHidden } from "@mantine/c
 import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
+import { AppButton } from "../ui/app-button";
 import type { MediaRow } from "../../types/media";
 import { useGridScrollRestoration } from "../../hooks/use-grid-scroll-restoration";
 import { MediaGridSkeleton } from "./media-grid-skeleton";
@@ -26,6 +27,9 @@ type MediaGridProps = {
     hasMore?: boolean;
     isLoadingMore?: boolean;
     onLoadMore?: () => void;
+    // A page after the first failed. Scrolling no longer asks for it (that retried in a loop), so a
+    // row at the end of the list offers to, and the list counts as incomplete until it loads.
+    loadMoreFailed?: boolean;
     loading?: boolean;
     isVisible?: boolean;
     emptyTitle?: string;
@@ -120,6 +124,7 @@ export function MediaGrid({
     hasMore = false,
     isLoadingMore = false,
     onLoadMore,
+    loadMoreFailed = false,
     loading = false,
     isVisible = true,
     emptyTitle = UI_TEXT.library.emptyTitle,
@@ -272,6 +277,12 @@ export function MediaGrid({
                 return;
             }
 
+            // The target may be on the page that failed. The request stays open, and the jump
+            // happens once the retry row brings that page in.
+            if (loadMoreFailed) {
+                return;
+            }
+
             onFocusHandled?.();
             return;
         }
@@ -302,6 +313,7 @@ export function MediaGrid({
         hasMore,
         isLoadingMore,
         onLoadMore,
+        loadMoreFailed,
     ]);
 
     useEffect(() => {
@@ -435,7 +447,11 @@ export function MediaGrid({
                                                     // is not known here". The grid only receives
                                                     // the pages loaded so far. Once the last page
                                                     // is in, the real count is known.
-                                                    aria-setsize={hasMore ? -1 : items.length}
+                                                    aria-setsize={
+                                                        hasMore || loadMoreFailed
+                                                            ? -1
+                                                            : items.length
+                                                    }
                                                     aria-posinset={
                                                         virtualRow.index * columnCount +
                                                         itemIndex +
@@ -502,6 +518,22 @@ export function MediaGrid({
                                     {UI_TEXT.library.loadingMore}
                                 </Text>
                             </Box>
+                        )}
+
+                        {loadMoreFailed && !isLoadingMore && onLoadMore && (
+                            <Group justify="center" gap="sm" py={GRID_GAP}>
+                                <Text size="sm" c="dimmed" role="status">
+                                    {UI_TEXT.library.loadMoreFailed}
+                                </Text>
+                                <AppButton
+                                    type="button"
+                                    appVariant="secondary"
+                                    size="xs"
+                                    onClick={onLoadMore}
+                                >
+                                    {UI_TEXT.library.loadMoreRetry}
+                                </AppButton>
+                            </Group>
                         )}
                     </Box>
                 </Box>

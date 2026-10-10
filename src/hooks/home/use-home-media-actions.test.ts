@@ -107,6 +107,7 @@ describe("useHomeMediaActions", () => {
             mediaTotal: 0,
             channelMediaTotal: 0,
             hasMoreMedia: false,
+            loadMoreMediaFailed: false,
             isLoadingMoreMedia: false,
             addMedia: vi.fn().mockResolvedValue(undefined),
             cancelYtDlpDownload: vi.fn(),

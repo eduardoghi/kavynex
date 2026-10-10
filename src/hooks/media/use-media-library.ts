@@ -22,6 +22,8 @@ export type MediaLibraryController = {
     // Rows in the channel with no filter applied (for the channel header count).
     channelMediaTotal: number;
     hasMoreMedia: boolean;
+    // A page after the first failed to load. The grid shows a retry row that calls loadMoreMedia.
+    loadMoreMediaFailed: boolean;
     isLoadingMoreMedia: boolean;
     addMediaOpen: boolean;
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -223,6 +225,7 @@ export function useMediaLibrary({
         mediaTotal: mediaList.total,
         channelMediaTotal: mediaList.channelTotal,
         hasMoreMedia: mediaList.hasMore,
+        loadMoreMediaFailed: mediaList.loadMoreFailed,
         isLoadingMoreMedia: mediaList.isLoadingMore,
 
         addMediaOpen: addMediaWorkflow.addMediaOpen,

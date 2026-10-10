@@ -32,6 +32,8 @@ export const UI_TEXT = {
         noResultsDescription: "Try adjusting your search, filters, or sorting.",
         loading: "Loading media",
         loadingMore: "Loading more",
+        loadMoreFailed: "Could not load the rest of the list.",
+        loadMoreRetry: "Try again",
         searchLabel: "Search by title",
         searchPlaceholder: "Search titles",
         typeLabel: "Type",
