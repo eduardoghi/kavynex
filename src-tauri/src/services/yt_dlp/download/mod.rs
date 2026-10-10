@@ -664,6 +664,315 @@ fn kill_is_overdue(since_kill: Option<Duration>, already_forced: bool) -> bool {
     !already_forced && since_kill.is_some_and(|elapsed| elapsed >= KILL_GRACE)
 }
 
+/// How a download child ended, before any of it is reported.
+#[derive(Debug)]
+struct ChildOutcome {
+    success: bool,
+    stalled: bool,
+    cancel_requested: bool,
+    timed_out: bool,
+    /// The non-warning stderr lines, only on a failure that was neither stalled nor cancelled.
+    captured_stderr: String,
+}
+
+/// The time limits `supervise_download_child` enforces. Production uses the constants above, and
+/// the tests shrink them so a stall can be observed in milliseconds.
+#[derive(Debug, Clone, Copy)]
+struct SupervisionLimits {
+    stall_ms: u64,
+    max_runtime_ms: u64,
+    poll_millis: u64,
+}
+
+impl SupervisionLimits {
+    const PRODUCTION: Self = Self {
+        stall_ms: YT_DLP_STALL_TIMEOUT_SECS * 1000,
+        max_runtime_ms: YT_DLP_MAX_RUNTIME_SECS * 1000,
+        poll_millis: YT_DLP_WAIT_POLL_MILLIS,
+    };
+}
+
+/// Spawns the download child and supervises it to the end. Streams both pipes to the terminal,
+/// kills the tree on a cancel, a stall or the run-time cap, and repeats the kill when the first one
+/// did not take.
+///
+/// Separate from `download_media_from_url_async` so the supervision can run against a stand-in
+/// child in tests. Classifying the outcome is the caller's job.
+#[allow(clippy::too_many_arguments)]
+async fn supervise_download_child<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    mut command: Command,
+    temp_dir: &Path,
+    file_prefix: &str,
+    redaction: OutputRedaction,
+    cancel_flag: &Arc<AtomicBool>,
+    limits: SupervisionLimits,
+) -> AppResult<ChildOutcome> {
+    let normalized_run_id = run_id.to_string();
+    let temp_dir = temp_dir.to_path_buf();
+    let file_prefix = file_prefix.to_string();
+
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpDownloadSpawnFailed,
+                format!("failed to start yt-dlp download: {e}"),
+            )
+        })?;
+
+    let child_pid = child.id();
+
+    // Record the pid so the whole yt-dlp/ffmpeg process tree can be killed if the app
+    // exits before this download finishes.
+    if let Some(pid) = child_pid {
+        set_download_pid(&normalized_run_id, pid);
+    }
+    // Also track it in the process-wide registry so the exit handler's global sweep covers
+    // it uniformly with the metadata/thumbnail children; killing a pid twice on exit (once
+    // via the download registry, once via the global one) is harmless. Unregisters when
+    // this download future completes.
+    let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
+
+    // Stall detection. The reader tasks record the elapsed millis of the last line the
+    // child produced; the wait loop kills the download if it goes silent for too long.
+    let download_start = Instant::now();
+    let last_activity_ms = Arc::new(AtomicU64::new(0));
+    let last_activity_stdout = Arc::clone(&last_activity_ms);
+    let last_activity_stderr = Arc::clone(&last_activity_ms);
+
+    let stdout = child.stdout.take().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::YtDlpStdoutCaptureFailed,
+            "failed to capture yt-dlp stdout",
+        )
+    })?;
+
+    let stderr = child.stderr.take().ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::YtDlpStderrCaptureFailed,
+            "failed to capture yt-dlp stderr",
+        )
+    })?;
+
+    let app_stdout = app.clone();
+    let app_stderr = app.clone();
+    let run_id_stdout = normalized_run_id.clone();
+    let run_id_stderr = normalized_run_id.clone();
+    let output_redaction = Arc::new(redaction);
+    let redaction_stdout = Arc::clone(&output_redaction);
+    let redaction_stderr = Arc::clone(&output_redaction);
+
+    let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let stderr_buffer_reader = Arc::clone(&stderr_buffer);
+
+    let stdout_task = tauri::async_runtime::spawn(async move {
+        let mut reader = BufReader::new(stdout);
+        let mut line_buf: Vec<u8> = Vec::new();
+
+        while let Some(line) =
+            read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
+        {
+            last_activity_stdout.store(
+                download_start.elapsed().as_millis() as u64,
+                Ordering::Relaxed,
+            );
+
+            let line = redact_download_output_line(&line, &redaction_stdout);
+            emit_download_log_infallible(&app_stdout, &run_id_stdout, line, "stdout");
+        }
+    });
+
+    let stderr_task = tauri::async_runtime::spawn(async move {
+        let mut reader = BufReader::new(stderr);
+        let mut line_buf: Vec<u8> = Vec::new();
+
+        while let Some(line) =
+            read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
+        {
+            last_activity_stderr.store(
+                download_start.elapsed().as_millis() as u64,
+                Ordering::Relaxed,
+            );
+
+            // Redact before buffering so the failure message built from this buffer below is
+            // redacted too, not just the live stream.
+            let line = redact_download_output_line(&line, &redaction_stderr);
+
+            // A warning goes to the terminal but never into this buffer. The buffer is joined
+            // verbatim into the user-facing failure message, so a run that warned about a
+            // missing format and then failed for an unrelated reason would report the warnings
+            // as the cause. Keeping them out is what makes dropping `--no-warnings` from the
+            // argv free. The terminal gains the diagnostic, the error message is unchanged.
+            if !line_is_warning(&line) {
+                let mut guard = stderr_buffer_reader.lock().await;
+
+                if guard.len() >= MAX_CAPTURED_STDERR_LINES {
+                    guard.remove(0);
+                }
+
+                guard.push(line.clone());
+            }
+
+            emit_download_log_infallible(&app_stderr, &run_id_stderr, line, "stderr");
+        }
+    });
+
+    let mut cancel_requested = false;
+    let mut kill_requested_at: Option<Instant> = None;
+    let mut kill_forced = false;
+    let mut stalled = false;
+    let mut timed_out = false;
+    let mut last_observed_temp_size: u64 = 0;
+
+    let status = loop {
+        let user_cancelled = cancel_flag.load(Ordering::SeqCst);
+
+        // Absolute run-time backstop, checked before the stall logic so a slow-drip run that
+        // keeps resetting the stall timer is still stopped once it crosses the ceiling.
+        if !timed_out
+            && !user_cancelled
+            && download_exceeded_runtime(
+                download_start.elapsed().as_millis() as u64,
+                limits.max_runtime_ms,
+            )
+        {
+            timed_out = true;
+        }
+
+        if !stalled
+            && !user_cancelled
+            && download_is_stalled(
+                download_start.elapsed().as_millis() as u64,
+                last_activity_ms.load(Ordering::Relaxed),
+                limits.stall_ms,
+            )
+        {
+            // The child has gone silent past the threshold, but a large ffmpeg merge/remux
+            // can run for minutes writing to the output file without printing a line. Before
+            // killing it, check whether the temp files are still growing. If so it is
+            // progressing, so record the growth as activity and keep waiting. Only a stretch
+            // with neither output nor file growth is treated as a real stall.
+            // Off the async runtime. read_dir is blocking I/O, and the project's convention
+            // (utils::task) is that no synchronous filesystem work runs on a Tokio worker.
+            // A join failure defaults to 0 (no growth observed), which is the safe direction.
+            // it lets the stall be confirmed rather than masking a genuinely hung download.
+            let temp_dir_probe = temp_dir.clone();
+            let file_prefix_probe = file_prefix.clone();
+            let current_temp_size = crate::utils::task::run_blocking(move || {
+                Ok(total_matching_file_size(
+                    &temp_dir_probe,
+                    &file_prefix_probe,
+                ))
+            })
+            .await
+            .unwrap_or(0);
+
+            if current_temp_size > last_observed_temp_size {
+                // Say so. This branch is the app knowing something the user cannot see. The
+                // child has printed nothing for the whole stall threshold, and the only reason
+                // it is not being killed is that its output file is still growing. That is
+                // exactly the stretch (a large ffmpeg merge) where the terminal stops moving and
+                // the reasonable read is that the download hung, so cancelling is the next thing
+                // a user does. Bounded by construction. Reaching here resets the activity clock,
+                // so this can only be reported once per stall threshold.
+                emit_download_log_infallible(
+                    app,
+                    &normalized_run_id,
+                    format!(
+                        "Still working: no output for {}s, but the file is still growing ({}). \
+                         This is normal while audio and video are being combined.",
+                        limits.stall_ms / 1000,
+                        crate::utils::format::format_bytes(current_temp_size)
+                    ),
+                    "system",
+                );
+
+                last_observed_temp_size = current_temp_size;
+                last_activity_ms.store(
+                    download_start.elapsed().as_millis() as u64,
+                    Ordering::Relaxed,
+                );
+            } else {
+                stalled = true;
+            }
+        }
+
+        if (user_cancelled || stalled || timed_out) && !cancel_requested {
+            cancel_requested = true;
+            kill_requested_at = Some(Instant::now());
+
+            if let Some(pid) = child_pid {
+                crate::utils::process::kill_process_tree(pid).await;
+            } else {
+                let _ = child.kill().await;
+            }
+        }
+
+        // The tree kill can fail without a word (taskkill could not start, or gave up after its
+        // own bound), and after a cancel nothing else ends this loop, since the stall and runtime
+        // checks above stand down once the user cancelled. The run would then hold its download
+        // slot until the app restarts. So a child still running well after the kill is killed
+        // again, directly as well as by tree.
+        if kill_is_overdue(kill_requested_at.map(|at| at.elapsed()), kill_forced) {
+            kill_forced = true;
+
+            if let Some(pid) = child_pid {
+                crate::utils::process::kill_process_tree(pid).await;
+            }
+
+            let _ = child.start_kill();
+        }
+
+        match timeout(Duration::from_millis(limits.poll_millis), child.wait()).await {
+            Ok(wait_result) => {
+                break wait_result.map_err(|e| {
+                    AppError::from_code(
+                        AppErrorCode::YtDlpWaitFailed,
+                        format!("failed while waiting for yt-dlp: {e}"),
+                    )
+                })?;
+            }
+            Err(_) => {
+                continue;
+            }
+        }
+    };
+
+    if let Err(e) = stdout_task.await {
+        logger::warn("yt_dlp", format!("yt-dlp stdout task failed: {e}"));
+    }
+
+    if let Err(e) = stderr_task.await {
+        logger::warn("yt_dlp", format!("yt-dlp stderr task failed: {e}"));
+    }
+
+    // Read the captured stderr only on the path that uses it (a non-zero exit that was neither
+    // stalled nor cancelled), preserving the empty-buffer fallback the failure message expects.
+    let captured_stderr = if !stalled && !cancel_requested && !status.success() {
+        let guard = stderr_buffer.lock().await;
+
+        if guard.is_empty() {
+            "yt-dlp failed".to_string()
+        } else {
+            guard.join("\n")
+        }
+    } else {
+        String::new()
+    };
+
+    Ok(ChildOutcome {
+        success: status.success(),
+        stalled,
+        cancel_requested,
+        timed_out,
+        captured_stderr,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -943,264 +1252,35 @@ pub async fn download_media_from_url_async<R: Runtime>(
         // Starts in the run's own temp directory rather than wherever the app was launched from
         // (see utils::process::pin_working_dir_async).
         crate::utils::process::pin_working_dir_async(&mut command, &temp_dir);
+        command.args(&args);
 
-        let mut child = command
-            .args(&args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpDownloadSpawnFailed,
-                    format!("failed to start yt-dlp download: {e}"),
-                )
-            })?;
-
-        let child_pid = child.id();
-
-        // Record the pid so the whole yt-dlp/ffmpeg process tree can be killed if the app
-        // exits before this download finishes.
-        if let Some(pid) = child_pid {
-            set_download_pid(&normalized_run_id, pid);
-        }
-        // Also track it in the process-wide registry so the exit handler's global sweep covers
-        // it uniformly with the metadata/thumbnail children; killing a pid twice on exit (once
-        // via the download registry, once via the global one) is harmless. Unregisters when
-        // this download future completes.
-        let _tracked_child =
-            crate::services::process_registry::TrackedChildGuard::register(child_pid);
-
-        // Stall detection. The reader tasks record the elapsed millis of the last line the
-        // child produced; the wait loop kills the download if it goes silent for too long.
-        let download_start = Instant::now();
-        let last_activity_ms = Arc::new(AtomicU64::new(0));
-        let last_activity_stdout = Arc::clone(&last_activity_ms);
-        let last_activity_stderr = Arc::clone(&last_activity_ms);
-
-        let stdout = child.stdout.take().ok_or_else(|| {
-            AppError::from_code(
-                AppErrorCode::YtDlpStdoutCaptureFailed,
-                "failed to capture yt-dlp stdout",
-            )
-        })?;
-
-        let stderr = child.stderr.take().ok_or_else(|| {
-            AppError::from_code(
-                AppErrorCode::YtDlpStderrCaptureFailed,
-                "failed to capture yt-dlp stderr",
-            )
-        })?;
-
-        let app_stdout = app.clone();
-        let app_stderr = app.clone();
-        let run_id_stdout = normalized_run_id.clone();
-        let run_id_stderr = normalized_run_id.clone();
         // Both streams are redacted before anything sees a line: the terminal, the log, and the
         // failure message built from stderr below. See redact_download_output_line.
-        let output_redaction = Arc::new(OutputRedaction {
+        let output_redaction = OutputRedaction {
             run_dir: temp_dir.to_string_lossy().into_owned(),
             ffmpeg_location: ffmpeg_location.clone(),
             url: normalized_url.clone(),
             cookies_path: normalized_cookies_path.clone(),
             cookies_browser: normalized_cookies_browser.clone(),
-        });
-        let redaction_stdout = Arc::clone(&output_redaction);
-        let redaction_stderr = Arc::clone(&output_redaction);
-
-        let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let stderr_buffer_reader = Arc::clone(&stderr_buffer);
-
-        let stdout_task = tauri::async_runtime::spawn(async move {
-            let mut reader = BufReader::new(stdout);
-            let mut line_buf: Vec<u8> = Vec::new();
-
-            while let Some(line) =
-                read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
-            {
-                last_activity_stdout.store(
-                    download_start.elapsed().as_millis() as u64,
-                    Ordering::Relaxed,
-                );
-
-                let line = redact_download_output_line(&line, &redaction_stdout);
-                emit_download_log_infallible(&app_stdout, &run_id_stdout, line, "stdout");
-            }
-        });
-
-        let stderr_task = tauri::async_runtime::spawn(async move {
-            let mut reader = BufReader::new(stderr);
-            let mut line_buf: Vec<u8> = Vec::new();
-
-            while let Some(line) =
-                read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
-            {
-                last_activity_stderr.store(
-                    download_start.elapsed().as_millis() as u64,
-                    Ordering::Relaxed,
-                );
-
-                // Redact before buffering so the failure message built from this buffer below is
-                // redacted too, not just the live stream.
-                let line = redact_download_output_line(&line, &redaction_stderr);
-
-                // A warning goes to the terminal but never into this buffer. The buffer is joined
-                // verbatim into the user-facing failure message, so a run that warned about a
-                // missing format and then failed for an unrelated reason would report the warnings
-                // as the cause. Keeping them out is what makes dropping `--no-warnings` from the
-                // argv free. The terminal gains the diagnostic, the error message is unchanged.
-                if !line_is_warning(&line) {
-                    let mut guard = stderr_buffer_reader.lock().await;
-
-                    if guard.len() >= MAX_CAPTURED_STDERR_LINES {
-                        guard.remove(0);
-                    }
-
-                    guard.push(line.clone());
-                }
-
-                emit_download_log_infallible(&app_stderr, &run_id_stderr, line, "stderr");
-            }
-        });
-
-        let mut cancel_requested = false;
-        let mut kill_requested_at: Option<Instant> = None;
-        let mut kill_forced = false;
-        let mut stalled = false;
-        let mut timed_out = false;
-        let mut last_observed_temp_size: u64 = 0;
-
-        let status = loop {
-            let user_cancelled = cancel_flag.load(Ordering::SeqCst);
-
-            // Absolute run-time backstop, checked before the stall logic so a slow-drip run that
-            // keeps resetting the stall timer is still stopped once it crosses the ceiling.
-            if !timed_out
-                && !user_cancelled
-                && download_exceeded_runtime(
-                    download_start.elapsed().as_millis() as u64,
-                    YT_DLP_MAX_RUNTIME_SECS * 1000,
-                )
-            {
-                timed_out = true;
-            }
-
-            if !stalled
-                && !user_cancelled
-                && download_is_stalled(
-                    download_start.elapsed().as_millis() as u64,
-                    last_activity_ms.load(Ordering::Relaxed),
-                    YT_DLP_STALL_TIMEOUT_SECS * 1000,
-                )
-            {
-                // The child has gone silent past the threshold, but a large ffmpeg merge/remux
-                // can run for minutes writing to the output file without printing a line. Before
-                // killing it, check whether the temp files are still growing. If so it is
-                // progressing, so record the growth as activity and keep waiting. Only a stretch
-                // with neither output nor file growth is treated as a real stall.
-                // Off the async runtime. read_dir is blocking I/O, and the project's convention
-                // (utils::task) is that no synchronous filesystem work runs on a Tokio worker.
-                // A join failure defaults to 0 (no growth observed), which is the safe direction.
-                // it lets the stall be confirmed rather than masking a genuinely hung download.
-                let temp_dir_probe = temp_dir.clone();
-                let file_prefix_probe = file_prefix.clone();
-                let current_temp_size = crate::utils::task::run_blocking(move || {
-                    Ok(total_matching_file_size(&temp_dir_probe, &file_prefix_probe))
-                })
-                .await
-                .unwrap_or(0);
-
-                if current_temp_size > last_observed_temp_size {
-                    // Say so. This branch is the app knowing something the user cannot see. The
-                    // child has printed nothing for the whole stall threshold, and the only reason
-                    // it is not being killed is that its output file is still growing. That is
-                    // exactly the stretch (a large ffmpeg merge) where the terminal stops moving and
-                    // the reasonable read is that the download hung, so cancelling is the next thing
-                    // a user does. Bounded by construction. Reaching here resets the activity clock,
-                    // so this can only be reported once per stall threshold.
-                    emit_download_log_infallible(
-                        app,
-                        &normalized_run_id,
-                        format!(
-                            "Still working: no output for {}s, but the file is still growing ({}). \
-                             This is normal while audio and video are being combined.",
-                            YT_DLP_STALL_TIMEOUT_SECS,
-                            crate::utils::format::format_bytes(current_temp_size)
-                        ),
-                        "system",
-                    );
-
-                    last_observed_temp_size = current_temp_size;
-                    last_activity_ms.store(
-                        download_start.elapsed().as_millis() as u64,
-                        Ordering::Relaxed,
-                    );
-                } else {
-                    stalled = true;
-                }
-            }
-
-            if (user_cancelled || stalled || timed_out) && !cancel_requested {
-                cancel_requested = true;
-                kill_requested_at = Some(Instant::now());
-
-                if let Some(pid) = child_pid {
-                    crate::utils::process::kill_process_tree(pid).await;
-                } else {
-                    let _ = child.kill().await;
-                }
-            }
-
-            // The tree kill can fail without a word (taskkill could not start, or gave up after its
-            // own bound), and after a cancel nothing else ends this loop, since the stall and runtime
-            // checks above stand down once the user cancelled. The run would then hold its download
-            // slot until the app restarts. So a child still running well after the kill is killed
-            // again, directly as well as by tree.
-            if kill_is_overdue(kill_requested_at.map(|at| at.elapsed()), kill_forced) {
-                kill_forced = true;
-
-                if let Some(pid) = child_pid {
-                    crate::utils::process::kill_process_tree(pid).await;
-                }
-
-                let _ = child.start_kill();
-            }
-
-            match timeout(Duration::from_millis(YT_DLP_WAIT_POLL_MILLIS), child.wait()).await {
-                Ok(wait_result) => {
-                    break wait_result.map_err(|e| {
-                        AppError::from_code(
-                            AppErrorCode::YtDlpWaitFailed,
-                            format!("failed while waiting for yt-dlp: {e}"),
-                        )
-                    })?;
-                }
-                Err(_) => {
-                    continue;
-                }
-            }
         };
 
-        if let Err(e) = stdout_task.await {
-            logger::warn("yt_dlp", format!("yt-dlp stdout task failed: {e}"));
-        }
-
-        if let Err(e) = stderr_task.await {
-            logger::warn("yt_dlp", format!("yt-dlp stderr task failed: {e}"));
-        }
-
-        // Read the captured stderr only on the path that uses it (a non-zero exit that was neither
-        // stalled nor cancelled), preserving the empty-buffer fallback the failure message expects.
-        let captured_stderr = if !stalled && !cancel_requested && !status.success() {
-            let guard = stderr_buffer.lock().await;
-
-            if guard.is_empty() {
-                "yt-dlp failed".to_string()
-            } else {
-                guard.join("\n")
-            }
-        } else {
-            String::new()
-        };
+        let ChildOutcome {
+            success,
+            stalled,
+            cancel_requested,
+            timed_out,
+            captured_stderr,
+        } = supervise_download_child(
+            app,
+            &normalized_run_id,
+            command,
+            &temp_dir,
+            &file_prefix,
+            output_redaction,
+            &cancel_flag,
+            SupervisionLimits::PRODUCTION,
+        )
+        .await?;
 
         // The absolute run-time cap is reported before the stall/cancel/exit classification. A run
         // killed for exceeding it comes back with cancel_requested set and a non-success status, so
@@ -1219,7 +1299,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         match classify_download_termination(
             stalled,
             cancel_requested,
-            status.success(),
+            success,
             &captured_stderr,
         ) {
             DownloadTermination::Stalled => {
@@ -2284,5 +2364,221 @@ mod tests {
         assert!(find_live_chat_temp_file(&dir, "youtube_ID_137").is_none());
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // The supervision of the download child, against stand-in children. Each spawns a real process
+    // the way the metadata tests do (see metadata/tests.rs for the runner note).
+
+    fn shell(script: &str) -> Command {
+        let mut command = if cfg!(windows) {
+            let mut command = Command::new("cmd");
+            command.args(["/C", script]);
+            command
+        } else {
+            let mut command = Command::new("sh");
+            command.args(["-c", script]);
+            command
+        };
+
+        crate::utils::process::configure_child_async(&mut command);
+        command
+    }
+
+    fn silent_for_thirty_seconds() -> Command {
+        if cfg!(windows) {
+            shell("ping -n 30 127.0.0.1 > NUL")
+        } else {
+            shell("sleep 30")
+        }
+    }
+
+    const FAST_LIMITS: SupervisionLimits = SupervisionLimits {
+        stall_ms: 500,
+        max_runtime_ms: 60_000,
+        poll_millis: 50,
+    };
+
+    async fn supervise(
+        command: Command,
+        temp_dir: &Path,
+        cancel_flag: &Arc<AtomicBool>,
+        limits: SupervisionLimits,
+    ) -> ChildOutcome {
+        let app = mock_app();
+
+        supervise_download_child(
+            app.handle(),
+            "supervision-test",
+            command,
+            temp_dir,
+            "youtube_ID_137",
+            output_redaction(&temp_dir.to_string_lossy(), "ffmpeg"),
+            cancel_flag,
+            limits,
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_child_that_exits_zero_is_a_success() {
+        let temp_dir = unique_temp_dir("supervise-ok");
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let outcome = supervise(
+            shell("echo [download] 100%"),
+            &temp_dir,
+            &Arc::new(AtomicBool::new(false)),
+            FAST_LIMITS,
+        )
+        .await;
+
+        assert!(outcome.success);
+        assert!(!outcome.stalled && !outcome.cancel_requested && !outcome.timed_out);
+        assert!(outcome.captured_stderr.is_empty());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn a_failing_child_reports_its_errors_but_not_its_warnings() {
+        let temp_dir = unique_temp_dir("supervise-fail");
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let script = if cfg!(windows) {
+            "echo WARNING: a format is missing 1>&2 & echo ERROR: boom 1>&2 & exit /b 1"
+        } else {
+            "echo 'WARNING: a format is missing' >&2; echo 'ERROR: boom' >&2; exit 1"
+        };
+
+        let outcome = supervise(
+            shell(script),
+            &temp_dir,
+            &Arc::new(AtomicBool::new(false)),
+            FAST_LIMITS,
+        )
+        .await;
+
+        assert!(!outcome.success);
+        assert!(outcome.captured_stderr.contains("ERROR: boom"));
+        assert!(!outcome.captured_stderr.contains("WARNING"));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn a_silent_child_is_killed_as_stalled() {
+        let temp_dir = unique_temp_dir("supervise-stall");
+        fs::create_dir_all(&temp_dir).unwrap();
+        let started = Instant::now();
+
+        let outcome = supervise(
+            silent_for_thirty_seconds(),
+            &temp_dir,
+            &Arc::new(AtomicBool::new(false)),
+            FAST_LIMITS,
+        )
+        .await;
+
+        assert!(outcome.stalled);
+        assert!(!outcome.success);
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the stalled child was killed rather than waited out"
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn a_silent_child_whose_file_keeps_growing_is_not_a_stall() {
+        // The ffmpeg merge case. Nothing on the pipes, but the output file grows, so the child is
+        // left alone until it exits by itself.
+        let temp_dir = unique_temp_dir("supervise-growing");
+        fs::create_dir_all(&temp_dir).unwrap();
+        let file = temp_dir.join("youtube_ID_137.mp4");
+
+        let script = if cfg!(windows) {
+            format!(
+                "for /L %i in (1,1,8) do (echo xxxxxxxx>> \"{}\" & ping -n 2 127.0.0.1 > NUL)",
+                file.display()
+            )
+        } else {
+            format!(
+                "for i in 1 2 3 4 5 6 7 8; do echo xxxxxxxx >> '{}'; sleep 0.4; done",
+                file.display()
+            )
+        };
+
+        let limits = SupervisionLimits {
+            stall_ms: if cfg!(windows) { 1_500 } else { 600 },
+            ..FAST_LIMITS
+        };
+
+        let outcome = supervise(
+            shell(&script),
+            &temp_dir,
+            &Arc::new(AtomicBool::new(false)),
+            limits,
+        )
+        .await;
+
+        assert!(!outcome.stalled, "a growing output file counts as progress");
+        assert!(outcome.success);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_child_is_killed_and_reported_as_cancelled() {
+        let temp_dir = unique_temp_dir("supervise-cancel");
+        fs::create_dir_all(&temp_dir).unwrap();
+        let cancel_flag = Arc::new(AtomicBool::new(false));
+        let started = Instant::now();
+
+        let flag = Arc::clone(&cancel_flag);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            flag.store(true, Ordering::SeqCst);
+        });
+
+        let outcome = supervise(
+            silent_for_thirty_seconds(),
+            &temp_dir,
+            &cancel_flag,
+            SupervisionLimits::PRODUCTION,
+        )
+        .await;
+
+        assert!(outcome.cancel_requested);
+        assert!(!outcome.stalled && !outcome.timed_out && !outcome.success);
+        assert!(started.elapsed() < Duration::from_secs(20));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn a_child_past_the_run_time_cap_is_killed_as_timed_out() {
+        let temp_dir = unique_temp_dir("supervise-runtime");
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        let limits = SupervisionLimits {
+            stall_ms: 60_000,
+            max_runtime_ms: 300,
+            poll_millis: 50,
+        };
+
+        let outcome = supervise(
+            silent_for_thirty_seconds(),
+            &temp_dir,
+            &Arc::new(AtomicBool::new(false)),
+            limits,
+        )
+        .await;
+
+        assert!(outcome.timed_out);
+        assert!(!outcome.stalled);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }
