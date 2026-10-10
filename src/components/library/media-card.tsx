@@ -30,6 +30,8 @@ type MediaCardProps = {
     // silently doing nothing on a second click while the first is still running.
     isWatchedActionInFlight?: boolean;
     onEditTitle?: (media: MediaRow) => void;
+    // Set by the grid's roving tabindex. 0 for the one card in the Tab order, -1 for the rest.
+    tabIndex?: number;
 };
 
 export const MEDIA_CARD_HEIGHT = 292;
@@ -158,6 +160,7 @@ function MediaCardComponent({
     onMarkUnwatched,
     isWatchedActionInFlight = false,
     onEditTitle,
+    tabIndex,
 }: MediaCardProps): JSX.Element {
     const isAudio = media.media_type === "audio";
     const isLive = Boolean(media.is_live);
@@ -192,6 +195,7 @@ function MediaCardComponent({
             // does for the selected channel.
             ariaCurrent={isActive}
             onClick={handleOpen}
+            tabIndex={tabIndex}
             radius="xl"
             p="sm"
             style={{
@@ -271,6 +275,7 @@ function MediaCardComponent({
                         onMarkWatched={onMarkWatched}
                         onMarkUnwatched={onMarkUnwatched}
                         onEditTitle={onEditTitle}
+                        tabIndex={tabIndex}
                     />
                 </Group>
 

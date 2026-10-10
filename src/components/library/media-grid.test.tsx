@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MediaGrid, getColumnCount } from "./media-grid";
 import { createMedia } from "../../test/factories/media";
@@ -30,13 +30,17 @@ vi.mock("./media-card", () => ({
         onOpen,
         onRequestDelete,
         isWatchedActionInFlight,
+        tabIndex,
     }: {
         media: { title: string };
         onOpen: (media: unknown) => void;
         onRequestDelete: (media: unknown) => void;
         isWatchedActionInFlight?: boolean;
+        tabIndex?: number;
     }) => (
         <div>
+            {/* Stands in for the stretched card button the grid's arrow keys move between. */}
+            <button className="kx-card-button" tabIndex={tabIndex} aria-label={`card ${media.title}`} />
             <span>{media.title}</span>
             <button onClick={() => onOpen(media)}>open</button>
             <button onClick={() => onRequestDelete(media)}>delete</button>
@@ -46,6 +50,46 @@ vi.mock("./media-card", () => ({
 }));
 
 describe("MediaGrid", () => {
+    it("keeps one card in the Tab order and moves it with the arrow keys", async () => {
+        renderWithMantine(
+            <MediaGrid
+                items={[
+                    createMedia({ id: 1, title: "First" }),
+                    createMedia({ id: 2, title: "Second" }),
+                    createMedia({ id: 3, title: "Third" }),
+                ]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        const first = screen.getByRole("button", { name: "card First" });
+        const second = screen.getByRole("button", { name: "card Second" });
+        const third = screen.getByRole("button", { name: "card Third" });
+
+        expect(first).toHaveAttribute("tabindex", "0");
+        expect(second).toHaveAttribute("tabindex", "-1");
+
+        first.focus();
+        fireEvent.keyDown(first, { key: "ArrowRight" });
+
+        await waitFor(() => expect(second).toHaveFocus());
+        expect(second).toHaveAttribute("tabindex", "0");
+        expect(first).toHaveAttribute("tabindex", "-1");
+
+        fireEvent.keyDown(second, { key: "End" });
+
+        await waitFor(() => expect(third).toHaveFocus());
+
+        // Past the end stays on the last card instead of wrapping.
+        fireEvent.keyDown(third, { key: "ArrowRight" });
+        expect(third).toHaveFocus();
+    });
+
     it("shows loading state", () => {
         renderWithMantine(
             <MediaGrid

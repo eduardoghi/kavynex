@@ -42,6 +42,9 @@ type MediaCardActionsMenuProps = {
     onMarkWatched?: (media: MediaRow) => void;
     onMarkUnwatched?: (media: MediaRow) => void;
     onEditTitle?: (media: MediaRow) => void;
+    // Follows the card's own tab stop, so a card left out of the Tab order by the grid's roving
+    // tabindex does not keep its menu button in it.
+    tabIndex?: number;
 };
 
 export function MediaCardActionsMenu({
@@ -54,6 +57,7 @@ export function MediaCardActionsMenu({
     onMarkWatched,
     onMarkUnwatched,
     onEditTitle,
+    tabIndex,
 }: MediaCardActionsMenuProps): JSX.Element {
     const hasYoutubeSource = Boolean(media.youtube_video_id?.trim());
 
@@ -62,6 +66,7 @@ export function MediaCardActionsMenu({
             <Menu.Target>
                 <ActionIcon
                     variant="subtle"
+                    tabIndex={tabIndex}
                     aria-label={`Actions for ${media.title}`}
                     style={MENU_ACTION_ICON_STYLE}
                 >

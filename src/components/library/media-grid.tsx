@@ -229,6 +229,103 @@ export function MediaGrid({
 
     const virtualRows = rowVirtualizer.getVirtualItems();
 
+    // Roving tabindex over the cards. One card is the grid's Tab stop and the arrow keys move it,
+    // so a keyboard user crosses a channel of hundreds of media with one Tab instead of two per card
+    // (the card and its menu button). The stop has to be a card that is rendered, and with the
+    // virtualizer that is only the rows near the viewport, so a stop scrolled out of the window
+    // falls back to the first card on screen rather than leaving the grid with no Tab stop at all.
+    const [rovingIndex, setRovingIndex] = useState(0);
+    const firstRenderedIndex = (virtualRows[0]?.index ?? 0) * columnCount;
+    const lastRenderedIndex = Math.min(
+        items.length - 1,
+        ((virtualRows[virtualRows.length - 1]?.index ?? 0) + 1) * columnCount - 1
+    );
+    const tabStopIndex =
+        rovingIndex >= firstRenderedIndex && rovingIndex <= lastRenderedIndex
+            ? rovingIndex
+            : firstRenderedIndex;
+
+    // The card at `index` may not be in the DOM yet when the arrow moved to a row the virtualizer
+    // still has to render, so the focus is retried for a few frames.
+    const focusCardAt = useCallback((index: number, attempt = 0): void => {
+        const button = scrollParentRef.current?.querySelector<HTMLElement>(
+            `[data-media-index="${index}"] .kx-card-button`
+        );
+
+        if (button) {
+            button.focus();
+            return;
+        }
+
+        if (attempt < 3) {
+            window.requestAnimationFrame(() => focusCardAt(index, attempt + 1));
+        }
+    }, [scrollParentRef]);
+
+    const cardIndexOf = (target: EventTarget): number | null => {
+        if (!(target instanceof HTMLElement) || !target.classList.contains("kx-card-button")) {
+            return null;
+        }
+
+        const cell = target.closest<HTMLElement>("[data-media-index]");
+        const index = Number(cell?.dataset.mediaIndex);
+
+        return Number.isInteger(index) ? index : null;
+    };
+
+    const handleCardKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
+        const current = cardIndexOf(event.target);
+
+        if (current === null) {
+            return;
+        }
+
+        let next: number;
+
+        switch (event.key) {
+            case "ArrowRight":
+                next = current + 1;
+                break;
+            case "ArrowLeft":
+                next = current - 1;
+                break;
+            case "ArrowDown":
+                next = current + columnCount;
+                break;
+            case "ArrowUp":
+                next = current - columnCount;
+                break;
+            case "Home":
+                next = 0;
+                break;
+            case "End":
+                next = items.length - 1;
+                break;
+            default:
+                return;
+        }
+
+        event.preventDefault();
+        next = Math.max(0, Math.min(items.length - 1, next));
+
+        if (next === current) {
+            return;
+        }
+
+        setRovingIndex(next);
+        rowVirtualizer.scrollToIndex(Math.floor(next / columnCount));
+        window.requestAnimationFrame(() => focusCardAt(next));
+    };
+
+    // A click or a Tab into a card makes it the stop, so the arrows continue from where the user is.
+    const handleCardFocus = (event: React.FocusEvent<HTMLElement>): void => {
+        const index = cardIndexOf(event.target);
+
+        if (index !== null) {
+            setRovingIndex(index);
+        }
+    };
+
     // The index of the last row currently rendered, which is the only thing the infinite-scroll
     // effect below reads out of the virtualizer. Depending on the number rather than on
     // `virtualRows` is what keeps that effect from re-running on frames where nothing it cares
@@ -443,6 +540,8 @@ export function MediaGrid({
                         <Box
                             role="list"
                             aria-label={UI_TEXT.library.title}
+                            onKeyDown={handleCardKeyDown}
+                            onFocus={handleCardFocus}
                             style={{
                                 height: `${rowVirtualizer.getTotalSize()}px`,
                                 width: "100%",
@@ -491,6 +590,9 @@ export function MediaGrid({
                                                             : undefined
                                                     }
                                                     role="listitem"
+                                                    data-media-index={
+                                                        virtualRow.index * columnCount + itemIndex
+                                                    }
                                                     // -1 is the ARIA value for "the full set is
                                                     // larger than what is rendered, and its size
                                                     // is not known here". The grid only receives
@@ -540,6 +642,13 @@ export function MediaGrid({
                                                             ) ?? false
                                                         }
                                                         onEditTitle={onEditTitle}
+                                                        tabIndex={
+                                                            virtualRow.index * columnCount +
+                                                                itemIndex ===
+                                                            tabStopIndex
+                                                                ? 0
+                                                                : -1
+                                                        }
                                                     />
                                                 </Box>
                                             ))}

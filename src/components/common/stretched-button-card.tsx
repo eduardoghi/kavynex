@@ -7,6 +7,9 @@ type StretchedButtonCardProps = {
     ariaBusy?: boolean;
     disabled?: boolean;
     onClick: () => void;
+    // For a container that runs a roving tabindex over its cards (the media grid), so only one
+    // card is a Tab stop and the arrows move between them.
+    tabIndex?: number;
     radius?: PaperProps["radius"];
     p?: PaperProps["p"];
     style: CSSProperties;
@@ -26,6 +29,7 @@ export function StretchedButtonCard({
     ariaBusy = false,
     disabled = false,
     onClick,
+    tabIndex,
     radius,
     p,
     style,
@@ -54,6 +58,7 @@ export function StretchedButtonCard({
                 aria-label={ariaLabel}
                 aria-current={ariaCurrent ? "true" : undefined}
                 disabled={disabled}
+                tabIndex={tabIndex}
                 onClick={onClick}
                 onKeyDown={handleKeyDown}
                 style={{
