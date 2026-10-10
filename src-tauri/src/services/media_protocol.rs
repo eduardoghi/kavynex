@@ -301,9 +301,73 @@ pub fn handle<R: Runtime>(
 ) {
     let app = context.app_handle().clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
-        responder.respond(serve(&app, &request));
+    tauri::async_runtime::spawn(async move {
+        // At most MAX_CONCURRENT_MEDIA_READS reads at once, and a burst past MAX_MEDIA_READS_IN_FLIGHT
+        // is refused rather than queued. Each read holds a blocking thread and a buffer of up to the
+        // response window, and the blocking pool is the one every other command offloads to.
+        let Ok(_permit) = MEDIA_READ_SEMAPHORE
+            .acquire(crate::AppErrorCode::TooManyConcurrentYtDlpRuns)
+            .await
+        else {
+            responder.respond(empty_response(StatusCode::SERVICE_UNAVAILABLE));
+            return;
+        };
+
+        let response = tauri::async_runtime::spawn_blocking(move || serve(&app, &request)).await;
+
+        responder.respond(
+            response.unwrap_or_else(|_| empty_response(StatusCode::INTERNAL_SERVER_ERROR)),
+        );
     });
+}
+
+/// How many media reads run at once. A player seeking issues a few range requests in quick
+/// succession, and a handful is all one window needs.
+const MAX_CONCURRENT_MEDIA_READS: usize = 4;
+
+/// How many may wait behind them before further requests are refused.
+const MAX_MEDIA_READS_IN_FLIGHT: usize = 32;
+
+static MEDIA_READ_SEMAPHORE: crate::utils::bounded_semaphore::BoundedSemaphore =
+    crate::utils::bounded_semaphore::BoundedSemaphore::new(
+        MAX_CONCURRENT_MEDIA_READS,
+        MAX_MEDIA_READS_IN_FLIGHT,
+    );
+
+/// The network share the configured library lives on, when it lives on one. Recorded when the
+/// library's asset scope is registered (commands::security), which is the only time it changes.
+fn library_share() -> &'static std::sync::Mutex<Option<String>> {
+    static SHARE: std::sync::OnceLock<std::sync::Mutex<Option<String>>> =
+        std::sync::OnceLock::new();
+    SHARE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Records the share of the library folder now being served, or clears it for a local library.
+pub(crate) fn set_library_share(library_path: &str) {
+    *library_share()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) =
+        crate::utils::path::network_share_prefix(library_path);
+}
+
+/// Whether a request for `path` may reach the scope check at all.
+///
+/// The scope check resolves the path (it follows links and canonicalizes), and on Windows resolving
+/// `\\host\share\...` authenticates to that host over SMB before any answer comes back. So a
+/// network path is refused here, before that, unless it is on the very share the library is on,
+/// which is the one case where serving one is the point.
+fn may_resolve(path: &str, library_share: Option<&str>) -> bool {
+    if !crate::utils::path::is_network_path(path) {
+        return true;
+    }
+
+    match (
+        crate::utils::path::network_share_prefix(path),
+        library_share,
+    ) {
+        (Some(share), Some(library)) => share.eq_ignore_ascii_case(library),
+        _ => false,
+    }
 }
 
 /// Serves one request for a media file.
@@ -320,6 +384,15 @@ pub(crate) fn serve<R: Runtime>(
 
     if path.is_empty() || climbs_out_of_a_directory(&path) {
         return empty_response(StatusCode::BAD_REQUEST);
+    }
+
+    let share = library_share()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+
+    if !may_resolve(&path, share.as_deref()) {
+        return empty_response(StatusCode::FORBIDDEN);
     }
 
     // The one authorization check, and deliberately the same one the asset protocol makes rather
@@ -395,6 +468,36 @@ pub(crate) fn serve<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_local_path_may_always_reach_the_scope_check() {
+        assert!(may_resolve(r"C:\Library\video\a.mp4", None));
+        assert!(may_resolve(
+            "/home/me/Library/video/a.mp4",
+            Some(r"\\nas\media")
+        ));
+    }
+
+    #[test]
+    fn a_network_path_is_refused_before_it_is_resolved() {
+        // Resolving it is what would authenticate to the host, so it never gets that far.
+        assert!(!may_resolve(r"\\attacker\share\a.mp4", None));
+        assert!(!may_resolve(
+            r"\\attacker\share\a.mp4",
+            Some(r"\\nas\media")
+        ));
+        assert!(!may_resolve("//attacker/share/a.mp4", None));
+    }
+
+    #[test]
+    fn a_path_on_the_librarys_own_share_may_be_resolved() {
+        let share = crate::utils::path::network_share_prefix(r"\\nas\media\Library");
+
+        assert!(may_resolve(
+            r"\\NAS\media\Library\video\a.mp4",
+            share.as_deref()
+        ));
+    }
 
     #[test]
     fn percent_decode_restores_the_characters_a_path_can_carry() {

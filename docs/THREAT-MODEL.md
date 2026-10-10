@@ -120,6 +120,7 @@ past a literal prefix match), and the functions applying it are:
 | `library::guard::paths_refer_to_same_location` | a network path aimed at a local library, or at another share than the one a network-hosted library lives on |
 | `utils::path::network_share_prefix` | not a refusal of its own: the host-and-share reading the guard compares before it will canonicalize a network path against a network-hosted library |
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
+| `media_protocol::may_resolve` | a media request on the player's `kvxmedia:` protocol, unless it is on the share the library itself is on |
 | `yt_dlp::cookies::is_safe_selector_component` | the profile and container of a `--cookies-from-browser` selector, which yt-dlp resolves as a folder when it looks like a path |
 | `commands/database.rs::prepare_import_source` | the database import source |
 | `commands/database.rs::prepare_export_destination` | the database export destination |
@@ -925,9 +926,14 @@ a symlink at the requested path, canonicalizes the result when it exists, and on
 scope's glob patterns. A symlink planted inside one of the four managed subdirectories and pointing
 outside the library is therefore refused, because its target is what gets matched, the same outcome
 the canonical comparisons elsewhere in this document reach (`ensure_existing_path_inside_dir`,
-`library::guard`). A path that does not exist is matched as written, which costs nothing since there
-is no file behind it to serve. The `kvxmedia:` handler calls the same `is_allowed`, so the player
-inherits this. Because the behavior belongs to the dependency, `is_allowed` is worth re-reading when
+`library::guard`). A path that does not exist is matched as written. That costs nothing for a local
+path, but the resolving itself is the cost for a network one, since stat'ing `\\host\share` makes
+Windows authenticate to `host`. The `kvxmedia:` handler therefore refuses a network path before
+calling `is_allowed` unless it is on the share the library is served from
+(`media_protocol::may_resolve`), and limits how many reads run at once. The `asset:` protocol has no
+such hook, and the renderer refuses to build a URL from a network-shaped stored path instead
+(`resolveStoredPath`). The `kvxmedia:` handler otherwise calls the same `is_allowed`, so the player
+inherits the rest. Because the behavior belongs to the dependency, `is_allowed` is worth re-reading when
 Tauri is bumped. The scope still must not widen to a directory the user did not choose, which is
 what `register_library_asset_scope`'s settings cross-check and the managed-subdirectory restriction
 above are there to prevent.

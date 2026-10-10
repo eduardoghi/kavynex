@@ -263,6 +263,10 @@ pub async fn register_library_asset_scope<R: Runtime>(
             })?;
         }
 
+        // The player's protocol refuses network paths before resolving them, except on the share
+        // the library is served from (see media_protocol::may_resolve).
+        crate::services::media_protocol::set_library_share(&trimmed);
+
         Ok(())
     })
     .await
