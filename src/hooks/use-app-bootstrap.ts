@@ -3,9 +3,11 @@ import {
     ensureDatabaseReady,
     getDatabaseBackupStatus,
     restoreDatabaseFromBackup,
+    startWithEmptyDatabase,
 } from "../services/database-service";
 import {
     DATABASE_MIGRATION_BLOCKED_ERROR_CODE,
+    DATABASE_MISSING_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     DATABASE_UNAVAILABLE_ERROR_CODE,
 } from "../constants/error-codes";
@@ -21,11 +23,18 @@ type UseAppBootstrapOptions = {
     onError: (message: string) => void;
 };
 
+// Why the recovery dialog opened. A database that would not open is offered a restore. A missing
+// one is offered the restore or a fresh start, since opening it would have created an empty
+// database whose daily snapshot then rotates the backups out.
+export type DatabaseRecoveryReason = "damaged" | "missing";
+
 export type DatabaseRecoveryController = {
     open: boolean;
+    reason: DatabaseRecoveryReason;
     backedUpAtMs: number | null;
     isRestoring: boolean;
     restoreFromBackup: () => Promise<void>;
+    startEmpty: () => Promise<void>;
     dismiss: () => void;
 };
 
@@ -37,6 +46,7 @@ export function useAppBootstrap({
     onError,
 }: UseAppBootstrapOptions): DatabaseRecoveryController {
     const [open, setOpen] = useState(false);
+    const [reason, setReason] = useState<DatabaseRecoveryReason>("damaged");
     const [backedUpAtMs, setBackedUpAtMs] = useState<number | null>(null);
     const [isRestoring, setIsRestoring] = useState(false);
 
@@ -80,12 +90,18 @@ export function useAppBootstrap({
                     return;
                 }
 
-                // The database could not be opened. Offer to restore from the last backup
-                // if one exists; otherwise surface the raw initialization error.
+                // The database could not be opened, or is missing with backups beside it. Offer
+                // to restore from the last backup if one exists; otherwise surface the raw
+                // initialization error.
                 try {
                     const status = await getDatabaseBackupStatus();
 
                     if (!cancelled && status.available) {
+                        setReason(
+                            parseAppError(error).code === DATABASE_MISSING_ERROR_CODE
+                                ? "missing"
+                                : "damaged"
+                        );
                         setBackedUpAtMs(status.backedUpAtMs);
                         setOpen(true);
                         return;
@@ -127,6 +143,20 @@ export function useAppBootstrap({
         }
     }, [onError]);
 
+    const startEmpty = useCallback(async (): Promise<void> => {
+        setIsRestoring(true);
+
+        try {
+            await startWithEmptyDatabase();
+            reloadApp();
+        } catch (error) {
+            logError("bootstrap", "Failed to start with an empty database.", error);
+            onError(resolveErrorMessage(error, "Failed to create an empty database."));
+            setIsRestoring(false);
+            setOpen(false);
+        }
+    }, [onError]);
+
     const dismiss = useCallback((): void => {
         setOpen(false);
     }, []);
@@ -134,9 +164,11 @@ export function useAppBootstrap({
     // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
     return useMemoObject({
         open,
+        reason,
         backedUpAtMs,
         isRestoring,
         restoreFromBackup,
+        startEmpty,
         dismiss,
     });
 }

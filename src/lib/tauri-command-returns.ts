@@ -94,6 +94,7 @@ export type TauriCommandReturns = {
     register_library_asset_scope: void;
 
     ensure_database_ready: void;
+    start_with_empty_database: void;
     get_database_backup_status: DatabaseBackupStatus;
     restore_database_from_backup: void;
     export_database: void;

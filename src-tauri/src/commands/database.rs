@@ -45,6 +45,17 @@ pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
     Ok(())
 }
 
+/// Opens a new, empty database in place of a missing one whose backups are still on disk, because
+/// the user chose to start over rather than restore. The backups stay where they are, and the
+/// daily snapshot leaves them alone while the new database holds nothing (see
+/// `db_backup::backup_database`).
+#[tauri::command]
+pub async fn start_with_empty_database(db: State<'_, Db>) -> AppResult<()> {
+    db.allow_creating_missing_database();
+    db.pool().await?;
+    Ok(())
+}
+
 /// Reports whether a database backup exists that could be restored, and when it was taken.
 /// Used to offer recovery when `ensure_database_ready` fails.
 #[tauri::command]

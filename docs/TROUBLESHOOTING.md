@@ -295,6 +295,18 @@ to a day old. To restore a backup by hand:
    before an upgrade.
 5. Start Kavynex and run Diagnostics.
 
+## Kavynex says its database file is missing
+
+The database file is gone (an antivirus quarantined it, a roaming profile was reset, it was deleted
+by mistake) while its automatic backups are still next to where it was. Kavynex does not create a
+new empty database in that case, because the daily backup of an empty database would replace one
+good snapshot a day until none were left. It offers to restore the newest healthy backup instead.
+
+**Start empty** is for when the database was removed on purpose to start over. It opens a new, empty
+library and leaves the backups where they are. The daily backup skips an empty database while any
+snapshot still holds a library, so nothing is pushed out until the new library has content of its
+own.
+
 ## After a restore or an import, Diagnostics lists many orphan files
 
 A restored backup or an imported database does not know the files added to the library after it

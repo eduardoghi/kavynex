@@ -6,6 +6,7 @@ vi.mock("../services/database-service", () => ({
     ensureDatabaseReady: vi.fn(),
     getDatabaseBackupStatus: vi.fn(),
     restoreDatabaseFromBackup: vi.fn(),
+    startWithEmptyDatabase: vi.fn(),
 }));
 
 vi.mock("../utils/error-message", () => ({
@@ -20,6 +21,7 @@ import {
     ensureDatabaseReady,
     getDatabaseBackupStatus,
     restoreDatabaseFromBackup,
+    startWithEmptyDatabase,
     type DatabaseBackupStatus,
 } from "../services/database-service";
 import { logError } from "../utils/app-logger";
@@ -199,6 +201,60 @@ describe("useAppBootstrap", () => {
 
         expect(result.current.backedUpAtMs).toBe(1_700_000_000_000);
         expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("offers the restore or a fresh start when the database file is missing", async () => {
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce({
+            code: "DATABASE_MISSING",
+            message: "the database file is missing, but backups of it are still there",
+        });
+        vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
+            available: true,
+            backedUpAtMs: 1_700_000_000_000,
+            totalBytes: 2048,
+            formattedTotalSize: "2.00 KB",
+        });
+        vi.mocked(startWithEmptyDatabase).mockResolvedValueOnce(undefined);
+
+        const reloadSpy = vi.fn();
+        Object.defineProperty(window, "location", {
+            configurable: true,
+            value: { ...window.location, reload: reloadSpy },
+        });
+
+        const { result } = renderHook(() => useAppBootstrap({ onError: vi.fn() }));
+
+        await waitFor(() => {
+            expect(result.current.open).toBe(true);
+        });
+
+        expect(result.current.reason).toBe("missing");
+
+        await act(async () => {
+            await result.current.startEmpty();
+        });
+
+        expect(startWithEmptyDatabase).toHaveBeenCalledTimes(1);
+        expect(restoreDatabaseFromBackup).not.toHaveBeenCalled();
+        expect(reloadSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls a database that would not open damaged", async () => {
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce(new Error("corrupt"));
+        vi.mocked(getDatabaseBackupStatus).mockResolvedValueOnce({
+            available: true,
+            backedUpAtMs: 1_700_000_000_000,
+            totalBytes: 2048,
+            formattedTotalSize: "2.00 KB",
+        });
+
+        const { result } = renderHook(() => useAppBootstrap({ onError: vi.fn() }));
+
+        await waitFor(() => {
+            expect(result.current.open).toBe(true);
+        });
+
+        expect(result.current.reason).toBe("damaged");
     });
 
     it("restores from backup and reloads on confirmation", async () => {

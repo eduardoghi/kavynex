@@ -248,9 +248,11 @@ function createUiGuards(): HomeUiGuardsController {
 function createDatabaseRecovery(): DatabaseRecoveryController {
     return {
         open: false,
+        reason: "damaged",
         backedUpAtMs: null,
         isRestoring: false,
         restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+        startEmpty: vi.fn().mockResolvedValue(undefined),
         dismiss: vi.fn(),
     };
 }

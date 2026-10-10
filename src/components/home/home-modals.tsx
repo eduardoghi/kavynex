@@ -229,14 +229,31 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
 
             <ConfirmDeleteModal
                 opened={databaseRecovery.open}
-                onClose={databaseRecovery.dismiss}
+                onClose={
+                    databaseRecovery.reason === "missing"
+                        ? () => void databaseRecovery.startEmpty()
+                        : databaseRecovery.dismiss
+                }
                 onConfirm={() => void databaseRecovery.restoreFromBackup()}
                 loading={databaseRecovery.isRestoring}
                 title={<Text fw={900}>Restore database</Text>}
-                message="The database could not be opened and may be corrupted."
-                description={`Restore from ${formatBackupTimestamp(
-                    databaseRecovery.backedUpAtMs
-                )}? The current database is kept aside as a .corrupt file, and the app will reload.`}
+                message={
+                    databaseRecovery.reason === "missing"
+                        ? "The database file is missing, but backups of it are still there."
+                        : "The database could not be opened and may be corrupted."
+                }
+                description={
+                    databaseRecovery.reason === "missing"
+                        ? `Restore from ${formatBackupTimestamp(
+                              databaseRecovery.backedUpAtMs
+                          )}? Starting with an empty library instead keeps the backups where they are, and the app will reload either way.`
+                        : `Restore from ${formatBackupTimestamp(
+                              databaseRecovery.backedUpAtMs
+                          )}? The current database is kept aside as a .corrupt file, and the app will reload.`
+                }
+                cancelLabel={
+                    databaseRecovery.reason === "missing" ? "Start empty" : undefined
+                }
                 confirmLabel="Restore"
                 confirmColor="blue"
                 confirmIcon={<RotateCcw size={18} />}

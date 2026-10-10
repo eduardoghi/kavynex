@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -34,6 +35,10 @@ pub struct Db {
     // this lock for its whole run and pool opening waits on it. Only ever contended on the one-time
     // open. Once the pool is cached, `pool()` returns it below without taking the lock.
     open_lock: Mutex<()>,
+    // Set once the user chose to start over with an empty database although backups of the missing
+    // one exist (see [`missing_database_error`]). Until then a missing file with backups beside it
+    // is refused rather than created.
+    allow_create_missing: AtomicBool,
 }
 
 impl Db {
@@ -44,7 +49,14 @@ impl Db {
             path,
             pool: OnceCell::new(),
             open_lock: Mutex::new(()),
+            allow_create_missing: AtomicBool::new(false),
         }
+    }
+
+    /// Lets the next open create the database file even though backups of a missing one exist,
+    /// for a user who chose to start with an empty library rather than restore.
+    pub fn allow_creating_missing_database(&self) {
+        self.allow_create_missing.store(true, Ordering::SeqCst);
     }
 
     /// Returns the shared pool, opening (and migrating) it on first use. The returned
@@ -59,7 +71,9 @@ impl Db {
         let _open_guard = self.open_lock.lock().await;
         let pool = self
             .pool
-            .get_or_try_init(|| build_pool_at(&self.path))
+            .get_or_try_init(|| {
+                build_pool_at(&self.path, self.allow_create_missing.load(Ordering::SeqCst))
+            })
             .await?;
 
         Ok(pool.clone())
@@ -99,6 +113,7 @@ impl Db {
             path: PathBuf::new(),
             pool: cell,
             open_lock: Mutex::new(()),
+            allow_create_missing: AtomicBool::new(false),
         }
     }
 }
@@ -344,7 +359,29 @@ fn database_unavailable(detail: String) -> AppError {
     )
 }
 
-async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
+/// Refuses to create `path` when it is missing and a snapshot of it is still on disk.
+///
+/// The pool opens with `create_if_missing`, which is right on a first run and wrong when the file
+/// was taken away (an antivirus quarantine, a roaming profile reset, a deletion by mistake). The
+/// app would open an empty library, and the daily snapshot of that empty file would then rotate
+/// out one good generation a day. The frontend answers this code with the restore it offers for a
+/// damaged database, plus the choice of starting empty.
+fn missing_database_error(path: &Path, allow_create: bool) -> Option<AppError> {
+    if allow_create || path.exists() || !crate::services::db_backup::has_backup_candidates(path) {
+        return None;
+    }
+
+    Some(AppError::from_code(
+        AppErrorCode::DatabaseMissing,
+        "the database file is missing, but backups of it are still there",
+    ))
+}
+
+async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool> {
+    if let Some(error) = missing_database_error(path, allow_create) {
+        return Err(error);
+    }
+
     // The pre-migration snapshot only matters when a migration will actually run (so a bad
     // migration or corruption can be rolled back). When one is pending, snapshot
     // synchronously before opening the pool. Otherwise, defer the daily snapshot to a
@@ -1022,7 +1059,7 @@ mod tests {
             .open(&path)
             .unwrap();
 
-        let error = build_pool_at(&path)
+        let error = build_pool_at(&path, false)
             .await
             .expect_err("a file another program holds cannot be opened");
         assert_eq!(error.code, AppErrorCode::DatabaseUnavailable.as_str());
@@ -1050,7 +1087,7 @@ mod tests {
         .unwrap();
         std::fs::write(dir.join("kavynex.db.bak"), b"a recent daily snapshot").unwrap();
 
-        let pool = build_pool_at(&path)
+        let pool = build_pool_at(&path, false)
             .await
             .expect("the v5 fixture must open and migrate");
         pool.close().await;
@@ -1065,6 +1102,62 @@ mod tests {
             Some(5),
             "the snapshot is the old schema, not the migrated one"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn missing_database_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-{name}-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[tokio::test]
+    async fn a_missing_database_with_backups_beside_it_is_not_created_empty() {
+        let dir = missing_database_dir("db-missing");
+        let path = dir.join("kavynex.db");
+        std::fs::write(dir.join("kavynex.db.bak.2"), b"an older snapshot").unwrap();
+
+        let error = build_pool_at(&path, false)
+            .await
+            .expect_err("an empty database would push the backups out");
+
+        assert_eq!(error.code, AppErrorCode::DatabaseMissing.as_str());
+        assert!(!path.exists(), "nothing was created at the database path");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn starting_empty_is_allowed_once_the_user_chose_it() {
+        let dir = missing_database_dir("db-start-empty");
+        let path = dir.join("kavynex.db");
+        std::fs::write(dir.join("kavynex.db.bak"), b"a snapshot").unwrap();
+
+        let pool = build_pool_at(&path, true)
+            .await
+            .expect("the user chose an empty library");
+        pool.close().await;
+
+        assert!(path.is_file());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_first_run_with_no_backups_creates_the_database() {
+        let dir = missing_database_dir("db-first-run");
+        let path = dir.join("kavynex.db");
+
+        let pool = build_pool_at(&path, false)
+            .await
+            .expect("a first run has nothing to protect");
+        pool.close().await;
+
+        assert!(path.is_file());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

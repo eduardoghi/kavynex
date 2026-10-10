@@ -15,6 +15,14 @@ export async function ensureDatabaseReady(): Promise<void> {
 }
 
 /**
+ * Opens a new, empty database in place of a missing one whose backups are still on disk. For the
+ * user who chose to start over instead of restoring. The backups are left where they are.
+ */
+export async function startWithEmptyDatabase(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.START_WITH_EMPTY_DATABASE);
+}
+
+/**
  * Reports whether a database backup exists that could be restored, and when it was taken.
  * Used to offer recovery when {@link ensureDatabaseReady} fails.
  */

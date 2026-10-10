@@ -14,6 +14,9 @@ export const DATABASE_UNAVAILABLE_ERROR_CODE = "DATABASE_UNAVAILABLE" as const;
 // An upgrade of the database could not run (or its safety snapshot could not be taken). The file is
 // not damaged, so the startup flow must not offer to replace it with an older backup.
 export const DATABASE_MIGRATION_BLOCKED_ERROR_CODE = "DATABASE_MIGRATION_BLOCKED" as const;
+// The database file is gone while backups of it remain. Startup offers the restore, plus starting
+// with an empty library, rather than opening an empty database that would push the backups out.
+export const DATABASE_MISSING_ERROR_CODE = "DATABASE_MISSING" as const;
 
 export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
 export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
@@ -181,6 +184,7 @@ export const KNOWN_ERROR_CODES = [
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     DATABASE_UNAVAILABLE_ERROR_CODE,
     DATABASE_MIGRATION_BLOCKED_ERROR_CODE,
+    DATABASE_MISSING_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,

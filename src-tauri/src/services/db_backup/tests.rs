@@ -120,6 +120,53 @@ async fn concurrent_backups_run_one_at_a_time() {
 }
 
 #[tokio::test]
+async fn an_empty_database_is_not_rotated_over_snapshots_of_a_library() {
+    // A database file recreated empty, by a quarantine or a profile reset. Each daily backup of it
+    // would push out one good generation until none was left.
+    let dir = temp_dir("empty-over-library");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "kept").await;
+    std::fs::copy(&db, generation_backup_path(&db, 1)).unwrap();
+
+    let pool = open(&db).await.unwrap();
+    sqlx::query("DELETE FROM videos")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    assert!(!backup_database(&db).await.unwrap());
+    assert!(!backup_path(&db).exists(), "nothing was promoted");
+    assert_eq!(
+        read_title(&generation_backup_path(&db, 1)).await,
+        "kept",
+        "the snapshot of the library is where it was"
+    );
+
+    // Once the new database holds something, backups resume.
+    let pool = open(&db).await.unwrap();
+    sqlx::query("INSERT INTO videos (title) VALUES ('new')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    assert!(backup_database(&db).await.unwrap());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+async fn read_title(path: &Path) -> String {
+    let pool = open(path).await.unwrap();
+    let (title,): (String,) = sqlx::query_as("SELECT title FROM videos LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+    title
+}
+
+#[tokio::test]
 async fn backup_skips_when_source_missing() {
     let dir = temp_dir("missing");
     let db = dir.join("kavynex.db");

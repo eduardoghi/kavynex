@@ -350,14 +350,15 @@ pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
 // The automatic `.bak` snapshot family and the status report over it.
 mod snapshot;
 pub use snapshot::{
-    backup_database, database_backup_status, snapshot_before_migration, DatabaseBackupStatus,
+    backup_database, database_backup_status, has_backup_candidates, snapshot_before_migration,
+    DatabaseBackupStatus,
 };
 // The parent module's snapshot tests assert against these internals; test-only so a non-test build
 // does not flag them unused.
 #[cfg(test)]
 use snapshot::{
-    backup_path, pre_migration_versions_to_prune, temp_backup_path, BACKUP_MIN_INTERVAL_SECS,
-    PRE_MIGRATION_SNAPSHOTS_KEPT,
+    backup_path, generation_backup_path, pre_migration_versions_to_prune, temp_backup_path,
+    BACKUP_MIN_INTERVAL_SECS, PRE_MIGRATION_SNAPSHOTS_KEPT,
 };
 
 // Restoring from a snapshot, and finishing a restore a crash interrupted.

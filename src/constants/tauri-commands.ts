@@ -59,6 +59,7 @@ export const TAURI_COMMANDS = {
     REGISTER_LIBRARY_ASSET_SCOPE: "register_library_asset_scope",
 
     ENSURE_DATABASE_READY: "ensure_database_ready",
+    START_WITH_EMPTY_DATABASE: "start_with_empty_database",
     GET_DATABASE_BACKUP_STATUS: "get_database_backup_status",
     RESTORE_DATABASE_FROM_BACKUP: "restore_database_from_backup",
     EXPORT_DATABASE: "export_database",

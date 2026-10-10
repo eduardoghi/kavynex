@@ -51,6 +51,47 @@ pub(super) fn generation_backup_path(db_path: &Path, generation: usize) -> PathB
     }
 }
 
+/// Whether the database behind `pool` has any channel or media. A query that fails answers yes, so a
+/// database the check cannot read is backed up as before rather than skipped.
+async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
+    sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM channels) OR EXISTS(SELECT 1 FROM videos)",
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(true)
+}
+
+/// Whether any of the daily generations holds a library. A snapshot that cannot be opened counts
+/// as not holding one, since it is not a copy worth keeping the rotation still for.
+async fn any_generation_holds_library(db_path: &Path) -> bool {
+    for generation in 0..=BACKUP_ROTATED_GENERATIONS {
+        let path = generation_backup_path(db_path, generation);
+
+        if !path.exists() {
+            continue;
+        }
+
+        let Ok(pool) = open(&path).await else {
+            continue;
+        };
+
+        let holds = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM channels) OR EXISTS(SELECT 1 FROM videos)",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+        pool.close().await;
+
+        if holds {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Shifts the rotated backup generations up by one so a fresh snapshot can be promoted into
 /// `.bak`. `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`.
 fn rotate_backups(db_path: &Path) {
@@ -207,6 +248,19 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
+    // An empty database is never rotated over a snapshot that holds a library. Each daily run would
+    // otherwise push out one good generation, and a week later none would be left. That is what a
+    // database file recreated empty (a quarantine, a profile reset, starting over on purpose) does
+    // to the backups. Once the new database holds something, backups resume as usual.
+    if !holds_library(&pool).await && any_generation_holds_library(db_path).await {
+        pool.close().await;
+        logger::warn(
+            "db_backup",
+            "skipping backup: the database is empty and the latest snapshot is not",
+        );
+        return Ok(false);
+    }
+
     let temp = temp_backup_path(db_path);
     let _ = std::fs::remove_file(&temp);
 
@@ -261,6 +315,11 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         Ok(true)
     })
     .await
+}
+
+/// Whether any snapshot a restore could pick is on disk next to `db_path`.
+pub fn has_backup_candidates(db_path: &Path) -> bool {
+    !backup_candidates(db_path).is_empty()
 }
 
 /// The existing backup files, most recent first. Rotation always writes the freshest snapshot

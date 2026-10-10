@@ -688,6 +688,7 @@ pub fn run() {
             commands::yt_dlp::check_external_tools,
             commands::security::register_library_asset_scope,
             commands::database::ensure_database_ready,
+            commands::database::start_with_empty_database,
             commands::database::get_database_backup_status,
             commands::database::restore_database_from_backup,
             commands::database::export_database,

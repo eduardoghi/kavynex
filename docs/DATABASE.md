@@ -410,7 +410,11 @@ via the throttle and returns without a redundant second snapshot.
 
 Before snapshotting, the source database must pass `PRAGMA quick_check` (`is_healthy`); a
 database that fails it is skipped so a corrupt database is never allowed to overwrite a
-good backup. Rotation keeps several generations. Before the fresh snapshot is written, the
+good backup. A database with no channel and no media is skipped too while any daily generation still
+holds a library, since the daily snapshot of a database recreated empty would otherwise push out one
+good generation a day. For the same reason, a database file that is missing while snapshots of it
+are still on disk is not created on open (`DatabaseMissing`). The startup recovery offers the restore,
+or starting with an empty library (`start_with_empty_database`). Rotation keeps several generations. Before the fresh snapshot is written, the
 existing generations are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on),
 dropping the oldest. `BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
 current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`). Keeping more
