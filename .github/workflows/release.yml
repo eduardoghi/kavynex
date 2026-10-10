@@ -4,10 +4,10 @@ on:
     workflow_dispatch:
 
 # Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
-# more escalate in their own `permissions:` block: publish-tauri and checksums get
-# contents/id-token/attestations write (both attest what they upload), sbom-upload gets contents
-# write. The audit and sbom jobs, which compile third-party tools, stay read-only. Declaring the
-# read-only default here means a job added later without its own block inherits read-only rather than the
+# more escalate in their own `permissions:` block: publish-tauri and sbom-upload get contents write,
+# and checksums gets contents/id-token/attestations write, since it attests every asset. The audit
+# and sbom jobs, which compile third-party tools, stay read-only. Declaring the read-only default
+# here means a job added later without its own block inherits read-only rather than the
 # repository/organization default, so a new job cannot silently gain write access.
 permissions:
     contents: read
@@ -170,13 +170,12 @@ jobs:
         # a run from any other branch before a step starts, including a workflow file edited on
         # that branch to drop the ref guard below. The guard stays as the step that says why.
         environment: release
+        # No id-token or attestations here. This job compiles the whole dependency tree, build
+        # scripts included, so anything those run could mint a Sigstore identity for this workflow
+        # and attest bytes of its choosing. The installers are attested by the checksums job instead,
+        # which builds nothing.
         permissions:
             contents: write
-            # Build provenance attestation (actions/attest-build-provenance): id-token mints
-            # the short-lived Sigstore OIDC identity for the keyless signature, attestations
-            # uploads the resulting statement to the repository.
-            id-token: write
-            attestations: write
 
         strategy:
             fail-fast: false
@@ -299,8 +298,8 @@ jobs:
                   targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
             # No Rust build cache here, deliberately, and unlike ci.yml, whose Rust jobs use
-            # Swatinem/rust-cache. These are the bytes that get minisign-signed and provenance-
-            # attested below, so the release compiles the whole dependency tree from source on every
+            # Swatinem/rust-cache. These are the bytes that get minisign-signed here and provenance-
+            # attested by the checksums job, so the release compiles the whole dependency tree from source on every
             # run rather than restoring a cache. A poisoned or stale cache entry could otherwise
             # influence a signed artifact without leaving a trace. The 90-minute job timeout already
             # accommodates the cold compile. Build time is not the constraint that matters on the
@@ -536,7 +535,8 @@ jobs:
             #
             # `--smoke-test` (src-tauri/src/lib.rs) runs the whole of `setup()` and exits 0 without
             # entering the event loop. It is placed after the build so the real artifact is what
-            # gets exercised, and before the attestation below so a broken binary is never attested.
+            # gets exercised. A leg that fails here fails publish-tauri, and the checksums job attests
+            # the installers only when every leg passed, so a broken binary is never attested.
             # A failure here leaves assets on the draft and turns the run red, which is the intended
             # outcome. The draft is published by hand, and the maintainer must not publish a red run.
             #
@@ -669,8 +669,8 @@ jobs:
             #
             # It cannot live in ci.yml. That workflow never builds a bundle, and the CSP and the
             # embedded frontend only exist in one. Placed beside the smoke test for the same reason
-            # that one is here: after the build so the real artifact is what runs, and before the
-            # attestation so a broken binary is never attested.
+            # that one is here: after the build so the real artifact is what runs, and failing the leg
+            # so the checksums job never attests a binary that did not pass.
             - name: Webview check on the built binary (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
               # WebKit picks a rendering path that needs a GPU/DMA-BUF it does not have under Xvfb,
@@ -718,27 +718,6 @@ jobs:
 
                   echo "Webview-checking $binary"
                   "$binary" --webview-check
-
-            # Records a signed, keyless (Sigstore) statement that these exact installer bytes
-            # were built by this workflow, from this commit. Independent of the minisign updater
-            # signature: users can run `gh attestation verify <file> --repo eduardoghi/kavynex`
-            # to confirm a downloaded installer's provenance. The `**` before `release` matches
-            # both the plain (windows/linux) and target-triple (macOS) bundle layouts. Only the
-            # extensions produced on each runner match, which is enough for at least one subject.
-            # The `.app.tar.gz` is the macOS updater bundle. It is the artifact a mac user actually
-            # receives via in-app auto-update (the .dmg is only for a manual install), so it must be
-            # attested too, not just the disk image.
-            - name: Attest build provenance
-              uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-              with:
-                  subject-path: |
-                      src-tauri/target/**/release/bundle/**/*.exe
-                      src-tauri/target/**/release/bundle/**/*.msi
-                      src-tauri/target/**/release/bundle/**/*.dmg
-                      src-tauri/target/**/release/bundle/**/*.AppImage
-                      src-tauri/target/**/release/bundle/**/*.deb
-                      src-tauri/target/**/release/bundle/**/*.rpm
-                      src-tauri/target/**/release/bundle/**/*.app.tar.gz
 
     # A CycloneDX SBOM (Software Bill of Materials) of the Rust dependency tree that goes into the
     # shipped binary, published as a release asset. It is generated from the committed Cargo.lock, so
@@ -816,8 +795,10 @@ jobs:
         name: Publish SBOM
         needs: sbom
         # Same `!cancelled()` as the jobs around it, so a failed generation fails here, loudly, and
-        # the checksums job still runs its completeness gate on what reached the draft.
-        if: ${{ !cancelled() }}
+        # the checksums job still runs its completeness gate on what reached the draft. The ref check
+        # is there because `!cancelled()` also runs this after publish-tauri refused a non-main
+        # dispatch, and this job's write token must not reach a draft from such a run.
+        if: ${{ github.ref == 'refs/heads/main' && !cancelled() }}
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
@@ -861,15 +842,16 @@ jobs:
         # Run on a partial draft too (see the SBOM job). A failed build leg must not skip the
         # asset-completeness and latest.json checks below. Those are exactly what should turn a
         # partial release red with a list of what is missing, rather than being silently skipped.
-        if: ${{ !cancelled() }}
+        # Limited to main for the same reason as sbom-upload.
+        if: ${{ github.ref == 'refs/heads/main' && !cancelled() }}
         # Pinned like the build matrix. `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 60
         permissions:
             contents: write
-            # For the attestation step at the end of this job, same pair publish-tauri holds and
-            # for the same reason: id-token mints the OIDC token Sigstore signs with, attestations
-            # lets the statement be stored against the repository.
+            # For the attestation steps at the end of this job. id-token mints the OIDC token
+            # Sigstore signs with, attestations lets the statement be stored against the repository.
+            # Held here rather than by publish-tauri because this job runs no third-party code.
             id-token: write
             attestations: write
 
@@ -1049,8 +1031,31 @@ jobs:
             - name: Verify latest.json offers every platform
               run: node scripts/verify-latest-json.js assets/latest.json
 
-            # The installers were attested by the leg that built them; the three files this job and
-            # the SBOM job add afterwards were not, and one of them is the file the README tells a
+            # Records a signed, keyless (Sigstore) statement that these exact installer bytes were
+            # built by this workflow, from this commit. Independent of the minisign updater signature:
+            # users run `gh attestation verify` on a downloaded installer to confirm its provenance
+            # (docs/RELEASE-SECURITY.md has the command). `assets/` is the copy of the draft this job
+            # downloaded. The `.app.tar.gz` is the macOS updater bundle, the artifact a mac user
+            # receives via in-app auto-update, so it is attested too, not just the disk image.
+            #
+            # Only when every build leg succeeded, which includes each leg's smoke test and webview
+            # check, so an installer that did not pass them is never attested. A failed leg already
+            # makes this run red, and the draft must not be published from a red run.
+            - name: Attest the installers
+              if: needs.publish-tauri.result == 'success'
+              uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+              with:
+                  subject-path: |
+                      assets/*.exe
+                      assets/*.msi
+                      assets/*.dmg
+                      assets/*.AppImage
+                      assets/*.deb
+                      assets/*.rpm
+                      assets/*.app.tar.gz
+
+            # The installers are attested above; the three files this job and
+            # the SBOM job add afterwards are attested here, and one of them is the file the README tells a
             # manual downloader to check their installer against. A SHA256SUMS.txt with no
             # provenance is a hash list anyone could have written. Runs last, after every gate
             # above, so only a draft that passed them carries a statement. `assets/` is the copy

@@ -152,10 +152,20 @@ certificate.
 To verify a downloaded installer, with the [GitHub CLI](https://cli.github.com/) installed:
 
 ```
-gh attestation verify <installer-file> --repo eduardoghi/kavynex
+gh attestation verify <installer-file> --repo eduardoghi/kavynex \
+    --signer-workflow eduardoghi/kavynex/.github/workflows/release.yml \
+    --source-ref refs/heads/main
 ```
 
-A successful check confirms the file was built by this repository's release workflow.
+A successful check confirms the file was built by this repository's release workflow, from `main`.
+`--repo` alone accepts an attestation signed by any workflow of the repository from any ref, so the
+two flags are what tie it to the release workflow on `main` specifically.
+
+The statement is made by the `checksums` job, which downloads every asset from the draft and attests
+the installers only when all build legs passed (their smoke tests and webview checks included). The
+build job (`publish-tauri`) holds neither `id-token` nor `attestations` write. It compiles the whole
+dependency tree, build scripts included, and anything those ran could otherwise mint a Sigstore
+identity for this workflow and attest bytes of its choosing.
 
 The three files added to the release after the installers are attested too, by the `checksums`
 job once every completeness check has passed, so `SHA256SUMS.txt`, `latest.json` and the SBOM. The
