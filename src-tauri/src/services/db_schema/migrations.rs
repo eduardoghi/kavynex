@@ -75,10 +75,10 @@ pub(super) async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 9).await
 }
 
-/// v12. Creates the four `list_media_page` sort indexes (`idx_videos_channel_created_title_id`,
+/// v12. Creates the five `list_media_page` sort indexes (`idx_videos_channel_created_title_id`,
 /// `idx_videos_channel_comments_count`, `idx_videos_channel_duration`,
-/// `idx_videos_channel_published_ordered`). Additive, so it reaches databases created before v12
-/// by re-running the guarded index DDLs.
+/// `idx_videos_channel_published_ordered`, `idx_videos_channel_published_desc`). Additive, so it
+/// reaches databases created before v12 by re-running the guarded index DDLs.
 pub(super) async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 12).await
 }

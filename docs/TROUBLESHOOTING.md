@@ -295,11 +295,27 @@ to a day old. To restore a backup by hand:
    before an upgrade.
 5. Start Kavynex and run Diagnostics.
 
+## After a restore or an import, Diagnostics lists many orphan files
+
+A restored backup or an imported database does not know the files added to the library after it
+was taken, or the ones another library's database used. Diagnostics reports them as orphans, and
+**Remove orphan files** is not offered for 30 days after an import or a restore, or while most of
+the library's files are unreferenced, because those files are usually exactly what you want to keep.
+
+To keep a media file that is listed, import it again from Add Media with the file in the library
+folder as its source. It is recognised as the same bytes and registered without being copied. Undo
+the import in Settings > Database if the database you brought in was the wrong one.
+
+Files that **Remove orphan files** did take are in the `.trash` folder inside the library folder for
+30 days, each under its original path (`video/media_<hash>.mp4`, say). Move one back to that path to
+use it again, then import it as above.
+
 ## Kavynex could not upgrade its database
 
 After an update, the first start upgrades the database, and it takes a snapshot first so the
 upgrade can be undone. When either step fails, Kavynex stops before changing anything and says so.
-The database is not damaged and nothing was lost. The usual cause is a full disk on the drive that
+The database is not damaged and nothing was lost. (An upgrade that fails because the database is
+damaged is reported as damage instead, and Kavynex offers to restore the last healthy backup.) The usual cause is a full disk on the drive that
 holds the app's data, so free up space and start Kavynex again. If it keeps happening, the app log
 (see "Where logs live" below) names the step that failed.
 

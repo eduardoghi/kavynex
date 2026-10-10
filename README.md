@@ -184,6 +184,8 @@ repository), and applies to the font files only, not to Kavynex itself.
 
 - `docs/ARCHITECTURE.md`: the layered backend/frontend architecture, the IPC boundary, and a
   walk-through of the main flows (adding media, changing the library folder, database recovery).
+- `docs/FILE-REMOVAL.md`: every place the app removes or moves away a file, and what keeps it from
+  taking one that is still needed.
 - `docs/decisions/`: why a handful of non-obvious shapes were chosen, and what breaks if one of
   them is reverted.
 - `docs/DATABASE.md`: the SQLite schema, migrations, and backup/restore/export/import model.

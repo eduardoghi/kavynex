@@ -614,8 +614,8 @@ fn resolve_one(
 /// position. Entries the per-call ceiling ([`MAX_RESOLVED_PER_CALL`]) excluded are `BudgetSpent`
 /// rather than `Unavailable`. Nothing was decided about them, so the caller should ask again.
 ///
-/// `library_path` is the caller's, and is verified by the command layer
-/// (`verify_library_path_then_blocking`) before this runs, exactly like every other library read.
+/// `library_path` is the configured library, read from the settings by the command layer
+/// (`commands::thumbnail::resolve_display_thumbnails`), never a value the renderer sent.
 pub fn resolve_display_thumbnails_sync<R: Runtime>(
     app: &AppHandle<R>,
     library_path: &str,

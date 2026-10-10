@@ -23,7 +23,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 - **Commands** (`src-tauri/src/commands/`) are the only `#[tauri::command]` functions,
   one module per feature area (`channels.rs`, `videos.rs`, `media.rs`, `thumbnail.rs`,
   `live_chat.rs`, `yt_dlp.rs`, `database.rs`, `security.rs`, `settings.rs`, `comments.rs`,
-  `library.rs`, `logging.rs`, `dialog.rs`, `webview_check.rs`). A command's job is to take the request from IPC, open the
+  `library.rs`, `logging.rs`, `dialog.rs`, `external.rs`, `startup.rs`, `webview_check.rs`). A
+  command's job is to take the request from IPC, open the
   shared database pool or resolve an app path, and delegate to a service. It holds
   essentially no logic of its own. Example (`commands/channels.rs`):
 
@@ -73,7 +74,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   site chose to spell them. It is `services::temp_cleanup` now, so the names carry the distinction
   and the convention above is back to being about readability alone.
 
-  What stays a flat file is a concern with no family, so `database.rs`, `binaries.rs`,
+  What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
+  `startup_notices.rs`, `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `filesystem.rs`, `live_chat_storage.rs`,
   `media_comments.rs`, `media_creation.rs`, `pending_media.rs`, `process_registry.rs`,
   `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.

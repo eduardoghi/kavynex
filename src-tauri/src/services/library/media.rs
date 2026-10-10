@@ -29,9 +29,6 @@ fn cancelled(stage: &str) -> AppError {
     )
 }
 
-/// Imports a media file with no way to interrupt it. The shape the tests and any future
-/// non-interactive caller want; the user-facing path goes through
-/// [`stage_media_import_cancellable_sync`].
 /// The library name of a media file whose content hashes to `digest`.
 ///
 /// Shared by the local import and the yt-dlp download, so the same bytes land on the same file
@@ -40,6 +37,9 @@ pub(crate) fn content_addressed_media_name(digest: &str, extension: &str) -> Str
     format!("media_{digest}.{extension}")
 }
 
+/// Imports a media file with no way to interrupt it. The shape the tests and any future
+/// non-interactive caller want; the user-facing path goes through
+/// [`stage_media_import_cancellable_sync`].
 pub fn import_media_file_sync(
     path: &str,
     mode: ImportMode,

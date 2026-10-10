@@ -72,10 +72,14 @@
 //!
 //! # What guards it
 //!
-//! Nothing new. The handler asks the asset-protocol scope whether the path is allowed, which is the
-//! same set `commands::security::register_library_asset_scope` grants and revokes, already verified
-//! against the library path persisted in the settings. This module widens no permission; it serves
-//! what the asset protocol would already serve, without truncating it.
+//! The permission is the asset protocol's own. The handler asks that scope whether the path is
+//! allowed, which is the same set `commands::security::register_library_asset_scope` grants and
+//! revokes, already verified against the library path persisted in the settings, so this module
+//! widens no permission and serves what the asset protocol would already serve, without truncating
+//! it. Before asking, it refuses what the scope check would only reach by resolving the path. A
+//! component of `..` (`climbs_out_of_a_directory`), and a network path other than the library's
+//! own share (`may_resolve`), since resolving one on Windows authenticates to the host. Reads are
+//! capped per request and bounded in number (`MEDIA_READ_SEMAPHORE`).
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};

@@ -264,6 +264,10 @@ depth is the point and neither costs anything:
   than showing it. `-R` reveals files and directories alike, so revealing unconditionally costs
   nothing and keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
+`undo_database_import` is the same kind of command. It stages the `.pre-import` snapshot with no
+confirmation the backend can check, and the renderer holds `process:allow-restart`. What bounds it is
+that the database it replaces is set aside as the new `.pre-import`, so the undo is itself undoable.
+
 `remove_orphan_library_files` takes no argument at all, which also means nothing on the backend
 tells a click the user confirmed from a call a compromised renderer made. What bounds that call is
 what it can do. It only moves files named `media_<sha256>`/`thumb_<sha256>` that no row references
@@ -1029,7 +1033,8 @@ Two consequences follow, and both are accepted:
 - The guarantee is an application-layer one. A renderer that ran attacker-controlled code could
   emit an `<img>` at one of those hosts and the CSP would allow it, which makes those four hosts a
   low-bandwidth outbound channel (a URL path, no response read back. `connect-src` is `'self' ipc:`,
-  so the bytes cannot be fetched). Reaching it requires an injection sink, and there is none. Every
+  so the bytes cannot be fetched). `*.googleusercontent.com` also serves content anyone can upload,
+  so the channel can end at a server an attacker controls. Reaching it requires an injection sink, and there is none. Every
   YouTube-derived string is rendered as a React child, never through `dangerouslySetInnerHTML` or
   `eval`. This is the same property the `style-src` tradeoff above rests on, and it fails in the
   same way if raw-HTML rendering is ever introduced.
