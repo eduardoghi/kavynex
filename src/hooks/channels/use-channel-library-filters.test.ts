@@ -118,4 +118,66 @@ describe("useChannelLibraryFilters", () => {
         expect(result.current.sortCategory).toBe("title");
         expect(result.current.sortDirection).toBe("asc");
     });
+
+    it("reports the query settled only once its load has finished", async () => {
+        let finishLoad: () => void = () => {};
+        const onApplyQuery = vi.fn(
+            () =>
+                new Promise<void>((resolve) => {
+                    finishLoad = resolve;
+                })
+        );
+
+        const { result } = renderHook(() =>
+            useChannelLibraryFilters({ focusMediaId: null, onApplyQuery })
+        );
+
+        expect(result.current.isQuerySettled).toBe(false);
+
+        await act(async () => {
+            finishLoad();
+        });
+
+        expect(result.current.isQuerySettled).toBe(true);
+    });
+
+    it("is not settled while a typed search waits out its debounce", async () => {
+        const onApplyQuery = vi.fn(() => Promise.resolve());
+
+        const { result } = renderHook(() =>
+            useChannelLibraryFilters({ focusMediaId: null, onApplyQuery })
+        );
+
+        await act(async () => {});
+        expect(result.current.isQuerySettled).toBe(true);
+
+        act(() => {
+            result.current.setSearchValue("term");
+        });
+
+        expect(result.current.isQuerySettled).toBe(false);
+    });
+
+    it("is not settled while a focus request still has filters to clear", async () => {
+        const onApplyQuery = vi.fn(() => Promise.resolve());
+
+        const { result, rerender } = renderHook(
+            (props: { focusMediaId: number | null }) =>
+                useChannelLibraryFilters({ focusMediaId: props.focusMediaId, onApplyQuery }),
+            { initialProps: { focusMediaId: null as number | null } }
+        );
+
+        await act(async () => {
+            result.current.setWatchedFilter("watched");
+        });
+        expect(result.current.isQuerySettled).toBe(true);
+
+        await act(async () => {
+            rerender({ focusMediaId: 42 });
+        });
+
+        // The filter reset has run and its query has loaded.
+        expect(result.current.watchedFilter).toBe("all");
+        expect(result.current.isQuerySettled).toBe(true);
+    });
 });

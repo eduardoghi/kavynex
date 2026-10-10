@@ -18,8 +18,9 @@ type UseChannelLibraryFiltersOptions = {
     // A Diagnostics jump names one specific media; when it changes, the active filters are cleared
     // so the target is guaranteed to be in the result set (see the effect below).
     focusMediaId: number | null;
-    // Pushes the built filters to the backend, which returns the matching page (and total).
-    onApplyQuery: (filters: MediaQueryFilters) => void;
+    // Pushes the built filters to the backend, which returns the matching page (and total). A
+    // returned promise settles once the list holds that page, which is what `isQuerySettled` waits for.
+    onApplyQuery: (filters: MediaQueryFilters) => void | Promise<void>;
 };
 
 type UseChannelLibraryFilters = {
@@ -35,6 +36,10 @@ type UseChannelLibraryFilters = {
     setSortCategory: React.Dispatch<React.SetStateAction<SortCategory>>;
     sortDirection: SortDirection;
     setSortDirection: React.Dispatch<React.SetStateAction<SortDirection>>;
+    // The loaded list answers the selections on screen. False while a typed search waits out its
+    // debounce, while a Diagnostics jump is about to clear the filters, and until the query for the
+    // current selections has finished loading.
+    isQuerySettled: boolean;
 };
 
 // Owns the filter/sort/search selections for a channel's library view and pushes the resulting
@@ -95,9 +100,38 @@ export function useChannelLibraryFilters({
     // Load the first page whenever the query changes (and once on mount). The section is remounted
     // per channel, so mounting with the default filters loads the newly selected channel's first
     // page.
+    //
+    // The query is recorded as settled once its load finishes. A Diagnostics jump has to wait for
+    // that before it can conclude the target is not there. The section is remounted on a channel
+    // switch, and the grid's effects run before this one, so without it the jump looked at an empty
+    // list (or the previous channel's) and gave up before the target channel had loaded.
+    const [settledFilters, setSettledFilters] = useState<MediaQueryFilters | null>(null);
+
     useEffect(() => {
-        onApplyQuery(queryFilters);
+        let current = true;
+
+        void Promise.resolve(onApplyQuery(queryFilters)).finally(() => {
+            if (current) {
+                setSettledFilters(queryFilters);
+            }
+        });
+
+        return () => {
+            current = false;
+        };
     }, [onApplyQuery, queryFilters]);
+
+    const isFocusResetPending =
+        focusMediaId !== null &&
+        (searchValue !== "" ||
+            mediaTypeFilter !== "all" ||
+            watchedFilter !== "all" ||
+            publicationDateFilter !== "all");
+
+    const isQuerySettled =
+        settledFilters === queryFilters &&
+        searchValue === debouncedSearchValue &&
+        !isFocusResetPending;
 
     return {
         searchValue,
@@ -112,5 +146,6 @@ export function useChannelLibraryFilters({
         setSortCategory,
         sortDirection,
         setSortDirection,
+        isQuerySettled,
     };
 }

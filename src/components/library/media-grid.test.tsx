@@ -183,6 +183,34 @@ describe("MediaGrid", () => {
         expect(onFocusHandled).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps waiting for the target while the list does not answer the current query yet", () => {
+        // On a channel switch the grid mounts holding nothing, or the previous channel's rows, with
+        // no more pages to load. Giving up then dropped the jump before the target channel loaded.
+        const onFocusHandled = vi.fn();
+        const onLoadMore = vi.fn();
+        scrollToIndexMock.mockClear();
+
+        renderWithMantine(
+            <MediaGrid
+                items={[]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading={false}
+                focusMediaId={999}
+                isListSettled={false}
+                hasMore={false}
+                onLoadMore={onLoadMore}
+                onFocusHandled={onFocusHandled}
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(onFocusHandled).not.toHaveBeenCalled();
+        expect(onLoadMore).not.toHaveBeenCalled();
+    });
+
     it("requests more pages when the focused media is not loaded yet and more remain", () => {
         const onFocusHandled = vi.fn();
         const onLoadMore = vi.fn();

@@ -52,7 +52,7 @@ type SelectedChannelLibrarySectionProps = {
     channelTotal: number;
     hasMore: boolean;
     isLoadingMore: boolean;
-    onApplyQuery: (filters: MediaQueryFilters) => void;
+    onApplyQuery: (filters: MediaQueryFilters) => void | Promise<void>;
     onLoadMore: () => void;
     activeMediaId?: number | null;
     focusMediaId?: number | null;
@@ -107,6 +107,7 @@ export function SelectedChannelLibrarySection({
         setSortCategory,
         sortDirection,
         setSortDirection,
+        isQuerySettled,
     } = useChannelLibraryFilters({ focusMediaId, onApplyQuery });
 
     // "showing <loaded> of <total matching the filters>". With no filter active, total is the
@@ -319,6 +320,7 @@ export function SelectedChannelLibrarySection({
                 activeMediaId={activeMediaId}
                 focusMediaId={focusMediaId}
                 onFocusHandled={onFocusMediaHandled}
+                isListSettled={isQuerySettled && !isLoadingMedia}
                 libraryPath={libraryPath}
                 shellBorder={shellBorder}
                 shellSurface={shellSurface}

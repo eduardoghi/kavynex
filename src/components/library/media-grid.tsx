@@ -19,6 +19,9 @@ type MediaGridProps = {
     // highlights it, then calls onFocusHandled. Used to jump to a media from Diagnostics.
     focusMediaId?: number | null;
     onFocusHandled?: () => void;
+    // The items answer the current query. A focus request for a media that is not loaded gives up
+    // only once this is true, since an unsettled list may be the previous channel's or filter's.
+    isListSettled?: boolean;
     // Server-side pagination. The grid appends the next page as the user scrolls near the bottom.
     hasMore?: boolean;
     isLoadingMore?: boolean;
@@ -113,6 +116,7 @@ export function MediaGrid({
     activeMediaId = null,
     focusMediaId = null,
     onFocusHandled,
+    isListSettled = true,
     hasMore = false,
     isLoadingMore = false,
     onLoadMore,
@@ -254,6 +258,12 @@ export function MediaGrid({
             // down, so keep loading pages until it appears (this effect re-runs as `items` grows).
             // Once there are no more pages it is not in the current filtered set, so give up and
             // clear the request instead of waiting forever.
+            // Not settled means the list is still the previous channel's or filter's, or the query
+            // for the current one is in flight, so neither paging nor giving up is decided yet.
+            if (!isListSettled) {
+                return;
+            }
+
             if (hasMore) {
                 if (!isLoadingMore) {
                     onLoadMore?.();
@@ -288,6 +298,7 @@ export function MediaGrid({
         isVisible,
         rowVirtualizer,
         onFocusHandled,
+        isListSettled,
         hasMore,
         isLoadingMore,
         onLoadMore,
