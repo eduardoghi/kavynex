@@ -251,6 +251,109 @@ jobs:
                           --comment "The fixture is now captured from \`$CAPTURED\`, which is yt-dlp's latest release: $RUN_URL"
                   fi
 
+    # The SQLite the app ships is compiled into libsqlite3-sys, a C library RustSec does not track, so
+    # neither cargo-audit nor cargo-deny says when it falls behind. The app opens database files that
+    # come from outside (Import database, the external mirror), so SQLite's parser is in front of
+    # untrusted input. This compares the bundled version with SQLite's latest release by major.minor
+    # and keeps a tracking issue open while they differ, the way the yt-dlp job above does. The bump
+    # itself arrives with sqlx, which pins libsqlite3-sys.
+    sqlite-freshness:
+        name: Bundled SQLite freshness
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            contents: read
+            issues: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: Compare the bundled SQLite with the latest release
+              id: freshness
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  CRATE_VERSION=$(awk '/^name = "libsqlite3-sys"$/ { getline; gsub(/version = |"/, ""); print; exit }' src-tauri/Cargo.lock | tr -d '\r')
+
+                  if [ -z "$CRATE_VERSION" ]; then
+                      echo "::error::libsqlite3-sys is not in src-tauri/Cargo.lock"
+                      exit 1
+                  fi
+
+                  WORK=$(mktemp -d)
+                  curl --fail --silent --location \
+                      "https://static.crates.io/crates/libsqlite3-sys/libsqlite3-sys-$CRATE_VERSION.crate" \
+                      | tar -xz -C "$WORK"
+                  BUNDLED=$(grep -m1 '#define SQLITE_VERSION ' "$WORK/libsqlite3-sys-$CRATE_VERSION/sqlite3/sqlite3.h" | cut -d '"' -f 2)
+                  LATEST=$(gh api repos/sqlite/sqlite/tags --paginate --jq '.[].name' \
+                      | grep -E '^version-[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^version-//' | sort -V | tail -n 1)
+
+                  if [ -z "$BUNDLED" ] || [ -z "$LATEST" ]; then
+                      echo "::error::could not read the bundled ($BUNDLED) or the latest ($LATEST) SQLite version"
+                      exit 1
+                  fi
+
+                  {
+                      echo "bundled=$BUNDLED"
+                      echo "latest=$LATEST"
+                      echo "crate=$CRATE_VERSION"
+                  } >> "$GITHUB_OUTPUT"
+
+                  if [ "${BUNDLED%.*}" = "${LATEST%.*}" ]; then
+                      echo "stale=false" >> "$GITHUB_OUTPUT"
+                      echo "### Bundled SQLite: current ($BUNDLED)" >> "$GITHUB_STEP_SUMMARY"
+                  else
+                      echo "stale=true" >> "$GITHUB_OUTPUT"
+                      echo "### Bundled SQLite: behind" >> "$GITHUB_STEP_SUMMARY"
+                      echo "libsqlite3-sys \`$CRATE_VERSION\` bundles SQLite \`$BUNDLED\`; the latest release is \`$LATEST\`." >> "$GITHUB_STEP_SUMMARY"
+                  fi
+
+            - name: Open or update the tracking issue
+              if: steps.freshness.outputs.stale == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  BUNDLED: ${{ steps.freshness.outputs.bundled }}
+                  LATEST: ${{ steps.freshness.outputs.latest }}
+                  CRATE: ${{ steps.freshness.outputs.crate }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="The bundled SQLite is behind the latest release"
+                  BODY=$(printf '%s' \
+                      "libsqlite3-sys \`$CRATE\` compiles SQLite \`$BUNDLED\` into the app, and SQLite \`$LATEST\` is out. " \
+                      "RustSec does not track SQLite, so this is the only place that says so. The app opens database files from outside (Import database, the external mirror). " \
+                      "Check SQLite's release notes for security fixes, and bump sqlx when a release of it moves libsqlite3-sys forward. Run: $RUN_URL")
+
+                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$EXISTING" ]; then
+                      gh issue comment "$EXISTING" --body "$BODY"
+                  else
+                      gh issue create --title "$TITLE" --body "$BODY"
+                  fi
+
+            - name: Close the tracking issue once SQLite caught up
+              if: steps.freshness.outputs.stale == 'false'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  BUNDLED: ${{ steps.freshness.outputs.bundled }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="The bundled SQLite is behind the latest release"
+                  NUMBER=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$NUMBER" ]; then
+                      gh issue close "$NUMBER" \
+                          --comment "The bundled SQLite is now \`$BUNDLED\`, in step with the latest release: $RUN_URL"
+                  fi
+
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
     # signal: the header of this file frames the workflow's whole job as "surfacing" a new
     # advisory, and an email alone barely does that. Open (or comment on) a tracking issue so a

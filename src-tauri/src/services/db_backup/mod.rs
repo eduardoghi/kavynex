@@ -120,7 +120,12 @@ async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
         .create_if_missing(false)
         // Backup/export/import can run while the main pool holds the write lock; without
         // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
-        .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
+        .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
+        // This pool also opens files that came from outside (an import, the external mirror), whose
+        // schema SQLite parses on open. Untrusted schema may not call functions with side effects,
+        // and a page whose cells overrun it is reported as damage rather than read past.
+        .pragma("trusted_schema", "OFF")
+        .pragma("cell_size_check", "ON");
     // Foreign keys are on here as well, through sqlx's own default rather than an explicit
     // `.foreign_keys(true)`. Nothing depends on it either way. This pool only reads (quick_check,
     // VACUUM INTO, import validation), so there is no INSERT/UPDATE/DELETE for it to guard.

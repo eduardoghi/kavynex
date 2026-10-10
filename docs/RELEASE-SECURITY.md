@@ -303,3 +303,11 @@ residual gap on the Rust side. What limits it is the pinned `Cargo.lock` (any bu
 deliberate commit, never an automatic resolution at build time, and `release.yml` now proves that
 with `cargo metadata --locked` plus a `--locked` build), the weekly `scheduled-audit` workflow, and
 the same draft-and-publish-by-hand release flow.
+
+SQLite is the one part of the native tree no advisory database covers. libsqlite3-sys compiles a
+copy of it into the binary, and RustSec tracks the crate, not the C library inside it. The app opens
+database files that come from outside (Import database, the external mirror), so SQLite's parser
+reads untrusted input. `scheduled-audit.yml`'s `sqlite-freshness` job compares the bundled version
+with SQLite's latest release each week and keeps an issue open while they differ by minor version,
+and the connection that opens those files sets `trusted_schema=OFF` and `cell_size_check=ON`. The
+bump arrives with sqlx, which pins libsqlite3-sys.
