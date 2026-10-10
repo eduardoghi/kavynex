@@ -12,6 +12,10 @@ use crate::utils::path::{
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
+/// The largest image accepted as a thumbnail or an avatar. YouTube's largest thumbnail is well under
+/// a megabyte, and anything this large was copied into the library and hashed whole before.
+const MAX_PERSISTED_THUMBNAIL_BYTES: u64 = 25 * 1024 * 1024;
+
 pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppResult<String> {
     // Refuse a UNC / network source before the `exists()` below touches it. Two of this
     // function's callers hand it a path that arrived raw over IPC (the `persist_thumbnail_file`
@@ -56,6 +60,24 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
                 "invalid thumbnail file type. Allowed: {}",
                 allowed_thumbnail_extensions_label()
             ),
+        ));
+    }
+
+    // The bytes as well as the name, as the picked-preview path already checks. The persisted file
+    // is drawn by the webview and scaled by FFmpeg, which both go by content.
+    if fs::metadata(source).map_or(true, |metadata| {
+        metadata.len() > MAX_PERSISTED_THUMBNAIL_BYTES
+    }) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "the image is too large to use as a thumbnail (25 MB at most)",
+        ));
+    }
+
+    if !crate::services::thumbnail::picked::file_starts_like_an_image(source) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "the file is not an image, whatever its name says",
         ));
     }
 
@@ -189,7 +211,7 @@ mod tests {
         let source_dir = unique_test_dir();
         fs::create_dir_all(&source_dir).unwrap();
         let source = source_dir.join("cover.jpg");
-        fs::write(&source, b"jpeg bytes").unwrap();
+        fs::write(&source, b"\xFF\xD8\xFFjpeg bytes").unwrap();
         let library = unique_test_dir();
 
         let error = persist_thumbnail_from_source(&source, &library)
@@ -229,7 +251,7 @@ mod tests {
         fs::create_dir_all(&library_dir).unwrap();
 
         let source = source_dir.join("thumb.png");
-        fs::write(&source, b"png-data").unwrap();
+        fs::write(&source, b"\x89PNG\r\n\x1a\npng-data").unwrap();
 
         let relative = persist_thumbnail_from_source(&source, &library_dir).unwrap();
 
@@ -238,6 +260,41 @@ mod tests {
 
         let final_path = library_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         assert!(final_path.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_file_named_like_an_image_that_is_not_one_is_not_persisted() {
+        let root = unique_test_dir();
+        let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
+        let source = root.join("notes.jpg");
+        fs::write(&source, b"#EXTM3U\nfile:///etc/passwd\n").unwrap();
+
+        let error = persist_thumbnail_from_source(&source, &library_dir)
+            .expect_err("a playlist renamed .jpg is not an image");
+
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+        assert!(!library_dir.join("thumbnails").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn an_image_past_the_size_ceiling_is_not_persisted() {
+        let root = unique_test_dir();
+        let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
+        let source = root.join("huge.png");
+        let file = fs::File::create(&source).unwrap();
+        file.set_len(MAX_PERSISTED_THUMBNAIL_BYTES + 1).unwrap();
+        drop(file);
+
+        let error = persist_thumbnail_from_source(&source, &library_dir)
+            .expect_err("too large to be a thumbnail");
+
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
 
         let _ = fs::remove_dir_all(root);
     }

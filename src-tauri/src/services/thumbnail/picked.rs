@@ -88,7 +88,7 @@ pub(crate) fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
 
 /// Reads the first bytes of `path` and sniffs them (see [`looks_like_supported_image`]). A file that
 /// cannot be read is not an image the app can use either.
-fn file_starts_like_an_image(path: &std::path::Path) -> bool {
+pub(crate) fn file_starts_like_an_image(path: &std::path::Path) -> bool {
     use std::io::Read;
 
     let mut head = [0u8; 16];
