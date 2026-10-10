@@ -303,13 +303,13 @@ const CANCELLABLE_COPY_CHUNK_BYTES: usize = 1024 * 1024;
 /// time over, so an avatar persisted from an old image arrived looking years old, and the orphan
 /// removal, which spares a file written in the last hour because its row lands a call later, read it
 /// as long abandoned.
+///
+/// The stamp is best effort. A file system that refuses it (some network and cloud-synced ones do)
+/// still has a complete copy, and failing the copy over the time would lose a good file for a
+/// heuristic the orphan removal backs with a recount anyway.
 fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
     fs::copy(source, temp_destination)
         .and_then(|_| make_owner_writable(temp_destination))
-        .and_then(|_| {
-            retry_while_held(|| fs::OpenOptions::new().write(true).open(temp_destination))?
-                .set_modified(std::time::SystemTime::now())
-        })
         .map_err(|e| {
             AppError::fs_error(
                 AppErrorCode::FileCopyFailed,
@@ -317,7 +317,22 @@ fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
                 temp_destination,
                 &e,
             )
-        })
+        })?;
+
+    let stamped = retry_while_held(|| fs::OpenOptions::new().write(true).open(temp_destination))
+        .and_then(|file| file.set_modified(std::time::SystemTime::now()));
+
+    if let Err(error) = stamped {
+        crate::services::logger::warn(
+            "filesystem",
+            format!(
+                "copied {} but could not set its modification time: {error}",
+                crate::services::logger::redact_path(temp_destination)
+            ),
+        );
+    }
+
+    Ok(())
 }
 
 /// Gives the owner write access to a copy that came out read-only.
