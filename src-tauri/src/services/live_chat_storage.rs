@@ -377,7 +377,7 @@ pub fn migrate_live_chat_files<G>(
             break;
         };
 
-        fs::create_dir_all(&dest_dir)
+        crate::services::library::paths::create_dir_in_existing_library(library_dir, &dest_dir)
             .map_err(|e| compress_error("failed to create library live chat dir", e))?;
         let dest = dest_dir.join(name);
 
@@ -1015,9 +1015,26 @@ mod tests {
     }
 
     #[test]
+    fn migrating_live_chat_into_a_library_that_is_not_there_moves_nothing() {
+        let app_data = temp_dir("mig-appdata-no-library");
+        let library = temp_dir("mig-missing-library");
+
+        let source = app_data.join("live_chat");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("a.live_chat.json"), b"hello").unwrap();
+
+        assert!(migrate_live_chat_files(&app_data, &library, || Some(())).is_err());
+        assert!(!library.exists(), "the library folder must not be recreated");
+        assert!(source.join("a.live_chat.json").exists());
+
+        let _ = fs::remove_dir_all(&app_data);
+    }
+
+    #[test]
     fn migrate_live_chat_files_moves_and_is_idempotent() {
         let app_data = temp_dir("mig-appdata");
         let library = temp_dir("mig-library");
+        fs::create_dir_all(&library).unwrap();
 
         let source = app_data.join("live_chat");
         fs::create_dir_all(&source).unwrap();

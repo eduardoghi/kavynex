@@ -60,12 +60,13 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
     }
 
     let thumbs_dir = library_dir.join(LIBRARY_DIR_THUMBNAILS);
-    fs::create_dir_all(&thumbs_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateThumbnailsDirFailed,
-            format!("failed to create thumbnails directory: {e}"),
-        )
-    })?;
+    crate::services::library::paths::create_dir_in_existing_library(library_dir, &thumbs_dir)
+        .map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::CreateThumbnailsDirFailed,
+                format!("failed to create thumbnails directory: {e}"),
+            )
+        })?;
 
     let hash = file_hash(source)?;
     let destination = thumbs_dir.join(format!("thumb_{hash}.{ext}"));
@@ -181,6 +182,26 @@ mod tests {
             !library.exists(),
             "nothing may run before the network refusal, not even creating the library"
         );
+    }
+
+    #[test]
+    fn a_thumbnail_is_not_persisted_into_a_library_that_is_not_there() {
+        let source_dir = unique_test_dir();
+        fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("cover.jpg");
+        fs::write(&source, b"jpeg bytes").unwrap();
+        let library = unique_test_dir();
+
+        let error = persist_thumbnail_from_source(&source, &library)
+            .expect_err("a missing library must be refused");
+
+        assert_eq!(error.code, AppErrorCode::CreateThumbnailsDirFailed.as_str());
+        assert!(
+            !library.exists(),
+            "the library folder must not be recreated"
+        );
+
+        let _ = fs::remove_dir_all(&source_dir);
     }
 
     #[test]

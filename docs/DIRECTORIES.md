@@ -273,7 +273,9 @@ supports moving its contents when the path changes.
 The library directory itself is never created by a write. A download, an import or a thumbnail
 whose library folder is gone (a drive that is not mounted, a folder moved away) is refused instead,
 since recreating it would put new media in an empty folder while every existing row names files
-that are somewhere else. Only a library migration creates its destination.
+that are somewhere else. Only a library migration creates its destination. The subfolders below
+are created only inside a library folder that is there (`library::paths::create_dir_in_existing_library`),
+including by the asset-scope registration at startup and the one-time live chat move.
 
 Inside the library directory, media services create these subfolders on demand:
 

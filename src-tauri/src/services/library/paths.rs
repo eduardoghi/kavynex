@@ -122,6 +122,23 @@ pub fn ensure_library_dir(path: &str) -> AppResult<PathBuf> {
     Ok(canonical_dir)
 }
 
+/// Creates `dir`, a folder inside `library_dir`, when the library folder itself is there.
+///
+/// `create_dir_all` creates every missing ancestor, the library folder included. Aimed at a library
+/// whose drive is not mounted, it would put an empty library folder on whatever volume holds that
+/// path now (on macOS, `/Volumes/<name>` on the boot disk), and from then on the library would look
+/// reachable and empty while every row names files that are somewhere else.
+pub fn create_dir_in_existing_library(library_dir: &Path, dir: &Path) -> std::io::Result<()> {
+    if !library_dir.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "the library folder is not there",
+        ));
+    }
+
+    fs::create_dir_all(dir)
+}
+
 pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
     let library_dir = library_input_path(path);
 
@@ -290,6 +307,24 @@ mod tests {
         assert!(result.is_dir());
 
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_subfolder_is_created_only_inside_a_library_that_is_there() {
+        let library = unique_test_dir("subfolder");
+
+        let refused = create_dir_in_existing_library(&library, &library.join("thumbnails"));
+        assert_eq!(refused.unwrap_err().kind(), std::io::ErrorKind::NotFound);
+        assert!(
+            !library.exists(),
+            "the library folder must not be recreated"
+        );
+
+        fs::create_dir_all(&library).unwrap();
+        create_dir_in_existing_library(&library, &library.join("thumbnails")).unwrap();
+        assert!(library.join("thumbnails").is_dir());
+
+        let _ = fs::remove_dir_all(library);
     }
 
     #[test]

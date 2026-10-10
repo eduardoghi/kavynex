@@ -122,9 +122,9 @@ export function useAppSettings({
         const libraryPath = settings.libraryPath.trim();
 
         // An unreachable folder is still the configured one, but there is nothing in it to
-        // authorize or to move live chat into. The backend would refuse the registration anyway,
-        // since it cannot canonicalize a path that does not exist. Once the folder is back the app
-        // reloads (retryLibraryFolder), and this runs on the fresh start.
+        // authorize or to move live chat into. The backend would grant nothing either, since it
+        // creates a subfolder only inside a library folder that is there. Once the folder is back
+        // the app reloads (retryLibraryFolder), and this runs on the fresh start.
         if (!libraryPath || isLibraryUnreachable) {
             return;
         }

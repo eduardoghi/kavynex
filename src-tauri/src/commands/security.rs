@@ -240,8 +240,12 @@ pub async fn register_library_asset_scope<R: Runtime>(
             // Create the subdirectory first so its canonical (`\\?\`) form resolves and can be
             // granted alongside the plain form. Best effort. A subdir that cannot be created is
             // skipped (the import/download paths create it on demand), rather than failing the
-            // whole registration and leaving the library unusable.
-            if let Err(error) = std::fs::create_dir_all(&managed_dir) {
+            // whole registration and leaving the library unusable. Never the library folder
+            // itself, which a missing drive would otherwise get recreated empty.
+            if let Err(error) = crate::services::library::paths::create_dir_in_existing_library(
+                Path::new(&trimmed),
+                &managed_dir,
+            ) {
                 logger::warn(
                     "asset_scope",
                     format!(
