@@ -70,34 +70,55 @@ pub fn is_allowed_youtube_url(url: &str) -> bool {
     }
 }
 
-/// True when `url` names a playlist or a channel rather than one video.
+/// Whether a path segment can be a video or clip id. Only the characters YouTube uses, and short
+/// enough that no listing or channel name gets through as one.
+fn is_media_id(segment: &str) -> bool {
+    (1..=64).contains(&segment.len())
+        && segment
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+/// True when `url` names one video (or one clip) rather than anything else on YouTube.
 ///
-/// The format probe and the download expect one video. Given a playlist or a channel page, yt-dlp
-/// extracts every entry first, many requests to YouTube for something the app then cannot use, and
-/// the run ends in a timeout or a parse error that says nothing about the link. A watch URL that
-/// carries a `list=` is still one video (the app passes `--no-playlist`), so only the shapes with
-/// no video in them count.
-pub fn names_a_collection(url: &str) -> bool {
+/// The format probe and the download expect one video. Given a playlist, a channel, a feed or a
+/// search, yt-dlp extracts every entry first, many requests to YouTube for something the app then
+/// cannot use, and with browser cookies a feed is the signed-in account's. The run then ends in a
+/// timeout or a parse error that says nothing about the link. So the shapes that are one video are
+/// listed, and everything else is refused, rather than the other way round. A watch URL that also
+/// carries a `list=` is still one video (the app passes `--no-playlist`).
+pub fn names_one_video(url: &str) -> bool {
     let Ok(uri) = url.trim().parse::<Uri>() else {
         return false;
     };
 
-    let names_a_video = uri
-        .query()
-        .is_some_and(|query| query.split('&').any(|pair| pair.starts_with("v=")));
+    let host = uri.host().unwrap_or("").to_ascii_lowercase();
+    let segments: Vec<&str> = uri
+        .path()
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
 
-    if names_a_video {
-        return false;
+    if host == "youtu.be" || host.ends_with(".youtu.be") {
+        return matches!(segments.as_slice(), [id] if is_media_id(id));
     }
 
-    let path = uri.path().to_ascii_lowercase();
+    match segments.as_slice() {
+        [watch] if watch.eq_ignore_ascii_case("watch") => uri.query().is_some_and(|query| {
+            query
+                .split('&')
+                .filter_map(|pair| pair.strip_prefix("v="))
+                .any(is_media_id)
+        }),
+        [kind, id] => {
+            let kind = kind.to_ascii_lowercase();
 
-    path == "/playlist"
-        || path.starts_with("/playlist/")
-        || path.starts_with("/@")
-        || path.starts_with("/channel/")
-        || path.starts_with("/c/")
-        || path.starts_with("/user/")
+            matches!(kind.as_str(), "shorts" | "live" | "embed" | "v" | "clip")
+                && is_media_id(id)
+                && !id.eq_ignore_ascii_case("videoseries")
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -105,7 +126,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_playlist_or_channel_link_names_a_collection() {
+    fn anything_but_one_video_is_refused() {
         for url in [
             "https://www.youtube.com/playlist?list=PL123",
             "https://www.youtube.com/@somechannel",
@@ -113,21 +134,39 @@ mod tests {
             "https://www.youtube.com/channel/UC123",
             "https://www.youtube.com/c/Name",
             "https://www.youtube.com/user/Name",
+            // The shapes a list of what to refuse let through.
+            "https://www.youtube.com/watch?list=PL123",
+            "https://www.youtube.com/watch?v=&list=PL123",
+            "https://www.youtube.com/",
+            "https://www.youtube.com/feed/subscriptions",
+            "https://www.youtube.com/results?search_query=x",
+            "https://www.youtube.com/hashtag/music",
+            "https://www.youtube.com/embed/videoseries?list=PL123",
+            "https://youtu.be/",
+            "https://youtu.be/abc/extra",
+            "https://www.youtube.com/shorts/abc/extra",
+            "https://www.youtube.com/watch?v=a%20b",
         ] {
-            assert!(names_a_collection(url), "{url}");
+            assert!(!names_one_video(url), "{url}");
         }
     }
 
     #[test]
-    fn a_video_link_does_not_name_a_collection() {
+    fn a_video_link_names_one_video() {
         for url in [
             "https://www.youtube.com/watch?v=abc",
             "https://www.youtube.com/watch?v=abc&list=PL123",
+            "https://www.youtube.com/watch?feature=share&v=abc",
+            "https://music.youtube.com/watch?v=abc",
             "https://youtu.be/abc",
+            "https://youtu.be/abc?t=42",
             "https://www.youtube.com/shorts/abc",
             "https://www.youtube.com/live/abc",
+            "https://www.youtube.com/embed/abc",
+            "https://www.youtube-nocookie.com/embed/abc",
+            "https://www.youtube.com/clip/UgkxAbC-dEf_123",
         ] {
-            assert!(!names_a_collection(url), "{url}");
+            assert!(names_one_video(url), "{url}");
         }
     }
 

@@ -935,10 +935,10 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
         ));
     }
 
-    if crate::services::yt_dlp::url::names_a_collection(&normalized_url) {
+    if !crate::services::yt_dlp::url::names_one_video(&normalized_url) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidUrl,
-            "the link is a playlist or a channel, not a single video",
+            "the link is not a single video (a playlist, a channel, a feed or a search)",
         ));
     }
 
