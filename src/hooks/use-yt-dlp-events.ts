@@ -79,6 +79,21 @@ function toLogLines(
     return texts.map((text, index) => ({ id: startId + index, text, level }));
 }
 
+// Shown at the top of each run while one of the event listeners failed to register (see the effect
+// that registers them), so a log that stops early or a progress bar that never moves comes with a
+// reason instead of looking like a stalled download.
+const LISTENER_FAILURE_WARNING =
+    "Some download events could not be subscribed to, so this log and the progress may stay incomplete. Restart Kavynex if this keeps happening.";
+
+// The lines a new session starts with.
+function sessionLines(header: string, listenerFailed: boolean): YtDlpLogLine[] {
+    const lines = toLogLines([header, ""]);
+
+    return listenerFailed
+        ? [...lines, ...toLogLines([LISTENER_FAILURE_WARNING, ""], lines.length, "warn")]
+        : lines;
+}
+
 // The next id to assign. Ids are monotonic and only ever appended at the tail, so the last line
 // carries the highest one; deriving from it (rather than a mutable counter) keeps this function
 // pure (safe to re-run under StrictMode), and survives the front-trim below, since a line's id
@@ -148,6 +163,9 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const [isYtDlpRunning, setIsYtDlpRunning] = useState(false);
 
     const currentRunIdRef = useRef("");
+    // Set when a yt-dlp event listener failed to register. Read when a session starts, so the warning
+    // goes at the top of the log the user is looking at.
+    const listenerFailedRef = useRef(false);
 
     // The level is a required first argument rather than one defaulting to "info", because every
     // caller genuinely knows it. A backend line carries its own, and an app-generated one is a
@@ -195,7 +213,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const startRun = useCallback(
         (runId: string, commandPreview: string): void => {
             currentRunIdRef.current = runId;
-            setLogs(terminal, toLogLines([commandPreview, ""]));
+            setLogs(terminal, sessionLines(commandPreview, listenerFailedRef.current));
             setIsYtDlpRunning(true);
             setProgress(terminal, null);
         },
@@ -205,7 +223,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const startManualSession = useCallback(
         (runId: string, header: string): void => {
             currentRunIdRef.current = runId;
-            setLogs(terminal, toLogLines([header, ""]));
+            setLogs(terminal, sessionLines(header, listenerFailedRef.current));
             setIsYtDlpRunning(true);
             setProgress(terminal, null);
         },
@@ -245,12 +263,15 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         let isDisposed = false;
         const unlisteners: UnlistenFn[] = [];
 
-        void (async () => {
-            try {
-                const unlistenLog = await listenValidated(
-                    EVENT_YT_DLP_LOG,
-                    IPC_EVENT_SCHEMAS.ytDlpLog,
-                    (payload) => {
+        // Each listener is registered on its own and the results are collected with allSettled. They
+        // used to be awaited one after another inside a single try, so the first one to fail left
+        // every later one unregistered (a terminal that never hears "finished"), with nothing but a
+        // log line to say so.
+        const registrations: [string, () => Promise<UnlistenFn>][] = [
+            [
+                EVENT_YT_DLP_LOG,
+                () =>
+                    listenValidated(EVENT_YT_DLP_LOG, IPC_EVENT_SCHEMAS.ytDlpLog, (payload) => {
                         const currentRunId = currentRunIdRef.current;
 
                         if (!currentRunId || payload.run_id !== currentRunId) {
@@ -258,39 +279,29 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                         }
 
                         appendLogs(payload.level, payload.line);
-                    }
-                );
+                    }),
+            ],
+            [
+                EVENT_YT_DLP_FINISHED,
+                () =>
+                    listenValidated(
+                        EVENT_YT_DLP_FINISHED,
+                        IPC_EVENT_SCHEMAS.ytDlpFinished,
+                        (payload) => {
+                            const currentRunId = currentRunIdRef.current;
 
-                if (isDisposed) {
-                    unlistenLog();
-                } else {
-                    unlisteners.push(unlistenLog);
-                }
+                            if (!currentRunId || payload.run_id !== currentRunId) {
+                                return;
+                            }
 
-                const unlistenFinished = await listenValidated(
-                    EVENT_YT_DLP_FINISHED,
-                    IPC_EVENT_SCHEMAS.ytDlpFinished,
-                    (payload) => {
-                        const currentRunId = currentRunIdRef.current;
-
-                        if (!currentRunId || payload.run_id !== currentRunId) {
-                            return;
+                            finalizeRun(`Download finished: ${payload.file_path}`, "info");
                         }
-
-                        finalizeRun(`Download finished: ${payload.file_path}`, "info");
-                    }
-                );
-
-                if (isDisposed) {
-                    unlistenFinished();
-                } else {
-                    unlisteners.push(unlistenFinished);
-                }
-
-                const unlistenError = await listenValidated(
-                    EVENT_YT_DLP_ERROR,
-                    IPC_EVENT_SCHEMAS.ytDlpFailed,
-                    (payload) => {
+                    ),
+            ],
+            [
+                EVENT_YT_DLP_ERROR,
+                () =>
+                    listenValidated(EVENT_YT_DLP_ERROR, IPC_EVENT_SCHEMAS.ytDlpFailed, (payload) => {
                         const currentRunId = currentRunIdRef.current;
 
                         if (!currentRunId || payload.run_id !== currentRunId) {
@@ -298,80 +309,88 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                         }
 
                         finalizeRun(`ERROR: ${payload.message}`, "error");
-                    }
-                );
+                    }),
+            ],
+            [
+                EVENT_YT_DLP_CANCELLED,
+                () =>
+                    listenValidated(
+                        EVENT_YT_DLP_CANCELLED,
+                        IPC_EVENT_SCHEMAS.ytDlpFailed,
+                        (payload) => {
+                            const currentRunId = currentRunIdRef.current;
 
-                if (isDisposed) {
-                    unlistenError();
-                } else {
-                    unlisteners.push(unlistenError);
-                }
-
-                const unlistenCancelled = await listenValidated(
-                    EVENT_YT_DLP_CANCELLED,
-                    IPC_EVENT_SCHEMAS.ytDlpFailed,
-                    (payload) => {
-                        const currentRunId = currentRunIdRef.current;
-
-                        if (!currentRunId || payload.run_id !== currentRunId) {
-                            return;
-                        }
-
-                        finalizeRun(`Cancelled: ${payload.message}`, "info");
-                    }
-                );
-
-                if (isDisposed) {
-                    unlistenCancelled();
-                } else {
-                    unlisteners.push(unlistenCancelled);
-                }
-
-                const unlistenTerminal = await listenValidated(
-                    EVENT_YT_DLP_TERMINAL,
-                    IPC_EVENT_SCHEMAS.ytDlpTerminal,
-                    (payload) => {
-                        const currentRunId = currentRunIdRef.current;
-
-                        if (!currentRunId || payload.run_id !== currentRunId) {
-                            return;
-                        }
-
-                        if (payload.status === "finished") {
-                            if (payload.file_path?.trim()) {
-                                finalizeRun(`Terminal finished: ${payload.file_path}`, "info");
+                            if (!currentRunId || payload.run_id !== currentRunId) {
                                 return;
                             }
 
-                            finalizeRun("Terminal finished.", "info");
-                            return;
+                            finalizeRun(`Cancelled: ${payload.message}`, "info");
                         }
+                    ),
+            ],
+            [
+                EVENT_YT_DLP_TERMINAL,
+                () =>
+                    listenValidated(
+                        EVENT_YT_DLP_TERMINAL,
+                        IPC_EVENT_SCHEMAS.ytDlpTerminal,
+                        (payload) => {
+                            const currentRunId = currentRunIdRef.current;
 
-                        if (payload.status === "failed") {
-                            finalizeRun(
-                                `Terminal failed: ${payload.message?.trim() || "Unknown failure"}`,
-                                "error"
-                            );
-                            return;
-                        }
+                            if (!currentRunId || payload.run_id !== currentRunId) {
+                                return;
+                            }
 
-                        if (payload.status === "cancelled") {
-                            finalizeRun(
-                                `Terminal cancelled: ${payload.message?.trim() || "Cancelled"}`,
-                                "info"
-                            );
+                            if (payload.status === "finished") {
+                                if (payload.file_path?.trim()) {
+                                    finalizeRun(`Terminal finished: ${payload.file_path}`, "info");
+                                    return;
+                                }
+
+                                finalizeRun("Terminal finished.", "info");
+                                return;
+                            }
+
+                            if (payload.status === "failed") {
+                                finalizeRun(
+                                    `Terminal failed: ${payload.message?.trim() || "Unknown failure"}`,
+                                    "error"
+                                );
+                                return;
+                            }
+
+                            if (payload.status === "cancelled") {
+                                finalizeRun(
+                                    `Terminal cancelled: ${payload.message?.trim() || "Cancelled"}`,
+                                    "info"
+                                );
+                            }
                         }
+                    ),
+            ],
+        ];
+
+        void (async () => {
+            const results = await Promise.allSettled(
+                registrations.map(([, register]) => register())
+            );
+
+            results.forEach((result, index) => {
+                if (result.status === "fulfilled") {
+                    if (isDisposed) {
+                        result.value();
+                    } else {
+                        unlisteners.push(result.value);
                     }
-                );
 
-                if (isDisposed) {
-                    unlistenTerminal();
-                } else {
-                    unlisteners.push(unlistenTerminal);
+                    return;
                 }
-            } catch (error) {
-                logError("yt-dlp-events", "Failed to register yt-dlp listeners.", error);
-            }
+
+                listenerFailedRef.current = true;
+                logError("yt-dlp-events", "Failed to register a yt-dlp listener.", result.reason, {
+                    event: registrations[index]?.[0],
+                });
+            });
         })();
 
         return () => {

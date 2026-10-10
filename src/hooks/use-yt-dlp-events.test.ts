@@ -796,18 +796,36 @@ describe("useYtDlpEvents", () => {
             });
         });
 
-        it("logs an error when listener registration fails", async () => {
+        it("keeps registering the other listeners when one fails, and says so in the next run", async () => {
             vi.mocked(listenValidated).mockRejectedValueOnce(new Error("registration failed"));
 
-            renderHook(() => useYtDlpEvents());
+            const { result } = renderHook(() => useYtDlpEvents());
 
             await waitFor(() => {
                 expect(logError).toHaveBeenCalledWith(
                     "yt-dlp-events",
-                    "Failed to register yt-dlp listeners.",
-                    expect.any(Error)
+                    "Failed to register a yt-dlp listener.",
+                    expect.any(Error),
+                    { event: expect.any(String) }
                 );
             });
+
+            // The first registration failed and the four after it still went through. They used to
+            // be awaited in series, so one failure left the rest unregistered.
+            expect(listenValidated).toHaveBeenCalledTimes(5);
+
+            act(() => {
+                result.current.startRun("run-1", "yt-dlp ...");
+            });
+
+            expect(
+                result.current.terminal
+                    .getSnapshot()
+                    .logs.some(
+                        (line) =>
+                            line.level === "warn" && line.text.includes("could not be subscribed to")
+                    )
+            ).toBe(true);
         });
     });
 
