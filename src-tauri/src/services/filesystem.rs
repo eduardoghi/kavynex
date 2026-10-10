@@ -40,13 +40,49 @@ fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
     Ok(parent.join(format!(".{}.tmp-{}", file_name, unique_temp_suffix())))
 }
 
+/// The Windows errors a file just created or written tends to return for a moment while an antivirus
+/// scanner or the search indexer holds it: access denied, sharing violation, lock violation.
+#[cfg(windows)]
+fn is_held_by_another_program(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(5) | Some(32) | Some(33))
+}
+
+/// Runs `op`, and on Windows runs it again a few times, a little later each time, while it fails
+/// because another program is holding the file.
+///
+/// A scanner opens every new file the moment it appears, so the rename that follows a copy, or
+/// reopening the copy to flush it, failed now and then for a reason that was gone a second later,
+/// and took a whole import, download or marker write with it. Elsewhere `op` runs once.
+pub(crate) fn retry_while_held<T>(
+    mut op: impl FnMut() -> std::io::Result<T>,
+) -> std::io::Result<T> {
+    #[cfg(windows)]
+    {
+        for delay_ms in [50_u64, 100, 200, 400] {
+            match op() {
+                Err(error) if is_held_by_another_program(&error) => {
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
+                result => return result,
+            }
+        }
+    }
+
+    op()
+}
+
+/// `fs::rename` through [`retry_while_held`].
+pub(crate) fn rename_retrying(from: &Path, to: &Path) -> std::io::Result<()> {
+    retry_while_held(|| fs::rename(from, to))
+}
+
 /// Flushes a freshly written file's data and metadata to disk. Called before the rename in
 /// `copy_file_atomic` (and by the db-backup staging copies) so a power loss cannot leave a
 /// truncated or zero-length file that a following rename then makes the live file. The file is
 /// opened for writing because Windows' `FlushFileBuffers` (what `sync_all` maps to) requires a
 /// writable handle.
 pub(crate) fn fsync_file(path: &Path) -> AppResult<()> {
-    let file = fs::OpenOptions::new().write(true).open(path).map_err(|e| {
+    let file = retry_while_held(|| fs::OpenOptions::new().write(true).open(path)).map_err(|e| {
         AppError::fs_error(
             AppErrorCode::FileCopyFailed,
             "failed to open copied file to flush it",
@@ -186,7 +222,7 @@ pub(crate) fn write_file_durably(path: &Path, contents: &[u8]) -> std::io::Resul
         file.write_all(contents)?;
         file.sync_all()?;
         drop(file);
-        fs::rename(&staging, path)
+        rename_retrying(&staging, path)
     })();
 
     if let Err(error) = written {
@@ -271,9 +307,7 @@ fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
     fs::copy(source, temp_destination)
         .and_then(|_| make_owner_writable(temp_destination))
         .and_then(|_| {
-            fs::OpenOptions::new()
-                .write(true)
-                .open(temp_destination)?
+            retry_while_held(|| fs::OpenOptions::new().write(true).open(temp_destination))?
                 .set_modified(std::time::SystemTime::now())
         })
         .map_err(|e| {
@@ -640,7 +674,7 @@ fn copy_file_atomic_with(
         return Err(error);
     }
 
-    match fs::rename(&temp_destination, destination) {
+    match rename_retrying(&temp_destination, destination) {
         Ok(_) => {
             // Make the rename itself durable, not just the file data flushed above.
             fsync_parent_dir(destination);
@@ -1092,7 +1126,7 @@ pub fn replace_file_safely(source: &Path, destination: &Path) -> AppResult<()> {
 
     let backup_path = parent.join(backup_name);
 
-    match fs::rename(destination, &backup_path) {
+    match rename_retrying(destination, &backup_path) {
         Ok(_) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {
             return move_or_copy_file(source, destination);
@@ -1113,7 +1147,7 @@ pub fn replace_file_safely(source: &Path, destination: &Path) -> AppResult<()> {
             Ok(())
         }
         Err(error) => {
-            let restore_result = fs::rename(&backup_path, destination);
+            let restore_result = rename_retrying(&backup_path, destination);
 
             if let Err(restore_error) = restore_result {
                 return Err(AppError::from_code(

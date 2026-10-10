@@ -95,6 +95,27 @@ where
     Some(String::from_utf8_lossy(buf).to_string())
 }
 
+/// Drains a pipe to its end, retaining at most `max_bytes`; bytes past the cap are read and
+/// discarded rather than left unread, so the child writing to it never blocks on a full pipe.
+pub(crate) fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8> {
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 8192];
+
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => {
+                if buffer.len() < max_bytes {
+                    let take = (max_bytes - buffer.len()).min(read);
+                    buffer.extend_from_slice(&chunk[..take]);
+                }
+            }
+        }
+    }
+
+    buffer
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

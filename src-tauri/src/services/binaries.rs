@@ -416,15 +416,19 @@ fn run_command_and_capture_first_line(
     )
 }
 
+/// How much of a probe's output is kept. A version banner is a few kilobytes at most.
+const HEALTH_CHECK_MAX_OUTPUT_BYTES: usize = 64 * 1024;
+
 /// Runs `binary_path args`, returns its first non-empty stdout line, and (unlike a plain
 /// `Command::output()`) gives up after `timeout`, killing the whole process tree. Every other
 /// external-process call site (download, metadata, thumbnail) already bounds its child this way; a
 /// health check, whose entire job is to survive a misbehaving binary, is the last place that should
 /// block a worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
 ///
-/// The child's stdout/stderr are piped but only drained after it exits (or is killed). That is safe
-/// for a version banner (a handful of short lines, well under the pipe buffer); a binary that
-/// instead floods the pipe would block on the write, never exit, and correctly hit the timeout.
+/// Both pipes are drained on threads while the child runs. They used to be read only after it
+/// exited, which a version banner was assumed to be short enough for, but a Windows pipe buffer is
+/// a few kilobytes and a full FFmpeg build prints about that much for `-version`. Past it the
+/// child blocked on the write and the probe reported a working FFmpeg as timed out.
 fn run_command_capturing_first_line_within(
     binary_path: &str,
     args: &[&str],
@@ -456,10 +460,21 @@ fn run_command_capturing_first_line_within(
     // so an exit that skips the sweep takes it down too.
     let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
 
+    let stdout_stream = child.stdout.take();
+    let stdout_handle = std::thread::spawn(move || match stdout_stream {
+        Some(stream) => crate::utils::io::read_drain_capped(stream, HEALTH_CHECK_MAX_OUTPUT_BYTES),
+        None => Vec::new(),
+    });
+    let stderr_stream = child.stderr.take();
+    let stderr_handle = std::thread::spawn(move || match stderr_stream {
+        Some(stream) => crate::utils::io::read_drain_capped(stream, HEALTH_CHECK_MAX_OUTPUT_BYTES),
+        None => Vec::new(),
+    });
+
     let deadline = Instant::now() + timeout;
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) => {
                 if Instant::now() >= deadline {
                     crate::utils::process::kill_process_tree_blocking(child.id());
@@ -481,14 +496,14 @@ fn run_command_capturing_first_line_within(
                 ));
             }
         }
-    }
+    };
 
-    let output = child.wait_with_output().map_err(|e| {
-        AppError::from_code(
-            error_code,
-            format!("{default_message}: failed to read command output: {e}"),
-        )
-    })?;
+    // The readers end once the child's pipes close, which its exit does.
+    let output = std::process::Output {
+        status,
+        stdout: stdout_handle.join().unwrap_or_default(),
+        stderr: stderr_handle.join().unwrap_or_default(),
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -1024,6 +1039,47 @@ mod tests {
         .unwrap();
 
         assert_eq!(version, "tool 1.2.3");
+    }
+
+    #[test]
+    fn capture_first_line_survives_a_banner_larger_than_the_pipe_buffer() {
+        // Read only after exit, output past the pipe buffer blocked the child, and a working binary
+        // was reported as timed out.
+        let dir = unique_dir("big-banner");
+        std::fs::create_dir_all(&dir).unwrap();
+        let banner = dir.join("banner.txt");
+        std::fs::write(
+            &banner,
+            "configuration: --enable-everything\n".repeat(10_000),
+        )
+        .unwrap();
+        let banner = banner.to_string_lossy().into_owned();
+
+        let script = if cfg!(windows) {
+            // No quotes: Rust escapes them for cmd in a way cmd does not read. The temp path has
+            // no spaces.
+            format!("echo tool 9.9 & type {banner}")
+        } else {
+            format!("echo 'tool 9.9'; cat '{banner}'")
+        };
+        let (binary, flag) = if cfg!(windows) {
+            ("cmd", "/C")
+        } else {
+            ("sh", "-c")
+        };
+
+        let version = run_command_capturing_first_line_within(
+            binary,
+            &[flag, &script],
+            AppErrorCode::FfmpegExecFailed,
+            "health check",
+            Duration::from_secs(20),
+        )
+        .unwrap();
+
+        assert_eq!(version, "tool 9.9");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

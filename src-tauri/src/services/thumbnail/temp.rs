@@ -144,27 +144,6 @@ const FFMPEG_THUMBNAIL_TIMEOUT: Duration = Duration::from_secs(60);
 /// passes, long enough not to busy-spin the blocking-pool thread. Matches binaries.rs's health check.
 const FFMPEG_THUMBNAIL_POLL: Duration = Duration::from_millis(50);
 
-/// Drains a pipe to its end, retaining at most `max_bytes`; bytes past the cap are read and
-/// discarded rather than left unread.
-fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8> {
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut chunk = [0u8; 8192];
-
-    loop {
-        match stream.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(read) => {
-                if buffer.len() < max_bytes {
-                    let take = (max_bytes - buffer.len()).min(read);
-                    buffer.extend_from_slice(&chunk[..take]);
-                }
-            }
-        }
-    }
-
-    buffer
-}
-
 fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
     crate::utils::process::configure_child(&mut command);
 
@@ -188,13 +167,13 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
     // own once the child exits or is killed and its pipe ends close.
     let stdout_stream = child.stdout.take();
     let stdout_handle = std::thread::spawn(move || match stdout_stream {
-        Some(stream) => read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
+        Some(stream) => crate::utils::io::read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
         None => Vec::new(),
     });
 
     let stderr_stream = child.stderr.take();
     let stderr_handle = std::thread::spawn(move || match stderr_stream {
-        Some(stream) => read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
+        Some(stream) => crate::utils::io::read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
         None => Vec::new(),
     });
 
