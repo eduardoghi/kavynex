@@ -13,7 +13,11 @@ import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
 import { createYtDlpTerminalStore, type YtDlpTerminalStore } from "./yt-dlp-terminal-store";
 import type { DownloadLogLevel } from "../types/generated/DownloadLogLevel";
-import { advanceYtDlpProgress, type YtDlpProgress } from "../services/yt-dlp-progress";
+import {
+    advanceYtDlpProgress,
+    parseYtDlpProgress,
+    type YtDlpProgress,
+} from "../services/yt-dlp-progress";
 
 // How a line is classified, reused verbatim from the backend's own generated union rather than
 // respelled here, so a level added on the Rust side is a type error in the terminal's colour map
@@ -57,21 +61,12 @@ function normalizeLogChunks(input: string): string[] {
     return normalized.split("\n");
 }
 
+// A percentage line (`[download]  42.0% of ...`), the only kind that replaces the one before it.
+// yt-dlp prints several a second and only the latest says anything. Every other line stays, a
+// `[download] Destination:`, a "has already been downloaded" or a `[Merger]` step included, since
+// those are what a pasted log needs.
 function isProgressLine(line: string): boolean {
-    const normalized = line.trim();
-
-    if (!normalized) {
-        return false;
-    }
-
-    return (
-        normalized.startsWith("[download]") ||
-        normalized.startsWith("[ExtractAudio]") ||
-        normalized.startsWith("[Merger]") ||
-        normalized.startsWith("[Metadata]") ||
-        normalized.startsWith("[EmbedThumbnail]") ||
-        normalized.startsWith("[ThumbnailsConvertor]")
-    );
+    return (parseYtDlpProgress(line)?.percent ?? null) !== null;
 }
 
 // Wraps plain text lines as YtDlpLogLine, numbering them from `startId`. Used to seed a fresh

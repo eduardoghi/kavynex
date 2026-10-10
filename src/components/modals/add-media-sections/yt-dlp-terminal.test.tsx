@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { YtDlpTerminal } from "./yt-dlp-terminal";
 import type { YtDlpLogLevel, YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
@@ -205,6 +205,74 @@ describe("YtDlpTerminal", () => {
         // Not a live region. The virtualizer mounts rows as the view scrolls, and a live region
         // would announce each of those as if it were new output.
         expect(scrollback).not.toHaveAttribute("aria-live");
+    });
+
+    // jsdom has no layout, so the viewport's geometry is set by hand. 1000px of content in a 200px
+    // box, with the scroll position the test chooses.
+    function giveScrollGeometry(element: HTMLElement, scrollTop: number): { top: () => number } {
+        let top = scrollTop;
+
+        Object.defineProperty(element, "scrollHeight", { configurable: true, value: 1000 });
+        Object.defineProperty(element, "clientHeight", { configurable: true, value: 200 });
+        Object.defineProperty(element, "scrollTop", {
+            configurable: true,
+            get: () => top,
+            set: (value: number) => {
+                top = value;
+            },
+        });
+
+        fireEvent.scroll(element);
+
+        return { top: () => top };
+    }
+
+    async function nextFrame(): Promise<void> {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+    }
+
+    it("leaves the scrollback where the user scrolled it while lines keep arriving", async () => {
+        const { rerender } = renderWithMantine(
+            <YtDlpTerminal opened visible ytDlpLogs={logs("one")} isYtDlpRunning ytDlpProgress={null} />
+        );
+
+        const scrollback = screen.getByRole("region", { name: "yt-dlp output" });
+        const geometry = giveScrollGeometry(scrollback, 100);
+
+        rerender(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("one", "two")}
+                isYtDlpRunning
+                ytDlpProgress={null}
+            />
+        );
+        await nextFrame();
+
+        expect(geometry.top()).toBe(100);
+    });
+
+    it("follows new lines while the user is at the bottom", async () => {
+        const { rerender } = renderWithMantine(
+            <YtDlpTerminal opened visible ytDlpLogs={logs("one")} isYtDlpRunning ytDlpProgress={null} />
+        );
+
+        const scrollback = screen.getByRole("region", { name: "yt-dlp output" });
+        const geometry = giveScrollGeometry(scrollback, 800);
+
+        rerender(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("one", "two")}
+                isYtDlpRunning
+                ytDlpProgress={null}
+            />
+        );
+        await nextFrame();
+
+        expect(geometry.top()).toBe(1000);
     });
 
     it("stays running while the import continues past yt-dlp", () => {

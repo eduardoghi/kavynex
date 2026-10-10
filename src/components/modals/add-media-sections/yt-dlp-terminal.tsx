@@ -34,6 +34,10 @@ const TERMINAL_HEIGHT = "clamp(220px, 32vh, 460px)";
 // estimate. A wrapped long line is measured at its true height, not this one.
 const ESTIMATED_LINE_HEIGHT = 21;
 
+// How close to the bottom the scrollback has to be for new lines to keep it there. Scrolled further
+// up than this, the user is reading something, and the tail is not pulled out from under them.
+const STICK_TO_BOTTOM_THRESHOLD_PX = 24;
+
 // Colour per line level. A `Record` over the union rather than a chain of conditionals, so a level
 // added on the Rust side (the union is generated from `DownloadLogLevel`) fails to compile here
 // instead of silently falling through to the default.
@@ -73,6 +77,8 @@ export function YtDlpTerminal({
     ytDlpProgress,
 }: YtDlpTerminalProps): JSX.Element | null {
     const terminalViewportRef = useRef<HTMLDivElement | null>(null);
+    const shouldStickToBottomRef = useRef(true);
+    const hasScrollback = isYtDlpRunning || isImporting || ytDlpLogs.length > 0;
 
     // Only the rows near the viewport are in the DOM. The log is a hot path (a line arrives every
     // few milliseconds during a download, with the modal open and the user watching), and the
@@ -92,11 +98,37 @@ export function YtDlpTerminal({
     const virtualRows = virtualizer.getVirtualItems();
     const totalSize = virtualizer.getTotalSize();
 
-    // Follow the tail as lines arrive. Re-applied on totalSize as well as on the log itself. With
-    // virtualization the scrollable height grows only once the new row has been measured, so
-    // scrolling on the log change alone would stop one row short of the bottom.
+    // Whether the user is at the bottom, kept current from the scroll position. A download prints
+    // a line every few milliseconds, and following the tail unconditionally made it impossible to
+    // scroll up and read a warning while it ran. Same rule as the live chat replay.
     useEffect(() => {
-        if (!opened || !visible) {
+        const viewport = terminalViewportRef.current;
+
+        if (!opened || !visible || !hasScrollback || !viewport) {
+            return;
+        }
+
+        const updateStickiness = (): void => {
+            const distanceFromBottom =
+                viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+
+            shouldStickToBottomRef.current = distanceFromBottom <= STICK_TO_BOTTOM_THRESHOLD_PX;
+        };
+
+        updateStickiness();
+        viewport.addEventListener("scroll", updateStickiness);
+
+        return () => {
+            viewport.removeEventListener("scroll", updateStickiness);
+        };
+    }, [opened, visible, hasScrollback]);
+
+    // Follow the tail as lines arrive, while the user is at the bottom. Re-applied on totalSize as
+    // well as on the log itself. With virtualization the scrollable height grows only once the new
+    // row has been measured, so scrolling on the log change alone would stop one row short of the
+    // bottom.
+    useEffect(() => {
+        if (!opened || !visible || !shouldStickToBottomRef.current) {
             return;
         }
 
@@ -131,7 +163,7 @@ export function YtDlpTerminal({
     // has done anything. It collapses to the heading and that sentence, and comes back at
     // full height the moment a run starts or a line arrives.
     const isRunning = isYtDlpRunning || isImporting;
-    const isIdle = !isRunning && ytDlpLogs.length === 0;
+    const isIdle = !hasScrollback;
 
     return (
         <Box>

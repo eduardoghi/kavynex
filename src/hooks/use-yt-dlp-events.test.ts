@@ -611,14 +611,7 @@ describe("useYtDlpEvents", () => {
             expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("a    b");
         });
 
-        it.each([
-            "[download]",
-            "[ExtractAudio]",
-            "[Merger]",
-            "[Metadata]",
-            "[EmbedThumbnail]",
-            "[ThumbnailsConvertor]",
-        ])("collapses consecutive progress lines for prefix %s", async (prefix) => {
+        it("collapses consecutive percentage lines into the latest one", async () => {
             const { result } = renderHook(() => useYtDlpEvents());
 
             await waitFor(() => {
@@ -629,40 +622,45 @@ describe("useYtDlpEvents", () => {
                 result.current.startRun("run-1", "cmd");
             });
 
-            act(() => {
-                emit(EVENT_YT_DLP_LOG, {
-                    run_id: "run-1",
-                    line: `${prefix} 10%`,
-                    stream: "stdout",
+            for (const line of ["[download]  10.0% of 5MiB", "[download]  20.0% of 5MiB"]) {
+                act(() => {
+                    emit(EVENT_YT_DLP_LOG, { run_id: "run-1", line, stream: "stdout" });
                 });
+            }
+
+            const progressEntries = logTexts(result.current.terminal.getSnapshot().logs).filter(
+                (text) => text.startsWith("[download]")
+            );
+            expect(progressEntries).toEqual(["[download]  20.0% of 5MiB"]);
+        });
+
+        it.each([
+            "[download] Destination: youtube_abc_137.f137.mp4",
+            "[download] youtube_abc_137.mp4 has already been downloaded",
+            '[Merger] Merging formats into "youtube_abc_137.mp4"',
+            "[ExtractAudio] Destination: youtube_abc_140.m4a",
+            "[Metadata] Adding metadata to \"youtube_abc_137.mp4\"",
+        ])("keeps the stage line %s instead of letting the next line replace it", async (stage) => {
+            const { result } = renderHook(() => useYtDlpEvents());
+
+            await waitFor(() => {
+                expect(eventHandlers.has(EVENT_YT_DLP_LOG)).toBe(true);
             });
 
             act(() => {
-                emit(EVENT_YT_DLP_LOG, {
-                    run_id: "run-1",
-                    line: `${prefix} 20%`,
-                    stream: "stdout",
-                });
+                result.current.startRun("run-1", "cmd");
             });
 
-            const progressEntries = result.current.terminal.getSnapshot().logs
-                .filter((line) => line.text.startsWith(prefix))
-                .map((line) => line.text);
-            expect(progressEntries).toEqual([`${prefix} 20%`]);
-
-            // A line that merely ends with (but does not start with) the prefix must not be
-            // treated as a progress line, so it must not collapse into the previous entry.
-            act(() => {
-                emit(EVENT_YT_DLP_LOG, {
-                    run_id: "run-1",
-                    line: `xxx${prefix}`,
-                    stream: "stdout",
+            for (const line of ["[download]  99.0% of 5MiB", stage, "[download] 100% of 5MiB"]) {
+                act(() => {
+                    emit(EVENT_YT_DLP_LOG, { run_id: "run-1", line, stream: "stdout" });
                 });
-            });
+            }
 
             const logs = logTexts(result.current.terminal.getSnapshot().logs);
-            expect(logs[logs.length - 1]).toBe(`xxx${prefix}`);
-            expect(logs).toContain(`${prefix} 20%`);
+            expect(logs).toContain(stage);
+            expect(logs).toContain("[download]  99.0% of 5MiB");
+            expect(logs[logs.length - 1]).toBe("[download] 100% of 5MiB");
         });
 
         it("does not collapse a progress line into a non-progress previous line", async () => {
