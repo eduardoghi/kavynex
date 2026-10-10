@@ -285,6 +285,92 @@ describe("useAddMediaForm", () => {
         expect(result.current.mediaPath).toBe("/tmp/other-video.mp4");
     });
 
+    it("replaces a title taken from the previous file when another file is picked", async () => {
+        vi.mocked(pickFile)
+            .mockResolvedValueOnce("/tmp/Episode 01.mp4")
+            .mockResolvedValueOnce("/tmp/Episode 02.mp4");
+
+        const { result } = renderHook(() => useAddMediaForm());
+
+        await act(async () => {
+            await result.current.pickMediaViaDialog();
+        });
+
+        expect(result.current.title).toBe("Episode 01");
+
+        await act(async () => {
+            await result.current.pickMediaViaDialog();
+        });
+
+        expect(result.current.title).toBe("Episode 02");
+    });
+
+    it("keeps a title typed over the file name when another file is picked", async () => {
+        vi.mocked(pickFile)
+            .mockResolvedValueOnce("/tmp/Episode 01.mp4")
+            .mockResolvedValueOnce("/tmp/Episode 02.mp4");
+
+        const { result } = renderHook(() => useAddMediaForm());
+
+        await act(async () => {
+            await result.current.pickMediaViaDialog();
+        });
+
+        act(() => {
+            result.current.setTitle("Pilot");
+        });
+
+        await act(async () => {
+            await result.current.pickMediaViaDialog();
+        });
+
+        expect(result.current.title).toBe("Pilot");
+    });
+
+    it("clears a title suggested for the previous URL when the URL changes", async () => {
+        const { result } = renderHook(() => useAddMediaForm());
+
+        await act(async () => {
+            await result.current.setSourceMode("yt-dlp");
+        });
+
+        act(() => {
+            result.current.setMediaUrl("https://www.youtube.com/watch?v=first");
+        });
+
+        act(() => {
+            latestYtDlpFormatLoaderOptions().onSuggestedTitle("First video");
+        });
+
+        // While the title is the suggested one, the loader may replace it with the next URL's.
+        expect(latestYtDlpFormatLoaderOptions().getCurrentTitle()).toBe("");
+
+        act(() => {
+            result.current.setMediaUrl("https://www.youtube.com/watch?v=second");
+        });
+
+        expect(result.current.title).toBe("");
+    });
+
+    it("keeps a typed title when the URL changes", async () => {
+        const { result } = renderHook(() => useAddMediaForm());
+
+        await act(async () => {
+            await result.current.setSourceMode("yt-dlp");
+        });
+
+        act(() => {
+            result.current.setTitle("My title");
+        });
+
+        act(() => {
+            result.current.setMediaUrl("https://www.youtube.com/watch?v=second");
+        });
+
+        expect(result.current.title).toBe("My title");
+        expect(latestYtDlpFormatLoaderOptions().getCurrentTitle()).toBe("My title");
+    });
+
     it("falls back to Untitled when the selected file has no derivable name", async () => {
         vi.mocked(pickFile).mockResolvedValueOnce("/tmp/");
 

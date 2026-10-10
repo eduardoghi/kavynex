@@ -130,8 +130,27 @@ export function useAddMediaForm({
         };
     }, [mediaUrl, title, cookiesBrowser, cookiesBrowserProfile, cookiesPath]);
 
+    // True while the title is one the form filled in (from the file name or from yt-dlp's metadata)
+    // and the user has not typed over it. Only such a title is replaced when the file or URL changes,
+    // so picking a second file or pasting a second URL no longer saves it under the first one's
+    // name, and a typed title is never touched. A ref because it is read in callbacks and never
+    // drives a render on its own.
+    const titleAutoFilledRef = useRef(false);
+
     const getUrl = useCallback((): string => loaderInputsRef.current.mediaUrl, []);
-    const getCurrentTitle = useCallback((): string => loaderInputsRef.current.title, []);
+    // An auto-filled title reads as empty, so the loader offers the new URL's title in its place.
+    const getCurrentTitle = useCallback(
+        (): string => (titleAutoFilledRef.current ? "" : loaderInputsRef.current.title),
+        []
+    );
+    const setLoaderTitle = formState.setTitleState;
+    const fillSuggestedTitle = useCallback(
+        (value: string): void => {
+            titleAutoFilledRef.current = true;
+            setLoaderTitle(value);
+        },
+        [setLoaderTitle]
+    );
     const getCookiesBrowser = useCallback((): string => {
         const inputs = loaderInputsRef.current;
         return composeCookiesBrowserSelector(inputs.cookiesBrowser, inputs.cookiesBrowserProfile);
@@ -146,7 +165,7 @@ export function useAddMediaForm({
         getCurrentTitle,
         getCookiesBrowser,
         getCookiesPath,
-        onSuggestedTitle: formState.setTitleState,
+        onSuggestedTitle: fillSuggestedTitle,
         onMediaTypeResolved: formState.setMediaTypeState,
         onTerminalStart: ytDlpTerminal?.startManualSession,
         onTerminalLog: ytDlpTerminal?.appendManualLog,
@@ -198,10 +217,11 @@ export function useAddMediaForm({
 
             let nextTitle: string | null = null;
 
-            if (!currentTitle) {
+            if (!currentTitle || titleAutoFilledRef.current) {
                 const fileName = fileNameFromPath(normalizedPath);
                 const titleWithoutExtension = fileName.replace(/\.[^.]+$/, "");
                 nextTitle = titleWithoutExtension || fileName || "Untitled";
+                titleAutoFilledRef.current = true;
             }
 
             applyLocalMediaSelectionState(normalizedPath, detectedMediaType, nextTitle);
@@ -300,6 +320,7 @@ export function useAddMediaForm({
             }
 
             setSourceModeState(value);
+            titleAutoFilledRef.current = false;
             resetYtDlpSelectionState();
             setDownloadComments(true);
             setDownloadLiveChat(true);
@@ -316,6 +337,12 @@ export function useAddMediaForm({
             setMediaUrlState(value);
 
             if (sourceMode === "yt-dlp") {
+                // The title came from the previous URL, so it no longer names anything.
+                if (titleAutoFilledRef.current) {
+                    titleAutoFilledRef.current = false;
+                    setTitleState("");
+                }
+
                 resetYtDlpSelectionState();
                 setPublishedAtState("");
                 setMediaTypeState("video");
@@ -324,6 +351,7 @@ export function useAddMediaForm({
         [
             sourceMode,
             setMediaUrlState,
+            setTitleState,
             setPublishedAtState,
             setMediaTypeState,
             resetYtDlpSelectionState,
@@ -332,6 +360,7 @@ export function useAddMediaForm({
 
     const setTitle = useCallback(
         (value: string): void => {
+            titleAutoFilledRef.current = false;
             setTitleState(value);
         },
         [setTitleState]
@@ -444,6 +473,7 @@ export function useAddMediaForm({
 
     const resetForm = useCallback(async (): Promise<void> => {
         resetFormState();
+        titleAutoFilledRef.current = false;
         resetYtDlpSelectionState();
         setDownloadComments(true);
         setDownloadLiveChat(true);
