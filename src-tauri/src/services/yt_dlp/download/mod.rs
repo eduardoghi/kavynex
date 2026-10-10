@@ -26,8 +26,8 @@ use crate::services::yt_dlp::events::{
     emit_download_log_infallible,
 };
 use crate::services::yt_dlp::metadata::{
-    fetch_yt_dlp_metadata, normalize_download_metadata, redact_cookies_from_line,
-    sanitize_filename_component, sanitize_identifier_component,
+    fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
+    sanitize_identifier_component,
 };
 use crate::services::yt_dlp::registry::{
     register_download_run, set_download_pid, DownloadRunReleaseGuard, MAX_ACTIVE_RUNS,
@@ -406,6 +406,7 @@ mod redaction;
 #[cfg(test)]
 use redaction::redact_paths_value;
 use redaction::redacted_args_for_log;
+use redaction::{redact_download_output_line, OutputRedaction};
 
 /// Downloads the media's thumbnail, and on failure says so in the terminal and returns `None`.
 ///
@@ -983,14 +984,17 @@ pub async fn download_media_from_url_async<R: Runtime>(
         let app_stderr = app.clone();
         let run_id_stdout = normalized_run_id.clone();
         let run_id_stderr = normalized_run_id.clone();
-        // The cookies file path can appear in a yt-dlp message (e.g. a "could not read cookies"
-        // error) and would otherwise be streamed to the UI terminal and baked into the failure
-        // message below. Redact it on both streams, mirroring the metadata flow, since that path
-        // reveals the local username/profile and may be pasted into a public bug report.
-        let cookies_path_stdout = normalized_cookies_path.clone();
-        let cookies_path_stderr = normalized_cookies_path.clone();
-        let cookies_browser_stdout = normalized_cookies_browser.clone();
-        let cookies_browser_stderr = normalized_cookies_browser.clone();
+        // Both streams are redacted before anything sees a line: the terminal, the log, and the
+        // failure message built from stderr below. See redact_download_output_line.
+        let output_redaction = Arc::new(OutputRedaction {
+            run_dir: temp_dir.to_string_lossy().into_owned(),
+            ffmpeg_location: ffmpeg_location.clone(),
+            url: normalized_url.clone(),
+            cookies_path: normalized_cookies_path.clone(),
+            cookies_browser: normalized_cookies_browser.clone(),
+        });
+        let redaction_stdout = Arc::clone(&output_redaction);
+        let redaction_stderr = Arc::clone(&output_redaction);
 
         let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let stderr_buffer_reader = Arc::clone(&stderr_buffer);
@@ -1007,11 +1011,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                     Ordering::Relaxed,
                 );
 
-                let line = redact_cookies_from_line(
-                    &line,
-                    cookies_path_stdout.as_deref(),
-                    cookies_browser_stdout.as_deref(),
-                );
+                let line = redact_download_output_line(&line, &redaction_stdout);
                 emit_download_log_infallible(&app_stdout, &run_id_stdout, line, "stdout");
             }
         });
@@ -1030,11 +1030,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
 
                 // Redact before buffering so the failure message built from this buffer below is
                 // redacted too, not just the live stream.
-                let line = redact_cookies_from_line(
-                    &line,
-                    cookies_path_stderr.as_deref(),
-                    cookies_browser_stderr.as_deref(),
-                );
+                let line = redact_download_output_line(&line, &redaction_stderr);
 
                 // A warning goes to the terminal but never into this buffer. The buffer is joined
                 // verbatim into the user-facing failure message, so a run that warned about a
@@ -1384,6 +1380,73 @@ mod tests {
             "kavynex-download-test-{suffix}-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    fn output_redaction(run_dir: &str, ffmpeg_location: &str) -> OutputRedaction {
+        OutputRedaction {
+            run_dir: run_dir.to_string(),
+            ffmpeg_location: ffmpeg_location.to_string(),
+            url: "https://www.youtube.com/watch?v=abc123&list=PLsecret&t=42".to_string(),
+            cookies_path: None,
+            cookies_browser: None,
+        }
+    }
+
+    #[test]
+    fn a_download_line_loses_the_run_folder_under_the_users_profile() {
+        let redaction = output_redaction(
+            r"C:\Users\alice\AppData\Local\kavynex\yt-dlp-temp\run-1",
+            "ffmpeg",
+        );
+
+        let destination = redact_download_output_line(
+            r"[download] Destination: C:\Users\alice\AppData\Local\kavynex\yt-dlp-temp\run-1\youtube_abc123_137.f137.mp4",
+            &redaction,
+        );
+        // Python reprs, as in an [Errno] message, double every backslash.
+        let errno = redact_download_output_line(
+            r"ERROR: [Errno 28] No space left on device: 'C:\\Users\\alice\\AppData\\Local\\kavynex\\yt-dlp-temp\\run-1\\x.part'",
+            &redaction,
+        );
+
+        assert!(!destination.contains("alice"), "{destination}");
+        assert!(destination.contains("youtube_abc123_137.f137.mp4"));
+        assert!(!errno.contains("alice"), "{errno}");
+    }
+
+    #[test]
+    fn a_download_line_reduces_the_pasted_url_to_the_video() {
+        let redaction = output_redaction("/tmp/run-1", "ffmpeg");
+
+        let line = redact_download_output_line(
+            "[youtube] Extracting URL: https://www.youtube.com/watch?v=abc123&list=PLsecret&t=42",
+            &redaction,
+        );
+
+        assert!(!line.contains("PLsecret"), "{line}");
+        assert!(line.contains("abc123"));
+    }
+
+    #[test]
+    fn a_bare_ffmpeg_name_is_not_redacted_out_of_a_line() {
+        let redaction = output_redaction("/tmp/run-1", "ffmpeg");
+
+        assert_eq!(
+            redact_download_output_line("[Merger] ffmpeg is merging formats", &redaction),
+            "[Merger] ffmpeg is merging formats"
+        );
+    }
+
+    #[test]
+    fn an_ffmpeg_folder_under_the_users_profile_is_redacted() {
+        let redaction = output_redaction("/tmp/run-1", "/home/alice/.local/share/kavynex/tools");
+
+        let line = redact_download_output_line(
+            "ERROR: Postprocessing: /home/alice/.local/share/kavynex/tools/ffmpeg exited with code 1",
+            &redaction,
+        );
+
+        assert!(!line.contains("alice"), "{line}");
     }
 
     #[test]

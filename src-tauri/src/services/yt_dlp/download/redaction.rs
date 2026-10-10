@@ -108,3 +108,45 @@ pub(super) fn redacted_args_for_log(args: &[String]) -> String {
 
     parts.join(" ")
 }
+
+/// What a download's output lines must not carry, gathered once per run.
+pub(super) struct OutputRedaction {
+    pub(super) run_dir: String,
+    pub(super) ffmpeg_location: String,
+    pub(super) url: String,
+    pub(super) cookies_path: Option<String>,
+    pub(super) cookies_browser: Option<String>,
+}
+
+/// Redacts one line yt-dlp printed during a download, before the terminal, the log or an error
+/// message sees it.
+///
+/// The argument line is redacted by [`redacted_args_for_log`], but yt-dlp prints the same values
+/// again in its own output. `[download] Destination:`, `[Merger] Merging formats into` and the
+/// Python reprs of an `[Errno ...]` name the run's temp directory under the user's app cache, the
+/// FFmpeg path can come back in a merge error, and `[youtube] Extracting URL:` repeats the pasted
+/// URL with whatever playlist or tracking parameters came with it.
+pub(super) fn redact_download_output_line(line: &str, redaction: &OutputRedaction) -> String {
+    use crate::services::yt_dlp::metadata::{redact_cookies_from_line, redact_path_from_line};
+
+    let mut redacted = redact_cookies_from_line(
+        line,
+        redaction.cookies_path.as_deref(),
+        redaction.cookies_browser.as_deref(),
+    );
+    redacted = redact_path_from_line(&redacted, &redaction.run_dir);
+
+    // A bare `ffmpeg` (found on PATH) names no directory, and redacting the word would blank out
+    // every line that mentions the tool.
+    if redaction.ffmpeg_location.contains(['/', '\\']) {
+        redacted = redact_path_from_line(&redacted, &redaction.ffmpeg_location);
+    }
+
+    let url = redaction.url.trim();
+
+    if !url.is_empty() && redacted.contains(url) {
+        redacted = redacted.replace(url, &youtube_ref_for_log(url));
+    }
+
+    redacted
+}
