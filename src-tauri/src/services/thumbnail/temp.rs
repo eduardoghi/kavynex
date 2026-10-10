@@ -369,6 +369,17 @@ pub fn generate_temporary_thumbnail_sync<R: Runtime>(
     app: &AppHandle<R>,
     path: &str,
 ) -> AppResult<String> {
+    generate_temporary_thumbnail_cancellable_sync(app, path, None)
+}
+
+/// [`generate_temporary_thumbnail_sync`] that stops when `cancel` is set. The source is hashed whole
+/// to name the preview, which for a long recording is minutes of reading, and a local import runs
+/// this before anything else, so it is where a Cancel has to be heard first.
+pub fn generate_temporary_thumbnail_cancellable_sync<R: Runtime>(
+    app: &AppHandle<R>,
+    path: &str,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> AppResult<String> {
     let source_path = validate_source_media_path(path)?;
     let ext = extension_from_path(&source_path);
     let media_kind = media_subdir_from_extension(&ext);
@@ -376,7 +387,7 @@ pub fn generate_temporary_thumbnail_sync<R: Runtime>(
     let ffmpeg = resolve_ffmpeg_binary(app)?;
     let thumbs_dir = thumbs_temp_dir(app)?;
 
-    let hash = file_hash(&source_path)?;
+    let hash = crate::utils::hash::file_hash_cancellable(&source_path, cancel)?;
     let out_thumbnail = thumbs_dir.join(temporary_thumbnail_file_name(&hash));
 
     if out_thumbnail.exists() {

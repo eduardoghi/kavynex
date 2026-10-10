@@ -372,13 +372,20 @@ async fn generate_and_store_thumbnail<R: Runtime>(
     app: &AppHandle<R>,
     source_value: &str,
     library_path: &str,
+    cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<String> {
     let generated = {
         let app = app.clone();
         let source_value = source_value.to_string();
 
-        run_blocking(move || thumbnail::generate_temporary_thumbnail_sync(&app, &source_value))
-            .await?
+        run_blocking(move || {
+            thumbnail::temp::generate_temporary_thumbnail_cancellable_sync(
+                &app,
+                &source_value,
+                cancel.as_deref(),
+            )
+        })
+        .await?
     };
 
     let stored = {
@@ -450,13 +457,29 @@ async fn prepare_local_artifacts<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
 ) -> AppResult<PreparedArtifacts> {
+    // Registered first, so Cancel reaches the thumbnail too. It hashes the whole source to name the
+    // preview, which for a long recording is the slowest step of the import.
+    //
+    // A registration that fails degrades to an uncancellable import rather than failing the add.
+    // The two ways it can fail say why. A duplicate id means this run is already registered, and a
+    // full registry means the caller is flooding run ids, neither is a reason to refuse a file the
+    // user asked to import, and losing the Cancel button is the proportionate consequence.
+    let cancellation = local_import_cancellation(&request.yt_dlp_run_id);
+    let cancel_flag = cancellation
+        .as_ref()
+        .map(|(flag, _release)| Arc::clone(flag));
+
     let thumbnail_source = classify_thumbnail_source(request.thumbnail_source_path.as_deref());
 
     let thumbnail_path = match thumbnail_source {
         ThumbnailSource::Absent => {
-            let generated =
-                generate_and_store_thumbnail(app, &request.source_value, &request.library_path)
-                    .await;
+            let generated = generate_and_store_thumbnail(
+                app,
+                &request.source_value,
+                &request.library_path,
+                cancel_flag.clone(),
+            )
+            .await;
 
             match generated {
                 Ok(path) => Some(path),
@@ -480,20 +503,11 @@ async fn prepare_local_artifacts<R: Runtime>(
         source => store_thumbnail_source(app, source, &request.library_path).await?,
     };
 
-    // Register the run so `cancel_media_download(runId)` reaches this import, which is what gives
+    // The run registered above is what `cancel_media_download(runId)` reaches, which is what gives
     // the modal's Cancel button something to do during a local add. A yt-dlp source registers
     // inside `download_media_from_url_async`; this is the local half of the same mechanism, using
-    // the same registry so the cancel command has one meaning rather than two.
-    //
-    // A registration that fails degrades to an uncancellable import rather than failing the add.
-    // The two ways it can fail say why. A duplicate id means this run is already registered, and a
-    // full registry means the caller is flooding run ids, neither is a reason to refuse a file the
-    // user asked to import, and losing the Cancel button is the proportionate consequence.
-    let cancellation = local_import_cancellation(&request.yt_dlp_run_id);
-    let cancel_flag = cancellation
-        .as_ref()
-        .map(|(flag, _release)| Arc::clone(flag));
-
+    // the same registry so the cancel command has one meaning rather than two. A cancel heard while
+    // the thumbnail was made reaches the import below, which checks the flag before it reads.
     let import_mode = request.import_mode;
     let source_value = request.source_value.clone();
     let library_path = request.library_path.clone();
