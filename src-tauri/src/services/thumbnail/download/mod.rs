@@ -506,16 +506,18 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
 ) -> AppResult<String> {
     let normalized_url = normalize_channel_handle_to_url(youtube_handle)?;
 
+    // Resolved before the scratch directory is made. A missing binary returns from here, and made
+    // first, that directory would be left behind by every attempt until the week-old sweep.
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+    let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
+    let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
+
     let (library_dir, thumb_temp_dir) = {
         let app = app.clone();
         let library_path = library_path.to_string();
         let temp_dir_name = format!("channel-avatar-{}", unique_temp_suffix());
         run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
     };
-
-    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
-    let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
-    let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
     let result = async {
         let file_prefix = "channel_avatar";

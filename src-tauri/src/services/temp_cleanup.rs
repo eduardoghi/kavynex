@@ -219,7 +219,56 @@ pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResul
         display_cache_max_bytes(),
     )?);
 
+    // The markers written through `filesystem::write_file_durably` (the import marker and the
+    // library-move marker in the config directory, the pending-media markers in the cache) stage
+    // under `.<name>.tmp-<suffix>`, and a crash between the write and the rename leaves that behind
+    // where nothing else looks. Only that exact shape, a week old, is taken.
+    summary.merge(cleanup_durable_write_leftovers(
+        &cache_dir.join(crate::constants::TEMP_DIR_PENDING_MEDIA),
+        max_age,
+    ));
+
+    if let Ok(config_dir) = app.path().app_config_dir() {
+        summary.merge(cleanup_durable_write_leftovers(&config_dir, max_age));
+    }
+
     Ok(summary)
+}
+
+/// Removes the `.<name>.tmp-<suffix>` files older than `max_age` directly inside `dir`, and nothing
+/// else. Best effort. A directory that cannot be read sweeps nothing.
+fn cleanup_durable_write_leftovers(dir: &Path, max_age: Duration) -> CleanupSummary {
+    let mut summary = CleanupSummary::default();
+
+    let Ok(entries) = fs::read_dir(dir) else {
+        return summary;
+    };
+
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+
+        if !is_hidden_scratch_name(&name.to_string_lossy(), ".tmp-") {
+            continue;
+        }
+
+        if !entry.file_type().is_ok_and(|file_type| file_type.is_file()) {
+            continue;
+        }
+
+        summary.scanned_entries += 1;
+
+        let (removed, failed) = remove_path_if_old(&entry.path(), max_age);
+
+        if removed {
+            summary.removed_entries += 1;
+        }
+
+        if failed {
+            summary.failed_removals += 1;
+        }
+    }
+
+    summary
 }
 
 /// True for a filename produced by the atomic-write helpers as scratch and left behind if the
@@ -772,6 +821,32 @@ mod tests {
         assert!(recent_temp.exists(), "an in-flight leftover must be kept");
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_stale_durable_write_leftover_is_removed_and_nothing_else_is() {
+        let dir = unique_test_dir("durable-leftovers");
+        fs::create_dir_all(&dir).unwrap();
+        let max_age = Duration::from_secs(TEMP_ENTRY_MAX_AGE_HOURS * 60 * 60);
+
+        let stale = dir.join(".kavynex.db.import-applying.tmp-12-345-6");
+        let recent = dir.join(".pending-1-2-3.json.tmp-12-345-7");
+        let database = dir.join("kavynex.db");
+        let staged_import = dir.join("kavynex.db.import-staged.tmp");
+        make_old_file(&stale, max_age);
+        make_recent_file(&recent);
+        make_old_file(&database, max_age);
+        make_old_file(&staged_import, max_age);
+
+        let summary = cleanup_durable_write_leftovers(&dir, max_age);
+
+        assert_eq!(summary.removed_entries, 1);
+        assert!(!stale.exists());
+        assert!(recent.exists(), "a write that may still be in flight is kept");
+        assert!(database.exists());
+        assert!(staged_import.exists(), "not the leftover shape, whatever its age");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
