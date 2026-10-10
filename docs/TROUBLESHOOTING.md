@@ -33,6 +33,19 @@ If you see this error:
 - Use the in-app Diagnostics dialog, which reports the resolved path and version for both
   tools (or the exact reason they failed the health check).
 
+## "Deno is not available", or a video lists few formats and the download fails
+
+yt-dlp runs part of YouTube's player code to get at a video's formats, and it needs a JavaScript
+runtime for that. Deno is the one yt-dlp uses by default. Without it yt-dlp still starts, but
+YouTube hands it fewer formats, sometimes only low resolutions or images, and some downloads fail
+with "Requested format is not available".
+
+Install Deno (`winget install DenoLand.Deno`, `brew install deno`, or your distribution's package)
+and restart Kavynex. It is found the same way as yt-dlp and FFmpeg, on PATH or in the `tools/`
+folder inside the app's data directory, and Kavynex passes that location on to yt-dlp, so a Deno
+that a Mac app opened from Finder cannot see on its PATH still reaches yt-dlp. Diagnostics shows
+whether Deno was found and which version.
+
 ## Windows: the app window does not open / shows a blank window
 
 Kavynex is a Tauri app and renders its UI with Microsoft Edge WebView2. Windows 11 and

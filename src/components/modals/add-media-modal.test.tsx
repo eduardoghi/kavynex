@@ -237,6 +237,7 @@ describe("AddMediaModal", () => {
                 healthy: true,
                 release_age_days: null,
             },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         renderAddMediaModal({ sourceMode: "yt-dlp" });

@@ -248,12 +248,92 @@ pub fn resolve_yt_dlp_binary<R: Runtime>(app: &AppHandle<R>) -> AppResult<String
         vec!["yt-dlp"]
     };
 
-    resolve_binary_from_candidates(
+    let yt_dlp = resolve_binary_from_candidates(
         app,
         &candidates,
         AppErrorCode::YtDlpNotFound,
         "yt-dlp was not found. Install yt-dlp and ensure it is available in PATH, or place an executable binary inside the app data tools folder.",
-    )
+    )?;
+
+    remember_js_runtime(resolve_js_runtime(app));
+
+    Ok(yt_dlp)
+}
+
+fn js_runtime_candidates() -> Vec<&'static str> {
+    if cfg!(target_os = "windows") {
+        vec!["deno.exe", "deno"]
+    } else {
+        vec!["deno"]
+    }
+}
+
+/// Finds Deno the way yt-dlp and FFmpeg are found (PATH, the platform's fallback directories, then
+/// the app's tools folder), or `None`. Not an error when it is missing, and so not logged as one.
+pub fn resolve_js_runtime<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
+    let candidates = js_runtime_candidates();
+
+    if let Some(found) = resolve_from_path(&candidates) {
+        return Some(found);
+    }
+
+    let tools_dir = app.path().app_data_dir().ok()?.join("tools");
+
+    candidates
+        .iter()
+        .map(|candidate| tools_dir.join(candidate))
+        .find(|path| is_executable_file(path))
+        .map(|path| path.to_string_lossy().to_string())
+}
+
+/// `path_var` with `dir` put first, unless it is already listed.
+fn path_with_dir_first(path_var: Option<&OsStr>, dir: &Path) -> Option<std::ffi::OsString> {
+    let mut dirs: Vec<PathBuf> = path_var
+        .map(|value| std::env::split_paths(value).collect())
+        .unwrap_or_default();
+
+    if dirs.iter().any(|listed| listed == dir) {
+        return None;
+    }
+
+    dirs.insert(0, dir.to_path_buf());
+    std::env::join_paths(dirs).ok()
+}
+
+/// Where Deno was last found, recorded each time yt-dlp is resolved (every yt-dlp run resolves it
+/// first), so the spawn sites can use it without an app handle of their own.
+fn js_runtime_dir() -> &'static std::sync::Mutex<Option<PathBuf>> {
+    static DIR: std::sync::OnceLock<std::sync::Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn remember_js_runtime(deno: Option<String>) {
+    let dir = deno.and_then(|deno| Path::new(&deno).parent().map(Path::to_path_buf));
+
+    *js_runtime_dir()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = dir;
+}
+
+/// Lets a yt-dlp child find Deno where the app found it.
+///
+/// yt-dlp looks for Deno on its own PATH. A Mac app opened from Finder has a PATH without Homebrew's
+/// directory, and a Deno placed in the app's tools folder is on no PATH at all, so yt-dlp ran
+/// without a JavaScript runtime even though the app could see one. When Deno was found somewhere
+/// the child's PATH does not list, that directory is put first on it.
+pub fn expose_js_runtime_to_child(command: &mut tokio::process::Command) {
+    let dir = js_runtime_dir()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+
+    let Some(dir) = dir else {
+        return;
+    };
+
+    if let Some(path) = path_with_dir_first(std::env::var_os("PATH").as_deref(), &dir) {
+        command.env("PATH", path);
+    }
 }
 
 pub fn resolve_ffmpeg_binary<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
@@ -448,6 +528,38 @@ pub fn validate_ffmpeg_binary(binary_path: &str) -> AppResult<String> {
     )
 }
 
+/// Deno's state for Diagnostics. Never an error, see `ExternalToolsStatus::js_runtime`.
+fn js_runtime_health<R: Runtime>(app: &AppHandle<R>) -> ExternalToolHealth {
+    let Some(path) = resolve_js_runtime(app) else {
+        return ExternalToolHealth {
+            path: String::new(),
+            version: String::new(),
+            healthy: false,
+            release_age_days: None,
+        };
+    };
+
+    match run_command_and_capture_first_line(
+        &path,
+        &["--version"],
+        AppErrorCode::AppError,
+        "deno was found but failed health check",
+    ) {
+        Ok(version) => ExternalToolHealth {
+            path,
+            version,
+            healthy: true,
+            release_age_days: None,
+        },
+        Err(_) => ExternalToolHealth {
+            path,
+            version: String::new(),
+            healthy: false,
+            release_age_days: None,
+        },
+    }
+}
+
 pub fn resolve_external_tools_status<R: Runtime>(
     app: &AppHandle<R>,
 ) -> AppResult<ExternalToolsStatus> {
@@ -456,6 +568,7 @@ pub fn resolve_external_tools_status<R: Runtime>(
 
     let yt_dlp_version = validate_yt_dlp_binary(&yt_dlp_path)?;
     let ffmpeg_version = validate_ffmpeg_binary(&ffmpeg_path)?;
+    let js_runtime = js_runtime_health(app);
 
     // Only yt-dlp carries a date in its version, so ffmpeg simply reports no age. The clock is
     // read once, here at the boundary, so the age computation itself stays pure and testable.
@@ -475,6 +588,7 @@ pub fn resolve_external_tools_status<R: Runtime>(
             healthy: true,
             release_age_days: None,
         },
+        js_runtime,
     })
 }
 
@@ -766,6 +880,40 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 7, 16).unwrap();
 
         assert_eq!(release_age_days("2026.08.01", today), Some(0));
+    }
+
+    #[test]
+    fn a_deno_folder_missing_from_path_is_put_first_for_the_child() {
+        let deno_dir = std::env::temp_dir().join("kavynex-deno-bin");
+        let other = std::env::temp_dir().join("kavynex-other-bin");
+        let path_var = std::env::join_paths([&other]).unwrap();
+
+        let path = path_with_dir_first(Some(path_var.as_os_str()), &deno_dir).unwrap();
+
+        assert_eq!(
+            std::env::split_paths(&path).collect::<Vec<_>>(),
+            vec![deno_dir, other]
+        );
+    }
+
+    #[test]
+    fn a_deno_folder_already_on_path_leaves_it_alone() {
+        let deno_dir = std::env::temp_dir().join("kavynex-deno-bin");
+        let path_var = std::env::join_paths([&deno_dir]).unwrap();
+
+        assert!(path_with_dir_first(Some(path_var.as_os_str()), &deno_dir).is_none());
+    }
+
+    #[test]
+    fn a_child_with_no_path_at_all_gets_the_deno_folder() {
+        let deno_dir = std::env::temp_dir().join("kavynex-deno-bin");
+
+        let path = path_with_dir_first(None, &deno_dir).unwrap();
+
+        assert_eq!(
+            std::env::split_paths(&path).collect::<Vec<_>>(),
+            vec![deno_dir]
+        );
     }
 
     #[test]

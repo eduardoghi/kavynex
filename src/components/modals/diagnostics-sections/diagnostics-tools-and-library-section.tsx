@@ -84,6 +84,7 @@ export function DiagnosticsToolsAndLibrarySection({
 
                     <ToolStatus name="yt-dlp" tool={externalTools.yt_dlp} />
                     <ToolStatus name="ffmpeg" tool={externalTools.ffmpeg} />
+                    <ToolStatus name="Deno" tool={externalTools.js_runtime} />
                 </Stack>
             </Grid.Col>
 

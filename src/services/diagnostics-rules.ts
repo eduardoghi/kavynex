@@ -158,6 +158,19 @@ export function buildDiagnosticsIssues(
         });
     }
 
+    // yt-dlp runs YouTube's player code with Deno. Without it yt-dlp still starts, and YouTube hands
+    // it fewer formats or none, which reads as yt-dlp being broken. Only worth saying when yt-dlp
+    // itself works, since its own issue covers the rest.
+    if (input.externalTools.yt_dlp.healthy && !input.externalTools.js_runtime.healthy) {
+        issues.push({
+            code: "JS_RUNTIME_NOT_AVAILABLE",
+            severity: "warning",
+            title: "Deno is not available",
+            description:
+                "yt-dlp needs Deno to read YouTube's videos. Without it some formats are missing and some downloads fail. Install Deno and make sure it is on PATH, or place it in the app's tools folder.",
+        });
+    }
+
     if (!input.externalTools.ffmpeg.healthy) {
         issues.push({
             code: "FFMPEG_NOT_AVAILABLE",

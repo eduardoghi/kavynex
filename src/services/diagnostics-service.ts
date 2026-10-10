@@ -59,6 +59,12 @@ function defaultExternalToolsStatus(): ExternalToolsStatus {
             healthy: false,
             release_age_days: null,
         },
+        js_runtime: {
+            path: "",
+            version: "",
+            healthy: false,
+            release_age_days: null,
+        },
     };
 }
 

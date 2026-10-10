@@ -113,7 +113,7 @@ files are the recoverable half, and `PRIVACY.md` is where that trade is stated f
 
 Note that on Windows and macOS, Tauri's `app_config_dir` and `app_data_dir` resolve to
 the *same* directory; on Linux they differ (`~/.config/...` vs `~/.local/share/...`).
-`services/binaries.rs`'s optional `tools/` fallback folder for yt-dlp/ffmpeg (see the
+`services/binaries.rs`'s optional `tools/` fallback folder for yt-dlp, ffmpeg and deno (see the
 `TROUBLESHOOTING.md`) uses `app_data_dir`, so on Linux it lives in a
 different directory than the database. Verify the exact split on your distribution if
 this matters to you.

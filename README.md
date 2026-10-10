@@ -36,8 +36,10 @@ For normal use, Kavynex requires:
 
 - yt-dlp
 - FFmpeg
+- Deno, which yt-dlp uses to read YouTube's videos. Without it yt-dlp still runs, but YouTube
+  offers it fewer formats and some downloads fail.
 
-Make sure `yt-dlp` and `ffmpeg` are installed and available in your system PATH.
+Make sure `yt-dlp`, `ffmpeg` and `deno` are installed and available in your system PATH.
 
 If you cannot change your PATH (a locked-down work machine, or a portable install you want to
 keep self-contained), drop the executables into a `tools/` folder inside the app's data directory

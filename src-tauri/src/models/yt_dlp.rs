@@ -271,4 +271,8 @@ pub struct ExternalToolHealth {
 pub struct ExternalToolsStatus {
     pub yt_dlp: ExternalToolHealth,
     pub ffmpeg: ExternalToolHealth,
+    /// Deno, the JavaScript runtime yt-dlp runs YouTube's player code with. Unlike the two above,
+    /// a missing one does not fail the check. yt-dlp still starts without it and downloads less
+    /// (some formats go missing, some videos fail), which Diagnostics reports as a warning.
+    pub js_runtime: ExternalToolHealth,
 }

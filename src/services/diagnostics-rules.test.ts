@@ -21,6 +21,7 @@ function baseDiagnostics(): AppDiagnostics {
         externalTools: {
             yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
             ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true, release_age_days: null },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         },
         librarySummary: {
             total_bytes: 1024,
@@ -140,6 +141,26 @@ describe("buildDiagnosticsIssues", () => {
         const codes = buildDiagnosticsIssues(input).map((issue) => issue.code);
 
         expect(codes).toEqual(["LIBRARY_UNREACHABLE", "FFMPEG_NOT_AVAILABLE"]);
+    });
+
+    it("warns when yt-dlp works but Deno is missing", () => {
+        const input = baseDiagnostics();
+        input.externalTools.js_runtime.healthy = false;
+
+        const issues = buildDiagnosticsIssues(input);
+
+        expect(issues.map((issue) => issue.code)).toEqual(["JS_RUNTIME_NOT_AVAILABLE"]);
+        expect(issues[0]!.severity).toBe("warning");
+    });
+
+    it("does not add a Deno warning to a yt-dlp that is itself unavailable", () => {
+        const input = baseDiagnostics();
+        input.externalTools.yt_dlp.healthy = false;
+        input.externalTools.js_runtime.healthy = false;
+
+        const codes = buildDiagnosticsIssues(input).map((issue) => issue.code);
+
+        expect(codes).not.toContain("JS_RUNTIME_NOT_AVAILABLE");
     });
 
     it("flags YT_DLP_NOT_AVAILABLE when yt-dlp is unhealthy", () => {

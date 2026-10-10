@@ -160,6 +160,7 @@ const externalToolStatusSchema = z.object({
 const externalToolsStatusSchema = z.object({
     yt_dlp: externalToolStatusSchema,
     ffmpeg: externalToolStatusSchema,
+    js_runtime: externalToolStatusSchema,
 });
 
 const librarySummaryInfoSchema = z.object({

@@ -929,6 +929,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
 
         let mut command = Command::new(&yt_dlp);
         crate::utils::process::configure_child_async(&mut command);
+        crate::services::binaries::expose_js_runtime_to_child(&mut command);
         // Starts in the run's own temp directory rather than wherever the app was launched from
         // (see utils::process::pin_working_dir_async).
         crate::utils::process::pin_working_dir_async(&mut command, &temp_dir);

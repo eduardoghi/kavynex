@@ -97,6 +97,7 @@ describe("diagnostics-service", () => {
                 healthy: true,
                 release_age_days: null,
             },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockResolvedValueOnce({
@@ -196,6 +197,7 @@ describe("diagnostics-service", () => {
                 healthy: true,
                 release_age_days: null,
             },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockResolvedValueOnce({
@@ -274,6 +276,7 @@ describe("diagnostics-service", () => {
                 healthy: false,
                 release_age_days: null,
             },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockResolvedValueOnce({
@@ -365,6 +368,7 @@ describe("diagnostics-service", () => {
                 healthy: true,
                 release_age_days: null,
             },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockResolvedValueOnce({
@@ -442,6 +446,7 @@ describe("diagnostics-service", () => {
         getExternalToolsStatusMock.mockResolvedValueOnce({
             yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
             ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true, release_age_days: null },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
         getMediaRepositoryStatsMock.mockResolvedValueOnce(
             createMediaRepositoryStats({ total_media: 3, total_video_media: 3 })
@@ -472,6 +477,7 @@ describe("diagnostics-service", () => {
         getExternalToolsStatusMock.mockResolvedValueOnce({
             yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
             ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true, release_age_days: null },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockResolvedValueOnce({
@@ -530,6 +536,7 @@ describe("diagnostics-service", () => {
                 healthy: true,
                 release_age_days: null,
             },
+            js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
         getLibrarySummaryMock.mockRejectedValueOnce(new Error("library scan failed"));

@@ -117,6 +117,7 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
 
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     crate::utils::process::configure_child_async(&mut command);
+    crate::services::binaries::expose_js_runtime_to_child(&mut command);
 
     let mut child = command.spawn().map_err(|e| {
         AppError::from_code(

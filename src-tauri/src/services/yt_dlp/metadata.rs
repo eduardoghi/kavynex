@@ -510,6 +510,7 @@ async fn run_yt_dlp_and_capture_json(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     crate::utils::process::configure_child_async(&mut command);
+    crate::services::binaries::expose_js_runtime_to_child(&mut command);
     // A metadata-only run writes nothing the app keeps, so it has no directory of its own to
     // start in. The default keeps it out of wherever the app was launched from (see
     // utils::process::pin_working_dir_async).
