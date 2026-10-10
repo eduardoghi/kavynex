@@ -9,6 +9,8 @@ import { checkForAppUpdate, relaunch, type Update } from "../lib/tauri-platform"
 import {
     checkAppUpdate,
     installAppUpdate,
+    lastCheckedUpdate,
+    resetLastCheckedUpdateForTests,
     toAppUpdateInfo,
     type AppUpdateProgress,
 } from "./app-update-service";
@@ -50,6 +52,22 @@ function createUpdate(
 describe("checkAppUpdate", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        resetLastCheckedUpdateForTests();
+    });
+
+    it("remembers what the last check found for the rest of the session", async () => {
+        // What lets Settings open on the update the startup check already found.
+        const update = createUpdate();
+        checkForAppUpdateMock.mockResolvedValueOnce(update);
+
+        expect(lastCheckedUpdate()).toBeNull();
+        await checkAppUpdate();
+        expect(lastCheckedUpdate()).toBe(update);
+
+        // A later check that finds nothing replaces it, so Settings never offers a stale install.
+        checkForAppUpdateMock.mockResolvedValueOnce(null);
+        await checkAppUpdate();
+        expect(lastCheckedUpdate()).toBeNull();
     });
 
     it("asks the plugin with the 30s timeout the caller depends on", async () => {

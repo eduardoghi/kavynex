@@ -4,6 +4,7 @@ import { useAppUpdate } from "./use-app-update";
 import {
     checkAppUpdate,
     installAppUpdate,
+    lastCheckedUpdate,
     toAppUpdateInfo,
     type AppUpdateInfo,
 } from "../services/app-update-service";
@@ -13,6 +14,7 @@ vi.mock("../services/app-update-service", () => ({
     checkAppUpdate: vi.fn(),
     installAppUpdate: vi.fn(),
     toAppUpdateInfo: vi.fn(),
+    lastCheckedUpdate: vi.fn(() => null),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -58,6 +60,23 @@ describe("useAppUpdate", () => {
         expect(result.current.updateInfo).toBeNull();
         expect(result.current.progress).toBeNull();
         expect(result.current.errorMessage).toBe("");
+    });
+
+    it("starts on the update the startup check already found", () => {
+        // Settings has its own instance of this hook. Opening it right under the startup notice
+        // used to show "idle" and make the user check again to reach the install button.
+        const update = createUpdate();
+        const updateInfo = createUpdateInfo();
+        vi.mocked(lastCheckedUpdate).mockReturnValue(update);
+        toAppUpdateInfoMock.mockReturnValue(updateInfo);
+
+        const { result } = renderHook(() => useAppUpdate());
+
+        expect(result.current.status).toBe("available");
+        expect(result.current.updateInfo).toEqual(updateInfo);
+        expect(checkAppUpdateMock).not.toHaveBeenCalled();
+
+        vi.mocked(lastCheckedUpdate).mockReturnValue(null);
     });
 
     it("transitions to available with update info when an update exists", async () => {

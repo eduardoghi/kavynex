@@ -13,10 +13,30 @@ export type AppUpdateProgress = {
     percent: number | null;
 };
 
+// The update the last check found, kept for the rest of the session. The startup check runs from
+// the Home controller and Settings has its own hook instance, so without this Settings opened at
+// "idle" right under a notice saying a new version was out, and the user had to check again to
+// reach the install button.
+let lastFoundUpdate: Update | null = null;
+
 export async function checkAppUpdate(): Promise<Update | null> {
-    return await checkForAppUpdate({
+    const update = await checkForAppUpdate({
         timeout: 30000
     });
+
+    lastFoundUpdate = update;
+
+    return update;
+}
+
+// The update the last check this session found, or null when none has run or none was found.
+export function lastCheckedUpdate(): Update | null {
+    return lastFoundUpdate;
+}
+
+// Test-only. Forgets the update a previous test's check found.
+export function resetLastCheckedUpdateForTests(): void {
+    lastFoundUpdate = null;
 }
 
 export function toAppUpdateInfo(update: Update): AppUpdateInfo {

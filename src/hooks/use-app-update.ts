@@ -5,6 +5,7 @@ import { useRequestGuard } from "./use-request-guard";
 import {
     checkAppUpdate,
     installAppUpdate,
+    lastCheckedUpdate,
     toAppUpdateInfo,
     type AppUpdateInfo,
     type AppUpdateProgress
@@ -38,9 +39,15 @@ export type UseAppUpdateReturn = {
 };
 
 export function useAppUpdate(): UseAppUpdateReturn {
-    const [status, setStatus] = useState<AppUpdateStatus>("idle");
-    const [update, setUpdate] = useState<Update | null>(null);
-    const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+    // Starts from what the startup check already found, so Settings offers the install right away.
+    const [status, setStatus] = useState<AppUpdateStatus>(() =>
+        lastCheckedUpdate() ? "available" : "idle"
+    );
+    const [update, setUpdate] = useState<Update | null>(() => lastCheckedUpdate());
+    const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(() => {
+        const found = lastCheckedUpdate();
+        return found ? toAppUpdateInfo(found) : null;
+    });
     const [progress, setProgress] = useState<AppUpdateProgress | null>(null);
     const [errorMessage, setErrorMessage] = useState("");
 
