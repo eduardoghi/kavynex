@@ -395,7 +395,7 @@ describe("MediaPlayerView", () => {
     });
 
     describe("keyboard shortcuts", () => {
-        function renderVideoPlayer() {
+        function renderVideoPlayer({ onBack = vi.fn() }: { onBack?: () => void } = {}) {
             renderWithMantine(
                 <MediaPlayerView
                     media={createMedia({ title: "Video" })}
@@ -410,7 +410,7 @@ describe("MediaPlayerView", () => {
                     onMarkWatched={vi.fn()}
                     onMarkUnwatched={vi.fn()}
                     onSaveProgress={vi.fn()}
-                    onBack={vi.fn()}
+                    onBack={onBack}
                 />
             );
         }
@@ -481,6 +481,27 @@ describe("MediaPlayerView", () => {
             expect(video.muted).toBe(false);
             fireEvent.keyDown(document, { code: "KeyM", repeat: true });
             expect(video.muted).toBe(false);
+        });
+
+        it("puts focus on the media right after opening, so the shortcuts act", () => {
+            // The player used to open with the back button focused, where the shortcuts do not
+            // act, so Space pressed the button and closed the player.
+            //
+            // jsdom does not treat a <video controls> as focusable the way the webview does, so the
+            // focus call is observed rather than `document.activeElement`.
+            const focus = vi.spyOn(HTMLMediaElement.prototype, "focus");
+            const onBack = vi.fn();
+            renderVideoPlayer({ onBack });
+            const video = screen.getByLabelText(/video player/i) as HTMLVideoElement;
+
+            expect(focus.mock.contexts).toContain(video);
+
+            fireEvent.keyDown(video, { code: "KeyM" });
+
+            expect(video.muted).toBe(true);
+            expect(onBack).not.toHaveBeenCalled();
+
+            focus.mockRestore();
         });
 
         it("ignores shortcuts when an input is focused", () => {

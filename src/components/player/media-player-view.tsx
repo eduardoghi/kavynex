@@ -79,7 +79,8 @@ export function MediaPlayerView({
     // Move focus into the player when it opens (the library grid stays mounted but hidden behind
     // it, so focus would otherwise be dropped on <body>), and restore it to whatever opened the
     // player (the originating card) when it closes, if that element is still around. Runs once for
-    // the player's lifetime, and the back control is the natural landing spot.
+    // the player's lifetime. The back control holds focus only until the media element exists
+    // (see the effect below), and keeps it when there is nothing to play.
     useEffect(() => {
         const previouslyFocused = document.activeElement as HTMLElement | null;
         backButtonRef.current?.focus();
@@ -122,6 +123,24 @@ export function MediaPlayerView({
         error: liveChatError,
     } = useMediaLiveChat(media, libraryPath);
     usePlayerKeyboardShortcuts(playerElementRef);
+
+    // Focus the media element the first time it exists. The shortcuts act only while focus is on the
+    // player or on nothing, so with the back button focused they were all inert, and Space, which
+    // the header advertises as play and pause, pressed the button and closed the player instead.
+    // Once per player lifetime, so moving to another media in the same view leaves focus where the
+    // user put it.
+    const hasFocusedMediaRef = useRef(false);
+
+    useEffect(() => {
+        if (!playerElement || hasFocusedMediaRef.current) {
+            return;
+        }
+
+        hasFocusedMediaRef.current = true;
+        // Not a keyboard move, so no focus ring on the picture (see suppressFocusRingOnce).
+        suppressFocusRingOnce(playerElement);
+        playerElement.focus({ focusVisible: false });
+    }, [playerElement]);
 
     // Clear the "can't play" banner whenever the media (or its resolved source) changes, so a
     // playable file never inherits the previous file's error.
