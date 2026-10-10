@@ -36,6 +36,28 @@ export const VIDEO_FILE_EXTENSIONS = [
 
 const AUDIO_EXTENSIONS = new Set<string>(AUDIO_FILE_EXTENSIONS);
 
+// Accepted types the built-in player usually cannot decode. WebView2 (Chromium) has no demuxer for
+// these containers, and while WebKitGTK on Linux hands playback to GStreamer and may manage some of
+// them, nothing guarantees the plugins are installed. The import goes ahead either way. This only
+// lets the form say so before the file is added, instead of the player saying it afterwards.
+const LIKELY_UNPLAYABLE_EXTENSIONS = new Set<string>([
+    "avi",
+    "wmv",
+    "flv",
+    "mpg",
+    "mpeg",
+    "wma",
+    "aiff",
+]);
+
+// Whether the built-in player is likely to refuse this file. See LIKELY_UNPLAYABLE_EXTENSIONS.
+export function mayNotPlayInBuiltInPlayer(path: string): boolean {
+    const name = fileNameFromPath(path).toLowerCase();
+    const dot = name.lastIndexOf(".");
+
+    return dot !== -1 && LIKELY_UNPLAYABLE_EXTENSIONS.has(name.slice(dot + 1));
+}
+
 // The image file types Kavynex accepts for a thumbnail or channel avatar, in the order shown in
 // the file picker. Both the thumbnail classification below and the avatar/thumbnail picker filter
 // (pickImageFilePath in utils/pick-image-file.ts) derive from this one list so they cannot drift.

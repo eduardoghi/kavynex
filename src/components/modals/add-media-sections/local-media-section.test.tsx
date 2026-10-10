@@ -207,4 +207,30 @@ describe("LocalMediaSection", () => {
 
         expect(onPickMedia).not.toHaveBeenCalled();
     });
+
+    it("warns before importing a file type the built-in player usually cannot play", () => {
+        const { rerender } = renderWithMantine(
+            <LocalMediaSection
+                mediaPath="C:/Videos/old-recording.AVI"
+                mediaType="video"
+                importMode="copy"
+                isLocked={false}
+                onPickMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.getByText(/usually can't play this file type/)).toBeInTheDocument();
+
+        rerender(
+            <LocalMediaSection
+                mediaPath="C:/Videos/clip.mp4"
+                mediaType="video"
+                importMode="copy"
+                isLocked={false}
+                onPickMedia={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText(/usually can't play this file type/)).not.toBeInTheDocument();
+    });
 });

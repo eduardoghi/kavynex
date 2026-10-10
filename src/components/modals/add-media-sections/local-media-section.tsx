@@ -3,7 +3,7 @@ import { Headphones, Upload, Video } from "lucide-react";
 import type { MediaType } from "../../../types/media";
 import type { ImportMode } from "../../../types/settings";
 import { MEDIA_TYPE_ACCENT_COLOR } from "../../../constants/media-type-accent";
-import { fileNameFromPath } from "../../../utils/media-utils";
+import { fileNameFromPath, mayNotPlayInBuiltInPlayer } from "../../../utils/media-utils";
 import {
     FILE_PICKER_BACKGROUND,
     FILE_PICKER_BORDER_COLOR,
@@ -112,6 +112,13 @@ export function LocalMediaSection({
                     {/* Said here, next to the file it applies to, because the setting lives in
                         Settings and this is the moment the user's original is about to leave its
                         folder. */}
+                    {hasMedia && mayNotPlayInBuiltInPlayer(mediaPath) && (
+                        <Text size="sm" c="yellow" lineClamp={2}>
+                            Kavynex's built-in player usually can't play this file type. It is
+                            still added to the library and opens in another app.
+                        </Text>
+                    )}
+
                     {hasMedia && importMode === "move" && (
                         <Text size="sm" c="dimmed" lineClamp={2}>
                             Move is on in Settings. The original file leaves its folder once the
