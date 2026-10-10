@@ -36,13 +36,14 @@ use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 use self::fetch::{
-    assert_url_host_is_public, direct_image_extension, http_get_image, looks_like_supported_image,
+    assert_url_host_is_public, direct_image_extension, http_get_image,
     ALLOWED_THUMBNAIL_CONTENT_TYPES,
 };
 use self::process::{
     build_thumbnail_command_args, run_thumbnail_yt_dlp_with_timeout, ThumbnailTarget,
     THUMBNAIL_COMMAND_TIMEOUT_SECS,
 };
+use crate::utils::format::looks_like_supported_image;
 
 /// Runs `persist_thumbnail_from_source` (full-file SHA-256 hashing plus a copy) on the
 /// blocking thread pool, so this heavy I/O never runs directly on an async task.

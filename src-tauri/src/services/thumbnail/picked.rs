@@ -19,7 +19,9 @@
 
 use std::path::PathBuf;
 
-use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbnail_extension};
+use crate::utils::format::{
+    allowed_thumbnail_extensions_label, is_allowed_thumbnail_extension, looks_like_supported_image,
+};
 use crate::utils::path::{extension_from_path, is_network_path};
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -71,7 +73,39 @@ pub(crate) fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
         ));
     }
 
+    // The bytes too, not only the name. FFmpeg reads this file to scale it for the grid and detects
+    // the format by content, so a playlist or anything else renamed `.jpg` would be opened as what it
+    // really is. The remote path has always sniffed, this one only checked the extension.
+    if !file_starts_like_an_image(&source_path) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "the file is not an image, whatever its name says",
+        ));
+    }
+
     Ok(source_path)
+}
+
+/// Reads the first bytes of `path` and sniffs them (see [`looks_like_supported_image`]). A file that
+/// cannot be read is not an image the app can use either.
+fn file_starts_like_an_image(path: &std::path::Path) -> bool {
+    use std::io::Read;
+
+    let mut head = [0u8; 16];
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+
+    let mut filled = 0;
+    while filled < head.len() {
+        match file.read(&mut head[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(_) => return false,
+        }
+    }
+
+    looks_like_supported_image(&head[..filled])
 }
 
 /// The name a picked image lands under in the preview directory.
@@ -160,13 +194,30 @@ mod tests {
     }
 
     #[test]
+    fn a_file_named_like_an_image_that_is_not_one_is_rejected() {
+        // What FFmpeg would otherwise open as what it really is, a playlist naming remote segments
+        // being the case that matters.
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("cover.jpg");
+        fs::write(&file, b"#EXTM3U\n#EXTINF:1,\nhttp://example.com/a.ts\n").unwrap();
+
+        let error = validate_picked_thumbnail_path(&file.to_string_lossy())
+            .expect_err("a playlist named .jpg is not an image");
+
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn an_existing_image_is_accepted_and_returned_trimmed() {
         let dir = unique_test_dir();
         fs::create_dir_all(&dir).unwrap();
 
         for name in ["thumb.png", "photo.JPG", "art.webp"] {
             let file = dir.join(name);
-            fs::write(&file, b"\x89PNG\r\n").unwrap();
+            fs::write(&file, b"\x89PNG\r\n\x1a\nrest of the image").unwrap();
 
             // Padded input. The returned path is what the copy will read, so it has to be the
             // trimmed one. The same single-path invariant the database export/import gates pin.

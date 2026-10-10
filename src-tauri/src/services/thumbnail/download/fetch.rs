@@ -27,6 +27,7 @@ use tower_service::Service;
 use crate::services::ssrf_guard::is_disallowed_ip;
 use crate::services::thumbnail::redirect::{next_hop, MAX_REDIRECT_HOPS};
 use crate::services::thumbnail::url::is_allowed_thumbnail_image_host;
+use crate::utils::format::looks_like_supported_image;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const DIRECT_THUMBNAIL_MAX_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
@@ -81,40 +82,6 @@ pub(super) fn direct_image_extension(url: &str) -> Option<&'static str> {
     }
 
     None
-}
-
-/// Sniffs `bytes` against the magic numbers of the image formats this app accepts. The
-/// Content-Type header on a direct thumbnail download is attacker-controlled (any server the
-/// URL points to), so it is not sufficient on its own to prove the bytes are actually an
-/// image before they are written to disk and later served from the library.
-pub(super) fn looks_like_supported_image(bytes: &[u8]) -> bool {
-    const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
-    const JPEG_SIGNATURE: &[u8] = b"\xFF\xD8\xFF";
-    const GIF_SIGNATURE: &[u8] = b"GIF8";
-    const BMP_SIGNATURE: &[u8] = b"BM";
-
-    if bytes.starts_with(PNG_SIGNATURE)
-        || bytes.starts_with(JPEG_SIGNATURE)
-        || bytes.starts_with(GIF_SIGNATURE)
-        || bytes.starts_with(BMP_SIGNATURE)
-    {
-        return true;
-    }
-
-    // WEBP. A RIFF container with a "WEBP" fourCC at offset 8.
-    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-        return true;
-    }
-
-    // AVIF. An ISOBMFF `ftyp` box (offset 4) whose brand (offset 8) is avif/avis.
-    if bytes.len() >= 12
-        && &bytes[4..8] == b"ftyp"
-        && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
-    {
-        return true;
-    }
-
-    false
 }
 
 /// Resolves the host of `uri` and rejects it if it maps to any private, loopback or

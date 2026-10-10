@@ -394,6 +394,10 @@ fn display_cache_key(relative_path: &str) -> Option<String> {
 fn build_display_thumbnail_args(source_path: &Path, out_path: &Path) -> Vec<String> {
     vec![
         "-y".to_string(),
+        // See thumbnail::temp::INPUT_PROTOCOLS. A thumbnail the user picked is checked by its
+        // extension only, and this runs on it every time the grid draws its card.
+        "-protocol_whitelist".to_string(),
+        crate::services::thumbnail::temp::INPUT_PROTOCOLS.to_string(),
         "-i".to_string(),
         source_path.to_string_lossy().to_string(),
         "-frames:v".to_string(),

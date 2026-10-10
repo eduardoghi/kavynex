@@ -253,6 +253,14 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
 /// smaller source, and let the height follow the aspect ratio.
 const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
 
+/// The protocols FFmpeg may open while reading a file the app hands it, set on every input.
+///
+/// FFmpeg detects a format by content, not by extension, so a `.jpg` or `.mp4` that is really a
+/// playlist (HLS, concat) makes it open whatever the playlist names. Over `http` that tells a server
+/// the file was opened, and a `\\host\share` name on Windows sends it the user's NTLM hash. The
+/// app only ever reads local files, so nothing else is allowed.
+pub(crate) const INPUT_PROTOCOLS: &str = "file,pipe";
+
 /// The name a generated preview lands under, content-addressed by the source file's hash and
 /// carrying the container both thumbnail producers share ([`THUMBNAIL_OUTPUT_FORMAT`]).
 ///
@@ -276,6 +284,8 @@ fn build_video_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
         "-y".to_string(),
         "-ss".to_string(),
         "0.1".to_string(),
+        "-protocol_whitelist".to_string(),
+        INPUT_PROTOCOLS.to_string(),
         "-i".to_string(),
         source_path.to_string_lossy().to_string(),
         "-frames:v".to_string(),
@@ -293,6 +303,8 @@ fn build_video_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
 fn build_audio_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<String> {
     vec![
         "-y".to_string(),
+        "-protocol_whitelist".to_string(),
+        INPUT_PROTOCOLS.to_string(),
         "-i".to_string(),
         source_path.to_string_lossy().to_string(),
         "-map".to_string(),
@@ -392,13 +404,46 @@ pub fn generate_temporary_thumbnail_sync<R: Runtime>(
         return Ok(out_thumbnail.to_string_lossy().to_string());
     }
 
-    if media_kind == "audio" {
-        generate_audio_embedded_temporary_thumbnail(&ffmpeg, &source_path, &out_thumbnail)?;
+    // FFmpeg writes under a scratch name that only becomes the preview once it has finished. The
+    // final name is what the check above reuses, and a frame cut short by the timeout or a failed
+    // run, left under it, was served from then on and could be persisted into the library as the
+    // media's thumbnail. The scratch name keeps the extension, which FFmpeg picks its encoder from.
+    let partial = thumbs_dir.join(partial_thumbnail_file_name(&hash));
+
+    let generated = if media_kind == "audio" {
+        generate_audio_embedded_temporary_thumbnail(&ffmpeg, &source_path, &partial)
     } else {
-        generate_video_temporary_thumbnail(&ffmpeg, &source_path, &out_thumbnail)?;
+        generate_video_temporary_thumbnail(&ffmpeg, &source_path, &partial)
+    };
+
+    if let Err(error) = generated {
+        let _ = fs::remove_file(&partial);
+        return Err(error);
+    }
+
+    if let Err(error) = fs::rename(&partial, &out_thumbnail) {
+        let _ = fs::remove_file(&partial);
+
+        return Err(AppError::fs_error(
+            AppErrorCode::FfmpegFailed,
+            "failed to put the generated thumbnail in place",
+            &out_thumbnail,
+            &error,
+        ));
     }
 
     Ok(out_thumbnail.to_string_lossy().to_string())
+}
+
+/// The scratch name a preview is generated under before it is renamed to its final one. A leading
+/// dot and a unique part, so two generations of the same source never share it, and the cache
+/// sweep removes one a crash left behind once it is a week old.
+fn partial_thumbnail_file_name(source_hash: &str) -> String {
+    format!(
+        ".partial-{}-{}",
+        crate::utils::naming::unique_temp_suffix(),
+        temporary_thumbnail_file_name(source_hash)
+    )
 }
 
 /// Copies an image the user picked into the preview directory and returns its path there.
@@ -561,6 +606,8 @@ mod tests {
                 "-y",
                 "-ss",
                 "0.1",
+                "-protocol_whitelist",
+                "file,pipe",
                 "-i",
                 "/tmp/clip.mp4",
                 "-frames:v",
@@ -581,6 +628,8 @@ mod tests {
             args,
             vec![
                 "-y",
+                "-protocol_whitelist",
+                "file,pipe",
                 "-i",
                 "/tmp/song.mp3",
                 "-map",

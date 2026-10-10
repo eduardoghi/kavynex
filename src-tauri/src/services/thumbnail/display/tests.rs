@@ -367,6 +367,8 @@ fn display_thumbnail_args_scale_down_without_ever_upscaling() {
         args,
         vec![
             "-y",
+            "-protocol_whitelist",
+            "file,pipe",
             "-i",
             "/lib/thumb.jpg",
             "-frames:v",
@@ -380,7 +382,7 @@ fn display_thumbnail_args_scale_down_without_ever_upscaling() {
     // `min(max,iw)` and not a bare width. The two producers write at different sizes (a yt-dlp
     // maxresdefault at 1280 wide, an FFmpeg frame already capped at 640), and upscaling the
     // smaller one would cost disk and decode time to make it blurrier.
-    let filter = &args[6];
+    let filter = &args[args.iter().position(|arg| arg == "-vf").unwrap() + 1];
     assert!(
         filter.contains("min("),
         "the filter must not upscale: {filter}"
