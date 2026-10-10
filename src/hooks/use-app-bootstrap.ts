@@ -5,6 +5,7 @@ import {
     restoreDatabaseFromBackup,
 } from "../services/database-service";
 import {
+    DATABASE_MIGRATION_BLOCKED_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     DATABASE_UNAVAILABLE_ERROR_CODE,
 } from "../constants/error-codes";
@@ -66,6 +67,16 @@ export function useAppBootstrap({
                 // perfectly healthy with an older snapshot, so say what to do instead.
                 if (parseAppError(error).code === DATABASE_UNAVAILABLE_ERROR_CODE) {
                     onError(resolveErrorMessage(error, "Kavynex could not read its database."));
+                    return;
+                }
+
+                // The upgrade could not run, usually for lack of disk space, and the database was
+                // left as it was. A restore would replace it with an older snapshot that fails the
+                // same upgrade, and lose up to a day of changes on the way.
+                if (parseAppError(error).code === DATABASE_MIGRATION_BLOCKED_ERROR_CODE) {
+                    onError(
+                        resolveErrorMessage(error, "Kavynex could not upgrade its database.")
+                    );
                     return;
                 }
 

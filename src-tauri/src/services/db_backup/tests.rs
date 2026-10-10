@@ -2237,3 +2237,47 @@ async fn an_imported_database_whose_rows_point_at_nothing_is_refused() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[tokio::test]
+async fn a_pre_migration_snapshot_is_restored_when_no_daily_backup_is_left() {
+    // The daily generations can all be gone or damaged while the snapshot taken before the last
+    // upgrade sits beside them, and the restore never looked at it.
+    let dir = temp_dir("restore-pre-migration");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    std::fs::copy(&db, snapshot::pre_migration_path(&db, 14)).unwrap();
+
+    std::fs::write(&db, b"not a database").unwrap();
+
+    restore_database_from_backup(&db).await.unwrap();
+
+    assert_eq!(read_single_value(&db).await, "hello");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_daily_backups_come_before_the_pre_migration_snapshots_newest_first() {
+    let dir = temp_dir("candidates-order");
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("kavynex.db");
+
+    for path in [
+        sibling(&db, ".bak"),
+        snapshot::pre_migration_path(&db, 13),
+        snapshot::pre_migration_path(&db, 14),
+    ] {
+        std::fs::write(path, b"x").unwrap();
+    }
+
+    assert_eq!(
+        snapshot::backup_candidates(&db),
+        vec![
+            sibling(&db, ".bak"),
+            snapshot::pre_migration_path(&db, 14),
+            snapshot::pre_migration_path(&db, 13),
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

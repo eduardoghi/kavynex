@@ -27,6 +27,9 @@ pub enum AppErrorCode {
     DatabaseImportInvalid,
     DatabaseSchemaTooNew,
     DatabaseUnavailable,
+    // A pending schema migration could not run, or its safety snapshot could not be taken. The
+    // database itself was not found damaged, so restoring an older backup is not the answer.
+    DatabaseMigrationBlocked,
 
     DataDirectoryResolveFailed,
     CacheDirectoryResolveFailed,
@@ -209,6 +212,7 @@ impl AppErrorCode {
             Self::DatabaseImportInvalid => "DATABASE_IMPORT_INVALID",
             Self::DatabaseSchemaTooNew => "DATABASE_SCHEMA_TOO_NEW",
             Self::DatabaseUnavailable => "DATABASE_UNAVAILABLE",
+            Self::DatabaseMigrationBlocked => "DATABASE_MIGRATION_BLOCKED",
 
             Self::DataDirectoryResolveFailed => "DATA_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryResolveFailed => "CACHE_DIRECTORY_RESOLVE_FAILED",

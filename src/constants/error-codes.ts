@@ -11,6 +11,9 @@ export const DATABASE_SCHEMA_TOO_NEW_ERROR_CODE = "DATABASE_SCHEMA_TOO_NEW" as c
 // The database file is there but could not be read (a lock, a sharing violation, a permission
 // error). Startup recovery must not offer a backup restore for it, since the file may be fine.
 export const DATABASE_UNAVAILABLE_ERROR_CODE = "DATABASE_UNAVAILABLE" as const;
+// An upgrade of the database could not run (or its safety snapshot could not be taken). The file is
+// not damaged, so the startup flow must not offer to replace it with an older backup.
+export const DATABASE_MIGRATION_BLOCKED_ERROR_CODE = "DATABASE_MIGRATION_BLOCKED" as const;
 
 export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
 export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
@@ -170,6 +173,7 @@ export const KNOWN_ERROR_CODES = [
     INVALID_INPUT_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     DATABASE_UNAVAILABLE_ERROR_CODE,
+    DATABASE_MIGRATION_BLOCKED_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,

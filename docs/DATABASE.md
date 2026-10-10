@@ -427,15 +427,20 @@ When `build_pool_at` finds a migration pending, it snapshots the database into
 `kavynex.db.pre-migration-v<N>`, N being the schema version the migration starts from, before any
 DDL runs. Unlike `backup_database` this is never throttled, so the rollback point is the database
 as it was a moment before the upgrade, and it is outside the `.bak` rotation, so the daily snapshot
-does not push it out. The two most recent are kept. A failure to take it blocks the migration, the
-same way a failed `quick_check` does. Restore does not pick it up. It is the manual way back after
-a migration that went wrong or a downgrade, and `DIRECTORIES.md` lists it.
+does not push it out. The two most recent are kept. A failure to take it blocks the migration with
+`DatabaseMigrationBlocked`, and so does a migration that fails (it rolls back to the version it
+started from). The database is not damaged in either case, so the frontend shows what to do instead
+of offering the restore below, which would bring back an older snapshot that fails the same way.
+Restore does pick the snapshot up, after the daily generations (see below), and it is also the
+manual way back after a migration that went wrong or a downgrade. `DIRECTORIES.md` lists it.
 
 ### Restore (`restore_database_from_backup`)
 
 Used when opening the live database fails. It walks every generation in turn (`.bak`, then
-`.bak.1` through `.bak.6`), and takes the first that itself passes `quick_check`, so a run of
-bad snapshots does not cost the recovery. `.bak.tmp` is offered last, since `backup_database` vacuums
+`.bak.1` through `.bak.6`, then the `.pre-migration-v<N>` snapshots, newest version first), and
+takes the first that itself passes `quick_check`, so a run of bad snapshots does not cost the
+recovery. A pre-migration snapshot holds an older schema, which the migrations bring forward again
+on the next open. `.bak.tmp` is offered last, since `backup_database` vacuums
 into it and only promotes it once that succeeds, so a run that died in that window strands a
 complete snapshot there that nothing else would look at, but a run that died *during* the
 vacuum leaves a partial file under the same name, and nothing can tell them apart, so it must

@@ -266,9 +266,22 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
 /// Every caller re-runs `quick_check` on the candidate it picks, which is what makes offering
 /// this safe. A torn file is rejected there, and a healthy one is only reached when no real
 /// generation survived.
+///
+/// The pre-migration snapshots come after the daily generations, newest version first. Each is the
+/// database as it was just before an upgrade, an older schema the migrations bring forward again
+/// after a restore. They were never offered, so a library whose daily backups were all damaged
+/// had healthy copies beside it that the restore did not look at.
 pub(super) fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
+    let mut pre_migration_versions = pre_migration_versions_on_disk(db_path);
+    pre_migration_versions.sort_unstable_by(|left, right| right.cmp(left));
+
     (0..=BACKUP_ROTATED_GENERATIONS)
         .map(|generation| generation_backup_path(db_path, generation))
+        .chain(
+            pre_migration_versions
+                .into_iter()
+                .map(|version| pre_migration_path(db_path, version)),
+        )
         .chain(std::iter::once(temp_backup_path(db_path)))
         .filter(|path| path.exists())
         .collect()

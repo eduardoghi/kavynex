@@ -361,14 +361,16 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
         // to take it (disk full, permission denied, a failed VACUUM) blocks the migration rather
         // than letting it proceed unprotected. It is never throttled, so the rollback point is the
         // database as it was a moment ago, not a daily snapshot up to a day old. A first run has no
-        // file yet and nothing to snapshot. The frontend's startup recovery flow handles this
-        // AppError the same way it handles the quick_check gate above.
+        // file yet and nothing to snapshot.
+        //
+        // Its own code, because the database is fine. The startup recovery offers a restore for a
+        // failed open, and a restore here would replace a healthy database with a snapshot up to a
+        // day old over what is usually a full disk.
         if let Err(error) = snapshot_before_migration(path).await {
             return Err(AppError::from_code_with_details(
-                AppErrorCode::AppError,
+                AppErrorCode::DatabaseMigrationBlocked,
                 "could not snapshot the database before a pending schema migration, so free up disk \
-                 space and check permissions on the app config directory, then restart, or restore \
-                 from a backup in Settings > Database",
+                 space and check permissions on the app config directory, then restart",
                 error.to_string(),
             ));
         }
@@ -399,7 +401,24 @@ async fn build_pool_at(path: &Path) -> AppResult<SqlitePool> {
 
     // The schema is owned by the backend. create/migrate it as part of pool
     // initialization so it is ready before any query runs.
-    crate::services::db_schema::ensure_schema(&pool).await?;
+    //
+    // A migration that fails rolls back to the version it started from, so the database is as it
+    // was and an older backup would carry the same data into the same failure. Reported under its
+    // own code for the same reason as the snapshot above. A database too new for this build keeps
+    // its code, which the frontend answers with "update the app".
+    crate::services::db_schema::ensure_schema(&pool)
+        .await
+        .map_err(|error| {
+            if !migration_pending || error.code == AppErrorCode::DatabaseSchemaTooNew.as_str() {
+                return error;
+            }
+
+            AppError::from_code_with_details(
+                AppErrorCode::DatabaseMigrationBlocked,
+                "the database could not be upgraded to this version of Kavynex and was left as it was",
+                error.to_string(),
+            )
+        })?;
 
     if !migration_pending {
         // No migration ran, so the snapshot was skipped above. Take the (throttled) daily

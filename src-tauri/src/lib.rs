@@ -211,7 +211,7 @@ fn spawn_startup_integrity_check(app_handle: AppHandle) {
                 services::logger::error(
                     "db_integrity",
                     format!(
-                        "background integrity check found {} problem(s). The database may be corrupt. Open Settings > Database to restore from a backup: {}",
+                        "background integrity check found {} problem(s). The database may be corrupt. See \"Kavynex reports a corrupted database\" in docs/TROUBLESHOOTING.md: {}",
                         report.problems.len(),
                         report.problems.join("; ")
                     ),

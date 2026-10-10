@@ -277,6 +277,28 @@ next to the database as `kavynex.db.corrupt` rather than deleted, so it can stil
 live. If the library ever looks incomplete after a restore, run Diagnostics to reconcile the
 database against the files on disk.
 
+The automatic restore runs only when the database cannot be opened. The weekly background check is
+more thorough, and it can find damage in a database that still opens. Kavynex then says so and
+keeps running on it, since the damage may be limited to an index and the newest backup can be up
+to a day old. To restore a backup by hand:
+
+1. Export the database from Settings > Database, so the current state is kept wherever you choose.
+2. Close Kavynex.
+3. In the config directory (`DIRECTORIES.md` lists it per OS), rename `kavynex.db` to
+   `kavynex.db.damaged` and delete `kavynex.db-wal` and `kavynex.db-shm` if they are there.
+4. Copy `kavynex.db.bak` (the newest daily snapshot) to `kavynex.db`. The older ones are
+   `kavynex.db.bak.1` and up, and `kavynex.db.pre-migration-v<N>` is the database as it was just
+   before an upgrade.
+5. Start Kavynex and run Diagnostics.
+
+## Kavynex could not upgrade its database
+
+After an update, the first start upgrades the database, and it takes a snapshot first so the
+upgrade can be undone. When either step fails, Kavynex stops before changing anything and says so.
+The database is not damaged and nothing was lost. The usual cause is a full disk on the drive that
+holds the app's data, so free up space and start Kavynex again. If it keeps happening, the app log
+(see "Where logs live" below) names the step that failed.
+
 ## Windows: the uninstaller asks whether to delete the database and its backups
 
 The uninstaller's first page has a **Delete the application data** checkbox. It is unticked by

@@ -13,8 +13,9 @@ type UseDatabaseIntegrityAlertOptions = {
 // action-oriented. The raw PRAGMA problems stay in the log file (and the event payload) for a bug
 // report, but the user is told what happened and what to do, not shown the internal diagnostics.
 const INTEGRITY_FAILURE_MESSAGE =
-    "A routine check found that the app database may be corrupted. Open Settings > Database to " +
-    "restore from a backup. Until then, some of your library may not load correctly.";
+    "A routine check found damage in the app database. Your library still opens, but some of it " +
+    "may not load correctly. Export a copy from Settings > Database now, then see \"Kavynex " +
+    "reports a corrupted database\" in the troubleshooting guide to restore an automatic backup.";
 
 // Subscribes to the backend's database-integrity-failed event and surfaces it to the user. The
 // background full integrity check runs off the startup critical path and only logs on failure; this

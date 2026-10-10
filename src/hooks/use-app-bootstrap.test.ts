@@ -117,6 +117,25 @@ describe("useAppBootstrap", () => {
         expect(result.current.open).toBe(false);
     });
 
+    it("does not offer a restore when an upgrade of the database could not run", async () => {
+        // The database was left as it was, usually for lack of disk space. A restore would put
+        // back a snapshot up to a day old that fails the same upgrade.
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce({
+            code: "DATABASE_MIGRATION_BLOCKED",
+            message: "could not snapshot the database before a pending schema migration",
+        });
+
+        const onError = vi.fn();
+        const { result } = renderHook(() => useAppBootstrap({ onError }));
+
+        await waitFor(() => {
+            expect(onError).toHaveBeenCalledWith("Kavynex could not upgrade its database.");
+        });
+
+        expect(getDatabaseBackupStatus).not.toHaveBeenCalled();
+        expect(result.current.open).toBe(false);
+    });
+
     it("logs and swallows the error when the backup status check itself fails", async () => {
         const readyError = new Error("boom");
         const statusError = new Error("status check failed");
