@@ -32,6 +32,14 @@ fn cancelled(stage: &str) -> AppError {
 /// Imports a media file with no way to interrupt it. The shape the tests and any future
 /// non-interactive caller want; the user-facing path goes through
 /// [`stage_media_import_cancellable_sync`].
+/// The library name of a media file whose content hashes to `digest`.
+///
+/// Shared by the local import and the yt-dlp download, so the same bytes land on the same file
+/// whichever way they arrived, and so the deep verification can check either against its name.
+pub(crate) fn content_addressed_media_name(digest: &str, extension: &str) -> String {
+    format!("media_{digest}.{extension}")
+}
+
 pub fn import_media_file_sync(
     path: &str,
     mode: ImportMode,
@@ -186,7 +194,7 @@ pub fn stage_media_import_cancellable_sync(
     })?;
 
     let hash = file_hash_cancellable(&source, cancel)?;
-    let destination = media_dir.join(format!("media_{hash}.{ext}"));
+    let destination = media_dir.join(content_addressed_media_name(&hash, &ext));
 
     ensure_path_parent_inside_dir(&destination, &library_dir)?;
 

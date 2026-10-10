@@ -243,21 +243,20 @@ fn find_downloaded_media_file(
     pick_downloaded_media(candidates, expected_ext).ok_or_else(not_found)
 }
 
-/// Returns the final path and whether an already-catalogued file was kept (the fresh download
-/// was discarded). The caller surfaces the second value to the user, since otherwise a re-download
-/// of the same video+format silently keeps the old bytes with no visible signal.
+/// Returns the final path and whether a library file with the same content was kept (the fresh
+/// download was discarded). The caller surfaces the second value to the user.
+///
+/// The library copy is named after its content (`media_<sha256>.<ext>`), like a local import. That
+/// name is what the deep verification checks a file against, and it settles what a file already at
+/// that name means. One whose bytes still hash to the name holds this exact content already (the
+/// same video saved for another channel), so the fresh copy is dropped. One whose bytes do not is a
+/// damaged copy, and the fresh download replaces it, which is the repair a second download is for.
+/// Every row naming the file points at the right bytes either way.
 fn place_downloaded_file(
     downloaded_temp: &Path,
     media_dir: &Path,
     library_dir: &Path,
 ) -> AppResult<(PathBuf, bool)> {
-    let file_name = downloaded_temp.file_name().ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::InvalidDownloadedFile,
-            "downloaded file has no valid name",
-        )
-    })?;
-
     // The backstop for pick_downloaded_media. Nothing but a media file may land in `video/` or
     // `audio/`, whatever chose it.
     let is_media = downloaded_temp
@@ -272,25 +271,29 @@ fn place_downloaded_file(
         ));
     }
 
+    // Hashed before any lock is taken, since it reads the whole file.
+    let digest = crate::utils::hash::file_hash(downloaded_temp)?;
+    let extension = crate::utils::path::extension_from_path(downloaded_temp);
+
     // Serialize the placement into the library against a concurrent migration (see library::lock)
     // so a just-finished download cannot land in the old directory while the migration is
     // copying/removing it.
     let _library_guard = crate::services::library::lock::library_read_guard();
 
-    let final_destination = media_dir.join(file_name);
+    let final_destination = media_dir
+        .join(crate::services::library::media::content_addressed_media_name(&digest, &extension));
     ensure_path_parent_inside_dir(&final_destination, library_dir)?;
 
-    // Serialize concurrent placements of this exact destination (the same video+format finishing
-    // for two channels at once) so they cannot both pass the existence check and write the file.
-    // Distinct from the library guard above, which only serializes against a migration.
+    // Serialize concurrent placements of this exact destination (the same content finishing for two
+    // channels at once) so they cannot both pass the existence check and write the file. Distinct
+    // from the library guard above, which only serializes against a migration.
     let placement_lock = destination_placement_lock(&final_destination);
     let _placement_guard = placement_lock
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
 
-    // A single existence check under the placement lock. Whether it existed decides both that the
-    // fresh bytes are discarded and what the caller reports to the user.
-    let kept_existing = final_destination.exists();
+    let kept_existing = final_destination.is_file()
+        && crate::utils::hash::file_hash(&final_destination).is_ok_and(|stored| stored == digest);
 
     if !kept_existing {
         replace_file_safely(downloaded_temp, &final_destination)?;
@@ -1237,14 +1240,12 @@ pub async fn download_media_from_url_async<R: Runtime>(
         };
 
         if kept_existing {
-            // The destination already held a file for this exact video+format, so the fresh
-            // download was discarded to avoid replacing already-catalogued bytes (see
-            // place_downloaded_file). Tell the user, instead of finishing silently as if the new
-            // bytes had been stored.
+            // The library already held these exact bytes (see place_downloaded_file), so the fresh
+            // copy was discarded. Said so the user is not left guessing why nothing new appeared.
             emit_download_log(
                 app,
                 &normalized_run_id,
-                "A file for this video and format already existed in the library; kept the existing copy and discarded the new download.",
+                "The library already held this exact file, so it was reused and the new download discarded.",
                 "system",
             )?;
         }
@@ -1625,13 +1626,24 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    fn library_name_for(bytes: &[u8], extension: &str) -> String {
+        let probe = unique_temp_dir("name-probe");
+        fs::create_dir_all(&probe).unwrap();
+        let file = probe.join("bytes");
+        fs::write(&file, bytes).unwrap();
+        let digest = crate::utils::hash::file_hash(&file).unwrap();
+        let _ = fs::remove_dir_all(&probe);
+
+        crate::services::library::media::content_addressed_media_name(&digest, extension)
+    }
+
     #[test]
-    fn place_downloaded_file_moves_when_destination_is_free() {
+    fn a_placed_download_is_named_after_its_content() {
         let base = unique_temp_dir("place-move");
         let media_dir = base.join("video");
         fs::create_dir_all(&media_dir).unwrap();
 
-        let temp_file = base.join("source.mp4");
+        let temp_file = base.join("youtube_ID_137.MP4");
         fs::write(&temp_file, b"fresh-download").unwrap();
 
         let (final_path, kept_existing) =
@@ -1641,36 +1653,60 @@ mod tests {
             !kept_existing,
             "a free destination must place the fresh file"
         );
-        assert_eq!(final_path, media_dir.join("source.mp4"));
+        assert_eq!(
+            final_path,
+            media_dir.join(library_name_for(b"fresh-download", "mp4"))
+        );
         assert_eq!(fs::read(&final_path).unwrap(), b"fresh-download");
 
         let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
-    fn place_downloaded_file_never_overwrites_an_existing_destination() {
+    fn a_download_already_in_the_library_is_reused_and_left_untouched() {
         let base = unique_temp_dir("place-keep");
         let media_dir = base.join("video");
         fs::create_dir_all(&media_dir).unwrap();
 
-        // An already-catalogued file (e.g. the same video shared with another channel).
-        let existing = media_dir.join("source.mp4");
-        fs::write(&existing, b"already-catalogued").unwrap();
+        // The same bytes, already catalogued (the same video saved for another channel).
+        let existing = media_dir.join(library_name_for(b"same-content", "mp4"));
+        fs::write(&existing, b"same-content").unwrap();
 
-        // A fresh download of the same video+format lands in temp with the same name.
-        let temp_file = base.join("source.mp4");
-        fs::write(&temp_file, b"re-encoded-variant").unwrap();
+        let temp_file = base.join("youtube_ID_137.mp4");
+        fs::write(&temp_file, b"same-content").unwrap();
 
         let (final_path, kept_existing) =
             place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
 
         assert!(
             kept_existing,
-            "an existing destination must be reported as kept so the caller can notify the user"
+            "an existing copy must be reported as kept so the caller can notify the user"
         );
         assert_eq!(final_path, existing);
-        // The stored bytes must be untouched; the fresh download is discarded.
-        assert_eq!(fs::read(&existing).unwrap(), b"already-catalogued");
+        assert_eq!(fs::read(&existing).unwrap(), b"same-content");
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_damaged_library_copy_is_replaced_by_the_fresh_download() {
+        let base = unique_temp_dir("place-repair");
+        let media_dir = base.join("video");
+        fs::create_dir_all(&media_dir).unwrap();
+
+        // A file named after the right content whose bytes have since gone bad.
+        let damaged = media_dir.join(library_name_for(b"intact-content", "mp4"));
+        fs::write(&damaged, b"bit-rotted").unwrap();
+
+        let temp_file = base.join("youtube_ID_137.mp4");
+        fs::write(&temp_file, b"intact-content").unwrap();
+
+        let (final_path, kept_existing) =
+            place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+
+        assert!(!kept_existing, "a damaged copy is not a copy worth keeping");
+        assert_eq!(final_path, damaged);
+        assert_eq!(fs::read(&final_path).unwrap(), b"intact-content");
 
         let _ = fs::remove_dir_all(&base);
     }

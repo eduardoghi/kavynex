@@ -287,24 +287,22 @@ file rather than loading it whole):
 This makes storage naturally deduplicated (two imports of byte-identical content produce
 the same filename) and content-verifiable (the filename itself is a checksum). It also
 means renaming or re-encoding a file outside the app changes its hash and therefore its
-expected filename. This is exactly what the library-integrity diagnostics
-(`services/library/cleanup.rs`, `services/library/summary.rs`, surfaced by the
-Diagnostics dialog) check for.
+expected filename. The deep check in Diagnostics (`services/library/verification.rs`) re-reads
+each file and compares it against that name. The cheaper check that runs whenever Diagnostics
+opens (`services/library/integrity.rs`) only compares the database with what is on disk.
 
-**Identifier-based (yt-dlp downloads).** A file downloaded via yt-dlp is *not*
-content-hashed (hashing a multi-GB download would be wasteful and pointless, since the
-video id already identifies it). It is named from the source metadata as
-`<extractor>_<id>_<format_id>.<ext>` (e.g. `youtube_dQw4w9WgXcQ_137.mp4`), where each
-component is passed through `services/yt_dlp/metadata.rs::sanitize_filename_component`;
-see `build_download_command_args` in `services/yt_dlp/download/command.rs` and
-`place_downloaded_file` in `services/yt_dlp/download/mod.rs`. This name is deterministic
-for a given video+format, and the download path never overwrites an existing destination,
-so re-downloading the same
-video+format keeps the already-catalogued bytes rather than replacing them with a
-re-encode. One consequence is worth knowing. Because the two schemes differ, downloading a
-video via yt-dlp and *separately* importing the same file locally produces two distinct
-on-disk copies (there is no cross-scheme deduplication). Within a single scheme, dedup
-still holds.
+**yt-dlp downloads are content-addressed too.** yt-dlp writes into the run's temp directory under
+its own name (`youtube_<id>_<format_id>.<ext>`), and `place_downloaded_file` in
+`services/yt_dlp/download/mod.rs` hashes the finished file and stores it as
+`media_<sha256>.<ext>`, the same name a local import of those bytes would get
+(`library::media::content_addressed_media_name`). A file already at that name whose bytes still
+hash to it is the same content (the same video saved for another channel), so it is reused and the
+fresh download discarded. One whose bytes do not is a damaged copy, and the fresh download
+replaces it.
+
+Downloads saved by Kavynex 1.7.0 and earlier kept yt-dlp's name, `youtube_<id>_<format_id>.<ext>`.
+They still work, and the deep check reports them as unverifiable because their name declares no
+hash.
 
 Live chat files are likewise named from the video/run rather than content-hashed (they are
 written once by a yt-dlp run and not re-derived); see `services/yt_dlp/download/mod.rs` and

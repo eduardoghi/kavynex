@@ -13,10 +13,13 @@
 //! is still watchable years later. A check that reports such a library as healthy is worse than no
 //! check, because it is the answer someone acts on.
 //!
-//! The verification itself needs nothing invented. Every file this app writes is content-addressed
-//! (`media_<sha256>.<ext>`, `thumb_<sha256>.<ext>`), so the expected digest is the name. What this
-//! costs is reading every byte, which is why it is a separate, user-triggered operation with
-//! progress and a cancel rather than part of the check that runs on open.
+//! The verification itself needs nothing invented. Imports, downloads and thumbnails are written
+//! content-addressed (`media_<sha256>.<ext>`, `thumb_<sha256>.<ext>`), so the expected digest is the
+//! name. Two kinds of file carry no digest and are reported as unverifiable rather than checked.
+//! Downloads saved by versions that kept yt-dlp's own name (`youtube_<id>_<format>.<ext>`), and
+//! files added or renamed by hand. What this costs is reading every byte, which is why it is a
+//! separate, user-triggered operation with progress and a cancel rather than part of the check that
+//! runs on open.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,8 +36,8 @@ const MAX_EXAMPLES: usize = 5;
 
 /// The prefixes the content-addressed writers use, with the subtree each belongs to.
 ///
-/// `media.rs` writes `media_<hash>.<ext>` under `video/` or `audio/`, and `thumbnail/persist.rs`
-/// writes `thumb_<hash>.<ext>` under `thumbnails/`. Live chat replays are deliberately absent. They
+/// `media.rs` (imports) and `yt_dlp/download` write `media_<hash>.<ext>` under `video/` or `audio/`,
+/// and `thumbnail/persist.rs` writes `thumb_<hash>.<ext>` under `thumbnails/`. Live chat replays are deliberately absent. They
 /// are named after the yt-dlp output file rather than after their content, so there is no digest in
 /// the name to compare against and claiming to have verified them would be a lie.
 const CONTENT_ADDRESSED_PREFIXES: [&str; 2] = ["media_", "thumb_"];

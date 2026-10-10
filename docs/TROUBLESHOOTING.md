@@ -217,21 +217,21 @@ Both are deliberate, and which one you see depends on whether the video is going
   whichever format you pick, and no bytes are fetched.
 
 - **A different channel.** This is allowed, because the same video can legitimately belong to two
-  channels, so the download runs normally. If the library already holds that video *in that same
-  format*, the finished download is then discarded and the file already on disk is reused. The
-  terminal says so, with "A file for this video and format already existed in the library; kept the
-  existing copy and discarded the new download." A live chat replay is handled the same way, with
-  its own message. Both entries now point at one file, and deleting either one leaves the file
-  alone while the other still references it; it is removed when the last reference goes.
+  channels, so the download runs normally. A downloaded file is named after its content, so if the
+  library already holds exactly those bytes, the finished download is discarded and the file
+  already on disk is reused. The terminal says so, with "The library already held this exact file,
+  so it was reused and the new download discarded." A live chat replay is handled the same way,
+  with its own message. Both entries now point at one file, and deleting either one leaves the file
+  alone while the other still references it. It is removed when the last reference goes.
 
-What this is **not** is a reason a higher-quality download fails to appear. A downloaded file is
-named after the video *and* the format you chose (`youtube_<id>_<format>.mp4`), so a different
-format is a different file and downloads normally. If a re-download seems to have been ignored,
-check that you picked a different format and not the same one.
+A different format, or the same format YouTube has since re-encoded, is different bytes and
+therefore a different file, so it downloads and is stored normally.
 
-To genuinely replace a file rather than reuse it (an interrupted download left it truncated, say),
-delete the media in Kavynex first. That removes the file too, unless another entry still points at
-it, and the next add downloads fresh. `DIRECTORIES.md` has the naming rules behind all of this.
+If the file on disk was damaged (the deep check in Diagnostics lists it), a new download of the
+same video replaces it, since the damaged copy no longer matches its name. To redo a download for
+the same channel, delete the media in Kavynex first. That removes the file too, unless another
+entry still points at it, and the next add downloads fresh. `DIRECTORIES.md` has the naming rules
+behind all of this.
 
 ## "Cookies from browser" is set, but the download still fails on a members-only or age-restricted video
 
