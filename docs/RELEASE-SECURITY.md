@@ -161,11 +161,13 @@ A successful check confirms the file was built by this repository's release work
 `--repo` alone accepts an attestation signed by any workflow of the repository from any ref, so the
 two flags are what tie it to the release workflow on `main` specifically.
 
-The statement is made by the `checksums` job, which downloads every asset from the draft and attests
-the installers only when all build legs passed (their smoke tests and webview checks included). The
-build job (`publish-tauri`) holds neither `id-token` nor `attestations` write. It compiles the whole
-dependency tree, build scripts included, and anything those ran could otherwise mint a Sigstore
-identity for this workflow and attest bytes of its choosing.
+Each installer is attested by the build leg that produced it, from the bytes on that runner's disk,
+after its smoke test and webview check passed. That leaves `id-token` and `attestations` write on
+the job that compiles the whole dependency tree, which is a known trade-off. A build script able to
+reach the OIDC token could attest other bytes as this workflow's. The alternative, attesting from a
+job that builds nothing, would mean attesting the copy on the draft, and a draft can be changed by
+anything holding `contents: write` between the upload and the attestation, so a swapped installer
+would be vouched for instead of failing verification.
 
 The three files added to the release after the installers are attested too, by the `checksums`
 job once every completeness check has passed, so `SHA256SUMS.txt`, `latest.json` and the SBOM. The
