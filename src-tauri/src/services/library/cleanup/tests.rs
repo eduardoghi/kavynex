@@ -968,7 +968,8 @@ fn a_reference_spelled_differently_still_protects_the_file() {
 
 fn age_file(path: &std::path::Path, age: std::time::Duration) {
     let file = fs::OpenOptions::new().write(true).open(path).unwrap();
-    file.set_modified(std::time::SystemTime::now() - age).unwrap();
+    file.set_modified(std::time::SystemTime::now() - age)
+        .unwrap();
 }
 
 const TWO_HOURS: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
@@ -1037,7 +1038,10 @@ fn a_planned_removal_reports_the_refusal_when_most_files_are_unreferenced() {
     );
 
     assert_eq!(plan.files, 12);
-    assert_eq!(plan.refusal, Some(OrphanRemovalRefusal::MostFilesUnreferenced));
+    assert_eq!(
+        plan.refusal,
+        Some(OrphanRemovalRefusal::MostFilesUnreferenced)
+    );
 
     let _ = fs::remove_dir_all(&library);
 }

@@ -1258,14 +1258,13 @@ mod registration {
             .expect_err("an insert against a channel that does not exist must fail");
 
         assert!(!library.join(&file_path).exists());
-        let trashed: Vec<PathBuf> = std::fs::read_dir(
-            library.join(crate::services::library::cleanup::LIBRARY_TRASH_DIR),
-        )
-        .unwrap()
-        .flatten()
-        .map(|run| run.path().join(&file_path))
-        .filter(|path| path.is_file())
-        .collect();
+        let trashed: Vec<PathBuf> =
+            std::fs::read_dir(library.join(crate::services::library::cleanup::LIBRARY_TRASH_DIR))
+                .unwrap()
+                .flatten()
+                .map(|run| run.path().join(&file_path))
+                .filter(|path| path.is_file())
+                .collect();
         assert_eq!(trashed.len(), 1);
         assert_eq!(markers_naming(&app, &file_path), 0);
 

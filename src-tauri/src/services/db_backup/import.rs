@@ -577,7 +577,10 @@ fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
     );
 
     std::fs::rename(db_path, &displaced).map_err(|error| {
-        backup_error("failed to set aside the database found at the database path", error)
+        backup_error(
+            "failed to set aside the database found at the database path",
+            error,
+        )
     })?;
 
     // The log goes with the file it belongs to, under the name SQLite looks for beside it, so the

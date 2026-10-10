@@ -167,11 +167,8 @@ mod tests {
 
         // Queued behind the running caller, then abandoned, the way a cancelled download leaves
         // the queue.
-        let waited = tokio::time::timeout(
-            std::time::Duration::from_millis(20),
-            GATE.acquire(BUSY),
-        )
-        .await;
+        let waited =
+            tokio::time::timeout(std::time::Duration::from_millis(20), GATE.acquire(BUSY)).await;
         assert!(waited.is_err());
 
         assert_eq!(GATE.in_flight_count(), 1);

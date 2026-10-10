@@ -373,7 +373,10 @@ fn build_live_chat_relative_path(file_name: &Path) -> String {
 /// Records a crash marker naming a download's file, the moment it is in the library. Best effort,
 /// like the registration's own marker. A marker that cannot be written costs one launch's automatic
 /// reconciliation, and Diagnostics still reports the file.
-async fn record_placement_marker<R: Runtime>(app: &AppHandle<R>, file_path: &str) -> Option<String> {
+async fn record_placement_marker<R: Runtime>(
+    app: &AppHandle<R>,
+    file_path: &str,
+) -> Option<String> {
     let app = app.clone();
     let artifacts = crate::services::pending_media::PendingMediaArtifacts {
         file_path: Some(file_path.to_string()),

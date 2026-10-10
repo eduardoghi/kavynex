@@ -1029,7 +1029,9 @@ pub(crate) fn plan_orphan_removal(
 
     let bytes = removable
         .iter()
-        .filter_map(|artifact| std::fs::metadata(library_relative(library_dir, &artifact.path)).ok())
+        .filter_map(|artifact| {
+            std::fs::metadata(library_relative(library_dir, &artifact.path)).ok()
+        })
         .map(|metadata| metadata.len())
         .sum();
 
@@ -1126,7 +1128,10 @@ fn move_orphans_to_trash_sync(
             Err(error) => {
                 logger::error(
                     "library_cleanup",
-                    format!("orphan '{}' could not be moved to the trash: {error}", artifact.path),
+                    format!(
+                        "orphan '{}' could not be moved to the trash: {error}",
+                        artifact.path
+                    ),
                 );
                 report.failed_paths.push(artifact.path);
             }

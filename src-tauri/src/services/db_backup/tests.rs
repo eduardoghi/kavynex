@@ -684,7 +684,10 @@ async fn an_import_retried_after_a_failed_swap_keeps_the_real_pre_import_snapsho
     // The interim file is set aside, not discarded, in case it held more than the marker claimed.
     let displaced = displaced_databases(&db);
     assert_eq!(displaced.len(), 1);
-    assert_eq!(read_video_title(&displaced[0]).await, "empty interim database");
+    assert_eq!(
+        read_video_title(&displaced[0]).await,
+        "empty interim database"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
