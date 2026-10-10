@@ -29,29 +29,36 @@ async fn ensure_videos_additive_columns(conn: &mut SqliteConnection) -> AppResul
     Ok(())
 }
 
-/// Applies an additive, index-only migration. re-runs every index DDL (all guarded with
-/// `IF NOT EXISTS`, so pre-existing indexes are untouched and only the ones this version adds
-/// are created) and stamps `target_version`, both in the same transaction so a crash leaves
-/// the database fully at the old or the new version.
+/// Creates every index a database at `version` carries. Each DDL is `IF NOT EXISTS`, so the ones an
+/// earlier migration built are left alone and only the missing ones are created. Filtering by
+/// version keeps an older migration away from an index on a column only a later one adds.
+async fn create_indexes_through(conn: &mut SqliteConnection, version: i64) -> AppResult<()> {
+    for index in index_ddls_through(version) {
+        sqlx::query(index.ddl)
+            .execute(&mut *conn)
+            .await
+            .map_err(|error| db_error("failed to create index", error))?;
+    }
+
+    Ok(())
+}
+
+/// Applies an additive, index-only migration. Creates the indexes up to `target_version` and stamps
+/// it, both in the same transaction so a crash leaves the database fully at the old or the new
+/// version.
 async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> AppResult<()> {
     let mut tx = pool
         .begin()
         .await
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
-    // INDEX_DDLS includes indexes on title_normalized (and the other additive columns), which v11
-    // is what adds. A database stamped at v7/v8/v9 by a build that predated those columns reaches
-    // this loop before v11 runs, so ensure any missing additive column exists first. Otherwise the
-    // CREATE INDEX below fails with "no such column". Idempotent (guarded per column) and a no-op
-    // once the columns are present (e.g. the v12 caller, which runs after v11).
+    // v12 indexes title_normalized, which v11 adds. In the normal order v11 has run, but a database
+    // stamped past v11 without the column (an imported look-alike) would fail the CREATE INDEX with
+    // "no such column" instead of being repaired. Idempotent, and a no-op for v8 and v9, whose
+    // indexes use no additive column.
     ensure_videos_additive_columns(&mut tx).await?;
 
-    for &(_, ddl) in INDEX_DDLS {
-        sqlx::query(ddl)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| db_error("failed to create index", error))?;
-    }
+    create_indexes_through(&mut tx, target_version).await?;
 
     set_user_version(&mut tx, target_version).await?;
 
@@ -62,23 +69,20 @@ async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> A
     Ok(())
 }
 
-/// v8. Creates `idx_videos_channel_created_id`. Additive, so it reaches databases created
-/// before v8 by re-running the guarded index DDLs.
+/// v8. Creates `idx_videos_channel_created_id`.
 pub(super) async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 8).await
 }
 
 /// v9. Creates `idx_videos_file_path` and `idx_videos_live_chat_file_path`, which keep the
-/// per-artifact reference-count lookups run on delete off a full table scan. Additive, so it
-/// reaches databases created before v9 by re-running the guarded index DDLs.
+/// per-artifact reference-count lookups run on delete off a full table scan.
 pub(super) async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 9).await
 }
 
 /// v12. Creates the five `list_media_page` sort indexes (`idx_videos_channel_created_title_id`,
 /// `idx_videos_channel_comments_count`, `idx_videos_channel_duration`,
-/// `idx_videos_channel_published_ordered`, `idx_videos_channel_published_desc`). Additive, so it
-/// reaches databases created before v12 by re-running the guarded index DDLs.
+/// `idx_videos_channel_published_ordered`, `idx_videos_channel_published_desc`).
 pub(super) async fn apply_migration_12(pool: &SqlitePool) -> AppResult<()> {
     apply_index_only_migration(pool, 12).await
 }
@@ -234,9 +238,11 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
     ensure_videos_additive_columns(&mut tx).await?;
 
     // The promotion reads `comments_count`, which is part of the base table DDL rather than of the
-    // additive list, so `ensure_videos_additive_columns` above does not create it. A `videos` table
-    // old enough to predate that column therefore reaches here without it, and the UPDATE would
-    // fail the whole migration with "no such column" instead of adding the new one. Ask first.
+    // additive list, so `ensure_videos_additive_columns` above does not create it. A database below
+    // v12 cannot get here without it, because v12 indexes the column and would have failed first.
+    // One stamped v12 to v14 can, when it is an imported look-alike (the import spot-checks only a
+    // sample of columns), and the UPDATE would then fail the whole migration with "no such column"
+    // instead of adding the new one. Ask first.
     //
     // Skipping the promotion on such a database is not a loss. With no stored count there is no
     // evidence a fetch ever ran, so every row keeping the `unknown` default is the honest outcome,
@@ -260,12 +266,43 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// v16. Drops the two `video_comments` indexes nothing reads (see RETIRED_INDEXES). Every comment
+/// merge was maintaining them. The drops and the stamp share one transaction.
+pub(super) async fn apply_migration_16(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    for index in RETIRED_INDEXES
+        .iter()
+        .filter(|index| index.retired_in == 16)
+    {
+        // The name is a constant from RETIRED_INDEXES, never input.
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP INDEX IF EXISTS {}",
+            index.name
+        )))
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to drop a retired index", error))?;
+    }
+
+    set_user_version(&mut tx, 16).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
 /// v10. Creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
 /// (video_id, comment_id)" invariant out of application code (media_comments::
 /// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot
-/// blindly run the DDLs. A database created before this index could in principle hold a duplicate
-/// that would fail the unique build. So it first collapses any duplicate rows to the lowest id,
-/// then runs the guarded index DDLs, both in one transaction so a crash leaves the database fully
+/// just build the index. A database created before it could in principle hold a duplicate that
+/// would fail the unique build. So it first collapses any duplicate rows to the lowest id, then
+/// builds the indexes, both in one transaction so a crash leaves the database fully
 /// at the old or the new version. The single write path (merge_media_comments) already dedups
 /// per payload, so the cleanup is a safety net, not an expected case.
 pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
@@ -311,20 +348,15 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
         .await
         .map_err(|error| db_error("failed to drop temporary dedup index", error))?;
 
-    // Same reason as apply_index_only_migration: INDEX_DDLS indexes title_normalized, a column v11
-    // adds. A database reaching v10 without it (stamped 7..10 by a pre-v11 build) would fail the
-    // CREATE INDEX below, so add any missing additive column before building the indexes.
+    // The baseline indexes is_live and has_live_chat, additive columns the baseline itself adds. A
+    // database stamped 7 to 9 normally has them, but an imported look-alike may not, and the import
+    // does not check for them. Idempotent, and a no-op on any database a real build created.
     ensure_videos_additive_columns(&mut tx).await?;
 
-    for &(_, ddl) in INDEX_DDLS {
-        sqlx::query(ddl)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| db_error("failed to create index", error))?;
-    }
+    create_indexes_through(&mut tx, 10).await?;
 
     // Now that duplicates are collapsed, build the real partial unique index. It is created here,
-    // not by the INDEX_DDLS loop above and not by the baseline, so it is only ever built against
+    // not by the index loop above and not by the baseline, so it is only ever built against
     // already-deduped data (see COMMENT_UNIQUE_INDEX_DDL for why that ordering is load-bearing).
     sqlx::query(COMMENT_UNIQUE_INDEX_DDL)
         .execute(&mut *tx)
@@ -456,12 +488,7 @@ pub(super) async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
     // once.
     backfill_missing_title_normalized(&mut tx).await?;
 
-    for &(_, ddl) in INDEX_DDLS {
-        sqlx::query(ddl)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| db_error("failed to create index", error))?;
-    }
+    create_indexes_through(&mut tx, 11).await?;
 
     set_user_version(&mut tx, 11).await?;
 
@@ -498,12 +525,7 @@ pub(super) async fn apply_baseline_schema(pool: &SqlitePool) -> AppResult<()> {
 
     ensure_videos_additive_columns(&mut tx).await?;
 
-    for &(_, ddl) in INDEX_DDLS {
-        sqlx::query(ddl)
-            .execute(&mut *tx)
-            .await
-            .map_err(|error| db_error("failed to create index", error))?;
-    }
+    create_indexes_through(&mut tx, BASELINE_SCHEMA_VERSION).await?;
 
     set_user_version(&mut tx, BASELINE_SCHEMA_VERSION).await?;
 

@@ -485,13 +485,29 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     // do) makes the fixture a shape no build ever produced, and hides a skipped index migration
     // behind a database that never had the index either. A database below the baseline is the
     // one case that legitimately has none. `apply_baseline_schema` is what first creates them.
+    //
+    // Building each index on a table shaped like its own era is also what checks the `since`
+    // versions. An index tagged older than the column it names fails right here with "no such
+    // column", on every seeded version from that tag up to the migration adding the column.
     if version >= BASELINE_SCHEMA_VERSION {
-        for &(_, ddl) in INDEX_DDLS {
-            if index_introduced_in(ddl_object_name(ddl)) <= version {
-                sqlx::query(sqlx::AssertSqlSafe(ddl))
+        for index in index_ddls_through(version) {
+            sqlx::query(sqlx::AssertSqlSafe(index.ddl))
+                .execute(pool)
+                .await
+                .unwrap_or_else(|error| {
+                    panic!("failed to seed {} at v{version}: {error}", index.ddl)
+                });
+        }
+
+        // The indexes this era still had and a later migration dropped.
+        for retired in RETIRED_INDEXES {
+            if version < retired.retired_in {
+                sqlx::query(sqlx::AssertSqlSafe(retired.ddl))
                     .execute(pool)
                     .await
-                    .unwrap_or_else(|error| panic!("failed to seed {ddl} at v{version}: {error}"));
+                    .unwrap_or_else(|error| {
+                        panic!("failed to seed {} at v{version}: {error}", retired.name)
+                    });
             }
         }
     }
@@ -533,29 +549,6 @@ fn ddl_object_name(ddl: &str) -> &str {
         .unwrap_or_else(|| panic!("could not read an object name out of: {ddl}"))
 }
 
-/// The schema version that first created each index. Anything not named here predates versioned
-/// migrations, so `apply_baseline_schema` creates it and every database from v7 up has it.
-///
-/// This exists because `INDEX_DDLS` is the *current* list with no history in it. The baseline and
-/// the index-only migrations all re-run the whole list, so the code cannot say which index
-/// belonged to which era. Without that, `seed_database_at_version` cannot produce a faithful v8
-/// database (one that really is missing v9's indexes), and the migration test below could not
-/// tell a migration that ran from one that was skipped. Kept in step with `docs/DATABASE.md`,
-/// which records what each migration added.
-fn index_introduced_in(name: &str) -> i64 {
-    match name {
-        "idx_videos_channel_created_id" => 8,
-        "idx_videos_file_path" | "idx_videos_live_chat_file_path" => 9,
-        "idx_videos_channel_title_normalized" => 11,
-        "idx_videos_channel_created_title_id"
-        | "idx_videos_channel_comments_count"
-        | "idx_videos_channel_duration"
-        | "idx_videos_channel_published_ordered"
-        | "idx_videos_channel_published_desc" => 12,
-        _ => BASELINE_SCHEMA_VERSION,
-    }
-}
-
 #[test]
 fn needs_migration_is_outstanding_only_below_the_target() {
     // A database below the target still owes that migration; one already at it does not, which
@@ -587,10 +580,11 @@ async fn the_migration_fixture_still_models_a_database_missing_each_additive_col
     // covering something without anything turning red.
     //
     // The failure it guards is specific and has already shipped once in its other half. An index
-    // in INDEX_DDLS names a column that only a later migration adds, and the index-only
-    // migrations (v8/v9/v12) re-run the whole list, so they reach it on a database that does not
-    // have the column yet. `ensure_videos_additive_columns` is what makes that work, and it is
-    // called first in every one of those paths for exactly this reason.
+    // names a column that only a later migration adds, and a migration reaches it on a database
+    // that does not have the column yet. That shipped when v8/v9/v10 ran the whole index list.
+    // Since then each migration builds only the indexes up to its own version, and the ones that
+    // build indexes still call `ensure_videos_additive_columns` first, for a database stamped
+    // past the column without carrying it.
     //
     // That direction is already caught loudly. Breaking it (a column added to VIDEOS_TABLE_DDL
     // and indexed, but left out of VIDEOS_ADDITIVE_COLUMNS) fails seven tests here with
@@ -611,7 +605,7 @@ async fn the_migration_fixture_still_models_a_database_missing_each_additive_col
     // `live_chat_file_path`) arrive *with* `apply_baseline_schema`, so a v7 database legitimately
     // carries them and the only era that can be missing them is below the baseline. That path
     // exercises the same guarded ALTER. The baseline calls `ensure_videos_additive_columns`
-    // before its own INDEX_DDLS loop, for the same reason v8/v9/v12 do.
+    // before building its indexes, which use two of them.
     for (column, _) in VIDEOS_ADDITIVE_COLUMNS {
         let mut missing_at = Vec::new();
 
@@ -643,8 +637,8 @@ async fn every_historical_version_migrates_to_the_current_schema() {
     // The gap this closes. The individual migration tests below each start from one chosen
     // version (v5 via the real fixture, v6, v9, v12), so the versions nobody picked were never
     // exercised as a *starting point* at all. That is precisely how the v8..v10 failure shipped.
-    // those migrations run the whole INDEX_DDLS list, which indexes a column v11 is what adds,
-    // and no test ever started at 7, 8 or 10. Rather than add one test per version as each bug is
+    // Those migrations ran the whole index list, which indexes a column v11 is what adds, and no
+    // test ever started at 7, 8 or 10. Rather than add one test per version as each bug is
     // found, drive every version the app has ever stamped through the full chain.
     //
     // Deliberately covers 0..=SCHEMA_VERSION inclusive. The top of the range asserts that a
@@ -672,11 +666,21 @@ async fn every_historical_version_migrates_to_the_current_schema() {
         // This is the v8..v10 failure seen from the other side, and it is what the seed above
         // had to become faithful for. A v11 database really is missing the five sort indexes v12
         // adds, so if migration 12 is skipped, nothing else puts them there.
-        for &(_, ddl) in INDEX_DDLS {
-            let name = ddl_object_name(ddl);
+        for index in INDEX_DDLS {
+            let name = ddl_object_name(index.ddl);
             assert!(
                 object_exists(&pool, "index", name).await,
                 "a database stamped v{from_version} reached head without {name}"
+            );
+        }
+
+        // The other direction. The seed gives every version below a retirement the index it
+        // still had, so one left behind here is a dropping migration that did not run.
+        for retired in RETIRED_INDEXES {
+            assert!(
+                !object_exists(&pool, "index", retired.name).await,
+                "a database stamped v{from_version} reached head still carrying {}",
+                retired.name
             );
         }
 
@@ -727,12 +731,12 @@ async fn every_historical_version_migrates_to_the_current_schema() {
 #[tokio::test]
 async fn migrates_a_v9_database_that_predates_title_normalized() {
     // Reproduces the real upgrade failure a database stamped at v9 by a build that predated the
-    // v11 `title_normalized` column hits. ensure_schema skips the baseline (9 >= 7) and the
-    // v8/v9 migrations, so the column is never added before apply_migration_10 runs the full
-    // INDEX_DDLS, which includes indexes ON title_normalized. Without the additive-column guard
-    // in that loop the CREATE INDEX fails with "no such column: title_normalized" and the
-    // database can no longer be opened. The tables carry every column the migration's indexes
-    // reference (minus title_normalized), matching what a v9 build actually left on disk.
+    // v11 `title_normalized` column hit. ensure_schema skips the baseline (9 >= 7) and the
+    // v8/v9 migrations, so the column is not there when apply_migration_10 builds its indexes.
+    // v10 used to run the whole index list, which includes indexes ON title_normalized, and the
+    // CREATE INDEX failed with "no such column: title_normalized", leaving the database unopenable.
+    // The tables carry every column the migration's indexes reference (minus title_normalized),
+    // matching what a v9 build actually left on disk.
     let pool = memory_pool().await;
 
     sqlx::query(
@@ -1124,6 +1128,15 @@ async fn migrates_a_real_v1_database_to_the_current_schema() {
         assert!(
             object_exists(&pool, "index", index).await,
             "migration must create {index}"
+        );
+    }
+
+    // And the ones v16 drops are gone. The fixture was built by a real old version, so it has them.
+    for retired in RETIRED_INDEXES {
+        assert!(
+            !object_exists(&pool, "index", retired.name).await,
+            "migration must drop {}",
+            retired.name
         );
     }
 
@@ -2078,7 +2091,7 @@ async fn rebuilding_videos_puts_its_triggers_and_indexes_back() {
     .unwrap();
     let expected_indexes = INDEX_DDLS
         .iter()
-        .filter(|(table, _)| *table == "videos")
+        .filter(|index| index.table == "videos")
         .count() as i64;
     assert_eq!(index_count, expected_indexes);
 }

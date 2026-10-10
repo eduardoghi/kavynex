@@ -1,7 +1,9 @@
 //! The schema's DDL as data: the `CREATE TABLE`/index/trigger statements and the additive-column
-//! list the migrations in the parent module apply. Pure constants with no logic, split out so the
-//! migration code reads as migration steps rather than being buried under the SQL text. `pub(super)`
-//! so the parent (and its tests, via `super::*`) reach them.
+//! list the migrations in the parent module apply. Constants plus the version filter over the index
+//! list, split out so the migration code reads as migration steps rather than being buried under the
+//! SQL text. `pub(super)` so the parent (and its tests, via `super::*`) reach them.
+
+use super::BASELINE_SCHEMA_VERSION;
 
 pub(super) const CHANNELS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS channels (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,27 +99,56 @@ pub(super) const TABLE_DDLS: &[&str] = &[
 // empty. Dropped on startup to remove it from existing databases.
 pub(super) const LEGACY_TABLE_DROPS: &[&str] = &["DROP TABLE IF EXISTS video_live_chat_messages"];
 
-// Every index, paired with the table it belongs to. The baseline and versioned migrations
-// recreate all of them (every table exists at that point). The table-rebuild path uses the
-// pairing to recreate only the indexes of the tables it actually dropped, since dropping a
-// table only drops that table's indexes.
-pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)"),
+/// One index the current schema carries.
+pub(super) struct IndexDdl {
+    /// The table the index belongs to. The table-rebuild path recreates only the indexes of the
+    /// tables it dropped, since dropping a table only drops that table's indexes.
+    pub(super) table: &'static str,
+    /// The schema version that first created the index. A migration builds only the indexes of
+    /// its own version and below (`index_ddls_through`), so it never reaches an index on a column
+    /// a later migration adds. Running the whole list from v8, v9 and v10 is what broke the
+    /// upgrade of databases older than v11 once already, because the list had grown indexes on
+    /// `title_normalized`.
+    pub(super) since: i64,
+    pub(super) ddl: &'static str,
+}
+
+/// The indexes a database stamped `version` carries.
+pub(super) fn index_ddls_through(version: i64) -> impl Iterator<Item = &'static IndexDdl> {
+    INDEX_DDLS
+        .iter()
+        .filter(move |index| index.since <= version)
+}
+
+// Every index of the current schema. A new one gets the version of the migration that adds it,
+// and that migration builds it through `index_ddls_through`. An index that is dropped later moves
+// to RETIRED_INDEXES below, so the test fixtures can still build a faithful older database.
+pub(super) const INDEX_DDLS: &[IndexDdl] = &[
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)",
+    },
     // Covers a channel's media newest-first (channel_id = ? ORDER BY created_at DESC, id DESC)
     // without a separate sort step. Its original caller (the unpaginated list_media_by_channel)
     // was removed. The paginated list_media_page sorts include title_normalized and are served by
-    // the composite indexes below, not this one. Kept because dropping it entangles the v8
-    // migration identity and its dedicated idempotency test (a standalone cleanup, not part of
-    // removing that caller), and it still fits any future newest-first-only listing.
+    // the composite indexes below, not this one. Kept because it is v8's only index and it still
+    // fits any future newest-first-only listing.
     //
     // MEASURED DEAD (2026-08-16), confirming the paragraph above rather than adding to it. It is
-    // chosen by nothing the backend issues. It is also the most entangled of the dead ones, since
-    // `index_introduced_in` in the tests maps it to v8 so `seed_database_at_version` can rebuild a
-    // faithful pre-v9 database. That map is why removal costs more here than anywhere else.
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)"),
+    // chosen by nothing the backend issues.
+    IndexDdl {
+        table: "videos",
+        since: 8,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)",
+    },
     // Serves the title-sorted page of a channel's media (the paginated library list ordering by
     // title_normalized within a channel), so that sort does not filesort the whole channel.
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_title_normalized ON videos(channel_id, title_normalized)"),
+    IndexDdl {
+        table: "videos",
+        since: 11,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_title_normalized ON videos(channel_id, title_normalized)",
+    },
     // One index per `list_media_page` sort category, each mirroring that category's ORDER BY
     // exactly (see video_repository::resolve_order_by). SQLite only walks an index in ORDER BY
     // order when the leading terms match term for term, so `duration` and `publication_date`
@@ -125,32 +156,76 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // duration_seconds or published_at is never used by those queries. Measured with EXPLAIN
     // QUERY PLAN. Without these, every one of these sorts falls back to idx_videos_channel_id
     // and re-sorts the channel's whole matching set on each page.
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_title_id ON videos(channel_id, created_at DESC, title_normalized DESC, id DESC)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_comments_count ON videos(channel_id, comments_count, title_normalized)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_duration ON videos(channel_id, COALESCE(duration_seconds, 0), title_normalized)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_ordered ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END), (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END), title_normalized)"),
+    IndexDdl {
+        table: "videos",
+        since: 12,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_title_id ON videos(channel_id, created_at DESC, title_normalized DESC, id DESC)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: 12,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_comments_count ON videos(channel_id, comments_count, title_normalized)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: 12,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_duration ON videos(channel_id, COALESCE(duration_seconds, 0), title_normalized)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: 12,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_ordered ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END), (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END), title_normalized)",
+    },
     // `publication_date` needs a second index because its two directions are not mirror images.
     // desc keeps the dated-first group key ASC and the title tie-break ASC while reversing only
     // the date. SQLite can walk an index forwards or backwards, but not partly each way, so the
     // all-ASC index above serves only the leading group key for desc and sorts the remaining
     // three terms, and desc is the grid's default view, i.e. the hottest query in the app.
     // The term directions here mirror that clause exactly.
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_desc ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, title_normalized ASC)"),
+    IndexDdl {
+        table: "videos",
+        since: 12,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_desc ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, title_normalized ASC)",
+    },
     // MEASURED DEAD (2026-08-16). Never chosen. `channels.youtube_handle` is declared UNIQUE, so
     // SQLite already maintains `sqlite_autoindex_channels_1` on exactly this column, and the handle
     // lookup uses that one. This is a duplicate of an index the table definition creates for free.
-    ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)"),
-    ("channels", "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)"),
+    IndexDdl {
+        table: "channels",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)",
+    },
+    IndexDdl {
+        table: "channels",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_thumbnail_path ON videos(thumbnail_path)",
+    },
     // Serves the artifact reference-count lookups run on every media/channel delete
     // (WHERE file_path = ? / WHERE live_chat_file_path = ?). The table's (channel_id, file_path)
     // UNIQUE constraint already provides the auto-index that backs the insert_media upsert's
     // ON CONFLICT(channel_id, file_path), but that composite index cannot serve a bare
     // `file_path =` predicate without the leading `channel_id`, so a dedicated single-column
     // index is needed to keep deletes off a full table scan.
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_file_path ON videos(file_path)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_live_chat_file_path ON videos(live_chat_file_path)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)"),
+    IndexDdl {
+        table: "videos",
+        since: 9,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_file_path ON videos(file_path)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: 9,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_live_chat_file_path ON videos(live_chat_file_path)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)",
+    },
     // MEASURED DEAD (2026-08-16). None of the six below is chosen by any statement the backend
     // issues. The first three would each serve a standalone lookup and there is none, because every
     // query reaching those columns is scoped by `channel_id` first, so a `idx_videos_channel_*`
@@ -159,8 +234,8 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // and the migration repairs, whose `<> 0` is not selective either.
     //
     // Left in place rather than dropped, deliberately. The cost is write amplification on a table
-    // this app inserts into a handful of rows at a time, and the removal is a schema migration plus
-    // surgery on the version-history map and migration-identity tests below. Bad trade. If a
+    // this app inserts into a handful of rows at a time, and the removal is a migration every
+    // library runs once at startup for a saving nobody would notice. Bad trade. If a
     // library-wide search (not scoped to a channel) ever arrives, it will want a *composite* tuned
     // to its own clause anyway, not these. Re-measure before assuming any of this still holds. The
     // method is EXPLAIN QUERY PLAN over the real statements on a schema with no ANALYZE, which is
@@ -173,28 +248,81 @@ pub(super) const INDEX_DDLS: &[(&str, &str)] = &[
     // (rebuild.rs), so it would build all seven of the dead ones on `videos` over the whole library,
     // inside a migration the user waits through at startup. That is where the cost stops being a
     // rounding error on an insert and becomes something they can feel.
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)"),
-    ("videos", "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)"),
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)",
+    },
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)",
+    },
     // NOT dead, despite never appearing in a query plan, and the distinction matters because a
     // reader cleaning up on plan evidence alone would drop it. It is UNIQUE. It exists to enforce
     // "one row per (channel, youtube video id)", not to be chosen. It goes unused for lookups
     // because it is partial, and SQLite only uses a partial index when the query's WHERE proves the
     // index's. `youtube_video_id = ?` does not prove the `TRIM(...) <> ''`. So the duplicate
     // pre-check falls back to idx_videos_channel_id, and the constraint still holds.
-    ("videos", "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''"),
-    ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)"),
-    // MEASURED DEAD (2026-08-16). The backend never looks a comment up by its parent. The reply
-    // threads are rebuilt in the renderer (src/components/player/comment-tree.ts) from the flat list
-    // the `video_id` query returns. Same trade as the group above for why it stays.
-    ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)"),
-    // Used, though not by any runtime query. v10's comment dedup walks it
-    // (SEARCH video_comments USING COVERING INDEX idx_video_comments_comment_id), and that migration
-    // runs on any database old enough to need it.
-    ("video_comments", "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)"),
+    IndexDdl {
+        table: "videos",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_channel_youtube_video_id_unique ON videos(channel_id, youtube_video_id) WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''",
+    },
+    IndexDdl {
+        table: "video_comments",
+        since: BASELINE_SCHEMA_VERSION,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_video_comments_video_id ON video_comments(video_id)",
+    },
+];
+
+/// An index an older schema created and a later migration dropped.
+pub(super) struct RetiredIndex {
+    pub(super) name: &'static str,
+    /// The migration that drops it with `DROP INDEX IF EXISTS`.
+    pub(super) retired_in: i64,
+    /// The DDL older versions ran, kept for the test fixtures that rebuild a database of that era.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) ddl: &'static str,
+}
+
+// The two `video_comments` indexes v16 drops. Neither was chosen by any statement the backend
+// issues (measured 2026-08-16 with EXPLAIN QUERY PLAN). The reply threads are rebuilt in the
+// renderer from the flat list the `video_id` query returns, so nothing looks a comment up by its
+// parent, and v10's dedup builds its own temporary index rather than walking the `comment_id` one.
+// Unlike the dead `videos` indexes above, these sit on the table a single comment merge writes up to
+// 100,000 rows into, so every merge paid for two indexes nobody read.
+pub(super) const RETIRED_INDEXES: &[RetiredIndex] = &[
+    RetiredIndex {
+        name: "idx_video_comments_parent_comment_id",
+        retired_in: 16,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)",
+    },
+    RetiredIndex {
+        name: "idx_video_comments_comment_id",
+        retired_in: 16,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)",
+    },
 ];
 
 // The partial UNIQUE index enforcing "no duplicate (video_id, comment_id)". Deliberately kept OUT

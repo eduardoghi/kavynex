@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 15;
+pub(crate) const SCHEMA_VERSION: i64 = 16;
 
 /// The version from which a database holds every trigger in `TRIGGER_DDLS` without a migration
 /// still to create it. v13 creates them and v14 re-runs the whole list, so a database below 14 gets
@@ -88,8 +88,8 @@ pub(crate) use introspection::{
 mod migrations;
 use migrations::{
     apply_baseline_schema, apply_migration_10, apply_migration_11, apply_migration_12,
-    apply_migration_13, apply_migration_14, apply_migration_15, apply_migration_8,
-    apply_migration_9,
+    apply_migration_13, apply_migration_14, apply_migration_15, apply_migration_16,
+    apply_migration_8, apply_migration_9,
 };
 
 // SQLite's table-rebuild procedure, for a change `ALTER TABLE ADD COLUMN` or a trigger cannot
@@ -130,7 +130,7 @@ async fn set_user_version(conn: &mut SqliteConnection, version: i64) -> AppResul
 /// mutation gate made the cost of that visible. Nine identical `current_version < N` expressions
 /// generate nine mutants with the same description, so they cannot be told apart by anything but a
 /// line number. Three of them are equivalent (skipping v8, v9 or v11 changes nothing, because a
-/// later migration re-runs the whole `INDEX_DDLS` list and v13 redoes v11's backfill), and with the
+/// later migration builds every index up to its own version and v13 redoes v11's backfill), and with the
 /// comparison inlined there was no way to exclude those three without also dropping the five that
 /// catch a real skipped migration. Naming the rule once gives it one mutant, which can be reasoned
 /// about (and excluded, if it turns out equivalent) on its own terms.
@@ -173,13 +173,12 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_baseline_schema(pool).await?;
     }
 
-    // v8. Adds idx_videos_channel_created_id. Additive, so it just runs the index DDLs.
+    // v8. Adds idx_videos_channel_created_id.
     if needs_migration(current_version, 8) {
         apply_migration_8(pool).await?;
     }
 
-    // v9. Adds idx_videos_file_path and idx_videos_live_chat_file_path. Additive, so it just
-    // runs the index DDLs.
+    // v9. Adds idx_videos_file_path and idx_videos_live_chat_file_path.
     if needs_migration(current_version, 9) {
         apply_migration_9(pool).await?;
     }
@@ -222,6 +221,11 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // evidence of a fetch. See apply_migration_15.
     if needs_migration(current_version, 15) {
         apply_migration_15(pool).await?;
+    }
+
+    // v16. Drops the two video_comments indexes no query reads. See apply_migration_16.
+    if needs_migration(current_version, 16) {
+        apply_migration_16(pool).await?;
     }
 
     // Each migration is guarded by version and transactional (it stamps the new

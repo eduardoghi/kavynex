@@ -168,21 +168,25 @@ ones the app's queries rely on are:
 - `(channel_id, thumbnail_path)`, which serves the other half of a channel delete, collecting the
   thumbnails its videos point at before deciding which are still referenced elsewhere, and
   `videos(thumbnail_path)` and `channels(avatar_path)` for the same reference counts.
-- `video_comments(video_id)` for loading a media's comments, and `video_comments(comment_id)`,
-  which only the v10 comment dedup walks.
+- `video_comments(video_id)` for loading a media's comments.
 - The partial unique index on `(channel_id, youtube_video_id)`. It never shows up in a query plan
   and is not meant to, since it exists to enforce one row per YouTube video per channel.
 
-Nine more are declared and marked MEASURED DEAD in `ddl.rs`, because no statement the backend
+Eight more are declared and marked MEASURED DEAD in `ddl.rs`, because no statement the backend
 issues chooses them (measured with `EXPLAIN QUERY PLAN` on 2026-08-16).
 `idx_videos_channel_created_id`, `idx_channels_youtube_handle` (a duplicate of the auto-index the
-UNIQUE `youtube_handle` column already has), the single-column `youtube_video_id`, `watched_at`,
-`published_at`, `has_comments`, `is_live` and `has_live_chat` indexes on `videos`, and
-`video_comments(parent_comment_id)`. They stay because dropping them is a schema migration plus
-surgery on the migration-history tests, for a write cost that is negligible at the rate this app
-inserts rows. `ddl.rs` records what should send someone back to that measurement.
+UNIQUE `youtube_handle` column already has), and the single-column `youtube_video_id`,
+`watched_at`, `published_at`, `has_comments`, `is_live` and `has_live_chat` indexes on `videos`.
+They stay because the write cost is negligible at the rate this app inserts media rows. `ddl.rs`
+records what should send someone back to that measurement. The two dead `video_comments` indexes,
+on `parent_comment_id` and `comment_id`, did not get the same pass. A comment merge writes up to
+100,000 rows into that table, so v16 drops them (`RETIRED_INDEXES`).
 
-All index DDL uses `CREATE INDEX IF NOT EXISTS`, so it is safe to re-run on every migration.
+Each entry in `INDEX_DDLS` carries the schema version that first created it (`since`), and a
+migration builds only the indexes up to its own version (`index_ddls_through`). Running the whole
+list from v8, v9 and v10 is what broke the upgrade of v7 to v10 databases once, after the list grew
+indexes on `title_normalized`, a column only v11 adds. All index DDL uses
+`CREATE INDEX IF NOT EXISTS`, so an index an earlier migration built is left alone.
 
 ### The `list_media_page` sort indexes
 
@@ -231,7 +235,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `15`), in `db_schema/mod.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `16`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -240,15 +244,15 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   `video_live_chat_messages` table, creates all four tables with `CREATE TABLE IF NOT
   EXISTS`, adds any missing additive `videos` columns (`is_live`, `has_live_chat`,
   `live_chat_file_path`, `title_normalized`) with guarded `ALTER TABLE ... ADD COLUMN`,
-  creates every index,
+  creates the indexes tagged with version 7,
   then stamps `user_version = 7`. Because every statement is idempotent
   (`IF NOT EXISTS` / column-existence-checked `ALTER`), running the baseline against an
   already-current database is a no-op.
 - **v8** adds the `idx_videos_channel_created_id` index. Being purely additive, its
-  migration just re-runs the index DDL list and stamps `user_version = 8`.
+  migration builds the indexes up to v8 and stamps `user_version = 8`.
 - **v9** adds the `idx_videos_file_path` and `idx_videos_live_chat_file_path` indexes,
   which keep the per-artifact reference-count lookups run on delete off a full table scan.
-  Also purely additive, so its migration re-runs the index DDL list and stamps
+  Also purely additive, so its migration builds the indexes up to v9 and stamps
   `user_version = 9`.
 - **v10** adds the partial unique index `idx_video_comments_video_comment_unique` on
   `video_comments(video_id, comment_id)` (where `comment_id` is non-null and non-blank),
@@ -270,8 +274,8 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   (`idx_videos_channel_created_title_id`, `idx_videos_channel_comments_count`,
   `idx_videos_channel_duration`, `idx_videos_channel_published_ordered`, and
   `idx_videos_channel_published_desc`. See "The `list_media_page` sort indexes" above for why
-  `publication_date` needs one index per direction). Index-only like v8/v9, so the migration just
-  re-runs the index DDL list and stamps `user_version = 12`.
+  `publication_date` needs one index per direction). Index-only like v8/v9, so the migration builds
+  the indexes up to v12 and stamps `user_version = 12`.
 - **v13** backports the two `videos` row invariants to a table that predates them, since
   `CREATE TABLE IF NOT EXISTS` is a no-op on an existing table and SQLite has no
   `ALTER TABLE ADD CONSTRAINT`. `has_live_chat` set implies a stored `live_chat_file_path`
@@ -306,8 +310,9 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   evidence of a fetch (`comments_count > 0` becomes `available`), leaving the rest at `unknown`,
   which is the honest value, since nothing before the column recorded whether a fetch had been attempted.
   The promotion is guarded on `comments_count` existing, because that column is part of the base
-  DDL rather than of the additive list, so a `videos` table old enough to predate it would otherwise
-  fail the whole migration with "no such column".
+  DDL rather than of the additive list. Below v12 the guard never matters, since v12 indexes the
+  column and would fail first, but an imported look-alike stamped v12 to v14 can lack it, and the
+  UPDATE would otherwise fail the whole migration with "no such column".
 
   Three values and not four. The obvious fourth is a `disabled` distinct from `none`, and yt-dlp
   does not report it. Its metadata carries `comment_count: Option<i64>` and no separate flag, so
@@ -317,10 +322,17 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   `media_comments::CommentsState` names only two of the three, and that is deliberate. `unknown`
   is the column's DEFAULT and nothing in the crate ever writes it, so the state only moves
   forward and no write path can return a media to looking un-fetched.
+- **v16** drops `idx_video_comments_parent_comment_id` and `idx_video_comments_comment_id` with
+  `DROP INDEX IF EXISTS`. No query the backend issues chooses either one. The reply threads are
+  rebuilt in the renderer from the flat list the `video_id` query returns, and v10's dedup builds its
+  own temporary index. Every comment merge was maintaining both. The drops and the stamp share one
+  transaction. The dropped indexes are kept in `RETIRED_INDEXES` with their old DDL so the test
+  fixtures can still build a faithful database of an older version.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive, so guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
-  `SCHEMA_VERSION`. A change `ALTER TABLE ADD COLUMN` cannot express (a new/changed
+  `SCHEMA_VERSION`. A new index goes into `INDEX_DDLS` with `since` set to the new version, and
+  the migration builds it with `create_indexes_through`. A change `ALTER TABLE ADD COLUMN` cannot express (a new/changed
   `CHECK`, a new `UNIQUE`, a changed column type, or dropping a column), instead uses the
   table-rebuild path, where `TableRebuild` + `rebuild_table` + `apply_table_rebuilds` follow
   SQLite's documented procedure (create the new shape under a staging name, copy the

@@ -181,11 +181,11 @@ async fn apply_table_rebuilds_in_transaction(
     // also assumes every table exists, which a targeted rebuild must not require.
     let rebuilt_tables: std::collections::HashSet<&str> =
         rebuilds.iter().map(|spec| spec.table).collect();
-    for &(table, ddl) in INDEX_DDLS {
-        if !rebuilt_tables.contains(table) {
+    for index in INDEX_DDLS {
+        if !rebuilt_tables.contains(index.table) {
             continue;
         }
-        sqlx::query(ddl)
+        sqlx::query(index.ddl)
             .execute(&mut *tx)
             .await
             .map_err(|error| db_error("failed to recreate index after rebuild", error))?;
