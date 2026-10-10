@@ -56,7 +56,21 @@ where
     ensure_relative_path_in_managed_dir(relative_path, LIBRARY_DIR_LIVE_CHAT)?;
     let absolute =
         absolute_path_from_relative(library_dir, relative_path, ManagedSubtree::LiveChat)?;
-    ensure_existing_path_inside_dir(&absolute, library_dir)?;
+
+    // The existence check runs before the file is opened, so its generic PathNotFound is what a
+    // missing replay used to come back as, and the player showed "the operation could not be
+    // completed" for a file the user can put back. Reported under the code that says that.
+    ensure_existing_path_inside_dir(&absolute, library_dir).map_err(|error| {
+        if error.code == AppErrorCode::PathNotFound.as_str() {
+            AppError::from_code(
+                AppErrorCode::LiveChatFileNotFound,
+                "the live chat replay file is missing from the library",
+            )
+        } else {
+            error
+        }
+    })?;
+
     stream_live_chat_lines(&absolute, batch_lines, emit)
 }
 
@@ -594,10 +608,8 @@ mod tests {
         )
         .unwrap_err();
 
-        // ensure_existing_path_inside_dir's existence check runs before the file is ever opened, so
-        // a missing file comes back as PathNotFound rather than the LiveChatFileNotFound
-        // stream_live_chat_lines itself would raise (unreachable from this command for that reason).
-        assert_eq!(error["code"], AppErrorCode::PathNotFound.as_str());
+        // The code the player has a message for, rather than the containment check's generic one.
+        assert_eq!(error["code"], AppErrorCode::LiveChatFileNotFound.as_str());
         assert!(messages.lock().unwrap().is_empty());
 
         let _ = fs::remove_dir_all(&library);
