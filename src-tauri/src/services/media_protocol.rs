@@ -148,8 +148,7 @@ fn hex_value(byte: u8) -> Option<u8> {
 ///
 /// Returns the inclusive pair, or `None` when the header names no range this can serve. Only the
 /// single-range form is understood, which is what `<video>` and `<audio>` send. A multi-range
-/// header falls to `None` and the caller answers with the whole resource, which is a correct if
-/// unhelpful response rather than a wrong one.
+/// header falls to `None`, which the caller answers with `416` (see [`plan_range`]).
 ///
 /// The suffix form (`bytes=-<n>`, meaning the last n bytes) is handled because a media stack does
 /// use it to read a trailing `moov`.
@@ -198,6 +197,41 @@ pub(crate) fn parse_byte_range(header: &str, len: u64) -> Option<(u64, u64)> {
     }
 
     Some((start, end))
+}
+
+/// What a request for a resource of `len` bytes is answered with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RangePlan {
+    /// An empty resource, answered with an empty `200`. There is no byte to put in a range.
+    Empty,
+    /// A `Range` header this cannot serve (past the end, reversed, several ranges), answered with
+    /// `416` and the resource's length so the client can ask again.
+    Unsatisfiable,
+    /// The inclusive window to read, already narrowed to the cap.
+    Window(u64, u64),
+}
+
+/// Decides how to answer a request for a resource of `len` bytes carrying `range_header`.
+///
+/// No header is answered with the first window, since the whole file is the one answer that could
+/// allocate gigabytes, and a media element asks for the rest once it sees `Accept-Ranges`. A header
+/// that names nothing servable is `416`. Answering it with the first window as well told the client
+/// the bytes it asked for were bytes `0-`, which a decoder then read as the wrong part of the file.
+pub(crate) fn plan_range(range_header: Option<&str>, len: u64, cap: u64) -> RangePlan {
+    if len == 0 {
+        return RangePlan::Empty;
+    }
+
+    let (start, end) = match range_header {
+        None => (0, len - 1),
+        Some(header) => match parse_byte_range(header, len) {
+            Some(range) => range,
+            None => return RangePlan::Unsatisfiable,
+        },
+    };
+
+    let (start, end) = clamp_range(start, end, len, cap);
+    RangePlan::Window(start, end)
 }
 
 /// Narrows an inclusive range to at most `cap` bytes, staying inside `len`.
@@ -418,6 +452,15 @@ pub(crate) fn serve<R: Runtime>(
 
     let file_path = Path::new(&path);
 
+    // Only a regular file is served. Opening a FIFO blocks until something writes to it, which
+    // would hold one of the few read slots for good, and on Windows a device name such as `CON`
+    // opens a device rather than a file. Neither is anything the app wrote.
+    match std::fs::metadata(file_path) {
+        Ok(metadata) if metadata.is_file() => {}
+        Ok(_) => return empty_response(StatusCode::NOT_FOUND),
+        Err(error) => return empty_response(status_for_open_error(error.kind())),
+    }
+
     let mut file = match File::open(file_path) {
         Ok(file) => file,
         Err(error) => return empty_response(status_for_open_error(error.kind())),
@@ -430,18 +473,30 @@ pub(crate) fn serve<R: Runtime>(
 
     let content_type = media_content_type(file_path);
 
-    let requested = request
+    // A header that is not valid text is treated as one that names nothing servable.
+    let range_header = request
         .headers()
         .get(http::header::RANGE)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| parse_byte_range(value, len));
+        .map(|value| value.to_str().unwrap_or(""));
 
-    // No range asked for. Answering with the whole file would be the one case that can still
-    // allocate gigabytes, so the first window is served instead and the client asks for the rest,
-    // which is what it does anyway once it sees `Accept-Ranges`.
-    let (start, end) = match requested {
-        Some((start, end)) => clamp_range(start, end, len, MAX_RANGE_BYTES),
-        None => clamp_range(0, len.saturating_sub(1), len, MAX_RANGE_BYTES),
+    let (start, end) = match plan_range(range_header, len, MAX_RANGE_BYTES) {
+        RangePlan::Window(start, end) => (start, end),
+        RangePlan::Empty => {
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(http::header::CONTENT_TYPE, content_type)
+                .header(http::header::ACCEPT_RANGES, "bytes")
+                .header(http::header::CONTENT_LENGTH, 0)
+                .body(Vec::new())
+                .unwrap_or_else(|_| empty_response(StatusCode::INTERNAL_SERVER_ERROR));
+        }
+        RangePlan::Unsatisfiable => {
+            return Response::builder()
+                .status(StatusCode::RANGE_NOT_SATISFIABLE)
+                .header(http::header::CONTENT_RANGE, format!("bytes */{len}"))
+                .body(Vec::new())
+                .unwrap_or_else(|_| empty_response(StatusCode::INTERNAL_SERVER_ERROR));
+        }
     };
 
     let count = byte_count(start, end);
@@ -710,6 +765,40 @@ mod tests {
     // would be dead weight and clippy says so.
 
     #[test]
+    fn plan_range_answers_each_kind_of_request() {
+        assert_eq!(plan_range(None, 0, 16), RangePlan::Empty);
+        assert_eq!(plan_range(Some("bytes=0-"), 0, 16), RangePlan::Empty);
+
+        // No header: the first window, never the whole file.
+        assert_eq!(plan_range(None, 100, 16), RangePlan::Window(0, 15));
+        assert_eq!(plan_range(None, 10, 16), RangePlan::Window(0, 9));
+
+        assert_eq!(
+            plan_range(Some("bytes=40-49"), 100, 16),
+            RangePlan::Window(40, 49)
+        );
+        assert_eq!(
+            plan_range(Some("bytes=-5"), 100, 16),
+            RangePlan::Window(95, 99)
+        );
+
+        // A header naming nothing servable is 416, not the first window.
+        assert_eq!(
+            plan_range(Some("bytes=100-"), 100, 16),
+            RangePlan::Unsatisfiable
+        );
+        assert_eq!(
+            plan_range(Some("bytes=9-3"), 100, 16),
+            RangePlan::Unsatisfiable
+        );
+        assert_eq!(
+            plan_range(Some("bytes=0-1,5-6"), 100, 16),
+            RangePlan::Unsatisfiable
+        );
+        assert_eq!(plan_range(Some(""), 100, 16), RangePlan::Unsatisfiable);
+    }
+
+    #[test]
     fn a_path_that_climbs_out_of_a_directory_is_recognized() {
         assert!(climbs_out_of_a_directory("/lib/video/../../secret.txt"));
         assert!(climbs_out_of_a_directory("../x.mp4"));
@@ -785,6 +874,31 @@ mod tests {
         // Granted directory, file gone. The player reports this as missing.
         let missing = serve(app.handle(), &request_for(&library.join("gone.mp4")));
         assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+
+        // Something inside the scope that is not a regular file is not opened.
+        let folder = library.join("folder.mp4");
+        std::fs::create_dir_all(&folder).unwrap();
+        let not_a_file = serve(app.handle(), &request_for(&folder));
+        assert_eq!(not_a_file.status(), StatusCode::NOT_FOUND);
+
+        // An empty file is an empty 200, not a failed read.
+        let empty = library.join("empty.mp4");
+        std::fs::write(&empty, b"").unwrap();
+        let answered = serve(app.handle(), &request_for(&empty));
+        assert_eq!(answered.status(), StatusCode::OK);
+        assert!(answered.body().is_empty());
+
+        // A range past the end is 416 with the length to ask again with.
+        let mut past_the_end = request_for(&inside);
+        past_the_end
+            .headers_mut()
+            .insert(http::header::RANGE, "bytes=500-".parse().unwrap());
+        let refused_range = serve(app.handle(), &past_the_end);
+        assert_eq!(refused_range.status(), StatusCode::RANGE_NOT_SATISFIABLE);
+        assert_eq!(
+            refused_range.headers()[http::header::CONTENT_RANGE],
+            "bytes */11"
+        );
 
         // A climb out of the granted directory is refused before the scope is asked, whether or
         // not the file it names exists, so the two answers cannot be told apart.
