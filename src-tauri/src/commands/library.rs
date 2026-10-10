@@ -33,7 +33,7 @@ fn revoke_directory_from_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &str) 
     // if a forbid below fails partway.
     crate::commands::security::record_forbidden_library_dirs(std::path::Path::new(dir));
 
-    // register_library_asset_scope grants the four managed subdirectories, not the root, so forbid
+    // register_library_asset_scope grants the media and thumbnail subdirectories, not the root, so forbid
     // the same set here. A forbid always wins over an allow, closing the window where a file that
     // later lands in the old library's managed trees would still be readable through convertFileSrc.
     for managed_dir in

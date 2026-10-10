@@ -434,7 +434,7 @@ pub(crate) fn serve<R: Runtime>(
     }
 
     // The one authorization check, and deliberately the same one the asset protocol makes rather
-    // than a second implementation of it. The scope holds the four managed subdirectories of the
+    // than a second implementation of it. The scope holds the media and thumbnail subdirectories of the
     // configured library and the two cache directories the webview renders from (see
     // commands::security), so a path outside them is refused here without this module knowing
     // anything about libraries.

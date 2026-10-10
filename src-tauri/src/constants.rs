@@ -77,6 +77,13 @@ pub const RECOVERED_DOWNLOADS_DIR: &str = "recovered-downloads";
 /// way. Name the subdirectories, never the parent.
 pub const WEBVIEW_READABLE_CACHE_DIRS: [&str; 2] = [TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY];
 
+/// The library subdirectories whose files the webview loads by URL, and therefore the only ones the
+/// asset scope grants (`commands::security::managed_asset_scope_dirs`). The media are played through
+/// `kvxmedia:`, which checks the same scope, and the thumbnails drawn through `asset:`. A live chat
+/// replay is read by the backend and streamed over IPC, so `live_chat/` is left out of the grant.
+pub const WEBVIEW_READABLE_LIBRARY_DIRS: [&str; 3] =
+    [LIBRARY_DIR_VIDEO, LIBRARY_DIR_AUDIO, LIBRARY_DIR_THUMBNAILS];
+
 pub const EVENT_YT_DLP_LOG: &str = "yt-dlp-log";
 pub const EVENT_YT_DLP_ERROR: &str = "yt-dlp-error";
 pub const EVENT_YT_DLP_FINISHED: &str = "yt-dlp-finished";

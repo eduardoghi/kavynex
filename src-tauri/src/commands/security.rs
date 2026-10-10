@@ -45,14 +45,14 @@ where
     Ok(())
 }
 
-/// The subdirectories of `library_root` whose files the asset protocol may serve. Only the managed
-/// media/thumbnail/live-chat trees the app writes itself (`video/`, `audio/`, `thumbnails/`,
-/// `live_chat/`), never the library root. Every path the app legitimately reproduces is
-/// content-addressed under one of these, so confining the grant to them keeps `convertFileSrc` from
-/// reaching an unrelated file the user's chosen library folder happens to hold (a document, a photo),
-/// which granting the root recursively would expose.
+/// The subdirectories of `library_root` whose files the asset protocol may serve. Only the media and
+/// thumbnail trees the app writes itself (`video/`, `audio/`, `thumbnails/`), never the library root
+/// and never `live_chat/`, which the webview has no reason to load by URL. Every path the app
+/// legitimately reproduces is content-addressed under one of these, so confining the grant to them
+/// keeps `convertFileSrc` from reaching an unrelated file the user's chosen library folder happens to
+/// hold (a document, a photo), which granting the root recursively would expose.
 pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
-    crate::constants::MANAGED_LIBRARY_DIRS
+    crate::constants::WEBVIEW_READABLE_LIBRARY_DIRS
         .iter()
         .map(|managed| library_root.join(managed))
         .collect()
@@ -192,7 +192,7 @@ pub(crate) fn record_forbidden_library_dirs(library_root: &Path) {
 /// the webview. Only the directory the user actually configured as their library can be
 /// authorized here.
 ///
-/// Within that library, only the four managed subdirectories are granted, not the root
+/// Within that library, only the media and thumbnail subdirectories are granted, not the root
 /// (see [`managed_asset_scope_dirs`]). The app only ever serves content-addressed files
 /// from those, so authorizing the whole root recursively would needlessly expose any other
 /// file the chosen library folder contains.
@@ -395,17 +395,18 @@ mod tests {
     }
 
     #[test]
-    fn managed_asset_scope_dirs_are_the_four_managed_subdirs_never_the_root() {
+    fn managed_asset_scope_dirs_are_the_rendered_subdirs_never_the_root() {
         let root = Path::new("/library");
         let dirs = managed_asset_scope_dirs(root);
 
-        // Exactly the four managed subdirectories the app serves, and never the root itself.
-        // Granting the root recursively is what would expose unrelated files in the chosen folder.
-        assert_eq!(dirs.len(), 4);
+        // Exactly the subdirectories the webview loads by URL, and never the root itself. Granting
+        // the root recursively is what would expose unrelated files in the chosen folder, and the
+        // live chat is read over IPC, so its folder is not granted either.
+        assert_eq!(dirs.len(), 3);
         assert!(dirs.contains(&root.join("video")));
         assert!(dirs.contains(&root.join("audio")));
         assert!(dirs.contains(&root.join("thumbnails")));
-        assert!(dirs.contains(&root.join("live_chat")));
+        assert!(!dirs.contains(&root.join("live_chat")));
         assert!(!dirs.contains(&root.to_path_buf()));
     }
 

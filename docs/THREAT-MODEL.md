@@ -976,7 +976,7 @@ directories it serves. Naming the subdirectories is the same rule
 How a request is matched against the scope is decided by Tauri, not by this codebase, so it is
 stated here from the dependency's source. `Scope::is_allowed` (tauri 2.12.1, `scope/fs.rs`) follows
 a symlink at the requested path, canonicalizes the result when it exists, and only then matches the
-scope's glob patterns. A symlink planted inside one of the four managed subdirectories and pointing
+scope's glob patterns. A symlink planted inside one of the granted library subdirectories and pointing
 outside the library is therefore refused, because its target is what gets matched, the same outcome
 the canonical comparisons elsewhere in this document reach (`ensure_existing_path_inside_dir`,
 `library::guard`). A path that does not exist is matched as written. That costs nothing for a local
