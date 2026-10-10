@@ -529,13 +529,78 @@ pub async fn stage_database_import(
     Ok(())
 }
 
+/// How many times the marker removal after a completed swap is attempted before giving up. A file
+/// created a moment earlier is exactly what an antivirus or indexer is still holding open.
+const MARKER_REMOVAL_ATTEMPTS: u32 = 5;
+
+const MARKER_REMOVAL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Removes the in-progress marker, retrying a held file, and says whether it is gone.
+fn remove_import_applying_marker(marker: &Path) -> bool {
+    for attempt in 1..=MARKER_REMOVAL_ATTEMPTS {
+        match std::fs::remove_file(marker) {
+            Ok(()) => return true,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return true,
+            Err(error) if attempt == MARKER_REMOVAL_ATTEMPTS => {
+                logger::error(
+                    "db_backup",
+                    format!(
+                        "the import completed but its in-progress marker could not be removed: \
+                         {error}. The next launch will read it as an interrupted import and set \
+                         the current database aside as kavynex.db.displaced-*"
+                    ),
+                );
+            }
+            Err(_) => std::thread::sleep(MARKER_REMOVAL_RETRY_DELAY),
+        }
+    }
+
+    false
+}
+
+/// Moves whatever sits at `db_path` to a `.displaced-<suffix>` sibling, its write-ahead log with it,
+/// and returns where it went. `None` when there was nothing there.
+///
+/// The recovery paths below act on the marker's claim that `db_path` is the empty file the pool
+/// created after a failed swap. That claim is also what a marker whose removal failed after a
+/// completed import makes, and there `db_path` is the imported database with however much use it
+/// has had since. Setting the file aside instead of deleting it keeps the claim from destroying
+/// anything when it is wrong.
+fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
+    if !db_path.exists() {
+        return Ok(None);
+    }
+
+    let displaced = sibling(
+        db_path,
+        &format!(".displaced-{}", crate::utils::naming::unique_temp_suffix()),
+    );
+
+    std::fs::rename(db_path, &displaced).map_err(|error| {
+        backup_error("failed to set aside the database found at the database path", error)
+    })?;
+
+    // The log goes with the file it belongs to, under the name SQLite looks for beside it, so the
+    // displaced copy opens with every committed transaction. The shared-memory index is rebuilt on
+    // open and is only dropped.
+    let _ = std::fs::rename(sibling(db_path, "-wal"), sibling(&displaced, "-wal"));
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+
+    logger::error(
+        "db_backup",
+        format!(
+            "an interrupted import was recovered and the database found in its place was kept as {}",
+            logger::redact_path(&displaced)
+        ),
+    );
+
+    Ok(Some(displaced))
+}
+
 /// Restores a `.pre-import` snapshot that an interrupted import stranded as the only copy of the
-/// database, when its staged file is gone so the normal swap can never consume it. Removes any empty
-/// `db_path` the pool may have created on an earlier launch, with its `-wal`/`-shm`, which SQLite
-/// would otherwise try to apply to the restored file, renames the snapshot back into place, makes
-/// it durable and clears the marker. Trusts
-/// the same invariant the swap path does. A marker with a `.pre-import` behind it means `db_path`
-/// holds no real data.
+/// database, when its staged file is gone so the normal swap can never consume it. Sets aside the
+/// file the pool may have created at `db_path` on an earlier launch (see [`displace_database`]),
+/// renames the snapshot back into place, makes it durable and clears the marker.
 fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path) -> AppResult<()> {
     logger::warn(
         "db_backup",
@@ -543,16 +608,15 @@ fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path)
          file is gone; restoring the snapshot rather than starting with an empty database",
     );
 
-    let _ = std::fs::remove_file(sibling(db_path, "-wal"));
-    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
-    let _ = std::fs::remove_file(db_path);
+    displace_database(db_path)?;
 
     std::fs::rename(pre_import, db_path).map_err(|error| {
         backup_error("failed to restore the stranded pre-import snapshot", error)
     })?;
 
     crate::services::filesystem::fsync_parent_dir(db_path);
-    let _ = std::fs::remove_file(marker);
+    remove_import_applying_marker(marker);
+    crate::services::filesystem::fsync_parent_dir(marker);
 
     Ok(())
 }
@@ -585,8 +649,8 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // user's database, and anything at `db_path` is the empty file the pool created afterwards
     // with `create_if_missing`, never their data. Moving that empty file aside would overwrite
     // the real snapshot and lose the library permanently, with no undo left to offer, so the
-    // move-aside is skipped and `.pre-import` is kept as this run's undo copy. The swap below
-    // then discards the empty file, which is all it is good for.
+    // move-aside is skipped and `.pre-import` is kept as this run's undo copy. The file at
+    // `db_path` is set aside rather than overwritten, in case the marker is lying.
     //
     // The marker is what makes the two states distinguishable at all. `db_path` present plus a
     // `.pre-import` plus a staged import is also exactly what a perfectly normal *second* import
@@ -607,6 +671,9 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
             "db_backup",
             "an earlier import died mid-swap: keeping the existing pre-import snapshot as the undo copy",
         );
+
+        // Not discarded by the swap below. See displace_database for why.
+        displace_database(db_path)?;
     } else if db_path.exists() {
         // Only consume the previous undo snapshot when this run is about to replace it in the
         // same step, so a crash can never leave the database file gone with `.pre-import` already
@@ -651,7 +718,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         // succeeds the database is whole again and the marker has to go with it; when it fails,
         // the marker is exactly what tells the next run that `.pre-import` is the only real copy.
         if std::fs::rename(&pre_import, db_path).is_ok() {
-            let _ = std::fs::remove_file(&marker);
+            remove_import_applying_marker(&marker);
         }
 
         return Err(backup_error("failed to apply the imported database", error));
@@ -670,7 +737,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // the residual non-atomic rename+unlink window, the same shape the rest of this module accepts.
     crate::services::filesystem::fsync_parent_dir(db_path);
 
-    let _ = std::fs::remove_file(&marker);
+    remove_import_applying_marker(&marker);
     crate::services::filesystem::fsync_parent_dir(&marker);
 
     logger::info("db_backup", "imported database applied on startup");

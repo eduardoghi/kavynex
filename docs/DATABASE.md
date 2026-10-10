@@ -588,6 +588,11 @@ live connection pool is a singleton that cannot be reopened mid-session:
    skipped rather than overwriting it with the empty file. See `docs/DIRECTORIES.md` for the file
    itself.
 
+   The file the recovery finds at `db_path` is moved to `kavynex.db.displaced-<suffix>` (with its
+   `-wal`) rather than deleted. The marker's claim that it is the pool's empty file is also what a
+   marker whose removal failed after a completed import makes, and there `db_path` is the imported
+   database with whatever was done in it since. The removal itself is retried before giving up.
+
    The marker follows the move-aside rather than preceding it, and that order is the whole of its
    meaning. Written first, it would also be on disk in the window before the rename ran, and there
    `db_path` is still the user's real library, not the pool's empty file, so the next run would read

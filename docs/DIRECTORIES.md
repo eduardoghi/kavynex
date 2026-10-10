@@ -59,6 +59,12 @@ second import. If you ever see one sitting next to `kavynex.db` on a healthy ins
 failed midway and `.pre-import` is the database to go back to. See `docs/DATABASE.md` for why it is
 written after the move-aside rather than before it.
 
+A `kavynex.db.displaced-<suffix>` (and its `-wal`) is what such a recovery found at the database
+path and set aside instead of deleting. It is a complete SQLite database. If it holds work you
+expected to see, export the current database first, copy the displaced one (and its `-wal`, if any)
+to a name ending in `.db` while Kavynex is closed, and import that copy through
+Settings > Database > Import.
+
 One file here is not ours and is listed so the inventory above stays complete rather than
 almost-complete:
 

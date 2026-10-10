@@ -681,6 +681,56 @@ async fn an_import_retried_after_a_failed_swap_keeps_the_real_pre_import_snapsho
     assert_eq!(read_video_title(&pre_import_path(&db)).await, "current");
     // A completed swap clears the marker, so the next import behaves normally again.
     assert!(!import_applying_marker_path(&db).exists());
+    // The interim file is set aside, not discarded, in case it held more than the marker claimed.
+    let displaced = displaced_databases(&db);
+    assert_eq!(displaced.len(), 1);
+    assert_eq!(read_video_title(&displaced[0]).await, "empty interim database");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn displaced_databases(db: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let prefix = format!("{}.displaced-", db.file_name().unwrap().to_string_lossy());
+
+    std::fs::read_dir(db.parent().unwrap())
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            name.starts_with(&prefix) && !name.ends_with("-wal") && !name.ends_with("-shm")
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn a_marker_left_behind_by_a_completed_import_never_destroys_the_database_in_use() {
+    // The marker's removal after a completed swap can fail (a scanner holding the file it just
+    // created). The next launches then see a marker, a `.pre-import` and no staged file, the same
+    // shape a swap that died with its staged file lost leaves. The database at db_path is the
+    // imported one with whatever was done in it since, and it has to survive the recovery.
+    let dir = temp_dir("stale-import-marker");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let source = dir.join("incoming.db");
+    seed_kavynex_db(&source, "imported").await;
+    stage_database_import(&db, &source, None).await.unwrap();
+    assert!(apply_pending_database_import(&db).unwrap());
+
+    // The removal that failed, and days of use of the imported database.
+    write_import_applying_marker(&import_applying_marker_path(&db)).unwrap();
+    rename_video_title(&db, "imported and used for days").await;
+
+    assert!(!apply_pending_database_import(&db).unwrap());
+
+    let displaced = displaced_databases(&db);
+    assert_eq!(displaced.len(), 1);
+    assert_eq!(
+        read_video_title(&displaced[0]).await,
+        "imported and used for days"
+    );
+    assert!(!import_applying_marker_path(&db).exists());
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1497,6 +1547,23 @@ async fn read_video_title(path: &Path) -> String {
         .unwrap();
     pool.close().await;
     title
+}
+
+async fn rename_video_title(path: &Path, title: &str) {
+    let options = SqliteConnectOptions::new()
+        .filename(path)
+        .create_if_missing(false);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE videos SET title = ?")
+        .bind(title)
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
 }
 
 #[tokio::test]
