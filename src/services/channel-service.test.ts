@@ -226,7 +226,7 @@ describe("channel-service", () => {
             failed_paths: [],
         });
 
-        await expect(deleteChannelWithThumbnailCleanup(10)).resolves.toBeUndefined();
+        await expect(deleteChannelWithThumbnailCleanup(10)).resolves.toBe(0);
 
         expect(deleteChannelWithArtifacts).toHaveBeenCalledWith(10);
         expect(logError).not.toHaveBeenCalled();
@@ -239,7 +239,7 @@ describe("channel-service", () => {
             failed_paths: ["thumbnails/avatar_a.png"],
         });
 
-        await expect(deleteChannelWithThumbnailCleanup(10)).resolves.toBeUndefined();
+        await expect(deleteChannelWithThumbnailCleanup(10)).resolves.toBe(1);
 
         expect(logError).toHaveBeenCalledWith(
             "channel-service",

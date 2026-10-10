@@ -17,10 +17,12 @@ import {
     persistThumbnailFile,
 } from "../../services/thumbnail-service";
 import { logError } from "../../utils/app-logger";
+import { leftoverFilesNotice } from "../../utils/leftover-files-notice";
 
 type UseChannelActionsOptions = {
     libraryPath: string;
     onError: (message: string) => void;
+    onNotice?: (message: string) => void;
     onChannelDeleted?: (channelId: number) => void;
     selectedChannelId: number | null;
     setChannels: React.Dispatch<React.SetStateAction<Channel[]>>;
@@ -64,6 +66,7 @@ type UseChannelActionsReturn = {
 export function useChannelActions({
     libraryPath,
     onError,
+    onNotice,
     onChannelDeleted,
     selectedChannelId,
     setChannels,
@@ -318,7 +321,7 @@ export function useChannelActions({
 
         await runDeleteChannel(async () => {
             try {
-                await deleteChannelWithThumbnailCleanup(channelToDelete.id);
+                const leftoverFiles = await deleteChannelWithThumbnailCleanup(channelToDelete.id);
 
                 if (selectedChannelId === channelToDelete.id) {
                     setSelectedChannelId(null);
@@ -330,6 +333,10 @@ export function useChannelActions({
                 setConfirmDeleteChannelOpen(false);
                 setChannelToDelete(null);
                 onChannelDeleted?.(channelToDelete.id);
+
+                if (leftoverFiles > 0) {
+                    onNotice?.(leftoverFilesNotice("channel", leftoverFiles));
+                }
             } catch (error) {
                 logError("channels", "Failed to delete channel.", error, {
                     channelId: channelToDelete.id,
@@ -343,6 +350,7 @@ export function useChannelActions({
         libraryPath,
         onChannelDeleted,
         onError,
+        onNotice,
         runDeleteChannel,
         selectedChannelId,
         setChannelToDelete,

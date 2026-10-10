@@ -1,6 +1,14 @@
 import { Anchor, Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Info, Trash2 } from "lucide-react";
 import type { DiagnosticsIssue, DiagnosticsMediaTarget } from "../../../types/diagnostics";
+import { AppButton } from "../../ui/app-button";
+
+// The issues the orphan removal acts on. Live chat orphans are not among them, since their names
+// carry no digest and the removal cannot tell them from a file the user put there.
+const REMOVABLE_ORPHAN_CODES: ReadonlySet<string> = new Set([
+    "ORPHAN_MEDIA_FILES",
+    "ORPHAN_THUMBNAIL_FILES",
+]);
 
 type DiagnosticsIssuesSectionProps = {
     issues: DiagnosticsIssue[];
@@ -8,10 +16,14 @@ type DiagnosticsIssuesSectionProps = {
     // that media in the library (used for "missing media". The file is gone but the row remains).
     onOpenMedia?: (target: DiagnosticsMediaTarget) => void;
     // When given, example paths of an issue whose files are on disk (`examplesAreOnDisk`) become
-    // clickable and reveal the file in the OS file manager. This is the other half of the report
-    // being read-only. It names unreferenced and corrupt files and never removes them, so the file
-    // manager is where the user acts, and a content-addressed name is not one to retype.
+    // clickable and reveal the file in the OS file manager, for a corrupt file (which nothing here
+    // removes) or an orphan the user wants to look at first. A content-addressed name is not one to
+    // retype.
     onRevealPath?: (path: string) => void;
+    // When given, the first orphan media or thumbnail issue offers to remove those files. One
+    // button for both, since one removal covers both.
+    onRemoveOrphans?: () => void;
+    removingOrphans?: boolean;
 };
 
 // One example path rendered as a link. Extracted because the two link branches below differ only in
@@ -102,7 +114,13 @@ export function DiagnosticsIssuesSection({
     issues,
     onOpenMedia,
     onRevealPath,
+    onRemoveOrphans,
+    removingOrphans = false,
 }: DiagnosticsIssuesSectionProps): JSX.Element | null {
+    const removeOrphansIssueCode = issues.find((issue) =>
+        REMOVABLE_ORPHAN_CODES.has(issue.code)
+    )?.code;
+
     // Nothing to list, nothing to show. The heading plus a card saying the environment
     // looks healthy repeated the green status at the top of the dialog, and it did it in
     // the largest block on the screen.
@@ -183,6 +201,21 @@ export function DiagnosticsIssuesSection({
                                                 );
                                             })}
                                         </Stack>
+                                    )}
+
+                                    {onRemoveOrphans && issue.code === removeOrphansIssueCode && (
+                                        <AppButton
+                                            type="button"
+                                            appVariant="secondary"
+                                            size="xs"
+                                            mt="sm"
+                                            leftSection={<Trash2 size={14} />}
+                                            onClick={onRemoveOrphans}
+                                            loading={removingOrphans}
+                                            disabled={removingOrphans}
+                                        >
+                                            Remove orphan files
+                                        </AppButton>
                                     )}
                                 </Box>
                             </Group>

@@ -52,6 +52,7 @@ pub enum AppErrorCode {
     LibraryMigrationCancelled,
     LibraryVerificationInProgress,
     LibraryVerificationFailed,
+    MediaCreationInProgress,
 
     InvalidDirectoryPath,
     CreateDirectoryFailed,
@@ -232,6 +233,7 @@ impl AppErrorCode {
             Self::LibraryMigrationAlreadyRunning => "LIBRARY_MIGRATION_ALREADY_RUNNING",
             Self::LibraryVerificationInProgress => "LIBRARY_VERIFICATION_IN_PROGRESS",
             Self::LibraryVerificationFailed => "LIBRARY_VERIFICATION_FAILED",
+            Self::MediaCreationInProgress => "MEDIA_CREATION_IN_PROGRESS",
 
             Self::InvalidDirectoryPath => "INVALID_DIRECTORY_PATH",
             Self::CreateDirectoryFailed => "CREATE_DIRECTORY_FAILED",

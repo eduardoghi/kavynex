@@ -228,6 +228,31 @@ pub(crate) fn ensure_request_files_were_chosen(request: &CreateMediaRequest) -> 
     ensure_chosen_if_present(ChosenFile::Source, request.cookies_path.as_deref())
 }
 
+/// How many media creations are running. A creation writes its artifacts into the library before
+/// the row that references them lands, so for that stretch they look exactly like orphans.
+/// `library::cleanup::remove_orphan_artifacts` refuses while this is above zero.
+static CREATIONS_IN_FLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+pub(crate) fn creations_in_flight() -> usize {
+    CREATIONS_IN_FLIGHT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Counts one creation for as long as it lives, whichever way it ends.
+struct CreationInFlight;
+
+impl CreationInFlight {
+    fn begin() -> Self {
+        CREATIONS_IN_FLIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for CreationInFlight {
+    fn drop(&mut self) {
+        CREATIONS_IN_FLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Normalizes a caller-supplied optional string to `None` when it is blank.
 fn normalized_optional(value: Option<String>) -> Option<String> {
     value
@@ -1076,6 +1101,7 @@ pub async fn create_media_async<R: Runtime>(
     app: &AppHandle<R>,
     request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
+    let _in_flight = CreationInFlight::begin();
     let request = normalize_create_media_request(request)?;
 
     ensure_channel_exists(app, request.channel_id).await?;

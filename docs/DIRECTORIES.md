@@ -231,8 +231,10 @@ a media creation that crashed *and* five consecutive launches that could not cle
 the directory grows at a rate no user will measure. Against that, a sweep able to delete these files
 would be a sweep able to delete the only record of artifacts sitting in the library, which is
 precisely the decision `marker_is_sweepable` refuses to make whenever it is uncertain. Diagnostics
-reports what an abandoned marker names as orphans, without deleting anything, and the files and the
-marker itself are safe to delete by hand once nothing references them.
+reports what an abandoned marker names as orphans, and its **Remove orphan files** action deletes the
+media files and thumbnails among them (`library::cleanup::remove_orphan_artifacts`, which refuses
+while a media is being added). The marker itself is safe to delete by hand once nothing references
+its files.
 
 ## App log directory (`kavynex.log`)
 

@@ -15,18 +15,15 @@ type UsePendingMediaAlertOptions = {
 // has never heard of a "pending media marker". What it means to them is disk space in use with
 // nothing pointing at it, and one place to go about it.
 //
-// It names the file manager rather than stopping at Diagnostics, because Diagnostics reports and
-// never deletes. This used to end with "open Diagnostics to review the unreferenced files and
-// remove them", which sent the user to a screen that has no such action and left the real last step
-// unwritten. What the screen does offer is the path itself, as a link that shows the file where it
-// lives (see the reveal action in use-diagnostics), so the two halves of the instruction are now
-// both true and both reachable.
+// Both next steps exist on that screen. Diagnostics removes the orphan files Kavynex named itself,
+// which is what an unfinished import leaves, and shows any one of them in the file manager (see
+// use-diagnostics) for a user who wants to look first.
 function abandonedMessage(abandoned: number): string {
     return (
         `${formatCount(abandoned, "unfinished media import")} left files in your library that no ` +
         "entry points at, and the app has stopped retrying them automatically. Nothing was lost. " +
-        "Open Diagnostics to see which files they are, then click one to show it in your file " +
-        "manager and delete it there if you no longer want it."
+        "Open Diagnostics to see which files they are. It can remove them, or show each one in " +
+        "your file manager."
     );
 }
 

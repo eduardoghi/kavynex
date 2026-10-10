@@ -341,8 +341,9 @@ export async function createMedia(
 }
 
 // The backend deletes the row and its now-unreferenced files atomically; files it could
-// not remove are reported back so an orphaned file left in the library stays visible.
-export async function deleteMediaWithFileCleanup(mediaId: number): Promise<void> {
+// not remove are reported back so an orphaned file left in the library stays visible. Resolves
+// with how many of them stayed behind.
+export async function deleteMediaWithFileCleanup(mediaId: number): Promise<number> {
     validateMediaId(mediaId);
 
     const report = await deleteMediaWithArtifacts(mediaId);
@@ -355,6 +356,8 @@ export async function deleteMediaWithFileCleanup(mediaId: number): Promise<void>
             { mediaId, failedPaths: report.failed_paths }
         );
     }
+
+    return report.failed_paths.length;
 }
 
 export async function setMediaWatched(mediaId: number): Promise<string> {

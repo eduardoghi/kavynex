@@ -883,3 +883,56 @@ async fn a_channel_with_nothing_on_disk_is_deleted_without_the_library() {
 
     assert!(plan.deletable.is_empty());
 }
+
+#[test]
+fn only_unreferenced_files_named_like_the_apps_own_are_removable_orphans() {
+    let library = unique_test_dir("orphans");
+    for dir in ["video", "audio", "thumbnails", "live_chat"] {
+        fs::create_dir_all(library.join(dir)).unwrap();
+    }
+
+    let digest = |c: char| c.to_string().repeat(64);
+    let orphan_media = format!("video/media_{}.mp4", digest('a'));
+    let orphan_audio = format!("audio/media_{}.m4a", digest('b'));
+    let orphan_thumb = format!("thumbnails/thumb_{}.jpg", digest('c'));
+    let referenced_media = format!("video/media_{}.mp4", digest('d'));
+    let avatar = format!("thumbnails/thumb_{}.png", digest('e'));
+
+    for path in [
+        &orphan_media,
+        &orphan_audio,
+        &orphan_thumb,
+        &referenced_media,
+        &avatar,
+    ] {
+        fs::write(library.join(path), b"x").unwrap();
+    }
+
+    // Unreferenced as well, but not named by the app, so they may be the user's own.
+    fs::write(library.join("video/holiday.mp4"), b"x").unwrap();
+    fs::write(library.join("video/media_backup.mp4"), b"x").unwrap();
+    fs::write(library.join("live_chat/youtube_ID_137.live_chat.json.gz"), b"x").unwrap();
+
+    let expected = crate::services::library::integrity::ExpectedLibraryPaths {
+        media: vec![referenced_media.clone()],
+        thumbnails: vec![avatar.clone()],
+        live_chat: Vec::new(),
+    };
+
+    let mut removable: Vec<(ArtifactKind, String)> = removable_orphans(&library, &expected)
+        .into_iter()
+        .map(|artifact| (artifact.kind, artifact.path))
+        .collect();
+    removable.sort_by(|a, b| a.1.cmp(&b.1));
+
+    assert_eq!(
+        removable,
+        vec![
+            (ArtifactKind::MediaFile, orphan_audio),
+            (ArtifactKind::Thumbnail, orphan_thumb),
+            (ArtifactKind::MediaFile, orphan_media),
+        ]
+    );
+
+    let _ = fs::remove_dir_all(&library);
+}

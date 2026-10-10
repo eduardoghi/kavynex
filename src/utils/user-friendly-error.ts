@@ -23,6 +23,7 @@ import {
     LIBRARY_MIGRATION_SAME_FOLDER_ERROR_CODE,
     LIBRARY_MIGRATION_CANCELLED_ERROR_CODE,
     LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE,
+    MEDIA_CREATION_IN_PROGRESS_ERROR_CODE,
     LIBRARY_VERIFICATION_FAILED_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     INVALID_MEDIA_PATH_ERROR_CODE,
@@ -152,6 +153,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "A library check is already running. Wait for it to finish before starting another one.",
     [LIBRARY_VERIFICATION_FAILED_ERROR_CODE]:
         "The library check stopped before it could finish. Nothing was changed, and you can run it again.",
+    [MEDIA_CREATION_IN_PROGRESS_ERROR_CODE]:
+        "A media is being added. Wait for it to finish, then remove the orphan files again.",
     [ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE]:
         "The library folder was changed and then changed back during this session. Your files are safe, but Kavynex has to be restarted before it can play them again.",
     [INVALID_MEDIA_PATH_ERROR_CODE]: "The selected media item is invalid.",

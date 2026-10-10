@@ -322,7 +322,7 @@ fn build_expected_set(stored_paths: &[String]) -> HashSet<String> {
 }
 
 /// Lists every file under `dir` as a path relative to `root`, using forward slashes.
-fn list_files_relative(dir: &Path, root: &Path) -> Vec<String> {
+pub(crate) fn list_files_relative(dir: &Path, root: &Path) -> Vec<String> {
     let mut files = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
 

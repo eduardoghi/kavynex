@@ -757,7 +757,7 @@ describe("useChannelActions", () => {
     });
 
     it("deletes selected channel and resets selection", async () => {
-        vi.mocked(deleteChannelWithThumbnailCleanup).mockResolvedValueOnce(undefined);
+        vi.mocked(deleteChannelWithThumbnailCleanup).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const channelToDelete = {
@@ -797,6 +797,44 @@ describe("useChannelActions", () => {
         expect(setConfirmDeleteChannelOpen).toHaveBeenCalledWith(false);
         expect(setChannelToDelete).toHaveBeenCalledWith(null);
         expect(onChannelDeleted).toHaveBeenCalledWith(10);
+    });
+
+    it("tells the user when a deleted channel left files behind", async () => {
+        vi.mocked(deleteChannelWithThumbnailCleanup).mockResolvedValueOnce(1);
+        vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+        const onNotice = vi.fn();
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onChannelDeleted,
+                selectedChannelId: 10,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: {
+                    id: 10,
+                    name: "Canal A",
+                    youtube_handle: "@canala",
+                    avatar_path: null,
+                    created_at: "2026-03-31T10:00:00.000Z",
+                },
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannelAction();
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("1 of its files"));
     });
 
     it("reports load error", async () => {

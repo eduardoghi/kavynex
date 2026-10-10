@@ -52,6 +52,7 @@ export type TauriCommandReturns = {
     resolve_existing_directory: string;
     migrate_library_directory: MigrateLibraryDirectoryResult;
     get_library_summary: LibrarySummaryInfo;
+    remove_orphan_library_files: ArtifactCleanupReport;
     // The report plus the media row behind each path it named. One command rather than two,
     // because both are answered from one snapshot of the database (see the Rust struct).
     check_library_integrity: LibraryIntegrityCheck;

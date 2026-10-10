@@ -775,6 +775,94 @@ pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
     execute_plan_locked(app, plan).await
 }
 
+/// The orphans `remove_orphan_artifacts` may delete. Files under `video/`, `audio/` and
+/// `thumbnails/` that no row references and that carry the name the app gives what it writes
+/// (`media_<sha256>.<ext>`, `thumb_<sha256>.<ext>`).
+///
+/// The name is the line between the app's leftovers and the user's own files. A library folder is
+/// not required to be empty, and a file the user put in `video/` by hand is reported as an orphan
+/// too, but it does not carry a digest in its name, so it stays. Live chat replays are left out
+/// entirely, since their names carry no digest either.
+pub(crate) fn removable_orphans(
+    library_dir: &Path,
+    expected: &crate::services::library::integrity::ExpectedLibraryPaths,
+) -> Vec<DeletableArtifact> {
+    use crate::constants::{LIBRARY_DIR_AUDIO, LIBRARY_DIR_THUMBNAILS, LIBRARY_DIR_VIDEO};
+    use crate::services::library::integrity::list_files_relative;
+    use crate::services::library::verification::declared_content_hash;
+
+    let groups: [(&str, ArtifactKind, &Vec<String>); 3] = [
+        (LIBRARY_DIR_VIDEO, ArtifactKind::MediaFile, &expected.media),
+        (LIBRARY_DIR_AUDIO, ArtifactKind::MediaFile, &expected.media),
+        (
+            LIBRARY_DIR_THUMBNAILS,
+            ArtifactKind::Thumbnail,
+            &expected.thumbnails,
+        ),
+    ];
+
+    let mut removable = Vec::new();
+
+    for (subdir, kind, referenced) in groups {
+        for relative in list_files_relative(&library_dir.join(subdir), library_dir) {
+            if referenced.contains(&relative) {
+                continue;
+            }
+
+            let file_name = relative.rsplit('/').next().unwrap_or_default();
+
+            if declared_content_hash(file_name).is_some() {
+                removable.push(DeletableArtifact {
+                    kind,
+                    path: relative,
+                });
+            }
+        }
+    }
+
+    removable
+}
+
+/// Removes the library files no row references, which is what Diagnostics reports as orphans,
+/// limited to the ones `removable_orphans` recognizes as the app's own.
+///
+/// Holds [`MEDIA_REGISTRATION_LOCK`] for the whole run and refuses while a media creation is in
+/// flight, since a creation's artifacts sit in the library unreferenced until its row lands. The
+/// unlink itself goes through the same plan a deletion runs, so each path is recounted against the
+/// database right before it goes and every file is removed under the library gate.
+pub async fn remove_orphan_artifacts<R: Runtime>(
+    app: &AppHandle<R>,
+) -> AppResult<ArtifactCleanupReport> {
+    let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
+
+    if crate::services::media_creation::creations_in_flight() > 0 {
+        return Err(AppError::from_code(
+            AppErrorCode::MediaCreationInProgress,
+            "a media is being added, so its files are not referenced yet",
+        ));
+    }
+
+    let pool = shared_pool(app).await?;
+    let references =
+        crate::services::video_repository::list_media_integrity_references(&pool).await?;
+    let avatar_paths =
+        crate::services::channel_repository::list_channel_avatar_paths(&pool).await?;
+    let expected =
+        crate::services::library::integrity::expected_library_paths(&references, avatar_paths);
+    let library_dir = configured_library_dir(app).await?;
+
+    let deletable = run_blocking(move || Ok(removable_orphans(&library_dir, &expected))).await?;
+
+    execute_plan_locked(
+        app,
+        ArtifactCleanupPlan {
+            deletable,
+            skipped_shared_paths: Vec::new(),
+        },
+    )
+    .await
+}
+
 /// Updates a channel's avatar path and decides, within the same transaction, whether the
 /// previous avatar file became unreferenced. Returns `None` when the channel does not exist.
 ///

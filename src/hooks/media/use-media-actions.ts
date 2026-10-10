@@ -4,6 +4,7 @@ import { resolveErrorMessage } from "../../utils/error-message";
 import { parseAppError } from "../../utils/app-error";
 import { INVALID_RUN_ID_ERROR_CODE } from "../../constants/error-codes";
 import { executeDeleteMedia } from "../../use-cases/delete-media";
+import { leftoverFilesNotice } from "../../utils/leftover-files-notice";
 import { executeMarkMediaWatched } from "../../use-cases/mark-media-watched";
 import { executeMarkMediaUnwatched } from "../../use-cases/mark-media-unwatched";
 import { useAsyncFlag } from "../use-async-flag";
@@ -172,7 +173,7 @@ export function useMediaActions({
 
         await runDeleteAction(async () => {
             try {
-                await executeDeleteMedia({
+                const leftoverFiles = await executeDeleteMedia({
                     media: mediaToDelete,
                     reloadMedia: removeDeletedMediaFromMemory,
                     closePlayerIfActive,
@@ -180,6 +181,10 @@ export function useMediaActions({
 
                 setConfirmDeleteMediaOpen(false);
                 setMediaToDelete(null);
+
+                if (leftoverFiles > 0) {
+                    onNotice(leftoverFilesNotice("media", leftoverFiles));
+                }
             } catch (error) {
                 logError("media-actions", "Failed to delete media.", error, {
                     mediaId: mediaToDelete.id,
@@ -193,6 +198,7 @@ export function useMediaActions({
         libraryPath,
         mediaToDelete,
         onError,
+        onNotice,
         removeDeletedMediaFromMemory,
         runDeleteAction,
     ]);

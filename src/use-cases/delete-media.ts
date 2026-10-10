@@ -11,9 +11,11 @@ export async function executeDeleteMedia({
     media,
     reloadMedia,
     closePlayerIfActive,
-}: ExecuteDeleteMediaOptions): Promise<void> {
-    await deleteMediaWithFileCleanup(media.id);
+}: ExecuteDeleteMediaOptions): Promise<number> {
+    const leftoverFiles = await deleteMediaWithFileCleanup(media.id);
 
     closePlayerIfActive(media.id);
     await reloadMedia();
+
+    return leftoverFiles;
 }

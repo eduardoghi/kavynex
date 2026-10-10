@@ -9,6 +9,7 @@ vi.mock("../services/diagnostics-service", () => ({
 vi.mock("../services/library-service", () => ({
     openLogDirectory: vi.fn(),
     openFileLocation: vi.fn(),
+    removeOrphanLibraryFiles: vi.fn(),
 }));
 
 vi.mock("../utils/app-error", () => ({
@@ -24,7 +25,11 @@ vi.mock("../utils/app-logger", () => ({
 }));
 
 import { getDiagnosticsSummary } from "../services/diagnostics-service";
-import { openFileLocation, openLogDirectory } from "../services/library-service";
+import {
+    openFileLocation,
+    openLogDirectory,
+    removeOrphanLibraryFiles,
+} from "../services/library-service";
 import { useDiagnostics } from "./use-diagnostics";
 
 const getDiagnosticsSummaryMock = vi.mocked(getDiagnosticsSummary);
@@ -738,6 +743,70 @@ describe("useDiagnostics", () => {
             });
 
             expect(openFileLocationMock).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe("removeOrphanFiles", () => {
+        it("removes the files and reloads the report", async () => {
+            const onError = vi.fn();
+            getDiagnosticsSummaryMock.mockResolvedValue(createSummary("after"));
+            vi.mocked(removeOrphanLibraryFiles).mockResolvedValueOnce({
+                deleted_paths: ["video/a.mp4"],
+                skipped_shared_paths: [],
+                failed_paths: [],
+            });
+
+            const { result } = renderHook(() =>
+                useDiagnostics({ libraryPath: "/library", importMode: "copy", onError })
+            );
+
+            await act(async () => {
+                await result.current.removeOrphanFiles();
+            });
+
+            expect(removeOrphanLibraryFiles).toHaveBeenCalledTimes(1);
+            expect(getDiagnosticsSummaryMock).toHaveBeenCalled();
+            expect(onError).not.toHaveBeenCalled();
+            expect(result.current.isRemovingOrphanFiles).toBe(false);
+        });
+
+        it("says how many files could not be removed", async () => {
+            const onError = vi.fn();
+            getDiagnosticsSummaryMock.mockResolvedValue(createSummary("after"));
+            vi.mocked(removeOrphanLibraryFiles).mockResolvedValueOnce({
+                deleted_paths: [],
+                skipped_shared_paths: [],
+                failed_paths: ["video/a.mp4", "thumbnails/b.jpg"],
+            });
+
+            const { result } = renderHook(() =>
+                useDiagnostics({ libraryPath: "/library", importMode: "copy", onError })
+            );
+
+            await act(async () => {
+                await result.current.removeOrphanFiles();
+            });
+
+            expect(onError).toHaveBeenCalledWith(expect.stringContaining("2 orphan file(s)"));
+        });
+
+        it("surfaces a refusal and still reloads the report", async () => {
+            const onError = vi.fn();
+            getDiagnosticsSummaryMock.mockResolvedValue(createSummary("after"));
+            vi.mocked(removeOrphanLibraryFiles).mockRejectedValueOnce({
+                code: "MEDIA_CREATION_IN_PROGRESS",
+            });
+
+            const { result } = renderHook(() =>
+                useDiagnostics({ libraryPath: "/library", importMode: "copy", onError })
+            );
+
+            await act(async () => {
+                await result.current.removeOrphanFiles();
+            });
+
+            expect(onError).toHaveBeenCalledWith("Failed to remove the orphan files.");
+            expect(getDiagnosticsSummaryMock).toHaveBeenCalled();
         });
     });
 });

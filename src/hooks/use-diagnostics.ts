@@ -3,6 +3,7 @@ import { getDiagnosticsSummary } from "../services/diagnostics-service";
 import {
     openFileLocation,
     openLogDirectory as openLogDirectoryInSystem,
+    removeOrphanLibraryFiles,
 } from "../services/library-service";
 import type { DiagnosticsSummary } from "../types/diagnostics";
 import type { ImportMode } from "../types/settings";
@@ -37,14 +38,16 @@ export type DiagnosticsController = {
     isOpeningLogDirectory: boolean;
     // Reveals one of the report's example files in the OS file manager, by its library-relative
     // path. Offered only for the issues whose examples name a file that is on disk (see
-    // `examplesAreOnDisk`), and it is the step the report deliberately stops short of: Diagnostics
-    // reports and never deletes, so the file manager is where the user finishes, and a
-    // content-addressed name is not something to find by hand.
+    // `examplesAreOnDisk`). A content-addressed name is not something to find by hand.
     //
     // No in-flight flag beside it, unlike `openLogDirectory`. Nothing renders a busy state for a
     // link in a list, so the flag it does use internally exists only to stop a double click from
     // opening two windows.
     revealLibraryPath: (path: string) => Promise<void>;
+    // Deletes the orphan files the app recognizes as its own (a file the user put in the library
+    // folder is kept), then reloads the report. The one action here that changes the library.
+    removeOrphanFiles: () => Promise<void>;
+    isRemovingOrphanFiles: boolean;
 };
 
 export function useDiagnostics({
@@ -68,6 +71,7 @@ export function useDiagnostics({
     // flag's whole job here is the re-entry guard inside `runWithFlag`. A double click would
     // otherwise spawn two file-manager windows onto the same file.
     const revealPathFlag = useAsyncFlag();
+    const removeOrphansFlag = useAsyncFlag();
     const hasLoadedSinceOpenRef = useRef(false);
     const previousLibraryPathRef = useRef(libraryPath);
     const previousImportModeRef = useRef(importMode);
@@ -152,8 +156,8 @@ export function useDiagnostics({
     // outside it, so this hook passing a path it was handed is not what makes it safe.
     //
     // This is what the Diagnostics report is for once it has told the user which files are
-    // unreferenced. The report never deletes, by design, so the next step is always the file
-    // manager, and finding a content-addressed name like `video/9f2c...mp4` by hand is not a step
+    // unreferenced, when they want to look before deleting anything (or the file is one the removal
+    // below keeps). Finding a content-addressed name like `video/9f2c...mp4` by hand is not a step
     // anyone should be asked to take.
     const revealLibraryPath = useCallback(
         async (path: string): Promise<void> => {
@@ -168,6 +172,32 @@ export function useDiagnostics({
         },
         [libraryPath, onError, revealPathFlag]
     );
+
+    const removeOrphanFiles = useCallback(async (): Promise<void> => {
+        const ran = await removeOrphansFlag.runWithFlag(async () => {
+            try {
+                const report = await removeOrphanLibraryFiles();
+                const failed = report.failed_paths.length;
+
+                if (failed > 0) {
+                    onError(
+                        `${failed} orphan file(s) could not be removed. The log has the details.`
+                    );
+                }
+            } catch (error) {
+                logError("diagnostics", "Failed to remove orphan files.", error);
+                onError(resolveErrorMessage(error, "Failed to remove the orphan files."));
+            }
+
+            return true;
+        });
+
+        // The report is stale either way once the removal ran, so it is reloaded even after a
+        // failure, which may have removed some of the files.
+        if (ran) {
+            await loadDiagnostics();
+        }
+    }, [loadDiagnostics, onError, removeOrphansFlag]);
 
     useEffect(() => {
         if (!diagnosticsOpen) {
@@ -204,5 +234,7 @@ export function useDiagnostics({
         openLogDirectory,
         isOpeningLogDirectory: logDirectoryFlag.isRunning,
         revealLibraryPath,
+        removeOrphanFiles,
+        isRemovingOrphanFiles: removeOrphansFlag.isRunning,
     });
 }

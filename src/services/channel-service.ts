@@ -132,8 +132,8 @@ export async function updateChannelAvatarWithCleanup(
 
 // The backend deletes the channel row (media and comments cascade) and its
 // now-unreferenced files atomically; files it could not remove are reported back so an
-// orphaned file left in the library stays visible.
-export async function deleteChannelWithThumbnailCleanup(channelId: number): Promise<void> {
+// orphaned file left in the library stays visible. Resolves with how many of them stayed behind.
+export async function deleteChannelWithThumbnailCleanup(channelId: number): Promise<number> {
     validateChannelId(channelId);
 
     const report = await deleteChannelWithArtifacts(channelId);
@@ -146,4 +146,6 @@ export async function deleteChannelWithThumbnailCleanup(channelId: number): Prom
             { channelId: channelId, failedPaths: report.failed_paths }
         );
     }
+
+    return report.failed_paths.length;
 }

@@ -23,6 +23,7 @@ export const TAURI_COMMANDS = {
     RESOLVE_EXISTING_DIRECTORY: "resolve_existing_directory",
     MIGRATE_LIBRARY_DIRECTORY: "migrate_library_directory",
     GET_LIBRARY_SUMMARY: "get_library_summary",
+    REMOVE_ORPHAN_LIBRARY_FILES: "remove_orphan_library_files",
     CHECK_LIBRARY_INTEGRITY: "check_library_integrity",
     VERIFY_LIBRARY_CONTENT: "verify_library_content",
     CANCEL_LIBRARY_VERIFICATION: "cancel_library_verification",

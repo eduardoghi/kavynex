@@ -648,6 +648,7 @@ pub fn run() {
             commands::library::resolve_existing_directory,
             commands::library::migrate_library_directory,
             commands::library::get_library_summary,
+            commands::library::remove_orphan_library_files,
             commands::library::check_library_integrity,
             commands::library::verify_library_content,
             commands::library::cancel_library_verification,

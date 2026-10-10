@@ -382,7 +382,7 @@ describe("media-service", () => {
             failed_paths: [],
         });
 
-        await expect(deleteMediaWithFileCleanup(10)).resolves.toBeUndefined();
+        await expect(deleteMediaWithFileCleanup(10)).resolves.toBe(0);
 
         expect(validateMediaId).toHaveBeenCalledWith(10);
         expect(deleteMediaWithArtifacts).toHaveBeenCalledWith(10);
@@ -397,7 +397,7 @@ describe("media-service", () => {
             failed_paths: ["video/a.mp4"],
         });
 
-        await expect(deleteMediaWithFileCleanup(10)).resolves.toBeUndefined();
+        await expect(deleteMediaWithFileCleanup(10)).resolves.toBe(1);
 
         expect(logError).toHaveBeenCalledWith(
             "media-service",

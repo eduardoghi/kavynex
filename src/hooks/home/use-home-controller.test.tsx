@@ -295,6 +295,8 @@ const mockDiagnosticsState = {
     openLogDirectory: vi.fn(),
     isOpeningLogDirectory: false,
     revealLibraryPath: vi.fn(),
+    removeOrphanFiles: vi.fn().mockResolvedValue(undefined),
+    isRemovingOrphanFiles: false,
 };
 
 const mockUiGuards = {
@@ -452,6 +454,7 @@ describe("useHomeController", () => {
         expect(useChannels).toHaveBeenCalledWith({
             libraryPath: "/library",
             onError: mockErrorState.showError,
+            onNotice: mockErrorState.showNotice,
         });
 
         expect(useMediaLibrary).toHaveBeenCalledWith({

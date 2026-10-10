@@ -303,6 +303,8 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     // Nullable because a normal launch answers null; only a `--webview-check` run gets a plan.
     begin_webview_check: webviewCheckPlanSchema.nullable() satisfies z.ZodType<WebviewCheckPlan | null>,
     get_library_summary: librarySummaryInfoSchema satisfies z.ZodType<LibrarySummaryInfo>,
+    remove_orphan_library_files:
+        artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     check_library_integrity: libraryIntegrityCheckSchema satisfies z.ZodType<LibraryIntegrityCheck>,
     migrate_library_directory:
         migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,

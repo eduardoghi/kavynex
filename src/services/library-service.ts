@@ -13,6 +13,7 @@ import { ClientError } from "../utils/app-error";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { ContentVerificationReport } from "../types/generated/ContentVerificationReport";
+import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 
 export type { LibrarySummaryInfo };
 
@@ -180,6 +181,13 @@ export async function openFileLocation(path: string, libraryPath: string): Promi
     }
 
     await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, { path: normalizedPath });
+}
+
+// Deletes the orphan files Diagnostics reports, the ones named the way Kavynex names what it writes.
+// A file the user put in the library folder by hand is kept. See
+// src-tauri/src/services/library/cleanup.rs (remove_orphan_artifacts).
+export async function removeOrphanLibraryFiles(): Promise<ArtifactCleanupReport> {
+    return invokeCommand(TAURI_COMMANDS.REMOVE_ORPHAN_LIBRARY_FILES);
 }
 
 // Opens the app's log directory in the OS file manager. Unlike the two above it passes no path.

@@ -36,6 +36,7 @@ export function useHomeController(): HomeController {
     const channelsState = useChannels({
         libraryPath,
         onError: errorState.showError,
+        onNotice: errorState.showNotice,
     });
 
     const mediaLibrary = useMediaLibrary({

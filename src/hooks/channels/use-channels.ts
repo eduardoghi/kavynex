@@ -27,6 +27,7 @@ const COUNT_ONLY_QUERY: Parameters<typeof listChannelMediaPage>[1] = {
 type UseChannelsOptions = {
     libraryPath: string;
     onError: (message: string) => void;
+    onNotice?: (message: string) => void;
     onChannelDeleted?: (channelId: number) => void;
 };
 
@@ -90,6 +91,7 @@ export type ChannelsController = {
 export function useChannels({
     libraryPath,
     onError,
+    onNotice,
     onChannelDeleted,
 }: UseChannelsOptions): ChannelsController {
     const [channels, setChannels] = useState<Channel[]>([]);
@@ -115,6 +117,7 @@ export function useChannels({
     const channelActions = useChannelActions({
         libraryPath,
         onError,
+        onNotice,
         onChannelDeleted,
         selectedChannelId,
         setChannels,

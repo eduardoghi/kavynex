@@ -203,6 +203,15 @@ pub async fn migrate_library_directory<R: Runtime>(
     Ok(result)
 }
 
+/// Removes the orphan files Diagnostics reports, the ones named like the app's own artifacts. See
+/// `library::cleanup::remove_orphan_artifacts`.
+#[tauri::command]
+pub async fn remove_orphan_library_files<R: Runtime>(
+    app: AppHandle<R>,
+) -> AppResult<library::cleanup::ArtifactCleanupReport> {
+    library::cleanup::remove_orphan_artifacts(&app).await
+}
+
 /// Reports the size and file counts of the configured library directory.
 #[tauri::command]
 pub async fn get_library_summary(db: State<'_, Db>) -> AppResult<LibrarySummaryInfo> {

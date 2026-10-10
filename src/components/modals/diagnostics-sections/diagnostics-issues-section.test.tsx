@@ -48,9 +48,7 @@ describe("DiagnosticsIssuesSection", () => {
     });
 
     it("reveals an orphan path in the file manager when the issue's files are on disk", () => {
-        // The action the read-only report stops short of. Diagnostics names the unreferenced file
-        // and never removes it, so the file manager is where the user finishes, and a
-        // content-addressed name is not one to find by hand.
+        // A content-addressed name is not one to find by hand, so the path itself shows the file.
         const onRevealPath = vi.fn();
         const issues: DiagnosticsIssue[] = [
             {
@@ -111,5 +109,56 @@ describe("DiagnosticsIssuesSection", () => {
 
         expect(screen.getByText("audio/x.m4a")).toBeInTheDocument();
         expect(screen.queryByRole("button", { name: "audio/x.m4a" })).toBeNull();
+    });
+
+    it("offers one orphan removal, under the first orphan issue it covers", () => {
+        const onRemoveOrphans = vi.fn();
+        const issues: DiagnosticsIssue[] = [
+            {
+                code: "ORPHAN_LIVE_CHAT_FILES",
+                severity: "info",
+                title: "Orphan live chat files were found",
+                description: "1 live chat file(s) exist without a linked media record.",
+            },
+            {
+                code: "ORPHAN_MEDIA_FILES",
+                severity: "info",
+                title: "Orphan media files were found",
+                description: "1 media file(s) exist without a linked database record.",
+            },
+            {
+                code: "ORPHAN_THUMBNAIL_FILES",
+                severity: "info",
+                title: "Orphan thumbnail files were found",
+                description: "1 thumbnail file(s) exist without a linked database record.",
+            },
+        ];
+
+        renderWithMantine(
+            <DiagnosticsIssuesSection issues={issues} onRemoveOrphans={onRemoveOrphans} />
+        );
+
+        const buttons = screen.getAllByRole("button", { name: "Remove orphan files" });
+        expect(buttons).toHaveLength(1);
+
+        fireEvent.click(buttons[0]!);
+        expect(onRemoveOrphans).toHaveBeenCalledTimes(1);
+    });
+
+    it("offers no removal without a handler or without a removable orphan issue", () => {
+        const liveChatOnly: DiagnosticsIssue[] = [
+            {
+                code: "ORPHAN_LIVE_CHAT_FILES",
+                severity: "info",
+                title: "Orphan live chat files were found",
+                description: "1 live chat file(s) exist without a linked media record.",
+            },
+        ];
+
+        renderWithMantine(
+            <DiagnosticsIssuesSection issues={liveChatOnly} onRemoveOrphans={vi.fn()} />
+        );
+
+        expect(screen.queryByRole("button", { name: "Remove orphan files" })).toBeNull();
     });
 });

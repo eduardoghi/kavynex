@@ -71,8 +71,8 @@ const LIBRARY_CONTENT_ISSUE_CODES: ReadonlySet<string> = new Set([
     "ORPHAN_LIVE_CHAT_FILES",
 ]);
 
-// Attaches concrete example paths to an issue so the user can see and act on the specific files
-// manually (the diagnostics only report. They never delete). Blank entries are dropped and the
+// Attaches concrete example paths to an issue so the user can see and act on the specific files.
+// Blank entries are dropped and the
 // `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
 // plain { code, severity, title, description } object. `resolveMedia`, when given, turns a path
 // into a jump-to-the-media target (used for missing media, whose row still exists).

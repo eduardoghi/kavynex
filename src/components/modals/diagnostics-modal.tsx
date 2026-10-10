@@ -1,8 +1,10 @@
 import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
 import { FolderOpen, RefreshCcw } from "lucide-react";
+import { useState } from "react";
 import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
 import { AppButton } from "../ui/app-button";
 import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
+import { ConfirmDeleteModal } from "./confirm-delete-modal";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
 import { DiagnosticsSummarySections } from "./diagnostics-sections/diagnostics-summary-sections";
 
@@ -21,6 +23,10 @@ type DiagnosticsModalProps = {
     // bare in isolation tests; the app always supplies it.
     onOpenLogFolder?: () => void;
     openingLogFolder?: boolean;
+    // Deletes the orphan files the app recognizes as its own, after a confirmation. Optional for the
+    // same reason as the two above.
+    onRemoveOrphanFiles?: () => Promise<void>;
+    removingOrphanFiles?: boolean;
 };
 
 export function DiagnosticsModal({
@@ -33,7 +39,10 @@ export function DiagnosticsModal({
     onRevealPath,
     onOpenLogFolder,
     openingLogFolder = false,
+    onRemoveOrphanFiles,
+    removingOrphanFiles = false,
 }: DiagnosticsModalProps): JSX.Element {
+    const [confirmRemoveOrphansOpen, setConfirmRemoveOrphansOpen] = useState(false);
     const showInitialLoading = loading && !summary;
     const showRefreshingState = loading && !!summary;
 
@@ -158,6 +167,12 @@ export function DiagnosticsModal({
                                         issues={summary.issues}
                                         onOpenMedia={onOpenMedia}
                                         onRevealPath={onRevealPath}
+                                        onRemoveOrphans={
+                                            onRemoveOrphanFiles
+                                                ? () => setConfirmRemoveOrphansOpen(true)
+                                                : undefined
+                                        }
+                                        removingOrphans={removingOrphanFiles}
                                     />
                                 </>
                             )}
@@ -165,6 +180,23 @@ export function DiagnosticsModal({
                     </ScrollArea>
                 </Box>
             </Stack>
+
+            {onRemoveOrphanFiles && (
+                <ConfirmDeleteModal
+                    opened={confirmRemoveOrphansOpen}
+                    onClose={() => setConfirmRemoveOrphansOpen(false)}
+                    onConfirm={() => {
+                        void onRemoveOrphanFiles().finally(() =>
+                            setConfirmRemoveOrphansOpen(false)
+                        );
+                    }}
+                    title={<Text fw={900}>Remove orphan files</Text>}
+                    message="Delete the media and thumbnail files that nothing in the library uses?"
+                    description="Only files Kavynex named itself are deleted. Anything you put in the library folder yourself is kept. This cannot be undone."
+                    confirmLabel="Remove"
+                    loading={removingOrphanFiles}
+                />
+            )}
         </Modal>
     );
 }

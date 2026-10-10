@@ -308,7 +308,7 @@ describe("useMediaActions", () => {
     it("deletes media and closes player when active item is deleted", async () => {
         const mediaPlayer = createMediaPlayer();
 
-        vi.mocked(executeDeleteMedia).mockResolvedValue(undefined);
+        vi.mocked(executeDeleteMedia).mockResolvedValue(0);
 
         const { result } = renderHook(() =>
             useMediaActions({
@@ -339,6 +339,37 @@ describe("useMediaActions", () => {
 
         expect(result.current.confirmDeleteMediaOpen).toBe(false);
         expect(result.current.mediaToDelete).toBe(null);
+        expect(onNotice).not.toHaveBeenCalled();
+    });
+
+    it("tells the user when a deleted media left files behind", async () => {
+        const mediaPlayer = createMediaPlayer();
+
+        vi.mocked(executeDeleteMedia).mockResolvedValue(2);
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                onItemReordered,
+                onWatchedChanged,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        act(() => {
+            result.current.requestDeleteMedia(mediaPlayer.activeMedia!);
+        });
+
+        await act(async () => {
+            await result.current.confirmDeleteMedia();
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("2 of its files"));
+        expect(onError).not.toHaveBeenCalled();
     });
 
     it("reports delete error", async () => {
@@ -1027,6 +1058,7 @@ describe("useMediaActions", () => {
             async ({ media, reloadMedia, closePlayerIfActive }) => {
                 closePlayerIfActive(media.id);
                 await reloadMedia();
+                return 0;
             }
         );
 
@@ -1062,6 +1094,7 @@ describe("useMediaActions", () => {
             async ({ media, reloadMedia, closePlayerIfActive }) => {
                 closePlayerIfActive(media.id);
                 await reloadMedia();
+                return 0;
             }
         );
 
@@ -1098,6 +1131,7 @@ describe("useMediaActions", () => {
             async ({ media, reloadMedia, closePlayerIfActive }) => {
                 closePlayerIfActive(media.id);
                 await reloadMedia();
+                return 0;
             }
         );
 
@@ -1166,7 +1200,7 @@ describe("useMediaActions", () => {
         vi.mocked(executeDeleteMedia).mockImplementation(
             () =>
                 new Promise((resolve) => {
-                    releaseDelete = () => resolve(undefined);
+                    releaseDelete = () => resolve(0);
                 })
         );
 
@@ -1212,7 +1246,7 @@ describe("useMediaActions", () => {
         vi.mocked(executeDeleteMedia).mockImplementation(
             () =>
                 new Promise((resolve) => {
-                    releaseDelete = () => resolve(undefined);
+                    releaseDelete = () => resolve(0);
                 })
         );
 
