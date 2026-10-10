@@ -207,6 +207,18 @@ async fn create_test_pool() -> SqlitePool {
     .await
     .expect("create videos table");
 
+    // Only what the repository stats read from it. These tests do not need the foreign key.
+    sqlx::query(
+        "CREATE TABLE channels (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            youtube_handle TEXT NOT NULL UNIQUE
+        );",
+    )
+    .execute(&pool)
+    .await
+    .expect("create channels table");
+
     // Mirror the production partial unique index so the youtube_video_id conflict path is
     // exercised by tests (the table-level UNIQUE above only covers file_path).
     sqlx::query(
@@ -822,6 +834,24 @@ async fn stats_on_empty_table_returns_zeroes() {
     assert_eq!(stats.total_media, 0);
     assert_eq!(stats.total_with_thumbnail, 0);
     assert_eq!(stats.total_without_live_chat, 0);
+    assert_eq!(stats.channels_sharing_a_handle, 0);
+}
+
+#[tokio::test]
+async fn stats_count_the_channels_whose_handle_another_holds_in_another_case() {
+    let pool = create_test_pool().await;
+
+    for (name, handle) in [("Foo", "@Foo"), ("foo", "@foo"), ("Bar", "@bar")] {
+        sqlx::query("INSERT INTO channels (name, youtube_handle) VALUES (?, ?)")
+            .bind(name)
+            .bind(handle)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let stats = get_media_repository_stats(&pool).await.unwrap();
+    assert_eq!(stats.channels_sharing_a_handle, 2);
 }
 
 fn default_page_query() -> MediaPageQuery {

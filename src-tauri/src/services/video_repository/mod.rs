@@ -111,6 +111,10 @@ pub struct MediaRepositoryStats {
     pub total_media_with_live_chat_flag_but_no_path: i64,
     #[ts(type = "number")]
     pub total_media_with_live_chat_path_but_not_live: i64,
+    /// Channels whose handle another channel holds in another letter case, which only a database
+    /// from before the case-insensitive rule can contain.
+    #[ts(type = "number")]
+    pub channels_sharing_a_handle: i64,
 }
 
 /// The stored paths of one media row, plus what a reported path needs to resolve back to it.
@@ -581,7 +585,12 @@ pub async fn get_media_repository_stats(pool: &SqlitePool) -> AppResult<MediaRep
             COALESCE(SUM(CASE WHEN has_live_chat = 1 THEN 1 ELSE 0 END), 0) AS total_with_live_chat,
             COALESCE(SUM(CASE WHEN has_live_chat = 0 THEN 1 ELSE 0 END), 0) AS total_without_live_chat,
             COALESCE(SUM(CASE WHEN has_live_chat = 1 AND (live_chat_file_path IS NULL OR TRIM(live_chat_file_path) = '') THEN 1 ELSE 0 END), 0) AS total_media_with_live_chat_flag_but_no_path,
-            COALESCE(SUM(CASE WHEN is_live = 0 AND live_chat_file_path IS NOT NULL AND TRIM(live_chat_file_path) <> '' THEN 1 ELSE 0 END), 0) AS total_media_with_live_chat_path_but_not_live
+            COALESCE(SUM(CASE WHEN is_live = 0 AND live_chat_file_path IS NOT NULL AND TRIM(live_chat_file_path) <> '' THEN 1 ELSE 0 END), 0) AS total_media_with_live_chat_path_but_not_live,
+            (SELECT COUNT(*) FROM channels c
+             WHERE EXISTS (
+                 SELECT 1 FROM channels o
+                 WHERE o.id <> c.id AND o.youtube_handle = c.youtube_handle COLLATE NOCASE
+             )) AS channels_sharing_a_handle
          FROM videos",
     )
     .fetch_one(pool)

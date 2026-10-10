@@ -444,6 +444,16 @@ export function buildDiagnosticsIssues(
         });
     }
 
+    const channelsSharingAHandle = input.mediaRepositoryStats.channels_sharing_a_handle;
+    if (channelsSharingAHandle > 0) {
+        issues.push({
+            code: "CHANNELS_SHARING_A_HANDLE",
+            severity: "warning",
+            title: "Some channels have the same YouTube handle in different letter case",
+            description: `${channelsSharingAHandle} channels have a YouTube handle that another channel also has, in different letter case. YouTube does not tell handles apart by case, so these are most likely one channel added twice before Kavynex checked for that.`,
+        });
+    }
+
     // Nothing was read from an unreachable folder, so every rule that compares the database with
     // its contents would report against zeros. Those used to say the library was empty and its
     // media missing, when the drive was simply not connected. One issue names the real cause.

@@ -61,6 +61,7 @@ function createMediaRepositoryStats(
         total_without_live_chat: 0,
         total_media_with_live_chat_flag_but_no_path: 0,
         total_media_with_live_chat_path_but_not_live: 0,
+        channels_sharing_a_handle: 0,
         ...overrides,
     };
 }

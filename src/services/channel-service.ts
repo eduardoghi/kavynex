@@ -90,7 +90,12 @@ export async function updateChannelNameHandle(
         return;
     }
 
-    const existingWithHandle = await findChannelByYoutubeHandle(normalizedInput.youtubeHandle);
+    // A handle the channel already holds is never a conflict, even when a database from before the
+    // case-insensitive rule holds another channel with the same handle in another case.
+    const keepsItsHandle = existingChannel.youtube_handle === normalizedInput.youtubeHandle;
+    const existingWithHandle = keepsItsHandle
+        ? null
+        : await findChannelByYoutubeHandle(normalizedInput.youtubeHandle);
 
     if (existingWithHandle && existingWithHandle.id !== channelId) {
         throw createAppError(

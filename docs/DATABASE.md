@@ -27,7 +27,11 @@ CREATE TABLE channels (
 ```
 
 One row per followed YouTube channel (or a channel created for locally-imported media).
-`youtube_handle` is unique; `avatar_path` is a path relative to the library directory.
+`youtube_handle` is unique, and two handles that differ only in letter case count as the same one.
+The column's `UNIQUE` compares case, so that second rule lives in the insert and update statements
+(`channel_repository.rs`, `COLLATE NOCASE`). A database from before the rule can hold two such
+channels. Both keep working, either can still be renamed while keeping its own handle, and Diagnostics
+reports them (`CHANNELS_SHARING_A_HANDLE`). `avatar_path` is a path relative to the library directory.
 
 ### `videos`
 

@@ -5,6 +5,7 @@ import {
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
+    updateChannelNameHandle,
 } from "./channel-service";
 
 vi.mock("../repositories/channel-repository", () => ({
@@ -14,6 +15,7 @@ vi.mock("../repositories/channel-repository", () => ({
     insertChannel: vi.fn(),
     listChannels: vi.fn(),
     replaceChannelAvatar: vi.fn(),
+    updateChannelNameAndHandle: vi.fn(),
 }));
 
 vi.mock("./channel-input-service", () => ({
@@ -28,7 +30,9 @@ vi.mock("../utils/app-logger", () => ({
 import {
     deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
+    getChannelById,
     insertChannel,
+    updateChannelNameAndHandle,
     listChannels,
     replaceChannelAvatar,
 } from "../repositories/channel-repository";
@@ -259,5 +263,54 @@ describe("channel-service", () => {
         );
 
         expect(deleteChannelWithArtifacts).not.toHaveBeenCalled();
+    });
+});
+
+describe("updateChannelNameHandle", () => {
+    beforeEach(() => {
+        vi.mocked(validateCreateChannelInput).mockImplementation((input) => ({
+            name: input.name.trim(),
+            youtubeHandle: input.youtubeHandle.trim(),
+            avatarPath: null,
+        }));
+        vi.mocked(getChannelById).mockResolvedValue({
+            id: 2,
+            name: "foo",
+            youtube_handle: "@foo",
+            avatar_path: null,
+            created_at: "2026-01-01 00:00:00",
+        });
+    });
+
+    it("renames a channel that keeps its handle without asking who else holds it", async () => {
+        // A database from before the case-insensitive rule can hold @Foo beside @foo, and the
+        // lookup would answer with the other one.
+        vi.mocked(findChannelByYoutubeHandle).mockResolvedValue({
+            id: 1,
+            name: "Foo",
+            youtube_handle: "@Foo",
+            avatar_path: null,
+            created_at: "2026-01-01 00:00:00",
+        });
+
+        await updateChannelNameHandle(2, "Foo (second)", "@foo");
+
+        expect(findChannelByYoutubeHandle).not.toHaveBeenCalled();
+        expect(updateChannelNameAndHandle).toHaveBeenCalledWith(2, "Foo (second)", "@foo");
+    });
+
+    it("refuses a new handle another channel holds", async () => {
+        vi.mocked(findChannelByYoutubeHandle).mockResolvedValue({
+            id: 1,
+            name: "Bar",
+            youtube_handle: "@bar",
+            avatar_path: null,
+            created_at: "2026-01-01 00:00:00",
+        });
+
+        await expect(updateChannelNameHandle(2, "foo", "@bar")).rejects.toMatchObject({
+            code: "CHANNEL_ALREADY_EXISTS",
+        });
+        expect(updateChannelNameAndHandle).not.toHaveBeenCalled();
     });
 });

@@ -44,6 +44,7 @@ function baseDiagnostics(): AppDiagnostics {
             total_without_live_chat: 1,
             total_media_with_live_chat_flag_but_no_path: 0,
             total_media_with_live_chat_path_but_not_live: 0,
+            channels_sharing_a_handle: 0,
         },
         libraryIntegrity: {
             checked_media_files: 1,
@@ -481,6 +482,19 @@ describe("buildDiagnosticsIssues", () => {
                 description:
                     "1 media item has live chat enabled in the database but no saved file path.",
             },
+        ]);
+    });
+
+    it("flags channels whose handle another channel holds in another letter case", () => {
+        const input = baseDiagnostics();
+        input.mediaRepositoryStats.channels_sharing_a_handle = 2;
+
+        expect(buildDiagnosticsIssues(input)).toEqual([
+            expect.objectContaining({
+                code: "CHANNELS_SHARING_A_HANDLE",
+                severity: "warning",
+                description: expect.stringContaining("2 channels have a YouTube handle"),
+            }),
         ]);
     });
 

@@ -57,8 +57,10 @@ pub async fn find_channel_by_youtube_handle(
         "SELECT id, name, youtube_handle, avatar_path, created_at
          FROM channels
          WHERE youtube_handle = ? COLLATE NOCASE
+         ORDER BY youtube_handle = ? DESC, id
          LIMIT 1",
     )
+    .bind(youtube_handle)
     .bind(youtube_handle)
     .fetch_optional(pool)
     .await
@@ -139,17 +141,24 @@ pub async fn update_channel_name_and_handle(
     name: &str,
     youtube_handle: &str,
 ) -> AppResult<()> {
-    // The same case-insensitive rule as insert_channel, in the same statement as the update.
+    // The same case-insensitive rule as insert_channel, in the same statement as the update. A
+    // handle the row already holds, spelled exactly, passes regardless. A database from before the
+    // rule can hold two channels whose handles differ only in case, and without that a rename of
+    // either would be refused for a conflict it did not introduce.
     let result = sqlx::query(
         "UPDATE channels SET name = ?, youtube_handle = ?
          WHERE id = ?
-           AND NOT EXISTS (
-               SELECT 1 FROM channels WHERE youtube_handle = ? COLLATE NOCASE AND id <> ?
+           AND (
+               youtube_handle = ?
+               OR NOT EXISTS (
+                   SELECT 1 FROM channels WHERE youtube_handle = ? COLLATE NOCASE AND id <> ?
+               )
            )",
     )
     .bind(name)
     .bind(youtube_handle)
     .bind(channel_id)
+    .bind(youtube_handle)
     .bind(youtube_handle)
     .bind(channel_id)
     .execute(pool)
@@ -406,5 +415,53 @@ mod tests {
         update_channel_name_and_handle(&pool, alice, "Alice", "@Alice")
             .await
             .expect("its own handle in another case is not a conflict");
+    }
+
+    /// Two channels whose handles differ only in case, which a database from before the
+    /// case-insensitive rule can hold. Written past the rule on purpose.
+    async fn legacy_case_duplicates(pool: &SqlitePool) -> (i64, i64) {
+        let upper = insert_channel(pool, "Foo", "@Foo", None).await.unwrap();
+        let lower =
+            sqlx::query("INSERT INTO channels (name, youtube_handle) VALUES ('foo', '@foo')")
+                .execute(pool)
+                .await
+                .unwrap()
+                .last_insert_rowid();
+
+        (upper, lower)
+    }
+
+    #[tokio::test]
+    async fn a_legacy_case_duplicate_can_still_be_renamed_keeping_its_handle() {
+        let pool = create_test_pool().await;
+        let (_, lower) = legacy_case_duplicates(&pool).await;
+
+        update_channel_name_and_handle(&pool, lower, "Foo (second)", "@foo")
+            .await
+            .expect("a channel keeping the handle it already holds is not a conflict");
+
+        let channel = get_channel_by_id(&pool, lower).await.unwrap().unwrap();
+        assert_eq!(channel.name, "Foo (second)");
+    }
+
+    #[tokio::test]
+    async fn the_lookup_prefers_the_channel_holding_the_exact_spelling() {
+        let pool = create_test_pool().await;
+        let (upper, lower) = legacy_case_duplicates(&pool).await;
+
+        let found = |handle: &'static str| {
+            let pool = pool.clone();
+            async move {
+                find_channel_by_youtube_handle(&pool, handle)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .id
+            }
+        };
+
+        assert_eq!(found("@foo").await, lower);
+        assert_eq!(found("@Foo").await, upper);
+        assert_eq!(found("@FOO").await, upper);
     }
 }

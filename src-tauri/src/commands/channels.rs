@@ -93,9 +93,10 @@ async fn insert_channel_row(
     ensure_valid_youtube_handle(youtube_handle)?;
 
     // Persist the trimmed values, not the raw arguments. Validation checks the trimmed form, but
-    // the UNIQUE index and `find_channel_by_youtube_handle` compare the stored column verbatim, so
-    // storing a padded " @handle" would let a whitespace-only duplicate slip past both and hide
-    // the channel from its own handle lookup.
+    // the UNIQUE index and `find_channel_by_youtube_handle` compare the stored column without
+    // trimming it (the lookup ignores letter case and nothing else), so storing a padded
+    // " @handle" would let a whitespace-only duplicate slip past both and hide the channel from its
+    // own handle lookup.
     let name = name.trim();
     let youtube_handle = youtube_handle.trim();
 

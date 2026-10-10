@@ -226,6 +226,7 @@ const mediaRepositoryStatsSchema = z.object({
     total_without_live_chat: z.number(),
     total_media_with_live_chat_flag_but_no_path: z.number(),
     total_media_with_live_chat_path_but_not_live: z.number(),
+    channels_sharing_a_handle: z.number(),
 });
 
 // The jump-to-the-media target the integrity check resolves for each path its report named. Keyed
