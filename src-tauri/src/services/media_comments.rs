@@ -267,12 +267,18 @@ const COMMENT_INSERT_COLUMNS: &str = "INSERT INTO video_comments (\
 // a comment does not move between threads. `published_at` keeps the stored value when there is
 // one. yt-dlp derives it from YouTube's relative "2 years ago" text, which only gets coarser as the
 // comment ages, so the first fetch is the most precise it will ever be.
+//
+// The author fields follow the newest fetch only when it has them. A later fetch can come back
+// without an author (a channel since closed, a response that left the field out), and taking that
+// would turn a stored name into "Unknown author" and drop the handle the archive had. The
+// placeholder name never replaces a real one for the same reason.
 const COMMENT_UPSERT_CLAUSE: &str = " ON CONFLICT(video_id, comment_id) \
      WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> '' DO UPDATE SET \
-     author_name = excluded.author_name, \
-     author_handle = excluded.author_handle, \
-     author_channel_id = excluded.author_channel_id, \
-     author_thumbnail = excluded.author_thumbnail, \
+     author_name = CASE WHEN excluded.author_name = 'Unknown author' \
+         THEN video_comments.author_name ELSE excluded.author_name END, \
+     author_handle = COALESCE(excluded.author_handle, video_comments.author_handle), \
+     author_channel_id = COALESCE(excluded.author_channel_id, video_comments.author_channel_id), \
+     author_thumbnail = COALESCE(excluded.author_thumbnail, video_comments.author_thumbnail), \
      text = excluded.text, \
      like_count = excluded.like_count, \
      reply_count = excluded.reply_count, \
@@ -711,6 +717,62 @@ mod tests {
         assert_eq!(total_comments, 1);
         assert_eq!(has_comments, 1);
         assert_eq!(comments_count, 1);
+    }
+
+    #[tokio::test]
+    async fn a_refetch_without_an_author_keeps_the_stored_one() {
+        // A later fetch can come back with no author for a comment the archive already names.
+        // Taking it turned the stored name into "Unknown author" and dropped the handle.
+        let pool = create_test_pool().await;
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Great video!")])
+            .await
+            .expect("first fetch");
+
+        let anonymous = YtDlpComment {
+            author_name: "   ".to_string(),
+            author_handle: None,
+            like_count: 9,
+            ..sample_comment("Great video!")
+        };
+        merge_media_comments_in_pool(&pool, 1, vec![anonymous])
+            .await
+            .expect("second fetch");
+
+        let (author_name, author_handle, like_count): (String, Option<String>, i64) =
+            sqlx::query_as(
+                "SELECT author_name, author_handle, like_count FROM video_comments WHERE video_id = 1",
+            )
+            .fetch_one(&pool)
+            .await
+            .expect("read comment");
+
+        assert_eq!(author_name, "Alice");
+        assert_eq!(author_handle.as_deref(), Some("@alice"));
+        assert_eq!(like_count, 9, "what the fetch does carry still updates");
+    }
+
+    #[tokio::test]
+    async fn a_refetch_with_a_new_author_name_takes_it() {
+        let pool = create_test_pool().await;
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Great video!")])
+            .await
+            .expect("first fetch");
+
+        let renamed = YtDlpComment {
+            author_name: "Alice Renamed".to_string(),
+            ..sample_comment("Great video!")
+        };
+        merge_media_comments_in_pool(&pool, 1, vec![renamed])
+            .await
+            .expect("second fetch");
+
+        let (author_name,): (String,) =
+            sqlx::query_as("SELECT author_name FROM video_comments WHERE video_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("read comment");
+
+        assert_eq!(author_name, "Alice Renamed");
     }
 
     /// The state stored on a media row, so each test below reads it the same way.
