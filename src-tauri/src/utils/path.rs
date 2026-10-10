@@ -321,14 +321,20 @@ pub fn ensure_existing_path_inside_dir(path: &Path, base_dir: &Path) -> AppResul
     Ok(())
 }
 
+/// Creates `path`'s parent below `base_dir` when missing, and refuses a parent that resolves
+/// outside it.
+///
+/// `base_dir` itself is never created. Every caller passes the library folder, resolved before a
+/// download or an import that can take hours, and recreating it here made a write that outlived
+/// its drive land in a new, empty folder at the old path (a mount point, or a drive letter since
+/// given to another disk) instead of failing. A missing base is reported as the library folder
+/// being unreachable, which is what it is.
 pub fn ensure_path_parent_inside_dir(path: &Path, base_dir: &Path) -> AppResult<()> {
-    if !base_dir.exists() {
-        fs::create_dir_all(base_dir).map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::CreateBaseDirFailed,
-                format!("failed to create base directory: {e}"),
-            )
-        })?;
+    if !base_dir.is_dir() {
+        return Err(AppError::from_code(
+            AppErrorCode::LibraryFolderUnreachable,
+            "the library folder is no longer there",
+        ));
     }
 
     let canonical_base = base_dir.canonicalize().map_err(|e| {
@@ -853,19 +859,28 @@ mod tests {
     }
 
     #[test]
-    fn ensure_path_parent_inside_dir_creates_a_missing_base_dir() {
-        // When the base directory does not exist yet, the function must create it (and the
-        // target's parent) rather than fail. The containment check that follows canonicalizes the
-        // base, which errors on a missing directory. This pins the defensive create-if-missing
-        // branch that callers pre-creating the base would otherwise leave unexercised.
+    fn ensure_path_parent_inside_dir_never_recreates_a_missing_base_dir() {
+        // The base is the library folder. Recreating it put a write that outlived its drive into
+        // a new, empty folder at the old path.
         let base_dir = unique_test_dir();
         assert!(!base_dir.exists());
 
         let target = base_dir.join("video").join("clip.mp4");
+        let error = ensure_path_parent_inside_dir(&target, &base_dir).unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::LibraryFolderUnreachable.as_str());
+        assert!(!base_dir.exists());
+    }
+
+    #[test]
+    fn ensure_path_parent_inside_dir_creates_the_parent_below_an_existing_base() {
+        let base_dir = unique_test_dir();
+        fs::create_dir_all(&base_dir).unwrap();
+
+        let target = base_dir.join("video").join("clip.mp4");
         ensure_path_parent_inside_dir(&target, &base_dir).unwrap();
 
-        assert!(base_dir.exists());
-        assert!(base_dir.join("video").exists());
+        assert!(base_dir.join("video").is_dir());
 
         let _ = fs::remove_dir_all(&base_dir);
     }

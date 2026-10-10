@@ -47,13 +47,6 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
         ));
     }
 
-    fs::create_dir_all(library_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateLibraryDirFailed,
-            format!("failed to create library directory: {e}"),
-        )
-    })?;
-
     let ext = extension_from_path(source);
 
     if !is_allowed_thumbnail_extension(&ext) {
