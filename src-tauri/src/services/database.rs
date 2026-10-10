@@ -1162,6 +1162,44 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[tokio::test]
+    async fn a_real_damage_error_from_the_driver_is_read_as_damage() {
+        // app_error_means_damage reads the code out of the driver's text, so this pins that text
+        // against the sqlx in the lockfile rather than against a string written here. A sqlx that
+        // formats its errors differently fails this, instead of turning a corrupt database met
+        // during a migration back into a refusal with no restore offered.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-db-real-damage-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("garbage.db");
+        std::fs::write(&path, vec![0x5A_u8; 8192]).unwrap();
+
+        let error = match SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(SqliteConnectOptions::new().filename(&path))
+            .await
+        {
+            Ok(pool) => {
+                let error = sqlx::query("SELECT name FROM sqlite_master")
+                    .fetch_all(&pool)
+                    .await
+                    .expect_err("the file is not a database");
+                pool.close().await;
+                error
+            }
+            Err(error) => error,
+        };
+
+        assert!(app_error_means_damage(&db_error(
+            "failed to read the schema",
+            error
+        )));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn db_error_uses_the_app_error_code_so_the_ui_suppresses_raw_details() {
         // db_error attaches the raw driver text as `details` for diagnostics, but under the
