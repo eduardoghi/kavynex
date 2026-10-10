@@ -120,6 +120,7 @@ past a literal prefix match), and the functions applying it are:
 | `library::guard::paths_refer_to_same_location` | a network path aimed at a local library, or at another share than the one a network-hosted library lives on |
 | `utils::path::network_share_prefix` | not a refusal of its own: the host-and-share reading the guard compares before it will canonicalize a network path against a network-hosted library |
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
+| `yt_dlp::cookies::is_safe_selector_component` | the profile and container of a `--cookies-from-browser` selector, which yt-dlp resolves as a folder when it looks like a path |
 | `commands/database.rs::prepare_import_source` | the database import source |
 | `commands/database.rs::prepare_export_destination` | the database export destination |
 | `commands/database.rs::imported_folder_to_check` | the library and mirror folders an imported database names, which come from the file rather than from the user and are only taken on a machine that has none configured |
@@ -634,8 +635,8 @@ preceded by another comment are all refused here, and all four are refused by yt
 as one (`services/yt_dlp/cookies.rs::parse_cookies_browser_selector`). yt-dlp's grammar is
 `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, and each part is gated separately. The browser and the
 keyring must be on their allow-lists (`SUPPORTED_BROWSERS`, `SUPPORTED_KEYRINGS`), the profile and
-the container are free text (a profile is often a path) but may not be empty, start with `-`, or
-carry a control character, and the whole value is capped at 512 characters. Whitespace around the
+the container are free text (a profile is often a path) but may not be empty, start with `-`,
+carry a control character, or be a network path, and the whole value is capped at 512 characters. Whitespace around the
 separators is dropped and the browser and keyring are lowercased, as yt-dlp does; the profile and
 container are passed as typed, since profile names are case-sensitive on Linux. A value that fails
 any of this is dropped like an invalid cookies path, and the frontend validates the same grammar

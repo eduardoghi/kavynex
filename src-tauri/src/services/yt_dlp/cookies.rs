@@ -205,8 +205,15 @@ impl CookiesBrowserSelector {
 /// True for a profile or container value that may travel as part of one argv element. non-empty,
 /// not something yt-dlp's option parser could read as a flag, and free of control characters (a
 /// newline would also forge a line in the file log, where the redacted form is written).
+///
+/// A network path is refused too. yt-dlp resolves a profile that looks like a path (it checks the
+/// folder and globs inside it), and on Windows resolving `\\host\share` authenticates to that host
+/// over SMB. The cookies file is refused the same way in [`normalize_cookies_path`].
 fn is_safe_selector_component(value: &str) -> bool {
-    !value.is_empty() && !value.starts_with('-') && !value.chars().any(char::is_control)
+    !value.is_empty()
+        && !value.starts_with('-')
+        && !value.chars().any(char::is_control)
+        && !is_network_path(value)
 }
 
 /// Parses `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, or `None` for anything that is not a

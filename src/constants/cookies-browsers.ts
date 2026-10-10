@@ -47,8 +47,18 @@ export type CookiesBrowserSelector = {
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f-\u009f]/;
 
+// Two leading separators make a network path (`\\host\share`, `//host/share`, `\\?\UNC\...`), except
+// for the local namespace forms `\\?\C:\`, `\\.\C:\` and `\\?\Volume{...}`. The backend's
+// `is_network_path` is the real guard. This copy refuses the same profiles on screen.
+const NETWORK_PATH = /^[\\/]{2}(?![?.][\\/](?:[a-z]:|volume\{))/i;
+
 function isSafeSelectorComponent(value: string): boolean {
-    return value !== "" && !value.startsWith("-") && !CONTROL_CHARACTER.test(value);
+    return (
+        value !== "" &&
+        !value.startsWith("-") &&
+        !CONTROL_CHARACTER.test(value) &&
+        !NETWORK_PATH.test(value)
+    );
 }
 
 function splitOnce(value: string, separator: string): [string, string | null] {

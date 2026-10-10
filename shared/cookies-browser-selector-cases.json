@@ -39,6 +39,10 @@
         "firefox:a\nb",
         "firefox:a\tb",
         "firefox:a\u0000b",
-        "firefox:a\u001bb"
+        "firefox:a\u001bb",
+        "firefox:\\\\attacker\\share\\profile",
+        "chrome://attacker/share/Profile 1",
+        "firefox:\\\\?\\UNC\\attacker\\share\\profile",
+        "firefox:default::\\\\attacker\\share"
     ]
 }

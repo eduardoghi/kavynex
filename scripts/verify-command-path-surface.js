@@ -551,6 +551,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
     "services/thumbnail/picked.rs::validate_picked_thumbnail_path",
     "services/thumbnail/temp.rs::validate_source_media_path",
     "services/thumbnail/temp.rs::validate_temporary_thumbnail_delete_path",
+    "services/yt_dlp/cookies.rs::is_safe_selector_component",
     "services/yt_dlp/cookies.rs::normalize_cookies_path",
     "utils/path.rs::network_share_prefix",
 ];
