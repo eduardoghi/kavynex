@@ -509,7 +509,14 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_opener::init())
+        // Opened from Rust only (commands::external, the reveal-in-folder helpers). The plugin's
+        // default also injects a click handler that sends `<a href>` clicks to `open_url`, which the
+        // renderer holds no grant for and the app has no links for.
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .plugin(tauri_plugin_dialog::init())
         // The player's media source. Registered alongside (not instead of) the asset protocol,
         // which still serves thumbnails: those are small enough that its 1 MB range cap never

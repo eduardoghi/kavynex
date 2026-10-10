@@ -151,8 +151,12 @@ pub async fn replace_channel_avatar<R: Runtime>(
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
+    // Only `thumbnails/`, the same rule as insert_channel. A path into `video/` would be stored as
+    // an avatar the card then draws, and the cleanup that follows a later replace counts thumbnail
+    // and avatar references only.
     if let Some(path) = avatar_path.as_deref() {
         ensure_managed_library_relative_path(path)?;
+        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
     }
 
     library::cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await

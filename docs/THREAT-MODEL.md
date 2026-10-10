@@ -793,14 +793,23 @@ The system opener went the same way. The renderer used to call `openUrl` with a 
 shell, so the scope's glob was all that stood between a URL and the shell's own parsing of it. The
 app only ever opens a video's watch page and an author's channel page, so `commands/external.rs`
 now takes the id, checks it is 11 (video) or `UC` plus 22 (channel) characters of `[A-Za-z0-9_-]`,
-and builds the URL itself. The renderer holds no `opener:` permission.
+and builds the URL itself. The renderer holds no `opener:` permission, and the plugin is built with
+`open_js_links_on_click(false)`, so it does not inject the script that would send `<a href>` clicks
+to `open_url` either.
 
 The window those grants belong to is built in `main_window.rs` rather than from the config, so it
-can carry two hooks. A navigation is allowed only to the app's own origin (`tauri://localhost`,
-`http(s)://tauri.localhost`, or the dev server in a dev build), and a `window.open` or
-`target="_blank"` opens nothing. A script that got to run in the renderer could otherwise load a
-remote page into the window holding the IPC bridge, or open a popup this app's CSP does not
-cover.
+can carry two hooks. A navigation is allowed only to the origin the bundle is served from on this
+platform (`http://tauri.localhost` on Windows, `tauri://localhost` elsewhere, or the dev server in a
+dev build), and a `window.open` or `target="_blank"` opens nothing. A script that got to run in the
+renderer could otherwise load a remote page into the window holding the IPC bridge, or open a popup
+this app's CSP does not cover. `https://tauri.localhost` is refused on Windows because it is not the
+app's protocol there, it is a request to loopback port 443.
+
+Two config switches go with them. `app.security.freezePrototype` freezes `Object.prototype` before
+the bundle runs, so a prototype-pollution bug in any dependency has nothing to write to (checked by
+loading the production bundle with the prototype frozen, with no error from any library). The window
+has `dragDropEnabled: false`, since nothing in the app takes a dropped file and a dropped path is
+never a picked one.
 
 `convertFileSrc` and `Channel` appear in no grant because they need none. The first builds a URL
 string in the renderer, and the second is part of the IPC mechanism rather than a command. What

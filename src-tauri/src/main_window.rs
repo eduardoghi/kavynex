@@ -12,16 +12,27 @@ use tauri::{App, Url, WebviewWindowBuilder};
 
 use crate::services::logger;
 
+/// The scheme the bundled frontend is served under on this platform. `http://tauri.localhost` on
+/// Windows (the app does not turn on `useHttpsScheme`), `tauri://localhost` elsewhere.
+#[cfg(windows)]
+const BUNDLED_SCHEME: &str = "http";
+#[cfg(not(windows))]
+const BUNDLED_SCHEME: &str = "tauri";
+
 /// Whether the main webview may navigate to `url`.
 ///
-/// The bundled frontend is served from `tauri://localhost` (macOS, Linux) or
-/// `http(s)://tauri.localhost` (Windows). A dev build loads from the configured dev server instead.
+/// Only the origin the bundled frontend is served from on this platform. `https://tauri.localhost`
+/// on Windows is not the app's protocol at all, it is a request to loopback port 443, so a local
+/// listener there would get a page with the app's IPC bridge. A dev build loads from the configured
+/// dev server instead.
 pub(crate) fn is_app_navigation(url: &Url, dev_url: Option<&Url>) -> bool {
-    let is_bundled = match url.scheme() {
-        "tauri" => url.host_str() == Some("localhost"),
-        "http" | "https" => url.host_str() == Some("tauri.localhost"),
-        _ => false,
+    let bundled_host = if BUNDLED_SCHEME == "tauri" {
+        "localhost"
+    } else {
+        "tauri.localhost"
     };
+
+    let is_bundled = url.scheme() == BUNDLED_SCHEME && url.host_str() == Some(bundled_host);
 
     is_bundled || dev_url.is_some_and(|dev_url| dev_url.origin() == url.origin())
 }
@@ -83,13 +94,30 @@ mod tests {
     }
 
     #[test]
-    fn the_bundled_frontend_may_be_navigated_on_every_platform() {
-        for value in [
-            "tauri://localhost/index.html",
-            "http://tauri.localhost/",
-            "https://tauri.localhost/#/settings",
-        ] {
+    fn the_bundled_frontend_may_be_navigated_on_its_platforms_scheme_only() {
+        #[cfg(windows)]
+        let (allowed, refused) = (
+            [
+                "http://tauri.localhost/",
+                "http://tauri.localhost/#/settings",
+            ],
+            ["https://tauri.localhost/", "tauri://localhost/index.html"],
+        );
+        #[cfg(not(windows))]
+        let (allowed, refused) = (
+            [
+                "tauri://localhost/index.html",
+                "tauri://localhost/#/settings",
+            ],
+            ["http://tauri.localhost/", "https://tauri.localhost/"],
+        );
+
+        for value in allowed {
             assert!(is_app_navigation(&url(value), None), "{value}");
+        }
+
+        for value in refused {
+            assert!(!is_app_navigation(&url(value), None), "{value}");
         }
     }
 
