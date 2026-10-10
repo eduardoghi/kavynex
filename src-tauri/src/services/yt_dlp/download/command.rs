@@ -112,6 +112,13 @@ pub(super) fn validate_download_inputs(
         ));
     }
 
+    if crate::services::yt_dlp::url::names_a_collection(&url) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "the link is a playlist or a channel, not a single video",
+        ));
+    }
+
     if library_path.trim().is_empty() {
         return Err(AppError::from_code(
             AppErrorCode::InvalidLibraryPath,

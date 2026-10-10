@@ -935,6 +935,13 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
         ));
     }
 
+    if crate::services::yt_dlp::url::names_a_collection(&normalized_url) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "the link is a playlist or a channel, not a single video",
+        ));
+    }
+
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
 
     // Register the run (when a run_id was supplied) so the frontend can cancel a slow format probe

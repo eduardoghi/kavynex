@@ -124,7 +124,7 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
     [MEDIA_IMPORT_CANCELLED_ERROR_CODE]:
         "Import cancelled. Nothing was added to your library and the original file was left where it was.",
 
-    [INVALID_URL_ERROR_CODE]: "Enter a valid media URL.",
+    [INVALID_URL_ERROR_CODE]: "Enter the link of a single YouTube video, not a playlist or a channel.",
     [INVALID_RUN_ID_ERROR_CODE]: "The download session is invalid.",
     [INVALID_FORMAT_ID_ERROR_CODE]: "Choose a valid format before continuing.",
     [TOO_MANY_CONCURRENT_YT_DLP_RUNS_ERROR_CODE]:

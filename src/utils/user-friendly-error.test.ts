@@ -76,7 +76,7 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
         "Kavynex could not read its database, which usually means another program is holding the file (an antivirus scan, a backup or sync tool, or a second copy of Kavynex). Close it and restart Kavynex. Nothing was changed.",
     ],
 
-    [INVALID_URL_ERROR_CODE, "Enter a valid media URL."],
+    [INVALID_URL_ERROR_CODE, "Enter the link of a single YouTube video, not a playlist or a channel."],
     [INVALID_RUN_ID_ERROR_CODE, "The download session is invalid."],
     [INVALID_FORMAT_ID_ERROR_CODE, "Choose a valid format before continuing."],
 

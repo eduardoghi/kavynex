@@ -70,9 +70,66 @@ pub fn is_allowed_youtube_url(url: &str) -> bool {
     }
 }
 
+/// True when `url` names a playlist or a channel rather than one video.
+///
+/// The format probe and the download expect one video. Given a playlist or a channel page, yt-dlp
+/// extracts every entry first, many requests to YouTube for something the app then cannot use, and
+/// the run ends in a timeout or a parse error that says nothing about the link. A watch URL that
+/// carries a `list=` is still one video (the app passes `--no-playlist`), so only the shapes with
+/// no video in them count.
+pub fn names_a_collection(url: &str) -> bool {
+    let Ok(uri) = url.trim().parse::<Uri>() else {
+        return false;
+    };
+
+    let names_a_video = uri
+        .query()
+        .is_some_and(|query| query.split('&').any(|pair| pair.starts_with("v=")));
+
+    if names_a_video {
+        return false;
+    }
+
+    let path = uri.path().to_ascii_lowercase();
+
+    path == "/playlist"
+        || path.starts_with("/playlist/")
+        || path.starts_with("/@")
+        || path.starts_with("/channel/")
+        || path.starts_with("/c/")
+        || path.starts_with("/user/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_playlist_or_channel_link_names_a_collection() {
+        for url in [
+            "https://www.youtube.com/playlist?list=PL123",
+            "https://www.youtube.com/@somechannel",
+            "https://www.youtube.com/@somechannel/videos",
+            "https://www.youtube.com/channel/UC123",
+            "https://www.youtube.com/c/Name",
+            "https://www.youtube.com/user/Name",
+        ] {
+            assert!(names_a_collection(url), "{url}");
+        }
+    }
+
+    #[test]
+    fn a_video_link_does_not_name_a_collection() {
+        for url in [
+            "https://www.youtube.com/watch?v=abc",
+            "https://www.youtube.com/watch?v=abc&list=PL123",
+            "https://youtu.be/abc",
+            "https://www.youtube.com/shorts/abc",
+            "https://www.youtube.com/live/abc",
+        ] {
+            assert!(!names_a_collection(url), "{url}");
+        }
+    }
 
     #[test]
     fn accepts_youtube_domains() {
