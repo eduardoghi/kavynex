@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pickFile } from "../services/file-dialog-service";
+import { pickFile, type FileDialogFilter } from "../services/file-dialog-service";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../types/media";
-import { fileNameFromPath, isThumbnailFile, mediaTypeFromFile } from "../utils/media-utils";
+import {
+    AUDIO_FILE_EXTENSIONS,
+    fileNameFromPath,
+    IMAGE_FILE_EXTENSIONS,
+    isThumbnailFile,
+    mediaTypeFromFile,
+    VIDEO_FILE_EXTENSIONS,
+} from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
 import { ClientError } from "../utils/app-error";
@@ -18,6 +25,17 @@ import {
     INVALID_COOKIES_BROWSER_PROFILE_MESSAGE,
 } from "../use-cases/add-media";
 import { useMemoObject } from "./use-memo-object";
+
+// What each picker offers. The backend refuses anything else, and filtering here keeps a wrong
+// file from being chosen in the first place (a .txt picked as media was classed as a video and only
+// failed once the import ran).
+const MEDIA_FILE_FILTERS: FileDialogFilter[] = [
+    { name: "Video and audio", extensions: [...VIDEO_FILE_EXTENSIONS, ...AUDIO_FILE_EXTENSIONS] },
+];
+const IMAGE_FILE_FILTERS: FileDialogFilter[] = [
+    { name: "Images", extensions: [...IMAGE_FILE_EXTENSIONS] },
+];
+const COOKIES_FILE_FILTERS: FileDialogFilter[] = [{ name: "Cookies file", extensions: ["txt"] }];
 
 type UseAddMediaFormOptions = {
     onError?: (message: string) => void;
@@ -243,8 +261,16 @@ export function useAddMediaForm({
         async (path: string): Promise<void> => {
             const normalizedPath = path.trim();
 
-            if (!normalizedPath || !isThumbnailFile(normalizedPath)) {
+            if (!normalizedPath) {
                 return;
+            }
+
+            // The picker only offers images, but a path can still arrive without one (a picker that
+            // ignores filters). Saying so beats a selection that silently does nothing.
+            if (!isThumbnailFile(normalizedPath)) {
+                throw new ClientError(
+                    `Please choose an image file (${IMAGE_FILE_EXTENSIONS.join(", ")}).`
+                );
             }
 
             // The picked image lives outside the library, where the asset protocol cannot read it.
@@ -273,9 +299,12 @@ export function useAddMediaForm({
         [setManualThumbPath]
     );
 
-    const pickSinglePathFromDialog = useCallback(async (): Promise<string> => {
-        return (await pickFile()) ?? "";
-    }, []);
+    const pickSinglePathFromDialog = useCallback(
+        async (filters: FileDialogFilter[]): Promise<string> => {
+            return (await pickFile({ filters })) ?? "";
+        },
+        []
+    );
 
     // Invalidating the resolved yt-dlp formats and clearing the terminal always go together. Any
     // change to an input that affects the fetched result (the URL, cookies, the source mode) makes
@@ -290,7 +319,7 @@ export function useAddMediaForm({
 
     const pickCookiesFileViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selectedPath = await pickSinglePathFromDialog();
+            const selectedPath = await pickSinglePathFromDialog(COOKIES_FILE_FILTERS);
 
             if (!selectedPath) {
                 return;
@@ -445,7 +474,7 @@ export function useAddMediaForm({
 
     const pickMediaViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selectedPath = await pickSinglePathFromDialog();
+            const selectedPath = await pickSinglePathFromDialog(MEDIA_FILE_FILTERS);
 
             if (!selectedPath) {
                 return;
@@ -459,7 +488,7 @@ export function useAddMediaForm({
 
     const pickThumbViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selectedPath = await pickSinglePathFromDialog();
+            const selectedPath = await pickSinglePathFromDialog(IMAGE_FILE_FILTERS);
 
             if (!selectedPath) {
                 return;

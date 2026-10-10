@@ -6,11 +6,19 @@ vi.mock("../services/file-dialog-service", () => ({
     pickFile: vi.fn(),
 }));
 
-vi.mock("../utils/media-utils", () => ({
-    fileNameFromPath: vi.fn((path: string) => path.split("/").pop() ?? ""),
-    isThumbnailFile: vi.fn((path: string) => path.endsWith(".jpg") || path.endsWith(".png")),
-    mediaTypeFromFile: vi.fn((path: string) => (path.endsWith(".mp3") ? "audio" : "video")),
-}));
+vi.mock("../utils/media-utils", async (importOriginal) => {
+    // The extension lists are the real ones, since the picker filters are built from them.
+    const actual = await importOriginal<typeof import("../utils/media-utils")>();
+
+    return {
+        AUDIO_FILE_EXTENSIONS: actual.AUDIO_FILE_EXTENSIONS,
+        VIDEO_FILE_EXTENSIONS: actual.VIDEO_FILE_EXTENSIONS,
+        IMAGE_FILE_EXTENSIONS: actual.IMAGE_FILE_EXTENSIONS,
+        fileNameFromPath: vi.fn((path: string) => path.split("/").pop() ?? ""),
+        isThumbnailFile: vi.fn((path: string) => path.endsWith(".jpg") || path.endsWith(".png")),
+        mediaTypeFromFile: vi.fn((path: string) => (path.endsWith(".mp3") ? "audio" : "video")),
+    };
+});
 
 vi.mock("../utils/error-message", () => ({
     resolveErrorMessage: vi.fn((_error: unknown, fallback: string) => fallback),
@@ -123,7 +131,7 @@ describe("useAddMediaForm", () => {
         expect(result.current.resolvedYoutubeVideoId).toBe("abc123");
     });
 
-    it("requests a file from the dialog, with no type filter", async () => {
+    it("offers only the media types the library accepts in the media picker", async () => {
         vi.mocked(pickFile).mockResolvedValueOnce("/tmp/video.mp4");
 
         const { result } = renderHook(() => useAddMediaForm());
@@ -132,7 +140,35 @@ describe("useAddMediaForm", () => {
             await result.current.pickMediaViaDialog();
         });
 
-        expect(pickFile).toHaveBeenCalledWith();
+        const filters = vi.mocked(pickFile).mock.calls[0]?.[0]?.filters ?? [];
+        const extensions = filters.flatMap((filter) => filter.extensions);
+        expect(extensions).toContain("mp4");
+        expect(extensions).toContain("opus");
+        expect(extensions).not.toContain("txt");
+    });
+
+    it("offers only text files in the cookies picker and only images in the thumbnail picker", async () => {
+        vi.mocked(pickFile).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+        const { result } = renderHook(() => useAddMediaForm());
+
+        await act(async () => {
+            await result.current.pickCookiesFileViaDialog();
+        });
+        await act(async () => {
+            await result.current.pickThumbViaDialog();
+        });
+
+        const [cookiesCall, thumbnailCall] = vi.mocked(pickFile).mock.calls;
+        expect(cookiesCall?.[0]?.filters?.flatMap((filter) => filter.extensions)).toEqual(["txt"]);
+        expect(thumbnailCall?.[0]?.filters?.flatMap((filter) => filter.extensions)).toEqual([
+            "png",
+            "jpg",
+            "jpeg",
+            "webp",
+            "bmp",
+            "avif",
+        ]);
     });
 
     it("changes source mode", async () => {
@@ -422,16 +458,18 @@ describe("useAddMediaForm", () => {
         expect(logError).toHaveBeenCalled();
     });
 
-    it("ignores a thumbnail selection with an unsupported extension", async () => {
+    it("says so when the thumbnail picked is not an image the app accepts", async () => {
         vi.mocked(pickFile).mockResolvedValueOnce("/tmp/thumb.gif");
+        const onError = vi.fn();
 
-        const { result } = renderHook(() => useAddMediaForm());
+        const { result } = renderHook(() => useAddMediaForm({ onError }));
 
         await act(async () => {
             await result.current.pickThumbViaDialog();
         });
 
         expect(mockSetManualThumbPath).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledTimes(1);
     });
 
     it("ignores empty thumbnail selection from dialog", async () => {

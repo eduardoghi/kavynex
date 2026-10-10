@@ -1,7 +1,11 @@
 import { convertFileSrc } from "../lib/tauri-platform";
 import type { MediaType } from "../types/media";
 
-const AUDIO_EXTENSIONS = new Set([
+// The media file types the library accepts, mirroring ALLOWED_AUDIO_EXTENSIONS and
+// ALLOWED_VIDEO_EXTENSIONS in src-tauri/src/utils/format.rs (media-utils.test.ts reads that file and
+// fails when they drift). The backend is the one that refuses a file, and these let the file picker
+// show only what it will accept.
+export const AUDIO_FILE_EXTENSIONS = [
     "mp3",
     "m4a",
     "aac",
@@ -12,7 +16,25 @@ const AUDIO_EXTENSIONS = new Set([
     "wma",
     "alac",
     "aiff",
-]);
+] as const;
+
+export const VIDEO_FILE_EXTENSIONS = [
+    "mp4",
+    "mkv",
+    "webm",
+    "mov",
+    "avi",
+    "m4v",
+    "mpg",
+    "mpeg",
+    "wmv",
+    "flv",
+    "3gp",
+    "ts",
+    "m2ts",
+] as const;
+
+const AUDIO_EXTENSIONS = new Set<string>(AUDIO_FILE_EXTENSIONS);
 
 // The image file types Kavynex accepts for a thumbnail or channel avatar, in the order shown in
 // the file picker. Both the thumbnail classification below and the avatar/thumbnail picker filter

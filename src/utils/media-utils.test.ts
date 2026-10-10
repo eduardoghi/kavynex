@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { convertFileSrc } from "../lib/tauri-platform";
 import {
+    AUDIO_FILE_EXTENSIONS,
     extensionFromPath,
     fileNameFromPath,
     fileSrcFromAbsolutePath,
@@ -18,6 +21,7 @@ import {
     mediaTypeFromFile,
     resolveStoredPath,
     RESUME_COMPLETION_TOLERANCE_SECONDS,
+    VIDEO_FILE_EXTENSIONS,
     resumePositionFor,
     shortPath,
     stripWindowsExtendedPrefix,
@@ -142,6 +146,30 @@ describe("media-utils", () => {
 
         it("trims whitespace around the extension", () => {
             expect(extensionFromPath("dir/video.MP4 /")).toBe("mp4");
+        });
+    });
+
+    describe("media file extensions", () => {
+        // The backend's lists decide what a file picker may offer. Read from the Rust source (from
+        // the repo root, vitest's cwd) so a format added there and not here fails this test.
+        function rustExtensionList(name: string): string[] {
+            const source = readFileSync(
+                resolve(process.cwd(), "src-tauri/src/utils/format.rs"),
+                "utf-8"
+            );
+            const match = source.match(
+                new RegExp(`pub const ${name}: \\[&str; \\d+\\] = \\[([^\\]]*)\\]`)
+            );
+
+            return [...(match?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((found) => found[1] ?? "");
+        }
+
+        it("match the backend's video list", () => {
+            expect([...VIDEO_FILE_EXTENSIONS]).toEqual(rustExtensionList("ALLOWED_VIDEO_EXTENSIONS"));
+        });
+
+        it("match the backend's audio list", () => {
+            expect([...AUDIO_FILE_EXTENSIONS]).toEqual(rustExtensionList("ALLOWED_AUDIO_EXTENSIONS"));
         });
     });
 
