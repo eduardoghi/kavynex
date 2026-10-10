@@ -32,6 +32,9 @@ type SettingsModalProps = {
     disableLibraryPathChange: boolean;
     libraryPathChangeDisabledReason: string;
     isMigratingLibraryPath: boolean;
+    // A download, an import or a comment fetch is running. On Windows the installer exits the app
+    // as soon as it starts, which would stop that work halfway.
+    isMediaWorkRunning?: boolean;
     pendingLibraryMove?: PendingLibraryMove | null;
     onConfirmLibraryMove?: () => void;
     onCancelLibraryMove?: () => void;
@@ -42,6 +45,33 @@ type SettingsModalProps = {
     onChooseExternalBackupDir: () => void;
     onClearExternalBackupDir: () => void;
 };
+
+// Why the update cannot be installed right now, or null when it can. The install ends in a relaunch
+// (on Windows the installer exits the app as soon as it starts), which would cut short whatever is
+// still running.
+export function updateInstallBlockedReason({
+    isMigratingLibraryPath,
+    isDatabaseBusy,
+    isMediaWorkRunning,
+}: {
+    isMigratingLibraryPath: boolean;
+    isDatabaseBusy: boolean;
+    isMediaWorkRunning: boolean;
+}): string | null {
+    if (isMigratingLibraryPath) {
+        return "Wait for the library folder to finish moving before updating.";
+    }
+
+    if (isDatabaseBusy) {
+        return "Wait for the database operation to finish before updating.";
+    }
+
+    if (isMediaWorkRunning) {
+        return "Wait for the download, import or comment backup to finish before updating.";
+    }
+
+    return null;
+}
 
 export function SettingsModal({
     opened,
@@ -62,6 +92,7 @@ export function SettingsModal({
     disableLibraryPathChange,
     libraryPathChangeDisabledReason,
     isMigratingLibraryPath,
+    isMediaWorkRunning = false,
     pendingLibraryMove,
     onConfirmLibraryMove,
     onCancelLibraryMove,
@@ -93,14 +124,11 @@ export function SettingsModal({
 
     const modalLock = useModalLock(isModalLocked, onClose);
 
-    // The install ends in a relaunch, which would cut short anything else this modal has running.
-    let installBlockedReason: string | null = null;
-
-    if (isMigratingLibraryPath) {
-        installBlockedReason = "Wait for the library folder to finish moving before updating.";
-    } else if (controller.databaseBusy !== "idle") {
-        installBlockedReason = "Wait for the database operation to finish before updating.";
-    }
+    const installBlockedReason = updateInstallBlockedReason({
+        isMigratingLibraryPath,
+        isDatabaseBusy: controller.databaseBusy !== "idle",
+        isMediaWorkRunning,
+    });
 
     return (
         <Modal

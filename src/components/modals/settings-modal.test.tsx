@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SettingsModal } from "./settings-modal";
+import { SettingsModal, updateInstallBlockedReason } from "./settings-modal";
 import { renderWithMantine } from "../../test/test-utils";
 import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
@@ -380,5 +380,31 @@ describe("SettingsModal", () => {
         const violations = await findAccessibilityViolations(document.body);
 
         expect(describeViolations(violations)).toBe("");
+    });
+});
+
+describe("updateInstallBlockedReason", () => {
+    const idle = { isMigratingLibraryPath: false, isDatabaseBusy: false, isMediaWorkRunning: false };
+
+    it("allows the install when nothing else is running", () => {
+        expect(updateInstallBlockedReason(idle)).toBeNull();
+    });
+
+    it("holds the install while a download, import or comment backup runs", () => {
+        // On Windows the installer exits the app the moment it starts, which left yt-dlp and
+        // ffmpeg running with nothing to place what they produced.
+        expect(updateInstallBlockedReason({ ...idle, isMediaWorkRunning: true })).toMatch(
+            /download, import or comment backup/
+        );
+    });
+
+    it("names the library move first when several things are running", () => {
+        expect(
+            updateInstallBlockedReason({
+                isMigratingLibraryPath: true,
+                isDatabaseBusy: true,
+                isMediaWorkRunning: true,
+            })
+        ).toMatch(/library folder/);
     });
 });

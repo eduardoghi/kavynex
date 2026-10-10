@@ -75,6 +75,8 @@ type HomeSecondaryModalsProps = {
     mediaToDelete: MediaLibraryController["mediaToDelete"];
     isDeletingMedia: boolean;
     closeDeleteMediaModal: MediaLibraryController["closeDeleteMediaModal"];
+    // A download, an import or a comment fetch is running (see SettingsModal).
+    isMediaWorkRunning: boolean;
 };
 
 const HomeSecondaryModals = memo(function HomeSecondaryModals({
@@ -90,6 +92,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
     mediaToDelete,
     isDeletingMedia,
     closeDeleteMediaModal,
+    isMediaWorkRunning,
 }: HomeSecondaryModalsProps): JSX.Element {
     // Latched rather than read directly, so each lazy modal below mounts on its first open and
     // stays mounted after. See useHasBeenTrue for why both halves are load-bearing.
@@ -190,6 +193,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                             uiGuards.libraryPathChangeDisabledReason
                         }
                         isMigratingLibraryPath={settings.isMigratingLibraryPath}
+                        isMediaWorkRunning={isMediaWorkRunning}
                         pendingLibraryMove={settings.pendingLibraryMove}
                         onConfirmLibraryMove={() => void settings.confirmLibraryMove()}
                         onCancelLibraryMove={settings.cancelLibraryMove}
@@ -333,6 +337,11 @@ export function HomeModals({
                 mediaToDelete={media.mediaToDelete}
                 isDeletingMedia={media.isDeletingMedia}
                 closeDeleteMediaModal={media.closeDeleteMediaModal}
+                isMediaWorkRunning={
+                    media.isAddingMedia ||
+                    media.isYtDlpRunning ||
+                    media.commentsInFlight.size > 0
+                }
             />
         </>
     );
