@@ -156,6 +156,33 @@ their installer against `SHA256SUMS.txt`, and without a statement on that file t
 proved only that two things a third party could both have written agree with each other. The same
 `gh attestation verify` command works on it.
 
+## The updater signing key
+
+**Where it lives.** The private key and its password exist in two places only: the repository
+secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, which only the
+`publish-tauri` job of `release.yml` reads, and the maintainer's offline backup. GitHub does not let
+anyone read a secret back, so losing the offline copy means the key can only be replaced, not
+recovered. The public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, compiled into
+every build.
+
+**What a rotation costs.** An installed copy trusts exactly one public key, the one it was built
+with. An update signed with a new key is refused by every copy built before the rotation. So the
+order matters:
+
+1. Generate the new pair with `pnpm tauri signer generate -w <path>`, with a password, and back it
+   up offline next to the old one.
+2. Put the new public key in `tauri.conf.json`, and publish that release still signed with the old
+   key (the secrets unchanged). Installed copies accept it, because the old key signed it, and from
+   then on they trust the new key.
+3. Replace both secrets with the new key and password. Every later release is signed with it.
+4. Keep the old key until enough users have taken the bridging release, then destroy it.
+
+**If the old key is compromised or lost**, step 2 is not possible without trusting it, and there is
+no bridge. Rotate anyway (steps 1 and 3), and tell users in the release notes and the README that
+they have to download and install the new version by hand once, because their installed copy will
+refuse it as an update. A compromised key also means the rollback risk above applies to anything it
+ever signed until users have moved past it.
+
 ## Software Bill of Materials (SBOM)
 
 Every release also publishes a CycloneDX SBOM (`kavynex_<version>_sbom.cdx.json`,
@@ -240,7 +267,8 @@ The residual exposure is a malicious `build.rs` in a dependency the lockfile alr
 reading the environment during a release build. `minimumReleaseAge` and `blockExoticSubdeps`
 (`pnpm-workspace.yaml`) plus `cargo-deny`'s source allow-list are what reduce the chance of such
 a dependency arriving in the first place; nothing in the current workflow removes the exposure
-itself. Rotating the minisign key is the response if a compromise is ever suspected.
+itself. Rotating the minisign key is the response if a compromise is ever suspected (see "The
+updater signing key" below).
 
 One asymmetry is worth stating plainly, because the two ecosystems get their publish-age
 cooling-off from different places and the two places do not cover the same thing:

@@ -283,7 +283,7 @@ SHA-256 hash of their own content (`utils/hash.rs::file_hash`, computed by strea
 file rather than loading it whole):
 
 - `video/media_<sha256>.<ext>` or `audio/media_<sha256>.<ext>`: a **locally imported**
-  file, written by `services/library/media.rs::import_media_file_sync`.
+  file, written by `services/library/media.rs::stage_media_import_cancellable_sync`.
 - `thumbnails/thumb_<sha256>.<ext>`: written by `services/thumbnail/persist.rs`.
 
 This makes storage naturally deduplicated (two imports of byte-identical content produce

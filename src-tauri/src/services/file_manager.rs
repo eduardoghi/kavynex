@@ -11,14 +11,11 @@
 //! whether that path is one the app may act on. Deciding that is the caller's whole job, and there
 //! are exactly two callers, each answering it a different way:
 //!
-//! - `library::open_path_in_system_sync` confines the caller-supplied path to the configured
-//!   library first (`resolve_path_inside_library`, behind the settings cross-check in
-//!   `library::guard`). Its path comes over IPC, so it is guarded.
+//! - `library::open_path_in_system_sync` confines the caller-supplied path to the library the
+//!   settings hold (`resolve_path_inside_library`). Its path comes over IPC, so it is guarded.
 //! - [`reveal_app_log_dir`] takes **no path at all** and derives one from `app_log_dir()`. A command
 //!   that accepts nothing cannot be redirected, which is why the log folder needed its own entry
-//!   point instead of reusing the library one. Passing the log directory as both `path` and
-//!   `library_path` to that command would satisfy its containment check trivially, which is the
-//!   self-referential shape `docs/THREAT-MODEL.md` records as a defect rather than a pattern to reuse.
+//!   point. The library one would refuse the log directory as outside the library.
 //!
 //! A third caller has to answer the same question before it uses this, and neither of the two ways
 //! above generalizes for free.

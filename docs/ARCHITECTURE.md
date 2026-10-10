@@ -91,10 +91,11 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   - `path.rs`: the path-safety primitives (sanitizing a relative path, canonicalizing and
     containment-checking a path against a base directory). See `docs/DATABASE.md` and
     `THREAT-MODEL.md` for how this backs the library/asset-scope guarantees.
-  - `process.rs`: everything about spawning an external child: suppressing the flashing
-    console window Windows would otherwise show from a windowed app (`hide_console`), putting
-    the child in its own process group, and killing a whole process tree
-    (`kill_process_tree`). The last two are a pair. The Unix kill signals the negated pid,
+  - `process.rs`: everything about spawning an external child. `configure_child` (and
+    `configure_child_async`) is what every yt-dlp and FFmpeg child gets before it is spawned: no
+    console window (`hide_console`), its own process group, no stdin, and none of an AppImage's
+    library variables. `kill_process_tree` kills a whole tree. The process group and the tree
+    kill are a pair. The Unix kill signals the negated pid,
     i.e. the group, so a child spawned without its own group is not reachable by the kill that
     every timeout path depends on.
   - `hash.rs`: SHA-256 file hashing used for the content-addressed media/thumbnail

@@ -23,7 +23,7 @@ activity Kavynex initiates is:
   that only the latest release receives fixes (see `SECURITY.md`), so this check is how a
   security fix reaches you, and a default that never contacted the endpoint left that path
   unused for anyone who never went looking for the toggle. Turn it off under
-  **Settings -> Application update**, where you can also check on demand with "Check update".
+  **Settings -> Application update**, where you can also check on demand with "Check now".
   The check only shows a notice. Nothing is downloaded or installed unless you start the update
   yourself.
 - When viewing a saved video's comments or live chat, the player can load each comment/chat

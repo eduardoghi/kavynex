@@ -15,7 +15,9 @@ to send someone who has a bug to report rather than a change to propose.
 - [Node.js](https://nodejs.org/): match the range pinned in `package.json`'s `engines.node`
   field (currently `>=26 <27`; `.nvmrc` pins the exact patch the CI/release workflows use), so
   local builds and CI agree
-- [pnpm](https://pnpm.io/): match the `pnpm/action-setup` major those workflows pin
+- [pnpm](https://pnpm.io/): the version in `package.json`'s `packageManager` field (`pnpm@11.13.1`), which
+  the workflows install from that same field (`npm install -g pnpm@11.13.1`, since Node 26
+  no longer ships Corepack)
 - [Rust](https://www.rust-lang.org/), via [rustup](https://rustup.rs/). The exact
   toolchain is pinned in `rust-toolchain.toml` (`1.96.0`, with `rustfmt` and `clippy`).
   Rustup will pick it up automatically when you run any `cargo`/`rustc` command inside the
