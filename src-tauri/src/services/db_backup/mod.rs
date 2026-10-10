@@ -58,6 +58,15 @@ fn sibling(db_path: &Path, suffix: &str) -> PathBuf {
     db_path.with_file_name(format!("{name}{suffix}"))
 }
 
+/// Removes the journal, log and shared-memory files a crashed earlier attempt may have left beside
+/// a staging file, before a fresh copy takes its name. SQLite would otherwise read a hot journal or
+/// a log there as belonging to the new copy and roll it into it.
+fn remove_stale_sidecars(staging: &Path) {
+    for suffix in ["-journal", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(sibling(staging, suffix));
+    }
+}
+
 /// Shifts a rotated snapshot family up by one generation, dropping the oldest, so a fresh file
 /// can be promoted into generation 0 without discarding the previous ones. Generation `N` is
 /// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort. A

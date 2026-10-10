@@ -387,7 +387,12 @@ pub(super) async fn prepare_staged_database(
         .filename(db_file)
         .create_if_missing(false)
         .journal_mode(SqliteJournalMode::Delete)
-        .busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
+        .busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
+        // The file came from outside (an import) or is about to replace the database (a restore).
+        // Same open as `connect`. Its schema may not call functions with side effects, and a page
+        // whose cells overrun it is damage rather than something to read past.
+        .pragma("trusted_schema", "OFF")
+        .pragma("cell_size_check", "ON");
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
@@ -526,6 +531,7 @@ pub async fn stage_database_import(
     let staged = import_staged_path(db_path);
     let staging_tmp = sibling(db_path, ".import-staged.tmp");
     let _ = std::fs::remove_file(&staging_tmp);
+    super::remove_stale_sidecars(&staging_tmp);
     // Full-file copy of the (possibly large) source database. Run it off the async runtime so a
     // slow source disk never stalls a Tokio worker thread.
     {
@@ -603,6 +609,7 @@ fn remove_import_applying_marker(marker: &Path) -> bool {
 /// anything when it is wrong.
 fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
     if !db_path.exists() {
+        set_aside_orphaned_wal(db_path)?;
         return Ok(None);
     }
 
@@ -647,6 +654,34 @@ fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
     );
 
     Ok(Some(displaced))
+}
+
+/// Moves a write-ahead log found under the live name with no database beside it to a
+/// `.displaced-<suffix>-wal` sibling. It is what an earlier [`displace_database`] leaves when it set
+/// the file aside and then failed to move the log. A database renamed in next would have it replayed
+/// into it, since SQLite checks frames against the log's own header and not against the file.
+fn set_aside_orphaned_wal(db_path: &Path) -> AppResult<()> {
+    let live_wal = sibling(db_path, "-wal");
+
+    if live_wal.exists() {
+        let kept = sibling(
+            db_path,
+            &format!(
+                ".displaced-{}-wal",
+                crate::utils::naming::unique_temp_suffix()
+            ),
+        );
+
+        std::fs::rename(&live_wal, &kept).map_err(|error| {
+            backup_error(
+                "failed to set aside a write-ahead log left without its database",
+                error,
+            )
+        })?;
+    }
+
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+    Ok(())
 }
 
 /// Restores a `.pre-import` snapshot that an interrupted import stranded as the only copy of the

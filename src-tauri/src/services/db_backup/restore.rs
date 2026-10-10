@@ -234,6 +234,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     // a slow disk (a network share, a cloud-synced folder) never stalls a Tokio worker thread.
     let staged = restore_staging_path(db_path);
     let _ = std::fs::remove_file(&staged);
+    super::remove_stale_sidecars(&staged);
     {
         let copy_source = backup.clone();
         let copy_dest = staged.clone();

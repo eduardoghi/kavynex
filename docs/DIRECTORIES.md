@@ -69,6 +69,11 @@ expected to see, export the current database first, copy the displaced one (and 
 to a name ending in `.db` while Kavynex is closed, and import that copy through
 Settings > Database > Import.
 
+A `kavynex.db.displaced-<suffix>-wal` with no database of the same name beside it is a log that
+a recovery found under the live name after the file it belonged to had already been set aside. It
+is moved away so it is never replayed into the database renamed in next, and kept only as
+evidence. On its own it is not a database to bring back.
+
 One file here is not ours and is listed so the inventory above stays complete rather than
 almost-complete:
 

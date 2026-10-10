@@ -1021,6 +1021,54 @@ async fn a_stranded_pre_import_is_restored_when_the_staged_file_is_gone() {
 }
 
 #[tokio::test]
+async fn a_log_left_without_its_database_is_not_paired_with_the_stranded_snapshot() {
+    // An earlier recovery set the database aside and then failed to move its log, so the log is
+    // still under the live name with nothing beside it. Renaming the snapshot in next to it would
+    // pair the two.
+    let dir = temp_dir("stranded-orphan-wal");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+    write_import_applying_marker(&import_applying_marker_path(&db)).unwrap();
+    std::fs::rename(&db, pre_import_path(&db)).unwrap();
+    std::fs::write(sibling(&db, "-wal"), b"a log belonging to another file").unwrap();
+
+    assert!(!apply_pending_database_import(&db).unwrap());
+
+    assert!(!sibling(&db, "-wal").exists(), "the orphaned log was moved away");
+    assert!(
+        std::fs::read_dir(&dir).unwrap().any(|entry| {
+            let name = entry.unwrap().file_name().to_string_lossy().into_owned();
+            name.starts_with("kavynex.db.displaced-") && name.ends_with("-wal")
+        }),
+        "and kept rather than deleted"
+    );
+    assert_eq!(read_video_title(&db).await, "current");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_restore_ignores_a_journal_an_earlier_attempt_left_beside_its_staging_file() {
+    let dir = temp_dir("restore-stale-journal");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "kept").await;
+    assert!(backup_database(&db).await.unwrap());
+    std::fs::write(&db, b"not a database").unwrap();
+    std::fs::write(
+        sibling(&restore_staging_path(&db), "-journal"),
+        b"a hot journal from another copy",
+    )
+    .unwrap();
+
+    restore_database_from_backup(&db).await.unwrap();
+
+    assert!(!sibling(&restore_staging_path(&db), "-journal").exists());
+    assert_eq!(read_video_title(&db).await, "kept");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn a_marker_with_no_snapshot_behind_it_never_skips_the_move_aside() {
     // The other half of the marker's contract, and the one that decides whether it is safe to
     // act on at all. The marker only means "`.pre-import` holds the user's database" because
