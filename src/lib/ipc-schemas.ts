@@ -34,7 +34,6 @@ import type {
     ContentVerificationReport,
     LiveChatStreamEvent,
     MediaCommentRow,
-    YtDlpComment,
     YtDlpFailedEvent,
     YtDlpFinishedEvent,
     YtDlpFormatsResult,
@@ -54,6 +53,7 @@ import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStat
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { DatabaseCompaction } from "../types/generated/DatabaseCompaction";
+import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
@@ -115,22 +115,9 @@ const mediaCommentRowSchema = z.object({
     created_at: z.string(),
 });
 
-const ytDlpCommentSchema = z.object({
-    comment_id: z.string().nullable(),
-    parent_comment_id: z.string().nullable(),
-    author_name: z.string(),
-    author_handle: z.string().nullable(),
-    author_channel_id: z.string().nullable(),
-    author_thumbnail: z.string().nullable(),
-    text: z.string(),
-    like_count: z.number(),
-    reply_count: z.number(),
-    is_author_uploader: z.boolean(),
-    is_favorited: z.boolean(),
-    is_pinned: z.boolean(),
-    is_edited: z.boolean(),
-    time_text: z.string().nullable(),
-    published_at: z.string().nullable(),
+const mediaCommentsFetchSchema = z.object({
+    fetched: z.number(),
+    stored: z.number(),
 });
 
 const ytDlpFormatSchema = z.object({
@@ -365,7 +352,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         displayThumbnailSchema
     ) satisfies z.ZodType<DisplayThumbnail[]>,
     list_yt_dlp_formats: ytDlpFormatsResultSchema satisfies z.ZodType<YtDlpFormatsResult>,
-    fetch_youtube_comments: z.array(ytDlpCommentSchema) satisfies z.ZodType<YtDlpComment[]>,
+    fetch_media_comments: mediaCommentsFetchSchema satisfies z.ZodType<MediaCommentsFetch>,
     get_database_backup_status: databaseBackupStatusSchema satisfies z.ZodType<DatabaseBackupStatus>,
     check_database_integrity:
         databaseIntegrityReportSchema satisfies z.ZodType<DatabaseIntegrityReport>,

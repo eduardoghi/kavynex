@@ -411,26 +411,93 @@ pub async fn list_media_comments_by_media_id(
     pool: &SqlitePool,
     media_id: i64,
 ) -> AppResult<Vec<MediaCommentRow>> {
-    sqlx::query_as::<_, MediaCommentRow>(
-        "SELECT id, video_id, comment_id, parent_comment_id, author_name, author_handle,
-            author_channel_id, author_thumbnail, text, like_count, reply_count,
-            is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at,
-            created_at
-         FROM (
-             SELECT *, SUM(LENGTH(text)) OVER (ORDER BY id ASC) AS text_loaded
-             FROM video_comments
-             WHERE video_id = ?
-         )
-         WHERE text_loaded <= ?
-         ORDER BY id ASC
-         LIMIT ?",
+    list_media_comments_within(
+        pool,
+        media_id,
+        CommentLoadLimits {
+            rows: MAX_MEDIA_COMMENTS_LOADED,
+            text_chars: MAX_MEDIA_COMMENT_TEXT_LOADED,
+            page_rows: MEDIA_COMMENTS_READ_PAGE_ROWS,
+        },
     )
-    .bind(media_id)
-    .bind(MAX_MEDIA_COMMENT_TEXT_LOADED)
-    .bind(MAX_MEDIA_COMMENTS_LOADED)
-    .fetch_all(pool)
     .await
-    .map_err(|error| db_error("failed to list media comments", error))
+}
+
+/// How many comment rows one read statement fetches. The load walks the media's comments in pages
+/// of this size and stops as soon as a cap is reached, so a capped load reads only what it returns
+/// (plus at most one page).
+const MEDIA_COMMENTS_READ_PAGE_ROWS: i64 = 2_000;
+
+#[derive(Clone, Copy)]
+struct CommentLoadLimits {
+    rows: i64,
+    text_chars: i64,
+    page_rows: i64,
+}
+
+/// The comment load, with its caps as parameters so the tests can reach them with a few rows.
+///
+/// Pages by `id` (`id > last id seen`), which `idx_video_comments_video_id` serves directly, and
+/// counts the text in Rust. The text cap used to be a `SUM(LENGTH(text)) OVER (ORDER BY id)` in the
+/// query, which made SQLite read the text of every comment the media has before the `LIMIT` could
+/// stop anything. `LENGTH` counts characters on TEXT, and so does `chars().count()` here.
+///
+/// The pages are separate statements, so a merge that commits between two of them can add rows to
+/// the result. Those get higher ids and land at the end, which is where a later read would put them
+/// anyway.
+async fn list_media_comments_within(
+    pool: &SqlitePool,
+    media_id: i64,
+    limits: CommentLoadLimits,
+) -> AppResult<Vec<MediaCommentRow>> {
+    let mut comments: Vec<MediaCommentRow> = Vec::new();
+    let mut text_loaded: i64 = 0;
+    let mut after_id: i64 = 0;
+
+    loop {
+        let remaining = limits.rows - comments.len() as i64;
+
+        if remaining <= 0 {
+            break;
+        }
+
+        let page_size = remaining.min(limits.page_rows);
+        let page = sqlx::query_as::<_, MediaCommentRow>(
+            "SELECT id, video_id, comment_id, parent_comment_id, author_name, author_handle,
+                author_channel_id, author_thumbnail, text, like_count, reply_count,
+                is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at,
+                created_at
+             FROM video_comments
+             WHERE video_id = ? AND id > ?
+             ORDER BY id ASC
+             LIMIT ?",
+        )
+        .bind(media_id)
+        .bind(after_id)
+        .bind(page_size)
+        .fetch_all(pool)
+        .await
+        .map_err(|error| db_error("failed to list media comments", error))?;
+
+        let page_len = page.len() as i64;
+
+        for comment in page {
+            text_loaded += comment.text.chars().count() as i64;
+
+            if text_loaded > limits.text_chars {
+                return Ok(comments);
+            }
+
+            after_id = comment.id;
+            comments.push(comment);
+        }
+
+        if page_len < page_size {
+            break;
+        }
+    }
+
+    Ok(comments)
 }
 
 /// Marks a media as watched and returns the timestamp actually persisted by the database, so

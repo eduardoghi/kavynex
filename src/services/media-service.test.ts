@@ -32,13 +32,8 @@ vi.mock("./media-metadata-service", () => ({
 }));
 
 vi.mock("./media-download-service", () => ({
-    fetchYouTubeComments: vi.fn(),
+    fetchMediaComments: vi.fn(),
     commentsRefreshRunId: (mediaId: number) => `comments-refresh-${mediaId}`,
-}));
-
-vi.mock("./media-comments-service", () => ({
-    mergeMediaCommentsInBackend: vi.fn(),
-    markMediaCommentsAbsentInBackend: vi.fn(),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -55,11 +50,7 @@ import {
 } from "../repositories";
 import { validateCreateMediaInput, validateMediaId } from "./media-input-service";
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import { fetchYouTubeComments } from "./media-download-service";
-import {
-    markMediaCommentsAbsentInBackend,
-    mergeMediaCommentsInBackend,
-} from "./media-comments-service";
+import { fetchMediaComments } from "./media-download-service";
 import { logError } from "../utils/app-logger";
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type { CreateMediaInput } from "./media-input-service";
@@ -185,7 +176,7 @@ describe("media-service", () => {
 
         await expect(createMedia(input)).rejects.toThrow("already registered");
         expect(updateMediaDuration).not.toHaveBeenCalled();
-        expect(fetchYouTubeComments).not.toHaveBeenCalled();
+        expect(fetchMediaComments).not.toHaveBeenCalled();
     });
 
     it("measures the created media and stores the duration afterwards", async () => {
@@ -237,36 +228,31 @@ describe("media-service", () => {
         );
     });
 
-    it("persists fetched comments for a yt-dlp media when the user asked for them", async () => {
-        const fetchedComment = {
-            comment_id: "c1",
-            parent_comment_id: null,
-            author_name: "Alice",
-            author_handle: "@alice",
-            author_channel_id: null,
-            author_thumbnail: null,
-            text: "Great video!",
-            like_count: 5,
-            reply_count: 1,
-            is_author_uploader: false,
-            is_favorited: false,
-            is_pinned: true,
-            is_edited: false,
-            time_text: "1 day ago",
-            published_at: "2026-01-01",
-        };
-
+    it("has the backend fetch and store the comments of a yt-dlp media when asked", async () => {
         const input = ytDlpInput({ downloadComments: true });
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
         vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
-        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([fetchedComment]);
+        vi.mocked(fetchMediaComments).mockResolvedValueOnce({ fetched: 3, stored: 3 });
 
-        await createMedia(input);
+        const messages: string[] = [];
+        await createMedia(input, { onProgress: (message) => void messages.push(message) });
 
         // The video id comes off the created media rather than the request. For a yt-dlp source the
         // backend resolved it from the download, which is the authoritative one.
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null, undefined);
-        expect(mergeMediaCommentsInBackend).toHaveBeenCalledWith(55, [fetchedComment]);
+        expect(fetchMediaComments).toHaveBeenCalledWith(55, "abc", null, null, undefined);
+        expect(messages).toContain("Comments saved: 3");
+    });
+
+    it("says no comments came back when the fetch returned none", async () => {
+        const input = ytDlpInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
+        vi.mocked(fetchMediaComments).mockResolvedValueOnce({ fetched: 0, stored: 0 });
+
+        const messages: string[] = [];
+        await createMedia(input, { onProgress: (message) => void messages.push(message) });
+
+        expect(messages).toContain("No public comments were returned for this media.");
     });
 
     it("registers the comment backup under the run id it was given and says while it runs", async () => {
@@ -276,15 +262,15 @@ describe("media-service", () => {
 
         const fetching: boolean[] = [];
         const onCommentsFetchChange = vi.fn((value: boolean) => void fetching.push(value));
-        vi.mocked(fetchYouTubeComments).mockImplementationOnce(async () => {
+        vi.mocked(fetchMediaComments).mockImplementationOnce(async () => {
             // Still running here, which is when the caller's Cancel has to reach it.
             expect(fetching).toEqual([true]);
-            return [];
+            return { fetched: 0, stored: 0 };
         });
 
         await createMedia(input, { commentsRunId: "comments-run", onCommentsFetchChange });
 
-        expect(fetchYouTubeComments).toHaveBeenCalledWith("abc", null, null, "comments-run");
+        expect(fetchMediaComments).toHaveBeenCalledWith(55, "abc", null, null, "comments-run");
         expect(fetching).toEqual([true, false]);
     });
 
@@ -292,7 +278,7 @@ describe("media-service", () => {
         const input = ytDlpInput({ downloadComments: true });
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
         vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
-        vi.mocked(fetchYouTubeComments).mockRejectedValueOnce({
+        vi.mocked(fetchMediaComments).mockRejectedValueOnce({
             code: "YT_DLP_DOWNLOAD_CANCELLED",
             message: "yt-dlp download cancelled",
         });
@@ -309,7 +295,6 @@ describe("media-service", () => {
         expect(messages).toContain("Comments skipped. The media was added without them.");
         expect(messages).not.toContain("Failed to fetch comments. Import will continue without them.");
         expect(onCommentsFetchChange).toHaveBeenLastCalledWith(false);
-        expect(mergeMediaCommentsInBackend).not.toHaveBeenCalled();
         // Asked for, so not a failure worth a log entry.
         expect(logError).not.toHaveBeenCalled();
     });
@@ -321,7 +306,7 @@ describe("media-service", () => {
 
         await createMedia(input);
 
-        expect(fetchYouTubeComments).not.toHaveBeenCalled();
+        expect(fetchMediaComments).not.toHaveBeenCalled();
     });
 
     it("does not fetch comments for a local import", async () => {
@@ -331,14 +316,14 @@ describe("media-service", () => {
 
         await createMedia(input);
 
-        expect(fetchYouTubeComments).not.toHaveBeenCalled();
+        expect(fetchMediaComments).not.toHaveBeenCalled();
     });
 
     it("still reports the created media when the comment backup fails", async () => {
         const input = ytDlpInput({ downloadComments: true });
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
         vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
-        vi.mocked(fetchYouTubeComments).mockRejectedValueOnce(new Error("extraction incomplete"));
+        vi.mocked(fetchMediaComments).mockRejectedValueOnce(new Error("extraction incomplete"));
 
         await expect(createMedia(input)).resolves.toEqual({ id: 55 });
     });
@@ -429,100 +414,51 @@ describe("media-service", () => {
     });
 
     it("refreshes comments through the backend", async () => {
-        const fetchedComment = {
-            comment_id: "c1",
-            parent_comment_id: null,
-            author_name: "Alice",
-            author_handle: "@alice",
-            author_channel_id: null,
-            author_thumbnail: null,
-            text: "Great video!",
-            like_count: 5,
-            reply_count: 1,
-            is_author_uploader: false,
-            is_favorited: false,
-            is_pinned: true,
-            is_edited: false,
-            time_text: "1 day ago",
-            published_at: "2026-01-01",
-        };
-
         vi.mocked(validateMediaId).mockImplementationOnce(() => {});
-        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([fetchedComment]);
-        vi.mocked(mergeMediaCommentsInBackend).mockResolvedValueOnce(1);
+        vi.mocked(fetchMediaComments).mockResolvedValueOnce({ fetched: 1, stored: 1 });
 
         const result = await refreshMediaComments(10, "abc", "edge");
 
-        expect(fetchYouTubeComments).toHaveBeenCalledWith(
+        expect(fetchMediaComments).toHaveBeenCalledWith(
+            10,
             "abc",
             "edge",
             null,
             "comments-refresh-10"
         );
-        expect(mergeMediaCommentsInBackend).toHaveBeenCalledWith(10, [fetchedComment]);
         expect(result).toEqual({ updated: true, totalComments: 1 });
     });
 
     it("reports what the media holds after the merge rather than what the refresh fetched", async () => {
-        // The merge keeps comments saved earlier that this fetch no longer found, so the backend's
-        // count is larger than the payload. Reporting the payload length would put a count on the
-        // card that the player's own list contradicts.
-        const fetchedComment = {
-            comment_id: "c1",
-            parent_comment_id: null,
-            author_name: "Alice",
-            author_handle: "@alice",
-            author_channel_id: null,
-            author_thumbnail: null,
-            text: "Still here",
-            like_count: 0,
-            reply_count: 0,
-            is_author_uploader: false,
-            is_favorited: false,
-            is_pinned: false,
-            is_edited: false,
-            time_text: null,
-            published_at: null,
-        };
-
+        // The merge keeps comments saved earlier that this fetch no longer found, so the stored
+        // count is larger than the fetched one. Reporting the fetched count would put a number on
+        // the card that the player's own list contradicts.
         vi.mocked(validateMediaId).mockImplementationOnce(() => {});
-        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([fetchedComment]);
-        vi.mocked(mergeMediaCommentsInBackend).mockResolvedValueOnce(4800);
+        vi.mocked(fetchMediaComments).mockResolvedValueOnce({ fetched: 1, stored: 4800 });
 
         const result = await refreshMediaComments(10, "abc", null);
 
         expect(result).toEqual({ updated: true, totalComments: 4800 });
     });
 
-    it("reports no update and preserves saved comments when the refresh returns none", async () => {
+    it("reports no update when the refresh returns none", async () => {
+        // A genuinely empty result is not an error. The backend has already recorded it without
+        // touching the saved comments, so this only has to tell the caller nothing changed.
         vi.mocked(validateMediaId).mockImplementationOnce(() => {});
-        vi.mocked(fetchYouTubeComments).mockResolvedValueOnce([]);
+        vi.mocked(fetchMediaComments).mockResolvedValueOnce({ fetched: 0, stored: 12 });
 
         const result = await refreshMediaComments(10, "abc", null);
 
-        // A genuinely empty result is not an error and must not overwrite saved comments.
-        expect(mergeMediaCommentsInBackend).not.toHaveBeenCalled();
         expect(result).toEqual({ updated: false, totalComments: 0 });
-
-        // But it does have to be recorded. Returning without telling the backend anything left the
-        // media indistinguishable from one nothing had ever been fetched for, so the player kept
-        // offering a Fetch button and the user could re-run a refresh that could never return
-        // anything. The two assertions belong together. The outcome is written *and* the comments
-        // are not touched.
-        expect(markMediaCommentsAbsentInBackend).toHaveBeenCalledWith(10);
     });
 
     it("propagates a real fetch failure from refresh", async () => {
         vi.mocked(validateMediaId).mockImplementationOnce(() => {});
-        vi.mocked(fetchYouTubeComments).mockRejectedValueOnce(new Error("extraction incomplete"));
+        vi.mocked(fetchMediaComments).mockRejectedValueOnce(new Error("extraction incomplete"));
 
         await expect(refreshMediaComments(10, "abc", null)).rejects.toThrow(
             "extraction incomplete"
         );
-        expect(mergeMediaCommentsInBackend).not.toHaveBeenCalled();
-        // A failed fetch is not an answer about the video. Recording it as "no comments" would turn
-        // a rate limit into a permanent verdict and take the Fetch button away for good.
-        expect(markMediaCommentsAbsentInBackend).not.toHaveBeenCalled();
     });
 
     it("marks media as unwatched", async () => {

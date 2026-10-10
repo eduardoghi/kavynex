@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Runtime};
 
-use crate::models::yt_dlp::{ExternalToolsStatus, YtDlpComment, YtDlpFormatsResult};
+use crate::models::yt_dlp::{ExternalToolsStatus, YtDlpFormatsResult};
 use crate::services::binaries::resolve_external_tools_status_async;
 use crate::services::chosen_files::{self, ChosenFile};
 use crate::services::yt_dlp;
@@ -27,26 +27,6 @@ pub async fn list_yt_dlp_formats<R: Runtime>(
 }
 
 #[tauri::command]
-pub async fn fetch_youtube_comments<R: Runtime>(
-    app: AppHandle<R>,
-    video_id: String,
-    cookies_browser: Option<String>,
-    cookies_path: Option<String>,
-    run_id: Option<String>,
-) -> AppResult<Vec<YtDlpComment>> {
-    chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
-
-    yt_dlp::fetch_youtube_comments_async(
-        &app,
-        &video_id,
-        cookies_browser.as_deref(),
-        cookies_path.as_deref(),
-        run_id.as_deref(),
-    )
-    .await
-}
-
-#[tauri::command]
 pub async fn cancel_media_download(run_id: String) -> AppResult<()> {
     yt_dlp::cancel_media_download(&run_id)
 }
@@ -56,9 +36,9 @@ pub async fn check_external_tools<R: Runtime>(app: AppHandle<R>) -> AppResult<Ex
     resolve_external_tools_status_async(&app).await
 }
 
-// `list_yt_dlp_formats`, `fetch_youtube_comments` and `check_external_tools` are generic over
-// `R: Runtime` like every other command now, so the mock-runtime harness *can* register them. What
-// keeps them out of an IPC test is what they do, not their signature. Each resolves and spawns the
+// `list_yt_dlp_formats`, `check_external_tools` and `comments::fetch_media_comments` are generic
+// over `R: Runtime` like every other command now, so the mock-runtime harness *can* register them.
+// What keeps them out of an IPC test is what they do, not their signature. Each resolves and spawns the
 // real yt-dlp (and ffmpeg) binary, which a deterministic, offline test must not depend on. The
 // URL/video-id validation they perform before ever spawning (host allow-list, empty or malformed id)
 // is covered directly at the service layer in `services/yt_dlp/url.rs` and `metadata.rs`.

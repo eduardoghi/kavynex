@@ -11,9 +11,9 @@ import type { TauriCommandName } from "../constants/tauri-commands";
 import type {
     Channel,
     MediaCommentRow,
-    YtDlpComment,
     YtDlpFormatsResult,
 } from "../types/media";
+import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type {
     ExternalToolsStatus,
@@ -91,10 +91,7 @@ export type TauriCommandReturns = {
 
     list_yt_dlp_formats: YtDlpFormatsResult;
     cancel_media_download: void;
-    fetch_youtube_comments: YtDlpComment[];
-    // How many comments the media holds after the merge, not how many were sent.
-    merge_media_comments: number;
-    mark_media_comments_absent: void;
+    fetch_media_comments: MediaCommentsFetch;
 
     register_library_asset_scope: void;
 

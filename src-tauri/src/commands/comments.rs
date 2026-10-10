@@ -1,50 +1,64 @@
-use tauri::State;
+use tauri::{AppHandle, Runtime, State};
 
-use crate::models::yt_dlp::YtDlpComment;
+use crate::services::chosen_files::{self, ChosenFile};
 use crate::services::database::Db;
-use crate::services::media_comments;
-use crate::AppResult;
+use crate::services::media_comments::{self, MediaCommentsFetch};
+use crate::services::yt_dlp;
+use crate::{AppError, AppErrorCode, AppResult};
 
-/// Merges a fetched set of comments into the media's stored ones and returns how many it holds
-/// afterwards. Nothing stored is removed. See `media_comments::merge_media_comments`.
+/// Fetches a media's comments with yt-dlp and merges them into the ones already stored, in one
+/// command. The renderer gets the two counts back and never the comments.
+///
+/// `run_id` registers the fetch so `cancel_media_download` can stop it. A cancelled or failed fetch
+/// stores nothing and records nothing, so a rate limit is never mistaken for a video with no
+/// comments.
 #[tauri::command]
-pub async fn merge_media_comments(
+pub async fn fetch_media_comments<R: Runtime>(
+    app: AppHandle<R>,
     db: State<'_, Db>,
     media_id: i64,
-    comments: Vec<YtDlpComment>,
-) -> AppResult<u64> {
-    let pool = db.pool().await?;
-    media_comments::merge_media_comments(&pool, media_id, comments).await
-}
+    video_id: String,
+    cookies_browser: Option<String>,
+    cookies_path: Option<String>,
+    run_id: Option<String>,
+) -> AppResult<MediaCommentsFetch> {
+    // Checked before yt-dlp is started, so a bad id does not cost a fetch of several minutes that
+    // the merge would then refuse.
+    if media_id <= 0 {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidInput,
+            "media id must be a positive number",
+        ));
+    }
 
-/// Records that a comment fetch for this media found nothing, leaving any comments already stored
-/// untouched.
-///
-/// Called on an empty fetch instead of `merge_media_comments`, so the player can say nothing came
-/// back. See `media_comments::mark_media_comments_absent`.
-#[tauri::command]
-pub async fn mark_media_comments_absent(db: State<'_, Db>, media_id: i64) -> AppResult<()> {
+    chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
+
+    let comments = yt_dlp::fetch_youtube_comments_async(
+        &app,
+        &video_id,
+        cookies_browser.as_deref(),
+        cookies_path.as_deref(),
+        run_id.as_deref(),
+    )
+    .await?;
+
     let pool = db.pool().await?;
-    media_comments::mark_media_comments_absent(&pool, media_id).await
+    media_comments::store_fetched_comments(&pool, media_id, comments).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::commands::test_ipc::{invoke, memory_db};
-    use crate::services::database::Db;
-    use crate::AppErrorCode;
     use tauri::test::{mock_builder, mock_context, noop_assets};
     use tauri::Manager;
 
-    // merge_media_comments takes State<Db>, so it runs under the mock runtime. insert_channel
-    // is registered too so a real channel row exists before the media row that references it.
+    // Only the checks that run before yt-dlp is started are reachable here. A deterministic,
+    // offline test must not spawn the real binary (see commands/yt_dlp.rs). The merge itself is
+    // covered by `media_comments::store_fetched_comments`.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
         let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![
-                crate::commands::channels::insert_channel,
-                merge_media_comments
-            ])
+            .invoke_handler(tauri::generate_handler![fetch_media_comments])
             .build(mock_context(noop_assets()))
             .unwrap();
 
@@ -55,49 +69,14 @@ mod tests {
             .unwrap()
     }
 
-    /// Seeds the video row these tests attach comments to.
-    ///
-    /// The media row goes in through the repository rather than through an `insert_media` command,
-    /// which no longer exists. A media is created by `create_media`, and the individual steps are
-    /// not on the IPC surface. What this test needs is the row, not a particular way of producing it.
-    fn seed_media(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> i64 {
-        let channel_id = invoke(
-            webview,
-            "insert_channel",
-            serde_json::json!({ "name": "Chan", "youtubeHandle": "@chan", "avatarPath": null }),
-        )
-        .unwrap()
-        .deserialize::<Option<i64>>()
-        .unwrap()
-        .expect("channel id");
-
-        let pool = tauri::async_runtime::block_on(webview.state::<Db>().pool())
-            .expect("the managed pool must open");
-
-        tauri::async_runtime::block_on(crate::services::video_repository::insert_media(
-            &pool,
-            channel_id,
-            "Video",
-            "video/media_x.mp4",
-            None,
-            "video",
-            None,
-            None,
-            None,
-            false,
-            None,
-        ))
-        .expect("media id")
-    }
-
     #[test]
-    fn merge_media_comments_rejects_a_non_positive_media_id_over_ipc() {
+    fn fetch_media_comments_rejects_a_non_positive_media_id_before_fetching() {
         let webview = test_webview(memory_db());
 
         let error = invoke(
             &webview,
-            "merge_media_comments",
-            serde_json::json!({ "mediaId": 0, "comments": [] }),
+            "fetch_media_comments",
+            serde_json::json!({ "mediaId": 0, "videoId": "dQw4w9WgXcQ" }),
         )
         .unwrap_err();
 
@@ -105,40 +84,22 @@ mod tests {
     }
 
     #[test]
-    fn merge_media_comments_inserts_comments_for_a_media_row_over_ipc() {
+    fn fetch_media_comments_refuses_a_cookies_file_the_user_did_not_pick() {
         let webview = test_webview(memory_db());
-        let media_id = seed_media(&webview);
 
-        // YtDlpComment fields are snake_case over IPC (no serde rename on the struct); this
-        // exercises the Vec<YtDlpComment> deserialization across the boundary end to end.
-        let inserted = invoke(
+        let error = invoke(
             &webview,
-            "merge_media_comments",
+            "fetch_media_comments",
             serde_json::json!({
-                "mediaId": media_id,
-                "comments": [{
-                    "comment_id": "c1",
-                    "parent_comment_id": null,
-                    "author_name": "Alice",
-                    "author_handle": "@alice",
-                    "author_channel_id": null,
-                    "author_thumbnail": null,
-                    "text": "Great video!",
-                    "like_count": 5,
-                    "reply_count": 1,
-                    "is_author_uploader": false,
-                    "is_favorited": false,
-                    "is_pinned": true,
-                    "is_edited": false,
-                    "time_text": "1 day ago",
-                    "published_at": "2026-01-01"
-                }]
+                "mediaId": 1,
+                "videoId": "dQw4w9WgXcQ",
+                "cookiesPath": "C:/Users/someone/cookies.txt"
             }),
         )
-        .unwrap()
-        .deserialize::<u64>()
-        .unwrap();
+        .unwrap_err();
 
-        assert_eq!(inserted, 1, "one non-blank comment should be inserted");
+        // The media id is valid, so this refusal is the cookies check. Reaching yt-dlp would have
+        // failed with a binary or network error instead.
+        assert_eq!(error["code"], AppErrorCode::InvalidInput.as_str());
     }
 }

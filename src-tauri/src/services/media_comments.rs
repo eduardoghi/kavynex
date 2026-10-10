@@ -23,16 +23,15 @@ pub(crate) const MAX_COMMENT_FIELD_CHARS: usize = 512;
 
 /// Upper bound on how many comments one media may be handed in a single merge.
 ///
-/// The body of each comment is capped above; this caps the count, which was the one input from the
-/// renderer left without a ceiling. The vector arrives over IPC and is written in one transaction
-/// that holds the SQLite write lock until it commits, so a renderer sending millions of rows would
-/// hold every other command (they wait up to the busy timeout and then fail) and grow the database
-/// by hundreds of megabytes, with nothing refusing it. Refused rather than truncated, unlike the
-/// body. A body cut at a character boundary loses the tail of one comment, while silently dropping
-/// comments from a backup is the kind of loss the user only finds when they go looking for one.
-/// The limit sits far above what a real fetch delivers (yt-dlp's comment run is itself bounded by
-/// its timeout and by `MAX_YT_DLP_JSON_BYTES`), so it only ever trips on a caller that is not the
-/// app's own flow.
+/// The body of each comment is capped above; this caps the count. The vector comes straight from
+/// yt-dlp's output (`fetch_youtube_comments_async`, which asks for at most this many) and is written
+/// in one transaction that holds the SQLite write lock until it commits, so a run returning millions
+/// of rows would hold every other command (they wait up to the busy timeout and then fail) and grow
+/// the database by hundreds of megabytes, with nothing refusing it. Refused rather than truncated,
+/// unlike the body. A body cut at a character boundary loses the tail of one comment, while silently
+/// dropping comments from a backup is the kind of loss the user only finds when they go looking for
+/// one. yt-dlp's comment run is also bounded by its timeout and by `MAX_YT_DLP_JSON_BYTES`, so this
+/// only trips on a run that ignored `max_comments`.
 ///
 /// It bounds one payload, not what a media holds. A merge keeps every comment stored before it, so
 /// repeated refreshes of a video whose comments keep changing can leave more than this on the row.
@@ -145,32 +144,38 @@ struct PreparedComment {
     published_at: Option<String>,
 }
 
-/// Records that a comment fetch found nothing, without touching the comments already stored.
-///
-/// The manual refresh calls this on an empty result instead of `merge_media_comments`, so the
-/// player can tell the user nothing came back rather than report a refresh that changed nothing.
-/// Before this existed the refresh returned without telling the backend anything, so the media
-/// stayed `unknown` and the user could re-run a fetch that could never return anything.
-///
-/// The `comments_count = 0` guard is what makes it safe to call blind. A media that does have
-/// stored comments keeps its `available` state, so an empty refresh of a video whose comments were
-/// removed from YouTube never downgrades the backup this app exists to keep.
-pub async fn mark_media_comments_absent(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
-    if media_id <= 0 {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidInput,
-            "media id must be a positive number",
-        ));
-    }
+/// What a comment fetch did, as the renderer needs it. The comments themselves never cross IPC.
+/// The backend fetches and stores them in one command (`commands::comments::fetch_media_comments`),
+/// so a window closed between the two halves can no longer lose a fetch, and the largest payload
+/// the app had (up to 100,000 comments, there and back) is gone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct MediaCommentsFetch {
+    /// How many comments the fetch returned, before blank and repeated ones were dropped.
+    pub fetched: u32,
+    /// How many comments the media holds after the merge. More than `fetched` when earlier fetches
+    /// stored comments this one no longer found, since a merge removes nothing.
+    pub stored: u32,
+}
 
-    sqlx::query("UPDATE videos SET comments_state = ? WHERE id = ? AND comments_count = 0")
-        .bind(CommentsState::None.as_str())
-        .bind(media_id)
-        .execute(pool)
-        .await
-        .map_err(|error| sqlite_error("failed to record that no comments were found", error))?;
+/// Merges a fetch's comments into the media's stored ones and reports both counts.
+///
+/// An empty fetch goes through the same merge. It stores nothing and records the media as having no
+/// comments unless earlier fetches stored some, which keep their `available` state (see
+/// `merge_media_comments_in_pool`).
+pub async fn store_fetched_comments(
+    pool: &SqlitePool,
+    media_id: i64,
+    comments: Vec<YtDlpComment>,
+) -> AppResult<MediaCommentsFetch> {
+    let fetched = u32::try_from(comments.len()).unwrap_or(u32::MAX);
+    let stored = merge_media_comments(pool, media_id, comments).await?;
 
-    Ok(())
+    Ok(MediaCommentsFetch {
+        fetched,
+        stored: u32::try_from(stored).unwrap_or(u32::MAX),
+    })
 }
 
 /// Dedupes the payload, drops comments whose text is blank, and normalizes every field into the
@@ -869,51 +874,73 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn marking_comments_absent_records_the_outcome_without_deleting_anything() {
-        // What the manual refresh calls on an empty result, so it records that it asked.
+    async fn storing_a_fetch_reports_what_it_returned_and_what_the_media_holds() {
         let pool = create_test_pool().await;
 
-        mark_media_comments_absent(&pool, 1)
-            .await
-            .expect("mark absent");
+        merge_media_comments(
+            &pool,
+            1,
+            vec![comment_with_id("from an earlier fetch", Some("old"))],
+        )
+        .await
+        .expect("earlier fetch");
 
-        assert_eq!(stored_state(&pool, 1).await, CommentsState::None.as_str());
+        // Two returned, one of them blank. The media ends up with the earlier comment and the one
+        // real comment of this fetch.
+        let outcome = store_fetched_comments(
+            &pool,
+            1,
+            vec![
+                comment_with_id("new", Some("new")),
+                comment_with_id("   ", Some("blank")),
+            ],
+        )
+        .await
+        .expect("store the fetch");
+
+        assert_eq!(
+            outcome,
+            MediaCommentsFetch {
+                fetched: 2,
+                stored: 2
+            }
+        );
     }
 
     #[tokio::test]
-    async fn marking_comments_absent_never_downgrades_a_media_that_has_some() {
-        // The guard that makes the call safe to make blind. A video whose comments were removed from
-        // YouTube still has the copy this app saved, and an empty refresh of it must not report the
-        // backup as absent. That would be the app contradicting its own stored data.
+    async fn storing_an_empty_fetch_never_downgrades_a_media_that_has_comments() {
+        // A video whose comments were removed from YouTube still has the copy this app saved, and an
+        // empty fetch of it must not report the backup as absent.
         let pool = create_test_pool().await;
 
-        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Kept forever")])
+        merge_media_comments(&pool, 1, vec![sample_comment("Kept forever")])
             .await
             .expect("merge comments");
 
-        mark_media_comments_absent(&pool, 1)
+        let outcome = store_fetched_comments(&pool, 1, Vec::new())
             .await
-            .expect("mark absent");
+            .expect("store the empty fetch");
 
         assert_eq!(
-            stored_state(&pool, 1).await,
-            CommentsState::Available.as_str(),
-            "a media with stored comments keeps its state"
+            outcome,
+            MediaCommentsFetch {
+                fetched: 0,
+                stored: 1
+            }
         );
-
-        let (total,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM video_comments WHERE video_id = 1")
-                .fetch_one(&pool)
-                .await
-                .expect("count comments");
-        assert_eq!(total, 1, "and keeps the comments themselves");
+        assert_eq!(
+            stored_state(&pool, 1).await,
+            CommentsState::Available.as_str()
+        );
     }
 
     #[tokio::test]
-    async fn marking_comments_absent_refuses_an_invalid_media_id() {
+    async fn storing_a_fetch_refuses_an_invalid_media_id() {
         let pool = create_test_pool().await;
 
-        let error = mark_media_comments_absent(&pool, 0).await.unwrap_err();
+        let error = store_fetched_comments(&pool, 0, Vec::new())
+            .await
+            .unwrap_err();
 
         assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
     }
@@ -1221,8 +1248,8 @@ mod tests {
 
     #[tokio::test]
     async fn an_empty_merge_leaves_stored_comments_and_their_state_alone() {
-        // The renderer records an empty refresh through mark_media_comments_absent, but a merge
-        // handed nothing must be just as harmless, since nothing about it can remove a row.
+        // An empty fetch is stored through the same merge, so a merge handed nothing must leave the
+        // stored comments and their state as they were.
         let pool = create_test_pool().await;
 
         merge_media_comments(&pool, 1, vec![sample_comment("kept")])

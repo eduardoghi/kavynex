@@ -101,10 +101,10 @@ async fn every_media_page_sort_is_served_by_an_index() {
     }
 }
 
-/// The media-comments read (`list_media_comments_by_media_id`) filters `video_id = ?` and sorts
-/// `id ASC`. Pin that it is served by `idx_video_comments_video_id` without a sort. The index
-/// stores `(video_id, rowid)`, and `id` is the rowid alias, so a fixed `video_id` walks the
-/// matching rows already in `id` order. This mirrors the sort-index pin above for the other hot
+/// The media-comments read (`list_media_comments_by_media_id`) filters `video_id = ? AND id > ?`
+/// and sorts `id ASC`, one page at a time. Pin that it is served by `idx_video_comments_video_id`
+/// without a sort. The index stores `(video_id, rowid)`, and `id` is the rowid alias, so a fixed
+/// `video_id` walks the matching rows already in `id` order and starts right after the last page. This mirrors the sort-index pin above for the other hot
 /// ordered read, so a dropped/renamed index or a reordered clause fails a test rather than
 /// quietly reintroducing a full sort on a video with many comments.
 #[tokio::test]
@@ -113,7 +113,7 @@ async fn media_comments_query_is_served_by_its_index() {
 
     let plan: Vec<String> = sqlx::query_as::<_, (i64, i64, i64, String)>(
         "EXPLAIN QUERY PLAN SELECT id FROM video_comments \
-         WHERE video_id = 1 ORDER BY id ASC LIMIT 50",
+         WHERE video_id = 1 AND id > 0 ORDER BY id ASC LIMIT 50",
     )
     .fetch_all(&pool)
     .await
@@ -708,6 +708,160 @@ async fn lists_comments_in_id_order_within_the_load_cap() {
         comments.iter().map(|c| c.text.as_str()).collect::<Vec<_>>(),
         ["first", "second", "third"]
     );
+}
+
+/// A `video_comments` table with the columns the comment load selects, and `count` comments on
+/// media 7 whose text is `text_chars` characters long.
+async fn seed_comments(count: usize, text_chars: usize) -> SqlitePool {
+    let pool = create_test_pool().await;
+    sqlx::query(
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER, \
+         comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', \
+         author_handle TEXT, author_channel_id TEXT, author_thumbnail TEXT, \
+         text TEXT NOT NULL DEFAULT '', like_count INTEGER NOT NULL DEFAULT 0, \
+         reply_count INTEGER NOT NULL DEFAULT 0, is_author_uploader INTEGER NOT NULL DEFAULT 0, \
+         is_favorited INTEGER NOT NULL DEFAULT 0, is_pinned INTEGER NOT NULL DEFAULT 0, \
+         is_edited INTEGER NOT NULL DEFAULT 0, time_text TEXT, published_at TEXT, \
+         created_at TEXT NOT NULL DEFAULT (datetime('now')));",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    for index in 0..count {
+        sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (7, ?)")
+            .bind(format!("{index:0>width$}", width = text_chars))
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    pool
+}
+
+#[tokio::test]
+async fn the_comment_load_walks_every_page_in_id_order() {
+    // Seven rows in pages of three. The last page is short, and the one before it full, so both
+    // ways a page can end are crossed.
+    let pool = seed_comments(7, 3).await;
+
+    let comments = list_media_comments_within(
+        &pool,
+        7,
+        CommentLoadLimits {
+            rows: 100,
+            text_chars: 1_000,
+            page_rows: 3,
+        },
+    )
+    .await
+    .unwrap();
+
+    let ids: Vec<i64> = comments.iter().map(|comment| comment.id).collect();
+    assert_eq!(ids, [1, 2, 3, 4, 5, 6, 7]);
+}
+
+#[tokio::test]
+async fn the_comment_load_ends_on_an_exact_page_boundary() {
+    // Six rows in pages of three. The second page is full, so the loop asks for a third that comes
+    // back empty, and must stop there rather than spin or drop the last page.
+    let pool = seed_comments(6, 3).await;
+
+    let comments = list_media_comments_within(
+        &pool,
+        7,
+        CommentLoadLimits {
+            rows: 100,
+            text_chars: 1_000,
+            page_rows: 3,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(comments.len(), 6);
+}
+
+#[tokio::test]
+async fn the_comment_load_keeps_the_earliest_rows_up_to_the_row_cap() {
+    let pool = seed_comments(10, 3).await;
+
+    let comments = list_media_comments_within(
+        &pool,
+        7,
+        CommentLoadLimits {
+            rows: 5,
+            text_chars: 1_000,
+            page_rows: 3,
+        },
+    )
+    .await
+    .unwrap();
+
+    let ids: Vec<i64> = comments.iter().map(|comment| comment.id).collect();
+    assert_eq!(ids, [1, 2, 3, 4, 5]);
+}
+
+#[tokio::test]
+async fn the_comment_load_stops_before_the_comment_that_crosses_the_text_cap() {
+    // Ten characters each against a cap of 35. Three fit (30), the fourth would make 40.
+    let pool = seed_comments(10, 10).await;
+
+    let comments = list_media_comments_within(
+        &pool,
+        7,
+        CommentLoadLimits {
+            rows: 100,
+            text_chars: 35,
+            page_rows: 2,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(comments.len(), 3);
+
+    // Exactly at the cap still loads. The cap is the most text one load may carry.
+    let comments = list_media_comments_within(
+        &pool,
+        7,
+        CommentLoadLimits {
+            rows: 100,
+            text_chars: 30,
+            page_rows: 2,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(comments.len(), 3);
+}
+
+#[tokio::test]
+async fn the_comment_text_cap_counts_characters_not_bytes() {
+    // The cap mirrors SQLite's LENGTH, which counts characters on TEXT. Four accented characters are
+    // eight bytes in UTF-8, so a byte count would stop after the first comment.
+    let pool = seed_comments(0, 0).await;
+    for _ in 0..2 {
+        sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (7, 'ãéíõ')")
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+
+    let comments = list_media_comments_within(
+        &pool,
+        7,
+        CommentLoadLimits {
+            rows: 100,
+            text_chars: 8,
+            page_rows: 10,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(comments.len(), 2);
 }
 
 #[tokio::test]

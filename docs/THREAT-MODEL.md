@@ -385,7 +385,7 @@ as a preview the backend wrote and returned (`generate_temporary_thumbnail`,
 command checks the kind it needs. So a file picked to be imported cannot be named as an export
 destination, and a save destination cannot be read. The commands are `import_database` (source),
 `export_database` (destination), `generate_temporary_thumbnail`, `stage_manual_thumbnail`,
-`persist_thumbnail_file`, the cookies file of `list_yt_dlp_formats` and `fetch_youtube_comments`,
+`persist_thumbnail_file`, the cookies file of `list_yt_dlp_formats` and `fetch_media_comments`,
 and in `create_media` the media file of a local import, a thumbnail given as a path on disk, and the
 cookies file. Anything else is refused as `INVALID_INPUT` before it is stat'ed.
 

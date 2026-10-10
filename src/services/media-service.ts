@@ -1,4 +1,4 @@
-import type { MediaCommentRow, YtDlpComment } from "../types/media";
+import type { MediaCommentRow } from "../types/media";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { MediaPageQuery } from "../types/generated/MediaPageQuery";
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
@@ -22,11 +22,7 @@ import {
 import { validateChannelId } from "./channel-input-service";
 import { createAppError, parseAppError } from "../utils/app-error";
 import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
-import { commentsRefreshRunId, fetchYouTubeComments } from "./media-download-service";
-import {
-    markMediaCommentsAbsentInBackend,
-    mergeMediaCommentsInBackend,
-} from "./media-comments-service";
+import { commentsRefreshRunId, fetchMediaComments } from "./media-download-service";
 import { logError } from "../utils/app-logger";
 
 type CreateMediaResult = {
@@ -71,30 +67,6 @@ export async function updateMediaTitle(mediaId: number, title: string): Promise<
     }
 
     await updateMediaTitleInRepository(mediaId, normalizedTitle);
-}
-
-function normalizeFetchedComments(comments: YtDlpComment[]): YtDlpComment[] {
-    return comments.map((comment) => ({
-        comment_id: comment.comment_id?.trim() || null,
-        parent_comment_id: comment.parent_comment_id?.trim() || null,
-        author_name: comment.author_name.trim() || "Unknown author",
-        author_handle: comment.author_handle?.trim() || null,
-        author_channel_id: comment.author_channel_id?.trim() || null,
-        author_thumbnail: comment.author_thumbnail?.trim() || null,
-        text: comment.text,
-        like_count: Number.isFinite(comment.like_count)
-            ? Math.max(0, Math.floor(comment.like_count))
-            : 0,
-        reply_count: Number.isFinite(comment.reply_count)
-            ? Math.max(0, Math.floor(comment.reply_count))
-            : 0,
-        is_author_uploader: comment.is_author_uploader,
-        is_favorited: comment.is_favorited,
-        is_pinned: comment.is_pinned,
-        is_edited: comment.is_edited,
-        time_text: comment.time_text?.trim() || null,
-        published_at: comment.published_at?.trim() || null,
-    }));
 }
 
 // Measures the media that was just created and stores the result. Best effort and deliberately
@@ -145,11 +117,14 @@ async function tryPersistYouTubeComments(
     try {
         await emitProgress(onProgress, "Fetching YouTube comments...");
 
-        let fetchedComments: YtDlpComment[];
+        let outcome;
         onCommentsFetchChange?.(true);
 
         try {
-            fetchedComments = await fetchYouTubeComments(
+            // Fetches and stores in one backend call, so the comments are saved even if this
+            // window goes away before the call returns.
+            outcome = await fetchMediaComments(
+                mediaId,
                 normalizedVideoId,
                 cookiesBrowser,
                 cookiesPath,
@@ -159,18 +134,12 @@ async function tryPersistYouTubeComments(
             onCommentsFetchChange?.(false);
         }
 
-        const comments = normalizeFetchedComments(fetchedComments);
-
-        await emitProgress(onProgress, `Comments fetched: ${comments.length}`);
-
-        if (comments.length === 0) {
-            await emitProgress(onProgress, "No public comments were returned for this media.");
-        } else {
-            await emitProgress(onProgress, "Persisting comments...");
-        }
-
-        await mergeMediaCommentsInBackend(mediaId, comments);
-        await emitProgress(onProgress, `Comments saved successfully: ${comments.length}`);
+        await emitProgress(
+            onProgress,
+            outcome.fetched === 0
+                ? "No public comments were returned for this media."
+                : `Comments saved: ${outcome.stored}`
+        );
     } catch (error) {
         // The user skipped them. The media is already registered and stays.
         if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
@@ -223,7 +192,8 @@ export async function refreshMediaComments(
         );
     }
 
-    const fetchedComments = await fetchYouTubeComments(
+    const outcome = await fetchMediaComments(
+        mediaId,
         normalizedVideoId,
         cookiesBrowser,
         cookiesPath,
@@ -232,42 +202,22 @@ export async function refreshMediaComments(
         // generated run id back through React state.
         commentsRefreshRunId(mediaId)
     );
-    // Guard the payload shape before normalizing it. normalizeFetchedComments maps over the value,
-    // so a non-array would throw a raw TypeError there instead of this friendly AppError. The IPC
-    // seam already validates this against a zod array schema, so this is defense in depth that must
-    // still run first to mean anything.
-    if (!Array.isArray(fetchedComments)) {
-        throw createAppError(
-            "INVALID_YOUTUBE_COMMENTS_PAYLOAD",
-            "The comment refresh returned an invalid payload."
-        );
-    }
 
-    const comments = normalizeFetchedComments(fetchedComments);
-
-    // Genuinely zero comments (the backend already turns "the video has comments but none
-    // could be retrieved" into an error). Keep the saved comments untouched and report that
-    // nothing was updated, so the caller can show a neutral notice instead of a failure.
-    if (comments.length === 0) {
-        // Record that the question was asked, which is the part this path used to skip. Returning
-        // without telling the backend anything left the media indistinguishable from one nothing
-        // had ever been fetched for, so the player kept offering a Fetch button and the user could
-        // re-run a refresh that could never return anything.
-        await markMediaCommentsAbsentInBackend(mediaId);
-
+    // Genuinely zero comments (the backend already turns "the video has comments but none could
+    // be retrieved" into an error). The backend kept the saved comments and recorded that the
+    // fetch found nothing, so the caller shows a neutral notice instead of a failure.
+    if (outcome.fetched === 0) {
         return {
             updated: false,
             totalComments: 0,
         };
     }
 
-    // The count comes back from the backend because it is not `comments.length`. The merge keeps
-    // every comment saved earlier, including the ones this fetch no longer found.
-    const totalComments = await mergeMediaCommentsInBackend(mediaId, comments);
-
+    // `stored`, not `fetched`. The merge keeps every comment saved earlier, including the ones
+    // this fetch no longer found.
     return {
         updated: true,
-        totalComments,
+        totalComments: outcome.stored,
     };
 }
 

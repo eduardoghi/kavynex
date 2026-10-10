@@ -1,6 +1,7 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
-import type { YtDlpComment, YtDlpFormatsResult } from "../types/media";
+import type { YtDlpFormatsResult } from "../types/media";
+import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
 import {
     INVALID_RUN_ID_ERROR_CODE,
     INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE,
@@ -71,19 +72,23 @@ export async function cancelMediaDownload(runId: string): Promise<void> {
     });
 }
 
-export async function fetchYouTubeComments(
+// Fetches the comments of `youtubeVideoId` and stores them on `mediaId`, both in the backend. Only
+// the counts come back, the comments stay where they are stored.
+export async function fetchMediaComments(
+    mediaId: number,
     youtubeVideoId: string,
     cookiesBrowser?: string | null,
     cookiesPath?: string | null,
     runId?: string | null
-): Promise<YtDlpComment[]> {
+): Promise<MediaCommentsFetch> {
     const normalizedVideoId = youtubeVideoId.trim();
 
     if (!normalizedVideoId) {
         throw createAppError(INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE, "youtube video id is empty");
     }
 
-    return invokeCommand(TAURI_COMMANDS.FETCH_YOUTUBE_COMMENTS, {
+    return invokeCommand(TAURI_COMMANDS.FETCH_MEDIA_COMMENTS, {
+        mediaId,
         videoId: normalizedVideoId,
         cookiesBrowser: normalizeCookiesBrowser(cookiesBrowser),
         cookiesPath: normalizeCookiesPath(cookiesPath),

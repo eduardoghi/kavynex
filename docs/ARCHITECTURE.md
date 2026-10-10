@@ -371,10 +371,16 @@ than the error modal. The user got the outcome they clicked for.
 
 The comment backup after the row lands is cancellable on its own. The download's run is released
 once the media is registered, so `createMedia` gets a second run id (`commentsRunId`) that
-`fetch_youtube_comments` registers for itself, and `onCommentsFetchChange` keeps
+`fetch_media_comments` registers for itself, and `onCommentsFetchChange` keeps
 `isFetchingComments` set while it runs, which is what puts "Skip comments" in the modal footer.
 Skipping keeps the media. yt-dlp is asked for at most `MAX_COMMENTS_PER_MEDIA` comments
-(`max_comments`), the most one media can store.
+(`max_comments`), the most one merge accepts.
+
+`fetch_media_comments` fetches and stores in one command and returns only the counts
+(`MediaCommentsFetch`). The comments used to come back to the renderer and go out again to a
+second command, so a window closed between the two lost the fetch, and up to 100,000 comments
+crossed IPC twice. The player still reads them with `list_media_comments_by_media_id`, which pages
+by `id` and stops at its row and text caps.
 
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is

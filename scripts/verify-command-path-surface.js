@@ -614,7 +614,7 @@ export const DECLARED_PATH_SURFACE = [
     { command: "delete_temporary_thumbnail", parameters: ["path"], guard: "cache-confined" },
     { command: "ensure_directory_exists", parameters: ["path"], guard: "chosen-directory" },
     { command: "export_database", parameters: ["destination_path"], guard: "user-picked" },
-    { command: "fetch_youtube_comments", parameters: ["cookies_path"], guard: "user-picked" },
+    { command: "fetch_media_comments", parameters: ["cookies_path"], guard: "user-picked" },
     { command: "generate_temporary_thumbnail", parameters: ["path"], guard: "user-picked" },
     { command: "import_database", parameters: ["source_path"], guard: "user-picked" },
     { command: "insert_channel", parameters: ["avatar_path"], guard: "managed-relative" },
