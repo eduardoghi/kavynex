@@ -305,41 +305,12 @@ export function HomeModals({
                 terminal={media.ytDlpTerminalStore}
                 opened={media.addMediaOpen}
                 onClose={() => void uiGuards.closeAddMediaModalSafely()}
-                sourceMode={addMediaForm.sourceMode}
-                mediaUrl={addMediaForm.mediaUrl}
-                title={addMediaForm.title}
-                mediaPath={addMediaForm.mediaPath}
-                mediaType={addMediaForm.mediaType}
+                form={addMediaForm}
                 importMode={settings.settings.importMode}
-                thumbPath={addMediaForm.thumbPath}
-                publishedAt={addMediaForm.publishedAt}
-                downloadComments={addMediaForm.downloadComments}
-                downloadLiveChat={addMediaForm.downloadLiveChat}
-                cookiesBrowser={addMediaForm.cookiesBrowser}
-                cookiesBrowserProfile={addMediaForm.cookiesBrowserProfile}
-                cookiesPath={addMediaForm.cookiesPath}
-                isGeneratingThumb={addMediaForm.isGeneratingThumb}
                 loading={media.isAddingMedia}
                 isCancellingYtDlp={media.isCancellingYtDlp}
                 isFetchingComments={media.isFetchingComments}
                 isYtDlpRunning={media.isYtDlpRunning}
-                ytDlpFormats={addMediaForm.ytDlpFormats}
-                selectedYtDlpFormatId={addMediaForm.selectedYtDlpFormatId}
-                isLoadingYtDlpFormats={addMediaForm.isLoadingYtDlpFormats}
-                onChangeSourceMode={addMediaForm.setSourceMode}
-                onChangeMediaUrl={addMediaForm.setMediaUrl}
-                onChangeTitle={addMediaForm.setTitle}
-                onChangePublishedAt={addMediaForm.setPublishedAt}
-                onChangeDownloadComments={addMediaForm.setDownloadComments}
-                onChangeDownloadLiveChat={addMediaForm.setDownloadLiveChat}
-                onChangeCookiesBrowser={addMediaForm.setCookiesBrowser}
-                onChangeCookiesBrowserProfile={addMediaForm.setCookiesBrowserProfile}
-                onPickCookiesFile={() => void addMediaForm.pickCookiesFileViaDialog()}
-                onClearCookiesPath={addMediaForm.clearCookiesPath}
-                onChangeSelectedYtDlpFormatId={addMediaForm.setSelectedYtDlpFormatId}
-                onLoadYtDlpFormats={() => void addMediaForm.loadYtDlpFormats()}
-                onPickMedia={() => void addMediaForm.pickMediaViaDialog()}
-                onPickThumb={() => void addMediaForm.pickThumbViaDialog()}
                 onAdd={() => void mediaActions.addMedia()}
                 onCancelYtDlpDownload={() => void media.cancelYtDlpDownload()}
             />

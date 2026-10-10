@@ -5,21 +5,21 @@ import { AddMediaModal } from "./add-media-modal";
 import { renderWithMantine } from "../../test/test-utils";
 import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { getExternalToolsStatus } from "../../services/diagnostics-external-tools";
+import type { AddMediaFormController } from "../../hooks/use-add-media-form";
 
 vi.mock("../../services/diagnostics-external-tools", () => ({
     getExternalToolsStatus: vi.fn(() => new Promise(() => {})),
 }));
 
-function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
+type ModalProps = React.ComponentProps<typeof AddMediaModal>;
+
+function createForm(overrides: Partial<AddMediaFormController> = {}): AddMediaFormController {
     return {
-        opened: true,
-        onClose: vi.fn(),
         sourceMode: "local",
         mediaUrl: "",
         title: "",
         mediaPath: "",
         mediaType: "video",
-        importMode: "copy",
         thumbPath: "",
         publishedAt: "",
         downloadComments: true,
@@ -28,37 +28,54 @@ function createDefaultProps(): React.ComponentProps<typeof AddMediaModal> {
         cookiesBrowserProfile: "",
         cookiesPath: "",
         isGeneratingThumb: false,
+        ytDlpFormats: [],
+        selectedYtDlpFormatId: "",
+        isLoadingYtDlpFormats: false,
+        selectedYtDlpMediaType: "video",
+        resolvedYoutubeVideoId: null,
+        setSourceMode: vi.fn(async () => {}),
+        setMediaUrl: vi.fn(),
+        setTitle: vi.fn(),
+        setPublishedAt: vi.fn(),
+        setDownloadComments: vi.fn(),
+        setDownloadLiveChat: vi.fn(),
+        setCookiesBrowser: vi.fn(),
+        setCookiesBrowserProfile: vi.fn(),
+        setCookiesPath: vi.fn(),
+        pickCookiesFileViaDialog: vi.fn(async () => {}),
+        clearCookiesPath: vi.fn(),
+        setSelectedYtDlpFormatId: vi.fn(),
+        loadYtDlpFormats: vi.fn(async () => {}),
+        pickMediaViaDialog: vi.fn(async () => {}),
+        pickThumbViaDialog: vi.fn(async () => {}),
+        resetForm: vi.fn(async () => {}),
+        ...overrides,
+    };
+}
+
+function createDefaultProps(form: Partial<AddMediaFormController> = {}): ModalProps {
+    return {
+        opened: true,
+        onClose: vi.fn(),
+        form: createForm(form),
+        importMode: "copy",
         loading: false,
         isCancellingYtDlp: false,
         ytDlpLogs: [],
         isYtDlpRunning: false,
         ytDlpProgress: null,
-        ytDlpFormats: [],
-        selectedYtDlpFormatId: "",
-        isLoadingYtDlpFormats: false,
-        onChangeSourceMode: vi.fn(),
-        onChangeMediaUrl: vi.fn(),
-        onChangeTitle: vi.fn(),
-        onChangePublishedAt: vi.fn(),
-        onChangeDownloadComments: vi.fn(),
-        onChangeDownloadLiveChat: vi.fn(),
-        onChangeCookiesBrowser: vi.fn(),
-        onChangeCookiesBrowserProfile: vi.fn(),
-        onPickCookiesFile: vi.fn(),
-        onClearCookiesPath: vi.fn(),
-        onChangeSelectedYtDlpFormatId: vi.fn(),
-        onLoadYtDlpFormats: vi.fn(),
-        onPickMedia: vi.fn(),
-        onPickThumb: vi.fn(),
         onAdd: vi.fn(),
         onCancelYtDlpDownload: vi.fn(),
     };
 }
 
-function renderAddMediaModal(
-    overrides: Partial<React.ComponentProps<typeof AddMediaModal>> = {}
-): ReturnType<typeof renderWithMantine> {
-    return renderWithMantine(<AddMediaModal {...createDefaultProps()} {...overrides} />);
+function renderAddMediaModal({
+    form = {},
+    ...overrides
+}: Partial<Omit<ModalProps, "form">> & {
+    form?: Partial<AddMediaFormController>;
+} = {}): ReturnType<typeof renderWithMantine> {
+    return renderWithMantine(<AddMediaModal {...createDefaultProps(form)} {...overrides} />);
 }
 
 describe("AddMediaModal", () => {
@@ -71,8 +88,7 @@ describe("AddMediaModal", () => {
 
     it("enables add button when local media path exists", () => {
         renderAddMediaModal({
-            title: "Test",
-            mediaPath: "/tmp/file.mp4",
+            form: { title: "Test", mediaPath: "/tmp/file.mp4" },
         });
 
         expect(screen.getByRole("button", { name: /add media/i })).toBeEnabled();
@@ -82,8 +98,7 @@ describe("AddMediaModal", () => {
         const onAdd = vi.fn();
 
         renderAddMediaModal({
-            title: "Test",
-            mediaPath: "/tmp/file.mp4",
+            form: { title: "Test", mediaPath: "/tmp/file.mp4" },
             onAdd,
         });
 
@@ -96,8 +111,7 @@ describe("AddMediaModal", () => {
         const onAdd = vi.fn();
 
         renderAddMediaModal({
-            title: "Test",
-            mediaPath: "/tmp/file.mp4",
+            form: { title: "Test", mediaPath: "/tmp/file.mp4" },
             onAdd,
         });
 
@@ -113,9 +127,11 @@ describe("AddMediaModal", () => {
 
     it("renders yt-dlp mode and disables add when format is missing", () => {
         renderAddMediaModal({
-            sourceMode: "yt-dlp",
-            mediaUrl: "https://youtube.com/watch?v=abc",
-            selectedYtDlpFormatId: "",
+            form: {
+                sourceMode: "yt-dlp",
+                mediaUrl: "https://youtube.com/watch?v=abc",
+                selectedYtDlpFormatId: "",
+            },
         });
 
         expect(screen.getByLabelText("Media URL")).toBeInTheDocument();
@@ -124,9 +140,11 @@ describe("AddMediaModal", () => {
 
     it("enables add button in yt-dlp mode when url and format exist", () => {
         renderAddMediaModal({
-            sourceMode: "yt-dlp",
-            mediaUrl: "https://youtube.com/watch?v=abc",
-            selectedYtDlpFormatId: "best",
+            form: {
+                sourceMode: "yt-dlp",
+                mediaUrl: "https://youtube.com/watch?v=abc",
+                selectedYtDlpFormatId: "best",
+            },
         });
 
         expect(screen.getByRole("button", { name: /add media/i })).toBeEnabled();
@@ -136,7 +154,7 @@ describe("AddMediaModal", () => {
         const onChangeTitle = vi.fn();
 
         renderAddMediaModal({
-            onChangeTitle,
+            form: { setTitle: onChangeTitle },
         });
 
         fireEvent.change(screen.getByLabelText("Title"), {
@@ -152,7 +170,7 @@ describe("AddMediaModal", () => {
         const onChangePublishedAt = vi.fn();
 
         renderAddMediaModal({
-            onChangePublishedAt,
+            form: { setPublishedAt: onChangePublishedAt },
         });
 
         fireEvent.change(screen.getByLabelText("Published date"), {
@@ -175,9 +193,12 @@ describe("AddMediaModal", () => {
             return (
                 <AddMediaModal
                     {...base}
-                    sourceMode="local"
-                    publishedAt={publishedAt}
-                    onChangePublishedAt={setPublishedAt}
+                    form={{
+                        ...base.form,
+                        sourceMode: "local",
+                        publishedAt,
+                        setPublishedAt,
+                    }}
                 />
             );
         }
@@ -200,7 +221,7 @@ describe("AddMediaModal", () => {
         const onAdd = vi.fn();
 
         renderAddMediaModal({
-            mediaPath: "/tmp/file.mp4",
+            form: { mediaPath: "/tmp/file.mp4" },
             loading: true,
             onAdd,
         });
@@ -240,7 +261,7 @@ describe("AddMediaModal", () => {
             js_runtime: { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null },
         });
 
-        renderAddMediaModal({ sourceMode: "yt-dlp" });
+        renderAddMediaModal({ form: { sourceMode: "yt-dlp" } });
 
         expect(await screen.findByText("yt-dlp was not found")).toBeInTheDocument();
     });
@@ -255,7 +276,7 @@ describe("AddMediaModal", () => {
         // beside the container, so the scan this ran on `container` for a while covered an empty
         // wrapper and passed for nothing (see src/test/axe.ts).
         for (const sourceMode of ["local", "yt-dlp"] as const) {
-            const { unmount } = renderAddMediaModal({ sourceMode });
+            const { unmount } = renderAddMediaModal({ form: { sourceMode } });
 
             const violations = await findAccessibilityViolations(document.body);
 

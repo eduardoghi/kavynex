@@ -6,7 +6,7 @@ import {
     TextInput,
 } from "@mantine/core";
 import { useEffect, useMemo, useState } from "react";
-import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../../types/media";
+import type { AddMediaFormController } from "../../hooks/use-add-media-form";
 import type { ImportMode } from "../../types/settings";
 import { AddMediaModalActions } from "./add-media-sections/add-media-modal-actions";
 import { ExternalToolsWarning } from "./add-media-sections/external-tools-warning";
@@ -30,21 +30,11 @@ type AddMediaModalProps = {
     opened: boolean;
     onClose: () => void;
 
-    sourceMode: MediaSourceMode;
-    mediaUrl: string;
-    title: string;
-    mediaPath: string;
-    mediaType: MediaType;
+    // The form's fields and setters as the add-media workflow owns them. Passed whole rather than
+    // field by field, which made every new option an edit in four or five files.
+    form: AddMediaFormController;
     importMode: ImportMode;
-    thumbPath: string;
-    publishedAt: string;
-    downloadComments: boolean;
-    downloadLiveChat: boolean;
-    cookiesBrowser: string;
-    cookiesBrowserProfile: string;
-    cookiesPath: string;
 
-    isGeneratingThumb: boolean;
     loading?: boolean;
     isCancellingYtDlp?: boolean;
     isFetchingComments?: boolean;
@@ -52,24 +42,7 @@ type AddMediaModalProps = {
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     ytDlpProgress: YtDlpProgress | null;
-    ytDlpFormats: YtDlpFormatOption[];
-    selectedYtDlpFormatId: string;
-    isLoadingYtDlpFormats: boolean;
 
-    onChangeSourceMode: (value: MediaSourceMode) => void | Promise<void>;
-    onChangeMediaUrl: (value: string) => void;
-    onChangeTitle: (value: string) => void;
-    onChangePublishedAt: (value: string) => void;
-    onChangeDownloadComments: (value: boolean) => void;
-    onChangeDownloadLiveChat: (value: boolean) => void;
-    onChangeCookiesBrowser: (value: string) => void;
-    onChangeCookiesBrowserProfile: (value: string) => void;
-    onPickCookiesFile: () => void | Promise<void>;
-    onClearCookiesPath: () => void;
-    onChangeSelectedYtDlpFormatId: (value: string) => void;
-    onLoadYtDlpFormats: () => void | Promise<void>;
-    onPickMedia: () => void;
-    onPickThumb: () => void;
     onAdd: () => void;
     onCancelYtDlpDownload?: () => void | Promise<void>;
 };
@@ -77,46 +50,50 @@ type AddMediaModalProps = {
 export function AddMediaModal({
     opened,
     onClose,
-    sourceMode,
-    mediaUrl,
-    title,
-    mediaPath,
-    mediaType,
+    form,
     importMode,
-    thumbPath,
-    publishedAt,
-    downloadComments,
-    downloadLiveChat,
-    cookiesBrowser,
-    cookiesBrowserProfile,
-    cookiesPath,
-    isGeneratingThumb,
     loading = false,
     isCancellingYtDlp = false,
     isFetchingComments = false,
     ytDlpLogs,
     isYtDlpRunning,
     ytDlpProgress,
-    ytDlpFormats,
-    selectedYtDlpFormatId,
-    isLoadingYtDlpFormats,
-    onChangeSourceMode,
-    onChangeMediaUrl,
-    onChangeTitle,
-    onChangePublishedAt,
-    onChangeDownloadComments,
-    onChangeDownloadLiveChat,
-    onChangeCookiesBrowser,
-    onChangeCookiesBrowserProfile,
-    onPickCookiesFile,
-    onClearCookiesPath,
-    onChangeSelectedYtDlpFormatId,
-    onLoadYtDlpFormats,
-    onPickMedia,
-    onPickThumb,
     onAdd,
     onCancelYtDlpDownload,
 }: AddMediaModalProps): JSX.Element {
+    const {
+        sourceMode,
+        mediaUrl,
+        title,
+        mediaPath,
+        mediaType,
+        thumbPath,
+        publishedAt,
+        downloadComments,
+        downloadLiveChat,
+        cookiesBrowser,
+        cookiesBrowserProfile,
+        cookiesPath,
+        isGeneratingThumb,
+        ytDlpFormats,
+        selectedYtDlpFormatId,
+        isLoadingYtDlpFormats,
+        setSourceMode: onChangeSourceMode,
+        setMediaUrl: onChangeMediaUrl,
+        setTitle: onChangeTitle,
+        setPublishedAt: onChangePublishedAt,
+        setDownloadComments: onChangeDownloadComments,
+        setDownloadLiveChat: onChangeDownloadLiveChat,
+        setCookiesBrowser: onChangeCookiesBrowser,
+        setCookiesBrowserProfile: onChangeCookiesBrowserProfile,
+        pickCookiesFileViaDialog: onPickCookiesFile,
+        clearCookiesPath: onClearCookiesPath,
+        setSelectedYtDlpFormatId: onChangeSelectedYtDlpFormatId,
+        loadYtDlpFormats: onLoadYtDlpFormats,
+        pickMediaViaDialog: onPickMedia,
+        pickThumbViaDialog: onPickThumb,
+    } = form;
+
     const isUrlMode = sourceMode === "yt-dlp";
 
     // The terminal is the only part of this form that wants a tall dialog, and only once
