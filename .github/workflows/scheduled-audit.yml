@@ -29,6 +29,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             # No version input: the pnpm version comes from package.json's packageManager field, so
             # this and local Corepack install the same pinned pnpm.
@@ -69,6 +71,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             # Runs the duplicate-version report at the end of this job. Pinned like every other
             # toolchain here. No pnpm setup or install: the report script is dependency-free.
@@ -159,6 +163,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             # Compared for *equality*, not ordering. yt-dlp versions are dates (`2026.07.04`) with
             # occasional point releases (`2026.07.04.1`), and the question here is not "is the

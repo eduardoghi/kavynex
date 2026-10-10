@@ -18,8 +18,8 @@ actually act on what it says.
    `scripts/verify-release-version.js` (run in both `ci.yml` and `release.yml`) fails the
    build if these three files ever disagree, so always use the bump script rather than
    editing versions by hand.
-2. Commit the version bump, push to `main`, and wait for `ci.yml` to finish green on that commit.
-   The release's first job (`ci-passed`) refuses to go on otherwise.
+2. Commit the version bump, push to `main`, and wait for `ci.yml` and `codeql.yml` to finish green
+   on that commit. The release's first job (`ci-passed`) refuses to go on otherwise.
 3. Manually trigger the `release` GitHub Actions workflow
    (`.github/workflows/release.yml`, `workflow_dispatch`. There is no automatic release
    on tag or merge). It builds installers across six matrix legs (Windows x64

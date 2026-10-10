@@ -23,6 +23,14 @@ public key embedded in `tauri.conf.json` before being installed. The matching pr
 password are secrets of the repository's `release` environment, never checked into the repository,
 and that environment only admits runs on `main`.
 
+The endpoint is fixed, but the rest of the request is not entirely. The renderer holds
+`updater:allow-check`, and the plugin's `check` takes a proxy, extra headers, a timeout and a target
+platform from its caller. None of that can change where the manifest comes from or what signature an
+update must carry, so the worst a compromised renderer gets is routing the check through a proxy of
+its choosing (which learns the user's address and that the app is running, inside a TLS tunnel) or
+asking for another platform's artifact, which then fails to install. Accepted, since moving the check
+behind a backend command would only remove that nuisance.
+
 ### Accepted risk: the updater can be rolled back to an older signed release
 
 The minisign signature covers the *bytes of each update artifact*, not the `latest.json` that
@@ -158,9 +166,10 @@ proved only that two things a third party could both have written agree with eac
 
 ## The updater signing key
 
-**Where it lives.** The private key and its password exist in two places only: the repository
-secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, which only the
-`publish-tauri` job of `release.yml` reads, and the maintainer's offline backup. GitHub does not let
+**Where it lives.** The private key and its password exist in two places only: the `release`
+environment's secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, which only
+the `publish-tauri` job of `release.yml` reads, and the maintainer's offline backup. The repository
+itself holds no secrets. GitHub does not let
 anyone read a secret back, so losing the offline copy means the key can only be replaced, not
 recovered. The public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, compiled into
 every build.
@@ -251,6 +260,10 @@ secret and a job that does not. What is done about it:
   Rust tree. The frontend is built in an earlier step without the key, and `tauri-action` gets
   `KAVYNEX_FRONTEND_PREBUILT=1`, so `scripts/before-build.js` only checks that `dist/` exists.
 - Every action is pinned to a full commit SHA, so a tag cannot be repointed at new code.
+- No checkout keeps the job's token in `.git/config` (`persist-credentials: false` everywhere). In
+  `publish-tauri` the npm install, the tests and the Rust build scripts all run before
+  `tauri-action`, and a default checkout would have left them a `contents: write` token on disk for
+  the whole job rather than only in the build step's environment.
 - The signing secrets live in the `release` environment, which only `main` may deploy to, and only
   `publish-tauri` names it. A workflow run on any other branch, including one whose copy of
   `release.yml` drops the ref guard, never receives the key.

@@ -34,6 +34,7 @@ jobs:
     # A release is dispatched by hand, and nothing tied it to a commit that ci.yml had passed. The
     # release re-runs part of CI, but not the surface gates, the source greps, the coverage floor,
     # actionlint or CodeQL, so a commit pushed and released at once could ship having failed them.
+    # Both ci.yml and codeql.yml have to have passed on the commit (both run on every push to main).
     # Every other job waits on this one.
     ci-passed:
         name: CI passed on this commit
@@ -49,12 +50,14 @@ jobs:
                   GH_REPO: ${{ github.repository }}
                   SHA: ${{ github.sha }}
               run: |
-                  passed="$(gh run list --workflow ci.yml --commit "$SHA" --status success --json databaseId --jq 'length')"
+                  for workflow in ci.yml codeql.yml; do
+                      passed="$(gh run list --workflow "$workflow" --commit "$SHA" --status success --json databaseId --jq 'length')"
 
-                  if [ "$passed" -lt 1 ]; then
-                      echo "::error::ci.yml has not passed on $SHA. Wait for it to finish green, then dispatch the release again."
-                      exit 1
-                  fi
+                      if [ "$passed" -lt 1 ]; then
+                          echo "::error::$workflow has not passed on $SHA. Wait for it to finish green, then dispatch the release again."
+                          exit 1
+                      fi
+                  done
 
     # The dependency gates run in their own job, deliberately kept out of publish-tauri. They
     # `cargo install` third-party tools, which compiles and runs those crates' build scripts on
@@ -75,6 +78,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             - name: Install Rust toolchain
               # Pin the exact toolchain (keep in sync with rust-toolchain.toml) instead of a
@@ -129,6 +134,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             - name: Setup pnpm
               uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -261,6 +268,11 @@ jobs:
                   # down. Re-check that when the pin moves. The sbom and checksums jobs have always
                   # checked out shallow, which is the same claim already proven by a real release.
                   fetch-depth: 1
+                  # The token stays out of .git/config. This job runs the npm and Rust dependency trees
+                  # (install scripts, build scripts, proc-macros, tests) before tauri-action, holding
+                  # contents write, and nothing here needs git credentials. The tag guard's
+                  # `git ls-remote` reads a public repository.
+                  persist-credentials: false
 
             # No version input. The pnpm version comes from package.json's packageManager
             # field, so CI and local Corepack install the same pinned pnpm.
@@ -553,6 +565,43 @@ jobs:
                       exit 1
                   fi
 
+            # The AppImage brings its own copies of WebKitGTK and the libraries under it, taken from the
+            # build image, and those can need a newer glibc than the binary does. The step above reads
+            # the binary alone, so this one reads every file the AppImage carries. README.md promises
+            # the same floor for all three Linux packages.
+            - name: Check the glibc the AppImage's bundled libraries need (Linux)
+              if: startsWith(matrix.platform, 'ubuntu-')
+              run: |
+                  appimage=$(find "$GITHUB_WORKSPACE/src-tauri/target" -type f -path '*/bundle/appimage/*.AppImage' | head -n1)
+
+                  if [ -z "$appimage" ]; then
+                      echo "::error::no AppImage was found to check" >&2
+                      exit 1
+                  fi
+
+                  floor=$(jq -r '.bundle.linux.deb.depends[] | select(startswith("libc6")) | capture("(?<v>[0-9]+[.][0-9]+)").v' src-tauri/tauri.conf.json)
+                  workdir="$RUNNER_TEMP/appimage-glibc"
+                  rm -rf "$workdir"
+                  mkdir -p "$workdir"
+                  (cd "$workdir" && "$appimage" --appimage-extract > /dev/null)
+
+                  # objdump complains about every file that is not ELF, and grep finds nothing in a
+                  # library that names no glibc symbol, so neither failure ends the step.
+                  symbols=$(find "$workdir/squashfs-root" -type f -print0 | xargs -0 -r objdump -T 2> /dev/null || true)
+                  needed=$(printf '%s\n' "$symbols" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -n1 || true)
+
+                  if [ -z "$needed" ]; then
+                      echo "::error::no glibc symbol version was found in the AppImage, so the check read nothing" >&2
+                      exit 1
+                  fi
+
+                  echo "The AppImage's files need glibc $needed, and the packages declare $floor."
+
+                  if [ "$(printf '%s\n%s\n' "$floor" "$needed" | sort -V | tail -n1)" != "$floor" ]; then
+                      echo "::error::the AppImage carries files that need glibc $needed, newer than the $floor README.md promises for it. Raise the floor there and in docs/TROUBLESHOOTING.md, or build on an older image." >&2
+                      exit 1
+                  fi
+
             - name: Smoke-test the built binary (Windows)
               if: startsWith(matrix.platform, 'windows-')
               shell: bash
@@ -713,6 +762,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             - name: Install Rust toolchain
               # Pinned to match the build (keep in sync with rust-toolchain.toml).
@@ -815,6 +866,8 @@ jobs:
         steps:
             - name: Checkout repository
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
 
             # Point every latest.json entry at the tagged download URL the updater will actually be
             # served from, rather than the api.github.com asset URL tauri-action writes.
