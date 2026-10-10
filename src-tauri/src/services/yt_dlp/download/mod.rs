@@ -751,20 +751,14 @@ pub async fn download_media_from_url_async<R: Runtime>(
         };
 
         let media_subdir = if has_video { "video" } else { "audio" };
+        // Neither folder is created here. The placement creates `video/` or `audio/` only inside a
+        // library folder that is still there once the download is done (ensure_path_parent_inside_dir),
+        // and storing the replay does the same for `live_chat/`. Creating them now, with
+        // create_dir_all, ran on the async runtime against a drive that may stall, and could put a
+        // new library folder at the path of one whose drive had just gone.
         let media_dir = library_dir.join(media_subdir);
 
-        fs::create_dir_all(&media_dir).map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::CreateMediaDirFailed,
-                format!("failed to create media directory: {e}"),
-            )
-        })?;
-
-        let run_live_chat_dir = if download_live_chat {
-            Some(ensure_live_chat_dir(&library_dir)?)
-        } else {
-            None
-        };
+        let run_live_chat_dir = download_live_chat.then(|| live_chat_dir_in(&library_dir));
 
         let (id, extractor, suggested_title, youtube_video_id, published_at) =
             normalize_download_metadata(&metadata)?;
@@ -1921,6 +1915,35 @@ mod tests {
         .await;
 
         assert_eq!(stored, None);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_replay_is_not_stored_into_a_library_folder_that_went_away() {
+        // The download can take hours, and the library's drive can go in that time. Recreating the
+        // folder would start an empty library at its path.
+        let root = unique_temp_dir("live-chat-library-gone");
+        let temp_dir = root.join("run");
+        fs::create_dir_all(&temp_dir).unwrap();
+        fs::write(temp_dir.join("youtube_ID_137.live_chat.json"), b"{}\n").unwrap();
+        let library = root.join("library");
+
+        let app = mock_app();
+        let stored = store_live_chat_best_effort(
+            app.handle(),
+            "run-1",
+            &temp_dir,
+            "youtube_ID_137",
+            Some(&live_chat_dir_in(&library)),
+        )
+        .await;
+
+        assert_eq!(stored, None);
+        assert!(
+            !library.exists(),
+            "the library folder must not be recreated"
+        );
 
         let _ = fs::remove_dir_all(&root);
     }

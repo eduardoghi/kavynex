@@ -43,17 +43,9 @@ pub(super) fn find_live_chat_temp_file(temp_dir: &Path, file_prefix: &str) -> Op
     None
 }
 
-pub(super) fn ensure_live_chat_dir(library_dir: &Path) -> AppResult<PathBuf> {
-    let live_chat_dir = library_dir.join("live_chat");
-
-    fs::create_dir_all(&live_chat_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create live chat directory: {e}"),
-        )
-    })?;
-
-    Ok(live_chat_dir)
+/// Where the library keeps live chat replays. Not created here (see [`store_live_chat`]).
+pub(super) fn live_chat_dir_in(library_dir: &Path) -> PathBuf {
+    library_dir.join("live_chat")
 }
 
 pub(super) fn build_live_chat_relative_path(file_name: &Path) -> String {
@@ -189,6 +181,19 @@ pub(super) async fn store_live_chat<R: Runtime>(
 
         run_blocking(move || {
             let _library_guard = crate::services::library::lock::library_read_guard();
+
+            // Created now, and only inside a library folder that is still there.
+            if let Some(dir) = destination.parent() {
+                let library_dir = dir.parent().unwrap_or(dir);
+
+                crate::services::library::paths::create_dir_in_existing_library(library_dir, dir)
+                    .map_err(|error| {
+                    AppError::from_code(
+                        AppErrorCode::CreateDirectoryFailed,
+                        format!("failed to create live chat directory: {error}"),
+                    )
+                })?;
+            }
 
             // Never overwrite an already-stored replay, matching place_downloaded_file's "keep the
             // catalogued bytes" rule for the main media file. The name is deterministic per
