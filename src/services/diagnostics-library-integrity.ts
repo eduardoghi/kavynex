@@ -1,6 +1,10 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand } from "../lib/tauri-client";
-import type { DiagnosticsMediaTarget, LibraryIntegrityReport } from "../types/diagnostics";
+import type {
+    DiagnosticsMediaTarget,
+    LibraryIntegrityReport,
+    OrphanRemovalPlan,
+} from "../types/diagnostics";
 
 // Result of the library-integrity check. The raw report plus a lookup from a stored media file
 // path to the media row it belongs to, so the diagnostics UI can turn a "missing media" path into
@@ -15,6 +19,9 @@ import type { DiagnosticsMediaTarget, LibraryIntegrityReport } from "../types/di
 export type LibraryIntegrityResult = {
     report: LibraryIntegrityReport;
     mediaByPath: Record<string, DiagnosticsMediaTarget>;
+    // What "Remove orphan files" would move to the library's trash, and whether the backend allows
+    // it. Null when the check did not run.
+    orphanRemoval: OrphanRemovalPlan | null;
 };
 
 function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
@@ -55,7 +62,11 @@ export async function getLibraryIntegrity(
     const normalizedLibraryPath = libraryPath.trim();
 
     if (!normalizedLibraryPath) {
-        return { report: createEmptyLibraryIntegrityReport(), mediaByPath: {} };
+        return {
+            report: createEmptyLibraryIntegrityReport(),
+            mediaByPath: {},
+            orphanRemoval: null,
+        };
     }
 
     // Always call through, even when the database holds no rows. The library folder may still
@@ -64,5 +75,9 @@ export async function getLibraryIntegrity(
     // The backend reads the library from the settings. The path above only says whether one is set.
     const check = await invokeCommand(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY);
 
-    return { report: check.report, mediaByPath: check.mediaTargets };
+    return {
+        report: check.report,
+        mediaByPath: check.mediaTargets,
+        orphanRemoval: check.orphanRemoval,
+    };
 }

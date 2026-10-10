@@ -1,14 +1,26 @@
 import { Anchor, Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
 import { AlertTriangle, Info, Trash2 } from "lucide-react";
-import type { DiagnosticsIssue, DiagnosticsMediaTarget } from "../../../types/diagnostics";
+import type {
+    DiagnosticsIssue,
+    DiagnosticsMediaTarget,
+    OrphanRemovalPlan,
+    OrphanRemovalRefusal,
+} from "../../../types/diagnostics";
 import { AppButton } from "../../ui/app-button";
 
-// The issues the orphan removal acts on. Live chat orphans are not among them, since their names
-// carry no digest and the removal cannot tell them from a file the user put there.
-const REMOVABLE_ORPHAN_CODES: ReadonlySet<string> = new Set([
+// Where the removal action is drawn, under the first of these issues present. Which files the
+// removal takes, and whether it may run, is the backend's call (`orphanRemoval`).
+const ORPHAN_ISSUE_CODES: ReadonlySet<string> = new Set([
     "ORPHAN_MEDIA_FILES",
     "ORPHAN_THUMBNAIL_FILES",
 ]);
+
+const ORPHAN_REMOVAL_REFUSAL_TEXT: Record<OrphanRemovalRefusal, string> = {
+    recentDatabaseSwap:
+        "Removing these files is not offered for 30 days after a database import or restore, since they may belong to the database it replaced.",
+    mostFilesUnreferenced:
+        "Removing these files is not offered while most of the library's files are unreferenced. That usually means the database is older than the folder or belongs to another library.",
+};
 
 type DiagnosticsIssuesSectionProps = {
     issues: DiagnosticsIssue[];
@@ -24,6 +36,9 @@ type DiagnosticsIssuesSectionProps = {
     // button for both, since one removal covers both.
     onRemoveOrphans?: () => void;
     removingOrphans?: boolean;
+    // What the removal would take and whether the backend allows it. The action is offered only
+    // when there is something to take and no refusal.
+    orphanRemoval?: OrphanRemovalPlan | null;
 };
 
 // One example path rendered as a link. Extracted because the two link branches below differ only in
@@ -116,10 +131,13 @@ export function DiagnosticsIssuesSection({
     onRevealPath,
     onRemoveOrphans,
     removingOrphans = false,
+    orphanRemoval = null,
 }: DiagnosticsIssuesSectionProps): JSX.Element | null {
-    const removeOrphansIssueCode = issues.find((issue) =>
-        REMOVABLE_ORPHAN_CODES.has(issue.code)
-    )?.code;
+    const removeOrphansIssueCode =
+        orphanRemoval && orphanRemoval.files > 0
+            ? issues.find((issue) => ORPHAN_ISSUE_CODES.has(issue.code))?.code
+            : undefined;
+    const orphanRefusal = orphanRemoval?.refusal ?? null;
 
     // Nothing to list, nothing to show. The heading plus a card saying the environment
     // looks healthy repeated the green status at the top of the dialog, and it did it in
@@ -203,7 +221,15 @@ export function DiagnosticsIssuesSection({
                                         </Stack>
                                     )}
 
-                                    {onRemoveOrphans && issue.code === removeOrphansIssueCode && (
+                                    {issue.code === removeOrphansIssueCode && orphanRefusal && (
+                                        <Text size="xs" c="dimmed" mt="sm">
+                                            {ORPHAN_REMOVAL_REFUSAL_TEXT[orphanRefusal]}
+                                        </Text>
+                                    )}
+
+                                    {onRemoveOrphans &&
+                                        issue.code === removeOrphansIssueCode &&
+                                        !orphanRefusal && (
                                         <AppButton
                                             type="button"
                                             appVariant="secondary"

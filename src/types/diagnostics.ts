@@ -53,6 +53,8 @@ export type AppDiagnostics = {
     mediaRepositoryStats: MediaRepositoryStats;
     libraryIntegrity: LibraryIntegrityReport;
     liveChatIntegrity: LiveChatIntegrityReport;
+    // What "Remove orphan files" would do, decided by the backend. Null when the check did not run.
+    orphanRemoval: OrphanRemovalPlan | null;
 };
 
 export type DiagnosticsIssueSeverity = "info" | "warning" | "error";
@@ -63,8 +65,10 @@ export type DiagnosticsIssueSeverity = "info" | "warning" | "error";
 // map itself, and the two shapes had nothing holding them together.
 import type { DiagnosticsMediaTarget } from "./generated/DiagnosticsMediaTarget";
 import type { LibraryIntegrityCheck } from "./generated/LibraryIntegrityCheck";
+import type { OrphanRemovalPlan } from "./generated/OrphanRemovalPlan";
+import type { OrphanRemovalRefusal } from "./generated/OrphanRemovalRefusal";
 
-export type { DiagnosticsMediaTarget, LibraryIntegrityCheck };
+export type { DiagnosticsMediaTarget, LibraryIntegrityCheck, OrphanRemovalPlan, OrphanRemovalRefusal };
 
 export type DiagnosticsIssueExample = {
     path: string;

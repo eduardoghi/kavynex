@@ -107,6 +107,8 @@ pub struct LibraryIntegrityCheck {
     /// Keyed by the stored path exactly as it appears in the report's example lists, so a lookup
     /// is a plain index rather than a re-normalization the two sides could spell differently.
     pub media_targets: HashMap<String, DiagnosticsMediaTarget>,
+    /// What "Remove orphan files" would move to the library's trash, and whether it may.
+    pub orphan_removal: crate::services::library::cleanup::OrphanRemovalPlan,
 }
 
 /// The stored paths the database expects to find on disk, split by artifact kind.
@@ -371,6 +373,17 @@ fn collect_orphan_paths(
                 continue;
             }
 
+            // A dot-file is never the user's media or one the app names. It is a scratch file an
+            // atomic write left (`.name.tmp-*`, `.backup-*`, swept after a week) or an OS file
+            // such as `.DS_Store`, and the removal would never take it, so it is not reported.
+            if relative
+                .rsplit('/')
+                .next()
+                .is_some_and(|name| name.starts_with('.'))
+            {
+                continue;
+            }
+
             orphan_count += 1;
 
             if orphan_examples.len() < MAX_EXAMPLES {
@@ -477,8 +490,14 @@ pub fn check_library_integrity_for_references(
     library_path: &str,
     references: Vec<MediaIntegrityReference>,
     avatar_paths: Vec<String>,
+    recent_database_swap: bool,
 ) -> AppResult<LibraryIntegrityCheck> {
     let expected = expected_library_paths(&references, avatar_paths);
+    let (orphan_removal, _) = crate::services::library::cleanup::plan_orphan_removal(
+        Path::new(library_path),
+        &expected,
+        recent_database_swap,
+    );
 
     let report = check_library_integrity_sync(
         library_path,
@@ -492,6 +511,7 @@ pub fn check_library_integrity_for_references(
     Ok(LibraryIntegrityCheck {
         report,
         media_targets,
+        orphan_removal,
     })
 }
 
@@ -516,6 +536,7 @@ pub async fn count_missing_library_files<R: tauri::Runtime>(
             &library_dir.to_string_lossy(),
             references,
             avatar_paths,
+            false,
         )?;
 
         Ok(missing_file_count(&check.report))
@@ -698,6 +719,7 @@ mod tests {
             library.to_string_lossy().as_ref(),
             references,
             vec!["thumbnails/avatar_10.jpg".to_string()],
+            false,
         )
         .unwrap();
 
@@ -784,6 +806,9 @@ mod tests {
         fs::write(library.join("video").join("a.mp4"), b"data").unwrap();
         // Not referenced by the database -> should be reported as an orphan.
         fs::write(library.join("video").join("orphan.mp4"), b"data").unwrap();
+        // Dot-files are scratch or OS files, never reported (the removal would not take them).
+        fs::write(library.join("video").join(".DS_Store"), b"data").unwrap();
+        fs::write(library.join("video").join(".a.mp4.tmp-1-2"), b"data").unwrap();
         // A referenced live chat file that is present but zero-length -> corrupt, not missing.
         fs::write(library.join("live_chat").join("a.json.gz"), b"").unwrap();
         // A live chat file on disk that no row references -> orphan.

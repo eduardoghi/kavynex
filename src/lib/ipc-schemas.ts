@@ -236,9 +236,16 @@ const diagnosticsMediaTargetSchema = z.object({
     mediaId: z.number(),
 });
 
+const orphanRemovalPlanSchema = z.object({
+    files: z.number(),
+    bytes: z.number(),
+    refusal: z.enum(["recentDatabaseSwap", "mostFilesUnreferenced"]).nullable(),
+});
+
 const libraryIntegrityCheckSchema = z.object({
     report: libraryIntegrityReportSchema,
     mediaTargets: z.record(z.string(), diagnosticsMediaTargetSchema),
+    orphanRemoval: orphanRemovalPlanSchema,
 });
 
 const artifactCleanupReportSchema = z.object({

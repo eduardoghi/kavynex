@@ -135,7 +135,11 @@ describe("DiagnosticsIssuesSection", () => {
         ];
 
         renderWithMantine(
-            <DiagnosticsIssuesSection issues={issues} onRemoveOrphans={onRemoveOrphans} />
+            <DiagnosticsIssuesSection
+                issues={issues}
+                onRemoveOrphans={onRemoveOrphans}
+                orphanRemoval={{ files: 2, bytes: 10, refusal: null }}
+            />
         );
 
         const buttons = screen.getAllByRole("button", { name: "Remove orphan files" });
@@ -160,5 +164,41 @@ describe("DiagnosticsIssuesSection", () => {
         );
 
         expect(screen.queryByRole("button", { name: "Remove orphan files" })).toBeNull();
+    });
+
+    const orphanMediaIssue: DiagnosticsIssue[] = [
+        {
+            code: "ORPHAN_MEDIA_FILES",
+            severity: "info",
+            title: "Orphan media files were found",
+            description: "3 media file(s) exist without a linked database record.",
+        },
+    ];
+
+    it("offers no removal when the backend found nothing it would take", () => {
+        // The issue counts every unreferenced file, including the user's own, which the removal
+        // keeps. The backend's plan is what says whether there is anything to take.
+        renderWithMantine(
+            <DiagnosticsIssuesSection
+                issues={orphanMediaIssue}
+                onRemoveOrphans={vi.fn()}
+                orphanRemoval={{ files: 0, bytes: 0, refusal: null }}
+            />
+        );
+
+        expect(screen.queryByRole("button", { name: "Remove orphan files" })).toBeNull();
+    });
+
+    it("says why instead of offering a removal the backend refuses", () => {
+        renderWithMantine(
+            <DiagnosticsIssuesSection
+                issues={orphanMediaIssue}
+                onRemoveOrphans={vi.fn()}
+                orphanRemoval={{ files: 3, bytes: 30, refusal: "recentDatabaseSwap" }}
+            />
+        );
+
+        expect(screen.queryByRole("button", { name: "Remove orphan files" })).toBeNull();
+        expect(screen.getByText(/30 days after a database import or restore/)).toBeInTheDocument();
     });
 });

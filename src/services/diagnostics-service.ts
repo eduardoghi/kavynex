@@ -188,7 +188,11 @@ function diagnosticChecks(libraryPath: string, libraryUnreachable: boolean) {
             label: "library integrity",
             run: () =>
                 libraryUnreachable
-                    ? Promise.resolve({ report: defaultLibraryIntegrity(), mediaByPath: {} })
+                    ? Promise.resolve({
+                          report: defaultLibraryIntegrity(),
+                          mediaByPath: {},
+                          orphanRemoval: null,
+                      })
                     : getLibraryIntegrity(libraryPath),
         },
     } as const;
@@ -262,6 +266,7 @@ export async function getDiagnosticsSummary(
     const libraryIntegrityResult = settledValue(settled.libraryIntegrity, {
         report: defaultLibraryIntegrity(),
         mediaByPath: {},
+        orphanRemoval: null,
     });
 
     const runtimeInfo = settledValue(settled.runtimeInfo, defaultRuntimeInfo());
@@ -279,6 +284,7 @@ export async function getDiagnosticsSummary(
         mediaRepositoryStats: settledValue(settled.mediaStats, defaultMediaRepositoryStats()),
         libraryIntegrity: libraryIntegrityResult.report,
         liveChatIntegrity: deriveLiveChatIntegrity(libraryIntegrityResult.report),
+        orphanRemoval: libraryIntegrityResult.orphanRemoval,
     };
 
     const issues = sortDiagnosticsIssues([

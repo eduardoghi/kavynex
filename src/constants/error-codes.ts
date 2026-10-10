@@ -135,6 +135,10 @@ export const LIBRARY_VERIFICATION_FAILED_ERROR_CODE = "LIBRARY_VERIFICATION_FAIL
 // Removing orphan files is refused while a media is being added, since that media's files are in
 // the library before anything references them. Nothing is wrong and the action is to wait.
 export const MEDIA_CREATION_IN_PROGRESS_ERROR_CODE = "MEDIA_CREATION_IN_PROGRESS" as const;
+// Removing orphan files is refused when the database does not describe the library folder well
+// enough to call its unreferenced files leftovers. Diagnostics says why before offering it, so this
+// is reached only when the state changed between the check and the click.
+export const ORPHAN_REMOVAL_REFUSED_ERROR_CODE = "ORPHAN_REMOVAL_REFUSED" as const;
 export const PATH_OUTSIDE_BASE_DIR_ERROR_CODE = "PATH_OUTSIDE_BASE_DIR" as const;
 
 export const CHANNEL_ALREADY_EXISTS_ERROR_CODE = "CHANNEL_ALREADY_EXISTS" as const;
@@ -239,6 +243,7 @@ export const KNOWN_ERROR_CODES = [
     LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE,
     LIBRARY_VERIFICATION_FAILED_ERROR_CODE,
     MEDIA_CREATION_IN_PROGRESS_ERROR_CODE,
+    ORPHAN_REMOVAL_REFUSED_ERROR_CODE,
     ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE,
     PATH_OUTSIDE_BASE_DIR_ERROR_CODE,
     CHANNEL_ALREADY_EXISTS_ERROR_CODE,

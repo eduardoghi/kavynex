@@ -91,6 +91,7 @@ function createSummary(): DiagnosticsSummary {
                 orphan_live_chat_files: 0,
                 orphan_live_chat_examples: [],
             },
+            orphanRemoval: null,
         },
         issues: [
             {
@@ -167,6 +168,39 @@ describe("DiagnosticsModal", () => {
         expect(screen.getByText("Refreshing diagnostics...")).toBeInTheDocument();
         expect(screen.getByText("Attention needed")).toBeInTheDocument();
         expect(screen.getByText("Missing media file")).toBeInTheDocument();
+    });
+
+    it("names how many files and bytes the orphan removal moves to the trash", async () => {
+        const summary = createSummary();
+        summary.issues = [
+            {
+                code: "ORPHAN_MEDIA_FILES",
+                severity: "info",
+                title: "Orphan media files were found",
+                description: "2 media file(s) exist without a linked database record.",
+            },
+        ];
+        summary.diagnostics.orphanRemoval = { files: 2, bytes: 2048, refusal: null };
+        const onRemoveOrphanFiles = vi.fn(() => Promise.resolve());
+
+        renderWithMantine(
+            <DiagnosticsModal
+                opened
+                onClose={vi.fn()}
+                onReload={vi.fn()}
+                loading={false}
+                summary={summary}
+                onRemoveOrphanFiles={onRemoveOrphanFiles}
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Remove orphan files" }));
+
+        expect(
+            await screen.findByText(/Move 2 files \(2\.00 KB\) that nothing in the library uses/)
+        ).toBeInTheDocument();
+        fireEvent.click(screen.getByRole("button", { name: "Move to trash" }));
+        expect(onRemoveOrphanFiles).toHaveBeenCalledTimes(1);
     });
 
     it("calls reload action", () => {

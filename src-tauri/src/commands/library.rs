@@ -267,12 +267,14 @@ pub async fn check_library_integrity(
 
     let references = video_repository::list_media_integrity_references(&pool).await?;
     let avatar_paths = channel_repository::list_channel_avatar_paths(&pool).await?;
+    let recent_database_swap = library::cleanup::database_was_recently_swapped(db.path());
 
     run_blocking(move || {
         library::integrity::check_library_integrity_for_references(
             &library_path,
             references,
             avatar_paths,
+            recent_database_swap,
         )
     })
     .await

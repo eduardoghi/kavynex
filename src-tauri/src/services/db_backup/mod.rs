@@ -398,6 +398,21 @@ pub use import::{
     apply_pending_database_import, database_import_undo_available, read_machine_paths,
     stage_database_import, stage_database_import_undo, MachinePaths,
 };
+/// Whether the database at `db_path` replaced another one within `window`, by an import (which
+/// leaves `.pre-import` behind) or a restore (which leaves `.corrupt`). Both are renames of the
+/// database that was in use, so their modification time is when that database last changed, which
+/// is at most moments before the swap.
+pub(crate) fn database_swapped_within(db_path: &Path, window: Duration) -> bool {
+    [pre_import_path(db_path), restore::corrupt_path(db_path)]
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok()?.modified().ok())
+        .any(|modified| {
+            SystemTime::now()
+                .duration_since(modified)
+                .map_or(true, |age| age < window)
+        })
+}
+
 // The parent module's import tests reach these internals; test-only so a non-test build does
 // not flag the imports unused.
 #[cfg(test)]

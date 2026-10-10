@@ -2,6 +2,8 @@ import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mant
 import { FolderOpen, RefreshCcw } from "lucide-react";
 import { useState } from "react";
 import type { DiagnosticsMediaTarget, DiagnosticsSummary } from "../../types/diagnostics";
+import { formatBytes } from "../../utils/media-utils";
+import { formatCount } from "../../utils/pluralize";
 import { AppButton } from "../ui/app-button";
 import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 import { ConfirmDeleteModal } from "./confirm-delete-modal";
@@ -23,8 +25,8 @@ type DiagnosticsModalProps = {
     // bare in isolation tests; the app always supplies it.
     onOpenLogFolder?: () => void;
     openingLogFolder?: boolean;
-    // Deletes the orphan files the app recognizes as its own, after a confirmation. Optional for the
-    // same reason as the two above.
+    // Moves the orphan files the app recognizes as its own to the library's trash, after a
+    // confirmation. Optional for the same reason as the two above.
     onRemoveOrphanFiles?: () => Promise<void>;
     removingOrphanFiles?: boolean;
 };
@@ -45,6 +47,7 @@ export function DiagnosticsModal({
     const [confirmRemoveOrphansOpen, setConfirmRemoveOrphansOpen] = useState(false);
     const showInitialLoading = loading && !summary;
     const showRefreshingState = loading && !!summary;
+    const orphanRemoval = summary?.diagnostics.orphanRemoval ?? null;
 
     return (
         <Modal
@@ -173,6 +176,7 @@ export function DiagnosticsModal({
                                                 : undefined
                                         }
                                         removingOrphans={removingOrphanFiles}
+                                        orphanRemoval={orphanRemoval}
                                     />
                                 </>
                             )}
@@ -191,9 +195,13 @@ export function DiagnosticsModal({
                         );
                     }}
                     title={<Text fw={900}>Remove orphan files</Text>}
-                    message="Delete the media and thumbnail files that nothing in the library uses?"
-                    description="Only files Kavynex named itself are deleted. Anything you put in the library folder yourself is kept. This cannot be undone."
-                    confirmLabel="Remove"
+                    message={
+                        orphanRemoval
+                            ? `Move ${formatCount(orphanRemoval.files, "file")} (${formatBytes(orphanRemoval.bytes)}) that nothing in the library uses to the trash?`
+                            : "Move the files that nothing in the library uses to the trash?"
+                    }
+                    description="Only media and thumbnails Kavynex named itself are moved, to the .trash folder inside your library folder. They stay there for 30 days, so you can move one back by hand, and are then deleted. Anything you put in the library folder yourself is kept."
+                    confirmLabel="Move to trash"
                     loading={removingOrphanFiles}
                 />
             )}

@@ -122,6 +122,7 @@ function createSummary(label: string): DiagnosticsSummary {
                 orphan_live_chat_files: 0,
                 orphan_live_chat_examples: [],
             },
+            orphanRemoval: null,
         },
         issues: [],
         overview: {

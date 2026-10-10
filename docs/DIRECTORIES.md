@@ -237,10 +237,10 @@ a media creation that crashed *and* five consecutive launches that could not cle
 the directory grows at a rate no user will measure. Against that, a sweep able to delete these files
 would be a sweep able to delete the only record of artifacts sitting in the library, which is
 precisely the decision `marker_is_sweepable` refuses to make whenever it is uncertain. Diagnostics
-reports what an abandoned marker names as orphans, and its **Remove orphan files** action deletes the
-media files and thumbnails among them (`library::cleanup::remove_orphan_artifacts`, which refuses
-while a media is being added). The marker itself is safe to delete by hand once nothing references
-its files.
+reports what an abandoned marker names as orphans, and its **Remove orphan files** action moves the
+media files and thumbnails among them to the library's `.trash` folder
+(`library::cleanup::remove_orphan_artifacts`, which refuses while a media is being added). The
+marker itself is safe to delete by hand once nothing references its files.
 
 ## App log directory (`kavynex.log`)
 
@@ -279,6 +279,17 @@ Inside the library directory, media services create these subfolders on demand:
 - `thumbnails/`: persisted thumbnail images.
 - `live_chat/`: gzip-compressed live chat replay JSON (`.json.gz`), one file per video
   that has live chat backed up.
+- `.trash/`: what Diagnostics' **Remove orphan files** moved aside, one `<UTC time>-<suffix>/`
+  folder per run that keeps each file's library-relative path (`video/media_<sha256>.mp4`, say).
+  The startup sweep (`temp_cleanup::cleanup_library_leftovers_sync`) deletes a run folder once it
+  is 30 days old (`ORPHAN_GRACE_PERIOD`). To bring a file back, move it to the same path under the
+  library folder. A file already in the library under that name is the same bytes.
+
+  The removal takes only `media_<sha256>`/`thumb_<sha256>` files no row names, never one written in
+  the last hour (a thumbnail or avatar lands a call before its row), and is refused for 30 days after
+  a database import or restore, or while most of those files are unreferenced. Both are what an
+  older database, or another library's, looks like, and moving its files aside would leave the
+  import's undo pointing at nothing.
 
 ### Filenames
 

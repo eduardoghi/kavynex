@@ -151,7 +151,7 @@ describe("diagnostics-service", () => {
             orphan_live_chat_examples: [],
             invalid_live_chat_files: 0,
             invalid_live_chat_examples: [],
-        }, mediaByPath: {} });
+        }, mediaByPath: {}, orphanRemoval: null });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -238,7 +238,7 @@ describe("diagnostics-service", () => {
             orphan_live_chat_examples: [],
             invalid_live_chat_files: 0,
             invalid_live_chat_examples: [],
-        }, mediaByPath: {} });
+        }, mediaByPath: {}, orphanRemoval: null });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -330,7 +330,7 @@ describe("diagnostics-service", () => {
             orphan_live_chat_examples: [],
             invalid_live_chat_files: 0,
             invalid_live_chat_examples: [],
-        }, mediaByPath: {} });
+        }, mediaByPath: {}, orphanRemoval: null });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -422,7 +422,7 @@ describe("diagnostics-service", () => {
             orphan_live_chat_examples: [],
             invalid_live_chat_files: 0,
             invalid_live_chat_examples: [],
-        }, mediaByPath: {} });
+        }, mediaByPath: {}, orphanRemoval: null });
 
         mockHealthyLiveChatDiagnostics();
 
@@ -570,7 +570,7 @@ describe("diagnostics-service", () => {
             orphan_live_chat_examples: [],
             invalid_live_chat_files: 0,
             invalid_live_chat_examples: [],
-        }, mediaByPath: {} });
+        }, mediaByPath: {}, orphanRemoval: null });
 
         mockHealthyLiveChatDiagnostics();
 

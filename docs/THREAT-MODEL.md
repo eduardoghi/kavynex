@@ -264,6 +264,14 @@ depth is the point and neither costs anything:
   than showing it. `-R` reveals files and directories alike, so revealing unconditionally costs
   nothing and keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
+`remove_orphan_library_files` takes no argument at all, which also means nothing on the backend
+tells a click the user confirmed from a call a compromised renderer made. What bounds that call is
+what it can do. It only moves files named `media_<sha256>`/`thumb_<sha256>` that no row references
+and that were not written in the last hour, into the library's `.trash` folder rather than deleting
+them, and it refuses outright after a recent import or restore and when most such files are
+unreferenced (`library::cleanup::orphan_removal_refusal`). The worst case is files a user has to
+move back by hand within 30 days.
+
 Where a command still takes a library path (`register_library_asset_scope`,
 `migrate_library_directory`), the guard also covers part of the cross-cutting UNC rule. A network
 path aimed at a local configured library is refused by `paths_refer_to_same_location` before

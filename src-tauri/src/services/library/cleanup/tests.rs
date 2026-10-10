@@ -965,3 +965,144 @@ fn a_reference_spelled_differently_still_protects_the_file() {
 
     let _ = fs::remove_dir_all(&library);
 }
+
+fn age_file(path: &std::path::Path, age: std::time::Duration) {
+    let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+    file.set_modified(std::time::SystemTime::now() - age).unwrap();
+}
+
+const TWO_HOURS: std::time::Duration = std::time::Duration::from_secs(2 * 60 * 60);
+
+#[test]
+fn the_refusal_rule_guards_a_swapped_or_mismatched_database() {
+    assert_eq!(orphan_removal_refusal(0, 0, true), None);
+    assert_eq!(
+        orphan_removal_refusal(1, 100, true),
+        Some(OrphanRemovalRefusal::RecentDatabaseSwap)
+    );
+    // Most of the files unreferenced, past the floor.
+    assert_eq!(
+        orphan_removal_refusal(11, 20, false),
+        Some(OrphanRemovalRefusal::MostFilesUnreferenced)
+    );
+    // Exactly half is not most.
+    assert_eq!(orphan_removal_refusal(10, 20, false), None);
+    // Below the floor a small library is not refused for being small.
+    assert_eq!(orphan_removal_refusal(9, 9, false), None);
+    assert_eq!(orphan_removal_refusal(3, 100, false), None);
+}
+
+#[test]
+fn a_file_written_in_the_last_hour_is_not_planned_for_removal() {
+    // A thumbnail or an avatar lands in the library one IPC call before its row.
+    let library = unique_test_dir("orphans-recent");
+    fs::create_dir_all(library.join("thumbnails")).unwrap();
+
+    let old = format!("thumbnails/thumb_{}.jpg", "a".repeat(64));
+    let fresh = format!("thumbnails/thumb_{}.jpg", "b".repeat(64));
+    fs::write(library.join(&old), b"old bytes").unwrap();
+    fs::write(library.join(&fresh), b"x").unwrap();
+    age_file(&library.join(&old), TWO_HOURS);
+
+    let (plan, deletable) = plan_orphan_removal(
+        &library,
+        &crate::services::library::integrity::ExpectedLibraryPaths::default(),
+        false,
+    );
+
+    assert_eq!(plan.files, 1);
+    assert_eq!(plan.bytes, 9);
+    assert_eq!(plan.refusal, None);
+    assert_eq!(deletable.len(), 1);
+    assert_eq!(deletable[0].path, old);
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+#[test]
+fn a_planned_removal_reports_the_refusal_when_most_files_are_unreferenced() {
+    let library = unique_test_dir("orphans-most");
+    fs::create_dir_all(library.join("video")).unwrap();
+
+    for index in 0..12 {
+        let path = library.join(format!("video/media_{index:064}.mp4"));
+        fs::write(&path, b"x").unwrap();
+        age_file(&path, TWO_HOURS);
+    }
+
+    let (plan, _) = plan_orphan_removal(
+        &library,
+        &crate::services::library::integrity::ExpectedLibraryPaths::default(),
+        false,
+    );
+
+    assert_eq!(plan.files, 12);
+    assert_eq!(plan.refusal, Some(OrphanRemovalRefusal::MostFilesUnreferenced));
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+#[test]
+fn removed_orphans_are_moved_into_the_library_trash_rather_than_deleted() {
+    let library = unique_test_dir("orphans-trash");
+    fs::create_dir_all(library.join("video")).unwrap();
+    fs::create_dir_all(library.join("thumbnails")).unwrap();
+
+    let media = format!("video/media_{}.mp4", "c".repeat(64));
+    let thumb = format!("thumbnails/thumb_{}.jpg", "d".repeat(64));
+    fs::write(library.join(&media), b"media bytes").unwrap();
+    fs::write(library.join(&thumb), b"thumb bytes").unwrap();
+
+    let report = move_orphans_to_trash_sync(
+        &library,
+        None,
+        vec![
+            DeletableArtifact {
+                kind: ArtifactKind::MediaFile,
+                path: media.clone(),
+            },
+            DeletableArtifact {
+                kind: ArtifactKind::Thumbnail,
+                path: thumb.clone(),
+            },
+        ],
+    );
+
+    assert_eq!(report.deleted_paths, vec![media.clone(), thumb.clone()]);
+    assert!(report.failed_paths.is_empty());
+    assert!(!library.join(&media).exists());
+    assert!(!library.join(&thumb).exists());
+
+    let runs: Vec<PathBuf> = fs::read_dir(library.join(LIBRARY_TRASH_DIR))
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .collect();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(fs::read(runs[0].join(&media)).unwrap(), b"media bytes");
+    assert_eq!(fs::read(runs[0].join(&thumb)).unwrap(), b"thumb bytes");
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+#[test]
+fn a_recent_import_or_restore_counts_as_a_database_swap() {
+    let dir = unique_test_dir("orphans-swap");
+    fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("kavynex.db");
+    fs::write(&db, b"db").unwrap();
+
+    assert!(!database_was_recently_swapped(&db));
+
+    let pre_import = dir.join("kavynex.db.pre-import");
+    fs::write(&pre_import, b"previous").unwrap();
+    assert!(database_was_recently_swapped(&db));
+
+    age_file(&pre_import, ORPHAN_GRACE_PERIOD + TWO_HOURS);
+    assert!(!database_was_recently_swapped(&db));
+
+    fs::write(dir.join("kavynex.db.corrupt"), b"damaged").unwrap();
+    assert!(database_was_recently_swapped(&db));
+
+    let _ = fs::remove_dir_all(&dir);
+}

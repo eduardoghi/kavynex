@@ -414,6 +414,18 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
 /// only reaches week-old scratch names), but it was the one library unlink outside the gate, and a
 /// rule with an exception is two rules. Nothing below acquires a second guard, which the gate's
 /// debug-only nesting check would refuse.
+/// Purges what the orphan removal moved aside, one folder per run, once the run is older than
+/// `max_age`. A link in the trash folder's place is left alone rather than followed.
+fn purge_library_trash(library_dir: &Path, max_age: Duration) -> AppResult<CleanupSummary> {
+    let trash_dir = library_dir.join(crate::services::library::cleanup::LIBRARY_TRASH_DIR);
+
+    if !fs::symlink_metadata(&trash_dir).is_ok_and(|metadata| metadata.is_dir()) {
+        return Ok(CleanupSummary::default());
+    }
+
+    cleanup_dir_children(&trash_dir, max_age)
+}
+
 pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSummary> {
     let mut summary = CleanupSummary::default();
 
@@ -431,6 +443,11 @@ pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSu
             max_age,
         )?);
     }
+
+    summary.merge(purge_library_trash(
+        library_dir,
+        crate::services::library::cleanup::ORPHAN_GRACE_PERIOD,
+    )?);
 
     Ok(summary)
 }
@@ -753,6 +770,27 @@ mod tests {
         assert!(!stale_temp.exists());
         assert!(!stale_backup.exists());
         assert!(recent_temp.exists(), "an in-flight leftover must be kept");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn the_library_trash_is_purged_one_run_at_a_time_past_its_age() {
+        let library = unique_test_dir("library-trash");
+        let run = library
+            .join(crate::services::library::cleanup::LIBRARY_TRASH_DIR)
+            .join("20260101T000000Z-1");
+        fs::create_dir_all(run.join("video")).unwrap();
+        fs::write(run.join("video").join("media_a.mp4"), b"x").unwrap();
+
+        let kept = purge_library_trash(&library, Duration::from_secs(60 * 60)).unwrap();
+        assert_eq!(kept.removed_entries, 0);
+        assert!(run.exists(), "a run younger than the age is kept");
+
+        std::thread::sleep(Duration::from_millis(20));
+        let purged = purge_library_trash(&library, Duration::from_millis(1)).unwrap();
+        assert_eq!(purged.removed_entries, 1);
+        assert!(!run.exists(), "a run past the age is purged whole");
 
         let _ = fs::remove_dir_all(&library);
     }
