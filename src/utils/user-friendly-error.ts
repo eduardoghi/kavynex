@@ -19,6 +19,7 @@ import {
     LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE,
     NOT_ENOUGH_SPACE_FOR_LIBRARY_ERROR_CODE,
     LIBRARY_COPY_INCOMPLETE_ERROR_CODE,
+    LIBRARY_MIGRATION_SAME_FOLDER_ERROR_CODE,
     LIBRARY_MIGRATION_CANCELLED_ERROR_CODE,
     LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE,
     LIBRARY_VERIFICATION_FAILED_ERROR_CODE,
@@ -140,6 +141,8 @@ const FRIENDLY_ERROR_MESSAGES: Record<string, string> = {
         "The move was cancelled. The library stayed where it was. What was already copied is still in the new folder, and moving there again picks up from it.",
     [LIBRARY_COPY_INCOMPLETE_ERROR_CODE]:
         "A file could not be copied completely, so the library stayed where it was and nothing was removed. The partial copy in the new folder can be deleted, or the move tried again.",
+    [LIBRARY_MIGRATION_SAME_FOLDER_ERROR_CODE]:
+        "The new folder is the current library folder, or inside or above it, reached by another name (a network path, a mapped drive or a link). Nothing was moved. Choose a different folder.",
     [LIBRARY_MIGRATION_ALREADY_RUNNING_ERROR_CODE]:
         "A library folder change is already running. Wait for it to finish before starting another one.",
     [LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE]:

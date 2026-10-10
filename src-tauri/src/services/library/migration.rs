@@ -58,13 +58,6 @@ fn library_migration_lock() -> &'static Mutex<()> {
     LIBRARY_MIGRATION_LOCK.get_or_init(|| Mutex::new(()))
 }
 
-/// The destination must be empty, or contain only the app's managed subdirectories
-/// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case; a destination
-/// that holds only managed folders is treated as a previously interrupted migration and allowed
-/// to resume. The copy phase is idempotent (identical files are skipped, differing ones error
-/// without overwriting), so re-running safely completes the copy. Any top-level entry that is
-/// not a managed directory means the folder holds unrelated user content and is rejected, so a
-/// crash mid-migration no longer wedges the retry with an opaque "not empty" error.
 /// True for a file the OS itself drops into any folder the user merely browsed to in
 /// Finder/Explorer (macOS `.DS_Store`, Windows `Thumbs.db`/`desktop.ini`). The user never put
 /// these there, so a destination holding only them is still effectively empty and must not be
@@ -76,6 +69,77 @@ fn is_ignorable_os_entry(name: &str) -> bool {
     IGNORABLE_OS_FILES.contains(&normalized.as_str())
 }
 
+/// Refuses a destination that is the current library, or sits inside it or above it, under another
+/// name.
+///
+/// The canonical paths cannot tell. On Windows `canonicalize` keeps the host as it was spelled, so
+/// `\\nas\share\lib`, `\\192.168.0.10\share\lib` and a drive letter mapped to the same share come
+/// back as three different strings for one folder. A library that holds only its managed folders is
+/// exactly what a resumable destination looks like, so the copy would then skip every file as
+/// already present and the removal of the old folder would delete the new one with it.
+///
+/// Two checks, because each covers what the other cannot. The directories' identity on disk
+/// (volume and file index, or device and inode) is compared along both ancestor chains, which also
+/// catches one folder inside the other. A file written into the new folder and looked for in the
+/// old one covers a share whose server reports no usable file index.
+fn ensure_distinct_directories(old: &Path, new: &Path) -> AppResult<()> {
+    let same_folder = || {
+        AppError::from_code(
+            AppErrorCode::LibraryMigrationSameFolder,
+            "the new library folder is the current one, or inside or above it, under another name",
+        )
+    };
+
+    if directory_chain_contains(new, old) || directory_chain_contains(old, new) {
+        return Err(same_folder());
+    }
+
+    let probe_name = format!(
+        ".kavynex-migration-probe-{}",
+        crate::utils::naming::unique_temp_suffix()
+    );
+    let probe = new.join(&probe_name);
+
+    fs::write(&probe, b"").map_err(|e| {
+        AppError::fs_error(
+            AppErrorCode::InvalidLibraryMigration,
+            "failed to write to the new library folder",
+            new,
+            &e,
+        )
+    })?;
+
+    let seen_from_old = old.join(&probe_name).exists();
+    let _ = fs::remove_file(&probe);
+
+    if seen_from_old {
+        return Err(same_folder());
+    }
+
+    Ok(())
+}
+
+/// Whether `path` or one of its ancestors is the directory `target`, compared by identity on disk.
+///
+/// A directory that cannot be opened counts as not matching. The probe file in
+/// `ensure_distinct_directories` still covers the case that matters most, the two being one folder.
+fn directory_chain_contains(path: &Path, target: &Path) -> bool {
+    let Ok(target) = same_file::Handle::from_path(target) else {
+        return false;
+    };
+
+    path.ancestors()
+        .filter_map(|ancestor| same_file::Handle::from_path(ancestor).ok())
+        .any(|ancestor| ancestor == target)
+}
+
+/// The destination must be empty, or contain only the app's managed subdirectories
+/// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case; a destination
+/// that holds only managed folders is treated as a previously interrupted migration and allowed
+/// to resume. The copy phase is idempotent (identical files are skipped, differing ones error
+/// without overwriting), so re-running safely completes the copy. Any top-level entry that is
+/// not a managed directory means the folder holds unrelated user content and is rejected, so a
+/// crash mid-migration no longer wedges the retry with an opaque "not empty" error.
 fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
     let entries = fs::read_dir(path).map_err(|e| {
         AppError::from_code(
@@ -93,7 +157,19 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         })?;
 
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_managed_dir = entry.path().is_dir() && MANAGED_LIBRARY_DIRS.contains(&name.as_str());
+        let is_managed_name = MANAGED_LIBRARY_DIRS.contains(&name.as_str());
+
+        // A migration never creates a link, so a managed folder that is one points somewhere else,
+        // possibly at the current library's own folder. Copying into it would copy each file onto
+        // itself, and the removal that follows would delete the only copy.
+        if is_managed_name && crate::services::filesystem::dir_entry_is_symlink(&entry) {
+            return Err(AppError::from_code(
+                AppErrorCode::LibraryMigrationSameFolder,
+                "a managed folder in the destination is a link to another folder",
+            ));
+        }
+
+        let is_managed_dir = is_managed_name && entry.path().is_dir();
 
         // A managed subdirectory (a previous, interrupted migration to resume) and an OS-generated
         // file (which the user did not put there) are both allowed; anything else is unrelated user
@@ -153,13 +229,41 @@ fn for_each_managed_file(
             let path = entry.path();
             let child = relative.join(entry.file_name());
 
-            if path.is_dir() {
+            // An entry this walk cannot classify or size is an error rather than a skip. The copy
+            // refuses the same entries, and a file left out of both would pass the completeness
+            // check and then be removed with the old folder.
+            let file_type = entry.file_type().map_err(|e| {
+                AppError::fs_error(
+                    AppErrorCode::ReadDirEntryFailed,
+                    "failed to read the type of a directory entry",
+                    &path,
+                    &e,
+                )
+            })?;
+
+            if file_type.is_dir() {
                 walk(&path, &child, visit)?;
-            } else if let Some(metadata) =
-                path.metadata().ok().filter(|metadata| metadata.is_file())
-            {
-                visit(&child, metadata.len())?;
+                continue;
             }
+
+            if !file_type.is_file() {
+                return Err(AppError::with_details(
+                    AppErrorCode::InvalidSourceFile,
+                    "found an entry that is neither a file nor a folder",
+                    format!("path: {}", logger::redact_path(&path)),
+                ));
+            }
+
+            let metadata = path.metadata().map_err(|e| {
+                AppError::fs_error(
+                    AppErrorCode::SourceMetadataFailed,
+                    "failed to read the size of a library file",
+                    &path,
+                    &e,
+                )
+            })?;
+
+            visit(&child, metadata.len())?;
         }
 
         Ok(())
@@ -665,6 +769,7 @@ pub fn migrate_library_directory_in_context(
         ));
     }
 
+    ensure_distinct_directories(&canonical_old, &canonical_new)?;
     ensure_destination_is_migratable(&canonical_new)?;
     ensure_room_for_migration(&canonical_old, &canonical_new)?;
 
@@ -1396,6 +1501,144 @@ mod tests {
         // Leave the shared lock clean for any test that runs after this one.
         library_migration_lock().clear_poison();
 
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn the_current_library_under_another_spelling_is_refused() {
+        let root = unique_test_dir("alias-same");
+        fs::create_dir_all(root.join("video")).unwrap();
+        fs::write(root.join("video").join("a.mp4"), b"video").unwrap();
+
+        // `video/..` names the library root without being spelled like it, the way a second UNC
+        // host name or a mapped drive does for a share.
+        let alias = root.join("video").join("..");
+
+        let error = ensure_distinct_directories(&root, &alias).unwrap_err();
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::LibraryMigrationSameFolder.as_str()
+        );
+        assert_eq!(
+            fs::read(root.join("video").join("a.mp4")).unwrap(),
+            b"video"
+        );
+        assert_eq!(
+            fs::read_dir(&root).unwrap().count(),
+            1,
+            "the probe file was removed"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_destination_inside_the_current_library_under_another_spelling_is_refused() {
+        let root = unique_test_dir("alias-inside");
+        fs::create_dir_all(root.join("video")).unwrap();
+        fs::create_dir_all(root.join("elsewhere")).unwrap();
+
+        let inside = root.join("video").join("..").join("elsewhere");
+
+        let error = ensure_distinct_directories(&root, &inside).unwrap_err();
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::LibraryMigrationSameFolder.as_str()
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_destination_above_the_current_library_under_another_spelling_is_refused() {
+        let parent = unique_test_dir("alias-above");
+        let library = parent.join("library");
+        fs::create_dir_all(library.join("video")).unwrap();
+
+        let above = library.join("video").join("..").join("..");
+
+        let error = ensure_distinct_directories(&library, &above).unwrap_err();
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::LibraryMigrationSameFolder.as_str()
+        );
+
+        let _ = fs::remove_dir_all(parent);
+    }
+
+    #[test]
+    fn two_unrelated_folders_are_distinct_and_the_probe_is_cleaned_up() {
+        let old_root = unique_test_dir("distinct-old");
+        let new_root = unique_test_dir("distinct-new");
+        fs::create_dir_all(&old_root).unwrap();
+        fs::create_dir_all(&new_root).unwrap();
+
+        ensure_distinct_directories(&old_root, &new_root).unwrap();
+
+        assert_eq!(fs::read_dir(&new_root).unwrap().count(), 0);
+
+        let _ = fs::remove_dir_all(old_root);
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    // A directory symlink needs Developer Mode or admin on Windows, so this runs where one can
+    // always be made. The refusal itself is platform independent (`dir_entry_is_symlink`).
+    #[cfg(unix)]
+    #[test]
+    fn a_managed_folder_in_the_destination_that_is_a_link_is_refused() {
+        let old_root = unique_test_dir("linked-old");
+        let new_root = unique_test_dir("linked-new");
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video").unwrap();
+        fs::create_dir_all(&new_root).unwrap();
+        std::os::unix::fs::symlink(old_root.join("video"), new_root.join("video")).unwrap();
+
+        let error = ensure_destination_is_migratable(&new_root).unwrap_err();
+
+        assert_eq!(
+            error.code,
+            AppErrorCode::LibraryMigrationSameFolder.as_str()
+        );
+
+        let _ = fs::remove_dir_all(old_root);
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_library_entry_that_is_neither_file_nor_folder_stops_the_migration_before_removal() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("fifo-old");
+        let new_root = unique_test_dir("fifo-new");
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video").unwrap();
+
+        let fifo = std::ffi::CString::new(
+            old_root
+                .join("video")
+                .join("pipe")
+                .to_string_lossy()
+                .as_bytes(),
+        )
+        .unwrap();
+        // SAFETY: `fifo` is a NUL-terminated path that outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+
+        let result = migrate_library_directory_sync(
+            old_root.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            None,
+        );
+
+        assert!(result.is_err());
+        assert!(old_root.join("video").join("a.mp4").exists());
+        assert!(old_root.join("video").join("pipe").exists());
+
+        let _ = fs::remove_dir_all(old_root);
         let _ = fs::remove_dir_all(new_root);
     }
 }

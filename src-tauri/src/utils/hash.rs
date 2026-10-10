@@ -61,7 +61,7 @@ pub fn hash_while_copying<R: Read, W: Write>(reader: &mut R, writer: &mut W) -> 
 /// Hex-encodes a finished hasher. sha2 0.11 returns a hybrid-array `Array` (no `LowerHex`), so the
 /// encoding is spelled out; sharing it keeps the two producers here from drifting into different
 /// casings, which would silently break any comparison between them.
-fn hex_digest(hasher: Sha256) -> String {
+pub(crate) fn hex_digest(hasher: Sha256) -> String {
     hasher
         .finalize()
         .iter()

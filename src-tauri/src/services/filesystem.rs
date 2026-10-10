@@ -243,6 +243,77 @@ fn copy_bytes_in_chunks(
     temp_destination: &Path,
     cancel: Option<&AtomicBool>,
 ) -> AppResult<()> {
+    copy_chunks(source, temp_destination, cancel, None).map(|_| ())
+}
+
+/// [`copy_bytes_in_chunks`], then proof that the copy holds what was read.
+///
+/// For the library migration, which deletes the source once every copy is in. A size check alone
+/// passes a copy whose bytes went wrong on the way (a flaky USB bridge, a network share that
+/// acknowledged a write it lost), and a read that ended early would otherwise leave a short file
+/// whose size nobody compares. So the source is hashed as it is read, its length is held to what it
+/// was when the copy started, and the written file is read back and hashed before it can take the
+/// destination's name.
+fn copy_bytes_in_chunks_verified(
+    source: &Path,
+    temp_destination: &Path,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    use sha2::Digest;
+
+    let expected_len = fs::metadata(source)
+        .map_err(|e| {
+            AppError::fs_error(
+                AppErrorCode::SourceMetadataFailed,
+                "failed to read the source file's size",
+                source,
+                &e,
+            )
+        })?
+        .len();
+
+    let mut hasher = sha2::Sha256::new();
+    let copied = copy_chunks(source, temp_destination, cancel, Some(&mut hasher))?;
+    let read_digest = crate::utils::hash::hex_digest(hasher);
+    let written_digest = crate::utils::hash::file_hash_cancellable(temp_destination, cancel)?;
+
+    match copy_verification_problem(expected_len, copied, &read_digest, &written_digest) {
+        None => Ok(()),
+        Some(problem) => Err(AppError::with_details(
+            AppErrorCode::FileCopyFailed,
+            problem,
+            format!("path: {}", crate::services::logger::redact_path(source)),
+        )),
+    }
+}
+
+/// What is wrong with a verified copy, or `None` when it holds exactly the source's bytes.
+fn copy_verification_problem(
+    expected_len: u64,
+    copied: u64,
+    read_digest: &str,
+    written_digest: &str,
+) -> Option<&'static str> {
+    if copied != expected_len {
+        return Some("the source file changed size while it was copied");
+    }
+
+    if written_digest != read_digest {
+        return Some("the copy does not hold the bytes read from the source");
+    }
+
+    None
+}
+
+/// The chunk loop behind both copies above. Returns how many bytes were copied, and feeds them to
+/// `hasher` when one is given.
+fn copy_chunks(
+    source: &Path,
+    temp_destination: &Path,
+    cancel: Option<&AtomicBool>,
+    mut hasher: Option<&mut sha2::Sha256>,
+) -> AppResult<u64> {
+    use sha2::Digest;
     use std::io::{Read, Write};
 
     let copy_failed = |e: std::io::Error| {
@@ -265,6 +336,7 @@ fn copy_bytes_in_chunks(
 
     let mut writer = fs::File::create(temp_destination).map_err(copy_failed)?;
     let mut buffer = vec![0_u8; CANCELLABLE_COPY_CHUNK_BYTES];
+    let mut copied: u64 = 0;
 
     loop {
         // At the top of the loop, so a flag already set when the copy starts stops it before the
@@ -283,13 +355,19 @@ fn copy_bytes_in_chunks(
         }
 
         writer.write_all(&buffer[..read]).map_err(copy_failed)?;
+
+        if let Some(hasher) = hasher.as_deref_mut() {
+            hasher.update(&buffer[..read]);
+        }
+
+        copied += read as u64;
     }
 
     // Flush userspace buffering into the file before the caller's fsync, which operates on a
     // reopened handle and would otherwise have nothing to push to the platter.
     writer.flush().map_err(copy_failed)?;
 
-    Ok(())
+    Ok(copied)
 }
 
 /// Copies a file into place atomically, moving the bytes with `copy_bytes`.
@@ -422,6 +500,18 @@ pub fn copy_file_atomic_cancellable(
 ) -> AppResult<()> {
     copy_file_atomic_with(source, destination, |source, temp_destination| {
         copy_bytes_in_chunks(source, temp_destination, cancel)
+    })
+}
+
+/// Like [`copy_file_atomic_cancellable`], but the copy only takes the destination's name once it
+/// was read back and found to hold exactly the source's bytes. See [`copy_bytes_in_chunks_verified`].
+pub(crate) fn copy_file_atomic_verified(
+    source: &Path,
+    destination: &Path,
+    cancel: Option<&AtomicBool>,
+) -> AppResult<()> {
+    copy_file_atomic_with(source, destination, |source, temp_destination| {
+        copy_bytes_in_chunks_verified(source, temp_destination, cancel)
     })
 }
 
@@ -1084,6 +1174,11 @@ pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> App
 /// [`copy_directory_contents`] for a copy someone is watching. `on_copied` gets the size of each
 /// file once it is in place, and a set `cancel` stops the walk before the next file and the copy of
 /// the current one partway (the chunked copy, which leaves nothing behind).
+///
+/// Every file is copied with [`copy_file_atomic_verified`], and an entry that is neither a file nor
+/// a directory, or whose type cannot be read, fails the copy instead of being passed over. The
+/// library migration removes the source tree after this returns, so an entry skipped here would be
+/// deleted without ever having been copied.
 pub(crate) fn copy_directory_contents_tracked(
     source_dir: &Path,
     destination_dir: &Path,
@@ -1136,13 +1231,29 @@ pub(crate) fn copy_directory_contents_tracked(
         let source_path = entry.path();
         let destination_path = destination_dir.join(entry.file_name());
 
-        if source_path.is_dir() {
+        let file_type = entry.file_type().map_err(|e| {
+            AppError::fs_error(
+                AppErrorCode::ReadDirEntryFailed,
+                "failed to read the type of a directory entry",
+                &source_path,
+                &e,
+            )
+        })?;
+
+        if file_type.is_dir() {
             copy_directory_contents_tracked(&source_path, &destination_path, cancel, on_copied)?;
             continue;
         }
 
-        if !source_path.is_file() {
-            continue;
+        if !file_type.is_file() {
+            return Err(AppError::with_details(
+                AppErrorCode::InvalidSourceFile,
+                "found an entry that is neither a file nor a folder",
+                format!(
+                    "path: {}",
+                    crate::services::logger::redact_path(&source_path)
+                ),
+            ));
         }
 
         if cancel.is_some_and(|flag| flag.load(std::sync::atomic::Ordering::SeqCst)) {
@@ -1152,13 +1263,18 @@ pub(crate) fn copy_directory_contents_tracked(
             ));
         }
 
-        copy_file_atomic_maybe_cancellable(&source_path, &destination_path, cancel)?;
-        on_copied(
-            source_path
-                .metadata()
-                .map(|metadata| metadata.len())
-                .unwrap_or(0),
-        );
+        copy_file_atomic_verified(&source_path, &destination_path, cancel)?;
+
+        let size = source_path.metadata().map_err(|e| {
+            AppError::fs_error(
+                AppErrorCode::SourceMetadataFailed,
+                "failed to read the size of a copied file",
+                &source_path,
+                &e,
+            )
+        })?;
+
+        on_copied(size.len());
     }
 
     Ok(())

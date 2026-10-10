@@ -936,3 +936,65 @@ fn a_symlinked_source_is_copied_rather_than_linked() {
 
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_verified_copy_reports_a_source_that_changed_size() {
+    assert_eq!(
+        copy_verification_problem(10, 7, "aa", "aa"),
+        Some("the source file changed size while it was copied")
+    );
+}
+
+#[test]
+fn a_verified_copy_reports_written_bytes_that_differ_from_the_read_ones() {
+    assert_eq!(
+        copy_verification_problem(10, 10, "aa", "bb"),
+        Some("the copy does not hold the bytes read from the source")
+    );
+}
+
+#[test]
+fn a_verified_copy_of_matching_length_and_digest_has_no_problem() {
+    assert_eq!(copy_verification_problem(10, 10, "aa", "aa"), None);
+}
+
+#[test]
+fn a_verified_copy_lands_the_source_bytes_and_leaves_no_staging_file() {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("source.bin");
+    let destination = dir.join("destination.bin");
+    // Larger than one chunk, so the loop runs more than once.
+    let payload: Vec<u8> = (0..(CANCELLABLE_COPY_CHUNK_BYTES + 4096))
+        .map(|index| (index % 251) as u8)
+        .collect();
+    fs::write(&source, &payload).unwrap();
+
+    copy_file_atomic_verified(&source, &destination, None).unwrap();
+
+    assert_eq!(fs::read(&destination).unwrap(), payload);
+    assert_eq!(staging_files_in(&dir), 0);
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+// A FIFO is the entry type the copy cannot handle and that a Unix test can always create. Skipping
+// it would let the library migration remove it with the old folder, uncopied.
+#[cfg(unix)]
+#[test]
+fn copying_a_directory_with_an_entry_that_is_neither_file_nor_folder_fails() {
+    let base = unique_test_dir();
+    let source = base.join("source");
+    fs::create_dir_all(&source).unwrap();
+    fs::write(source.join("real.txt"), b"data").unwrap();
+
+    let fifo = std::ffi::CString::new(source.join("pipe").to_string_lossy().as_bytes()).unwrap();
+    // SAFETY: `fifo` is a NUL-terminated path that outlives the call.
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+
+    let error = copy_directory_contents(&source, &base.join("destination")).unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::InvalidSourceFile.as_str());
+
+    let _ = fs::remove_dir_all(&base);
+}

@@ -15,6 +15,7 @@ import {
     INVALID_DIRECTORY_PATH_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_LIBRARY_MIGRATION_ERROR_CODE,
+    LIBRARY_MIGRATION_SAME_FOLDER_ERROR_CODE,
     INVALID_MEDIA_PATH_ERROR_CODE,
     INVALID_THUMBNAIL_PATH_ERROR_CODE,
     INVALID_TEMP_THUMBNAIL_PATH_ERROR_CODE,
@@ -264,6 +265,15 @@ describe("toUserFriendlyError", () => {
                 message: "new library path cannot be inside the current library path",
             })
         ).toBe("The new library folder cannot be used. It has to be empty, or hold only an interrupted Kavynex move, and it cannot be inside the current library folder or contain it.");
+    });
+
+    it("explains a library move whose new folder is the current one under another name", () => {
+        expect(
+            toUserFriendlyError({
+                code: LIBRARY_MIGRATION_SAME_FOLDER_ERROR_CODE,
+                message: "the new library folder is the current one, or inside or above it, under another name",
+            })
+        ).toBe("The new folder is the current library folder, or inside or above it, reached by another name (a network path, a mapped drive or a link). Nothing was moved. Choose a different folder.");
     });
 
     it("maps INVALID_MEDIA_CREATION_ARGUMENTS correctly", () => {

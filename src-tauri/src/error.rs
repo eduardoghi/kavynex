@@ -44,6 +44,8 @@ pub enum AppErrorCode {
     LibraryFolderUnreachable,
     NotEnoughSpaceForLibrary,
     LibraryCopyIncomplete,
+    // The new library folder is the current one (or inside or above it) under another name.
+    LibraryMigrationSameFolder,
     LibraryMigrationCancelled,
     LibraryVerificationInProgress,
     LibraryVerificationFailed,
@@ -221,6 +223,7 @@ impl AppErrorCode {
             Self::LibraryFolderUnreachable => "LIBRARY_FOLDER_UNREACHABLE",
             Self::NotEnoughSpaceForLibrary => "NOT_ENOUGH_SPACE_FOR_LIBRARY",
             Self::LibraryCopyIncomplete => "LIBRARY_COPY_INCOMPLETE",
+            Self::LibraryMigrationSameFolder => "LIBRARY_MIGRATION_SAME_FOLDER",
             Self::LibraryMigrationCancelled => "LIBRARY_MIGRATION_CANCELLED",
             Self::LibraryMigrationAlreadyRunning => "LIBRARY_MIGRATION_ALREADY_RUNNING",
             Self::LibraryVerificationInProgress => "LIBRARY_VERIFICATION_IN_PROGRESS",
