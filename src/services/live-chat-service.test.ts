@@ -42,6 +42,36 @@ describe("readLiveChatMessagesFromFile", () => {
         vi.clearAllMocks();
     });
 
+    it("shares one copy of an author's details across their messages", async () => {
+        const author = {
+            authorName: { simpleText: "@alice" },
+            authorExternalChannelId: "UC123abc",
+            authorPhoto: { thumbnails: [{ url: "https://yt3.ggpht.com/alice=s64" }] },
+            authorBadges: [
+                {
+                    liveChatAuthorBadgeRenderer: {
+                        icon: { iconType: "MODERATOR" },
+                        tooltip: "Moderator",
+                    },
+                },
+            ],
+        };
+
+        mockFile(
+            [
+                rawLine({ id: "m1", message: { runs: [{ text: "one" }] }, ...author }, "1000"),
+                rawLine({ id: "m2", message: { runs: [{ text: "two" }] }, ...author }, "2000"),
+            ].join("\n")
+        );
+
+        const [first, second] = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(first?.author_thumbnail).toBe("https://yt3.ggpht.com/alice=s64");
+        expect(second?.author_badges).toBe(first?.author_badges);
+        expect(second?.author_badges).toEqual([{ type: "moderator", label: "Moderator" }]);
+        expect(second?.message_text).toBe("two");
+    });
+
     it("parses author_channel_id from authorExternalChannelId", async () => {
         mockFile(
             rawLine(

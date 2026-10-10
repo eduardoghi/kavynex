@@ -2,7 +2,11 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid, streamLiveChatFile } from "../lib/tauri-client";
 import { logWarn } from "../utils/app-logger";
 import { parseLiveChatLine } from "./live-chat-parsing";
-import type { LiveChatMessageItem } from "./live-chat-parsing";
+import type {
+    LiveChatAuthorBadge,
+    LiveChatMessageItem,
+    LiveChatMessagePart,
+} from "./live-chat-parsing";
 
 // The message types are defined next door, with the parser that produces them, and re-exported here
 // because this module is what every consumer already imports. Splitting the parser out was meant to
@@ -32,6 +36,71 @@ export async function migrateLiveChatToLibrary(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.MIGRATE_LIVE_CHAT_TO_LIBRARY);
 }
 
+// One copy of each value that repeats across a replay's messages. A long stream holds hundreds of
+// thousands of messages from a few thousand authors, and every message parsed out of JSON carries
+// its own copy of its author's name, channel id, avatar URL and badge list, and of every custom
+// emoji's URL and label. The whole replay stays in memory for seeking, so those copies are most of
+// what it costs. The messages are never mutated after parsing, which is what makes sharing safe.
+export class LiveChatInterner {
+    private readonly strings = new Map<string, string>();
+    private readonly badgeLists = new Map<string, LiveChatAuthorBadge[]>();
+    private readonly emojiParts = new Map<string, LiveChatMessagePart>();
+
+    string<T extends string | null>(value: T): T {
+        if (value === null) {
+            return value;
+        }
+
+        const existing = this.strings.get(value);
+
+        if (existing !== undefined) {
+            return existing as T;
+        }
+
+        this.strings.set(value, value);
+        return value;
+    }
+
+    private badges(badges: LiveChatAuthorBadge[]): LiveChatAuthorBadge[] {
+        const key = badges.map((badge) => `${badge.type}\u0000${badge.label}`).join("\u0001");
+        const existing = this.badgeLists.get(key);
+
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        this.badgeLists.set(key, badges);
+        return badges;
+    }
+
+    private part(part: LiveChatMessagePart): LiveChatMessagePart {
+        if (part.type !== "emoji") {
+            return part;
+        }
+
+        const key = `${part.url}\u0000${part.label}`;
+        const existing = this.emojiParts.get(key);
+
+        if (existing !== undefined) {
+            return existing;
+        }
+
+        this.emojiParts.set(key, part);
+        return part;
+    }
+
+    message(message: LiveChatMessageItem): LiveChatMessageItem {
+        return {
+            ...message,
+            author_name: this.string(message.author_name),
+            author_channel_id: this.string(message.author_channel_id),
+            author_thumbnail: this.string(message.author_thumbnail),
+            author_badges: this.badges(message.author_badges),
+            message_parts: message.message_parts.map((part) => this.part(part)),
+        };
+    }
+}
+
 // Live chat files live in the library (under `live_chat/`), whose path is user-configurable, so
 // the read goes through a backend command rather than the plugin-fs (whose scope is fixed to app
 // data at build time). The replay is streamed line by line (see streamLiveChatFile) and parsed
@@ -43,6 +112,7 @@ export async function readLiveChatMessagesFromFile(
     signal?: AbortSignal
 ): Promise<LiveChatMessageItem[]> {
     const messages: LiveChatMessageItem[] = [];
+    const interner = new LiveChatInterner();
     let parsedLines = 0;
     let failedLines = 0;
 
@@ -55,7 +125,9 @@ export async function readLiveChatMessagesFromFile(
                 }
 
                 try {
-                    messages.push(...parseLiveChatLine(line));
+                    for (const message of parseLiveChatLine(line)) {
+                        messages.push(interner.message(message));
+                    }
                     parsedLines += 1;
                 } catch {
                     // One corrupt/truncated line, or a JSON shape yt-dlp/YouTube changed, must not
