@@ -29,9 +29,13 @@ function merge(into: StartupNotices, taken: StartupNotices): StartupNotices {
     };
 }
 
-// Takes whatever the backend recorded since the last take and holds it.
+// Takes whatever the backend recorded since the last take and holds it. The three alert hooks pull
+// at once on mount and the take is destructive, so only the first answer carries anything. `held`
+// is read after the await, or a later empty answer would merge into the snapshot taken before the
+// first one arrived and wipe what it held.
 export async function pullStartupNotices(): Promise<void> {
-    held = merge(held, await invokeCommand(TAURI_COMMANDS.TAKE_STARTUP_NOTICES));
+    const taken = await invokeCommand(TAURI_COMMANDS.TAKE_STARTUP_NOTICES);
+    held = merge(held, taken);
 }
 
 // Returns one held notice and clears it, so it is shown once.
