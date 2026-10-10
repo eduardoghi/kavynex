@@ -142,6 +142,21 @@ describe("DatabaseSection", () => {
         expect(cancelImport).toHaveBeenCalledTimes(1);
     });
 
+    it("names the selected file and moves focus to the import question", () => {
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({ pendingImportPath: "C:/Users/someone/Backups/kavynex-2026.db" })}
+            />
+        );
+
+        // The file that will replace the database, shown before "Replace and restart" can be
+        // pressed, and the question focused so a keyboard user lands on it.
+        expect(screen.getByText("kavynex-2026.db")).toBeInTheDocument();
+        expect(
+            screen.getByRole("alert", { name: "Replace the current database" })
+        ).toHaveFocus();
+    });
+
     it("confirms an undo from its confirmation prompt", () => {
         const confirmUndoImportAction = vi.fn();
 

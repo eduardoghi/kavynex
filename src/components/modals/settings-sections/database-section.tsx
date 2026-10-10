@@ -1,7 +1,9 @@
-import { Alert, Divider, Group, Stack, Text, Title } from "@mantine/core";
+import { Alert, Code, Divider, Group, Stack, Text, Title } from "@mantine/core";
+import { useEffect, useRef } from "react";
 import { Database, Download, FolderClock, Undo2, Upload, X } from "lucide-react";
 import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
+import { fileNameFromPath } from "../../../utils/media-utils";
 
 // "the backup from <date>" in the recovery modal uses the same locale call. Keep them reading the
 // same way. A status with no backup yet has no timestamp, which the caller renders as its own line
@@ -89,6 +91,24 @@ export function DatabaseSection({
     onChooseExternalBackupDir,
     onClearExternalBackupDir,
 }: DatabaseSectionProps): JSX.Element {
+    // The confirmations appear below the buttons that opened them. Moving focus there is what lets a
+    // keyboard or screen reader user find the question at all, and read which file is about to
+    // replace the database before confirming.
+    const importConfirmRef = useRef<HTMLDivElement>(null);
+    const undoConfirmRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (pendingImportPath) {
+            importConfirmRef.current?.focus();
+        }
+    }, [pendingImportPath]);
+
+    useEffect(() => {
+        if (isUndoImportConfirmOpen) {
+            undoConfirmRef.current?.focus();
+        }
+    }, [isUndoImportConfirmOpen]);
+
     const isBusy = databaseBusy !== "idle";
 
     // The two halves of this section used to sit in their own bordered cards, inside a modal that
@@ -161,7 +181,13 @@ export function DatabaseSection({
             </Group>
 
             {isUndoImportConfirmOpen && (
-                <Alert color="yellow" variant="light">
+                <Alert
+                    ref={undoConfirmRef}
+                    tabIndex={-1}
+                    color="yellow"
+                    variant="light"
+                    aria-label="Undo the last database import"
+                >
                     <Stack gap="xs">
                         <Text size="sm" fw={600}>
                             Undo the last database import?
@@ -195,10 +221,19 @@ export function DatabaseSection({
             )}
 
             {pendingImportPath && (
-                <Alert color="yellow" variant="light">
+                <Alert
+                    ref={importConfirmRef}
+                    tabIndex={-1}
+                    color="yellow"
+                    variant="light"
+                    aria-label="Replace the current database"
+                >
                     <Stack gap="xs">
                         <Text size="sm" fw={600}>
                             Replace the current database?
+                        </Text>
+                        <Text size="sm" title={pendingImportPath}>
+                            Selected file: <Code>{fileNameFromPath(pendingImportPath)}</Code>
                         </Text>
                         <Text size="sm">
                             Importing replaces your current library database and restarts the app.
