@@ -38,7 +38,6 @@ use crate::utils::format::{codec_is_present, is_allowed_media_extension};
 use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
 use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
-use crate::utils::process::hide_console_async;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -919,15 +918,10 @@ pub async fn download_media_from_url_async<R: Runtime>(
         )?;
 
         let mut command = Command::new(&yt_dlp);
-        crate::utils::process::configure_process_group(&mut command);
-        hide_console_async(&mut command);
+        crate::utils::process::configure_child_async(&mut command);
         // Starts in the run's own temp directory rather than wherever the app was launched from
         // (see utils::process::pin_working_dir_async).
         crate::utils::process::pin_working_dir_async(&mut command, &temp_dir);
-        // If stdout/stderr capture fails below and the `?` returns early, the Child must not
-        // be left running detached; mirrors the kill_on_drop used by every sibling yt-dlp
-        // spawn (yt_dlp/metadata.rs, thumbnail/download.rs).
-        command.kill_on_drop(true);
 
         let mut child = command
             .args(&args)
@@ -1136,6 +1130,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                     let _ = child.kill().await;
                 }
             }
+
 
             match timeout(Duration::from_millis(YT_DLP_WAIT_POLL_MILLIS), child.wait()).await {
                 Ok(wait_result) => {

@@ -18,7 +18,6 @@ use tokio::time::timeout;
 use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
 use crate::services::yt_dlp::cookies::append_auth_args;
 use crate::utils::bounded_semaphore::BoundedSemaphore;
-use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Cap on how much stdout/stderr is retained from a yt-dlp thumbnail/avatar run. These commands
@@ -77,7 +76,7 @@ async fn read_drain_capped_async(
 /// pipes concurrently with the wait so neither can deadlock the other (mirroring std's own
 /// implementation), but bounded.
 async fn wait_with_capped_output(
-    mut child: tokio::process::Child,
+    child: &mut tokio::process::Child,
 ) -> std::io::Result<std::process::Output> {
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -116,14 +115,10 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
         .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
         .await?;
 
-    // Any early return still reaps the direct child; the tree kill below covers the ffmpeg
-    // grandchild that `kill_on_drop` does not reach.
-    command.kill_on_drop(true);
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    hide_console_async(&mut command);
-    crate::utils::process::configure_process_group(&mut command);
+    crate::utils::process::configure_child_async(&mut command);
 
-    let child = command.spawn().map_err(|e| {
+    let mut child = command.spawn().map_err(|e| {
         AppError::from_code(
             AppErrorCode::YtDlpThumbnailExecFailed,
             format!("{exec_message}: {e}"),
@@ -136,10 +131,14 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
     // (the pre-download media thumbnail). Unregisters when this function returns.
     let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
+    // The child is borrowed rather than moved into the wait, so it is still alive when the timeout
+    // or cancel arm below kills its tree. Moved in, it was dropped (and `kill_on_drop` ended yt-dlp)
+    // before that arm ran, and on Windows a tree kill by the pid of a process already gone does not
+    // find the FFmpeg it started.
     tokio::select! {
         output_result = timeout(
             Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            wait_with_capped_output(child),
+            wait_with_capped_output(&mut child),
         ) => match output_result {
             Ok(result) => result.map_err(|e| {
                 AppError::from_code(

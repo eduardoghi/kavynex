@@ -133,6 +133,189 @@ pub fn default_child_working_dir() -> std::path::PathBuf {
     std::env::temp_dir()
 }
 
+/// Variables an AppImage's launcher sets for the app's own bundled libraries and runtimes. A child
+/// inheriting them is a system yt-dlp or FFmpeg loading the bundle's copies, built against other
+/// versions, which fails with symbol errors that name nothing the user installed.
+const APPIMAGE_ONLY_ENV: [&str; 8] = [
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "GIO_MODULE_DIR",
+    "GDK_PIXBUF_MODULE_FILE",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+];
+
+/// The variables to remove from a child's environment. Only inside an AppImage, which is what
+/// sets `APPIMAGE`. Anywhere else these belong to the user and are passed through untouched.
+fn env_to_clear(is_appimage: bool) -> &'static [&'static str] {
+    if is_appimage {
+        &APPIMAGE_ONLY_ENV
+    } else {
+        &[]
+    }
+}
+
+fn running_inside_appimage() -> bool {
+    std::env::var_os("APPIMAGE").is_some()
+}
+
+/// What every yt-dlp and FFmpeg child gets before it is spawned, in one place so no spawn site can
+/// leave one out. No console window, its own process group (so the tree kill reaches FFmpeg under
+/// yt-dlp), no stdin, and none of an AppImage's library variables. Where it starts is still chosen
+/// per site ([`pin_working_dir`]), because each has its own directory for the run.
+pub fn configure_child(command: &mut std::process::Command) {
+    command.stdin(std::process::Stdio::null());
+    hide_console(command);
+    configure_process_group_blocking(command);
+
+    for name in env_to_clear(running_inside_appimage()) {
+        command.env_remove(name);
+    }
+}
+
+/// [`configure_child`] for an async [`tokio::process::Command`], which is also killed when its
+/// handle is dropped, so an early return never leaves the direct child running.
+pub fn configure_child_async(command: &mut tokio::process::Command) {
+    command.stdin(std::process::Stdio::null());
+    command.kill_on_drop(true);
+    hide_console_async(command);
+    configure_process_group(command);
+
+    for name in env_to_clear(running_inside_appimage()) {
+        command.env_remove(name);
+    }
+}
+
+/// Puts the process `pid` in a job that Windows kills when the app's process ends, however it ends.
+///
+/// The exit handler kills every tracked child, but some exits never reach it. The updater installs
+/// on Windows by calling `std::process::exit`, and a crash or a kill from the task manager skips it
+/// too. A child in this job dies with the app all the same, and so do the processes it starts
+/// afterwards (FFmpeg under yt-dlp), which inherit the job.
+///
+/// Best effort, and false when it did not happen (the process is gone, or the job could not be
+/// made). Nothing else depends on it.
+#[cfg(windows)]
+pub fn attach_to_kill_on_close_job(pid: u32) -> bool {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+
+    #[repr(C)]
+    struct BasicLimitInformation {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    struct ExtendedLimitInformation {
+        basic_limit_information: BasicLimitInformation,
+        io_info: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateJobObjectW(attributes: *mut c_void, name: *const u16) -> *mut c_void;
+        fn SetInformationJobObject(
+            job: *mut c_void,
+            information_class: i32,
+            information: *const c_void,
+            length: u32,
+        ) -> i32;
+        fn OpenProcess(desired_access: u32, inherit_handle: i32, process_id: u32) -> *mut c_void;
+        fn AssignProcessToJobObject(job: *mut c_void, process: *mut c_void) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS: i32 = 9;
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x2000;
+    const PROCESS_TERMINATE: u32 = 0x0001;
+    const PROCESS_SET_QUOTA: u32 = 0x0100;
+
+    // The handle lives as long as the app's process, and the OS closing it at exit is what kills
+    // the job's processes. Stored as an address because a raw pointer is not `Sync`. Zero means the
+    // job could not be made, and nothing is attached.
+    static JOB: OnceLock<usize> = OnceLock::new();
+
+    let job = *JOB.get_or_init(|| {
+        // SAFETY: both arguments may be null (default security, unnamed job). The limit structure
+        // is fully initialized, matches JOBOBJECT_EXTENDED_LIMIT_INFORMATION's layout, and outlives
+        // the call. A job that cannot be configured is closed and not used.
+        unsafe {
+            let job = CreateJobObjectW(std::ptr::null_mut(), std::ptr::null());
+
+            if job.is_null() {
+                return 0;
+            }
+
+            let mut limits: ExtendedLimitInformation = std::mem::zeroed();
+            limits.basic_limit_information.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+            let configured = SetInformationJobObject(
+                job,
+                JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS,
+                (&limits as *const ExtendedLimitInformation).cast(),
+                std::mem::size_of::<ExtendedLimitInformation>() as u32,
+            );
+
+            if configured == 0 {
+                CloseHandle(job);
+                return 0;
+            }
+
+            job as usize
+        }
+    });
+
+    if job == 0 {
+        return false;
+    }
+
+    // SAFETY: `pid` names a child this process spawned and still holds, so it has not been reused.
+    // The process handle is checked for null and always closed. The job handle is the live one
+    // created above.
+    unsafe {
+        let process = OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, 0, pid);
+
+        if process.is_null() {
+            return false;
+        }
+
+        let assigned = AssignProcessToJobObject(job as *mut c_void, process);
+        CloseHandle(process);
+
+        assigned != 0
+    }
+}
+
+/// Other platforms have no kill-on-close job. The exit sweep is what reaches a child there.
+#[cfg(not(windows))]
+pub fn attach_to_kill_on_close_job(_pid: u32) -> bool {
+    false
+}
+
 /// Kills a spawned child *and* every descendant it created, asynchronously. `yt-dlp` routinely
 /// spawns an `ffmpeg` child (merges, `--convert-thumbnails`), and killing only the direct
 /// child (`Child::kill`/`kill_on_drop`) leaves that grandchild running. On Windows this uses
@@ -586,5 +769,40 @@ mod tests {
 
         assert_eq!(error.code, AppErrorCode::FfmpegFailed.as_str());
         assert_eq!(error.message, "ffmpeg failed to generate thumbnail");
+    }
+
+    #[test]
+    fn an_appimage_clears_its_library_variables_from_a_child() {
+        assert!(env_to_clear(true).contains(&"LD_LIBRARY_PATH"));
+        assert!(env_to_clear(true).contains(&"PYTHONPATH"));
+    }
+
+    #[test]
+    fn outside_an_appimage_a_child_keeps_the_users_environment() {
+        assert!(env_to_clear(false).is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_running_child_can_be_put_in_the_kill_on_close_job() {
+        let mut child = std::process::Command::new("ping")
+            .args(["-n", "30", "127.0.0.1"])
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .expect("ping is part of Windows");
+
+        let attached = attach_to_kill_on_close_job(child.id());
+
+        let _ = child.kill();
+        let _ = child.wait();
+
+        assert!(attached);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_process_that_is_gone_is_not_attached() {
+        // Pid 0 is the system idle process, which can never be opened for these rights.
+        assert!(!attach_to_kill_on_close_job(0));
     }
 }

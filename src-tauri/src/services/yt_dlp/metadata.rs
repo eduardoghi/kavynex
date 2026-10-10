@@ -22,7 +22,6 @@ use crate::services::yt_dlp::url::{is_allowed_youtube_url, youtube_ref_for_log};
 use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
-use crate::utils::process::hide_console_async;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
@@ -509,14 +508,8 @@ async fn run_yt_dlp_and_capture_json(
     command
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // Any early return below (timeout, pipe capture failure) must not leave yt-dlp
-        // running unsupervised in the background.
-        .kill_on_drop(true);
-    hide_console_async(&mut command);
-    // yt-dlp can spawn an ffmpeg child (e.g. `-x`/`--convert-*`); put it in its own process
-    // group so a timeout can terminate the whole tree, not just the direct child.
-    crate::utils::process::configure_process_group(&mut command);
+        .stderr(Stdio::piped());
+    crate::utils::process::configure_child_async(&mut command);
     // A metadata-only run writes nothing the app keeps, so it has no directory of its own to
     // start in. The default keeps it out of wherever the app was launched from (see
     // utils::process::pin_working_dir_async).

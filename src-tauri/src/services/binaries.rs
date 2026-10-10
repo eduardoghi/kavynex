@@ -8,7 +8,6 @@ use tauri::{AppHandle, Manager, Runtime};
 
 use crate::models::yt_dlp::{ExternalToolHealth, ExternalToolsStatus};
 use crate::services::logger;
-use crate::utils::process::hide_console;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -348,11 +347,9 @@ fn run_command_capturing_first_line_within(
     let mut command = Command::new(binary_path);
     command
         .args(args)
-        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    hide_console(&mut command);
-    crate::utils::process::configure_process_group_blocking(&mut command);
+    crate::utils::process::configure_child(&mut command);
     // A `--version` probe has no directory of its own. The default keeps it out of wherever the
     // app was launched from (see utils::process::pin_working_dir).
     crate::utils::process::pin_working_dir(
@@ -366,6 +363,10 @@ fn run_command_capturing_first_line_within(
             format!("{default_message}: failed to execute command: {e}"),
         )
     })?;
+
+    // So the app-exit sweep reaches a probe that is still running (a yt-dlp shim that hangs), and
+    // so an exit that skips the sweep takes it down too.
+    let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
 
     let deadline = Instant::now() + timeout;
     loop {

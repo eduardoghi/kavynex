@@ -50,9 +50,7 @@ use crate::services::temp_paths::thumb_display_dir;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_relative_path_in_managed_dir, ManagedSubtree,
 };
-use crate::utils::process::{
-    configure_process_group_blocking, hide_console, kill_process_tree_blocking,
-};
+use crate::utils::process::kill_process_tree_blocking;
 use crate::AppResult;
 
 /// How long one derivative generation may run before FFmpeg is treated as hung and its process
@@ -469,9 +467,7 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
     command.args(build_display_thumbnail_args(source_path, out_path));
     command.stdout(std::process::Stdio::null());
     command.stderr(std::process::Stdio::null());
-    hide_console(&mut command);
-    // Own process group so the timeout below can tree-kill it, matching every other call site.
-    configure_process_group_blocking(&mut command);
+    crate::utils::process::configure_child(&mut command);
     // Starts in the cache directory the derivative goes to rather than wherever the app was
     // launched from (see utils::process::pin_working_dir).
     let working_dir = out_path
@@ -485,6 +481,8 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
     };
 
     let pid = child.id();
+    // So the app-exit sweep reaches it, and an exit that skips the sweep takes it down too.
+    let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(pid));
     let deadline = std::time::Instant::now() + DISPLAY_THUMBNAIL_TIMEOUT;
 
     loop {

@@ -14,8 +14,7 @@ use crate::utils::format::{
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path, is_network_path};
 use crate::utils::process::{
-    configure_process_group_blocking, default_child_working_dir, hide_console,
-    kill_process_tree_blocking, pin_working_dir, read_process_error,
+    default_child_working_dir, kill_process_tree_blocking, pin_working_dir, read_process_error,
 };
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -167,11 +166,7 @@ fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8
 }
 
 fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
-    hide_console(&mut command);
-    // Put the child in its own process group so the timeout below can tree-kill it. ffmpeg does not
-    // normally spawn children, but this matches the group-then-kill discipline every other call site
-    // uses and covers any helper it does spawn.
-    configure_process_group_blocking(&mut command);
+    crate::utils::process::configure_child(&mut command);
 
     let mut child = command
         .stdout(Stdio::piped())

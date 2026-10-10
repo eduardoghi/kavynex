@@ -54,6 +54,8 @@ impl TrackedChildGuard {
 
         if let Some(pid) = pid {
             lock_registry().insert(token, pid);
+            // For the exits the sweep below never sees (see attach_to_kill_on_close_job).
+            crate::utils::process::attach_to_kill_on_close_job(pid);
         }
 
         Self { token }
