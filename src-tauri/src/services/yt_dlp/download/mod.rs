@@ -1557,6 +1557,7 @@ mod tests {
 
         // Nothing live-chat or cookie related is added when not requested.
         assert!(!args.iter().any(|arg| arg == "--write-subs"));
+        assert!(!args.iter().any(|arg| arg == "--ignore-errors"));
         assert!(!args.iter().any(|arg| arg == "--cookies"));
         assert!(!args.iter().any(|arg| arg == "--cookies-from-browser"));
 
@@ -1637,6 +1638,8 @@ mod tests {
         let subs_index = args.iter().position(|arg| arg == "--write-subs").unwrap();
         assert_eq!(args[subs_index + 1], "--sub-langs");
         assert_eq!(args[subs_index + 2], "live_chat");
+        // And a replay that fails to download does not abort the media with it.
+        assert!(args.iter().any(|arg| arg == "--ignore-errors"));
 
         // The browser cookie source is passed through.
         let cookies_index = args

@@ -203,6 +203,11 @@ pub(super) fn build_download_command_args(
         args.push("--write-subs".to_string());
         args.push("--sub-langs".to_string());
         args.push("live_chat".to_string());
+        // yt-dlp writes subtitles before the media, and a subtitle that fails to download raises
+        // unless errors are ignored outright (`_write_subtitles` in YoutubeDL.py), which ends the run
+        // with no media. A replay that cannot be fetched must not cost the video. Ignoring errors
+        // turns that one into a warning, and a media download that fails still exits non-zero.
+        args.push("--ignore-errors".to_string());
     }
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
