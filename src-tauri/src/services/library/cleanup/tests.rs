@@ -911,7 +911,11 @@ fn only_unreferenced_files_named_like_the_apps_own_are_removable_orphans() {
     // Unreferenced as well, but not named by the app, so they may be the user's own.
     fs::write(library.join("video/holiday.mp4"), b"x").unwrap();
     fs::write(library.join("video/media_backup.mp4"), b"x").unwrap();
-    fs::write(library.join("live_chat/youtube_ID_137.live_chat.json.gz"), b"x").unwrap();
+    fs::write(
+        library.join("live_chat/youtube_ID_137.live_chat.json.gz"),
+        b"x",
+    )
+    .unwrap();
 
     let expected = crate::services::library::integrity::ExpectedLibraryPaths {
         media: vec![referenced_media.clone()],
@@ -933,6 +937,31 @@ fn only_unreferenced_files_named_like_the_apps_own_are_removable_orphans() {
             (ArtifactKind::MediaFile, orphan_media),
         ]
     );
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+#[test]
+fn a_reference_spelled_differently_still_protects_the_file() {
+    // The stored path and the file on disk name the same digest, but not with the same bytes:
+    // other letter case, other separator, another extension. A path comparison would call the
+    // file an orphan, and on a case-insensitive filesystem the row would lose its file.
+    let library = unique_test_dir("orphans-spelling");
+    fs::create_dir_all(library.join("video")).unwrap();
+    fs::create_dir_all(library.join("thumbnails")).unwrap();
+
+    let on_disk_media = format!("video/media_{}.mp4", "a".repeat(64));
+    let on_disk_thumb = format!("thumbnails/thumb_{}.jpg", "b".repeat(64));
+    fs::write(library.join(&on_disk_media), b"x").unwrap();
+    fs::write(library.join(&on_disk_thumb), b"x").unwrap();
+
+    let expected = crate::services::library::integrity::ExpectedLibraryPaths {
+        media: vec![format!(r"VIDEO\media_{}.MP4", "A".repeat(64))],
+        thumbnails: vec![format!("thumbnails/thumb_{}.png", "b".repeat(64))],
+        live_chat: Vec::new(),
+    };
+
+    assert!(removable_orphans(&library, &expected).is_empty());
 
     let _ = fs::remove_dir_all(&library);
 }

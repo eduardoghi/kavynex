@@ -783,6 +783,11 @@ pub(crate) async fn cleanup_unreferenced_artifacts_locked<R: Runtime>(
 /// not required to be empty, and a file the user put in `video/` by hand is reported as an orphan
 /// too, but it does not carry a digest in its name, so it stays. Live chat replays are left out
 /// entirely, since their names carry no digest either.
+///
+/// "Referenced" is decided by digest, not by the path's spelling. A row whose stored path differs
+/// from the file on disk only in letter case or separators (which the filesystem may treat as the
+/// same file) still protects it, and so does any row naming the same digest under another
+/// extension or folder, since a content-addressed name with that digest is the same bytes.
 pub(crate) fn removable_orphans(
     library_dir: &Path,
     expected: &crate::services::library::integrity::ExpectedLibraryPaths,
@@ -791,32 +796,42 @@ pub(crate) fn removable_orphans(
     use crate::services::library::integrity::list_files_relative;
     use crate::services::library::verification::declared_content_hash;
 
-    let groups: [(&str, ArtifactKind, &Vec<String>); 3] = [
-        (LIBRARY_DIR_VIDEO, ArtifactKind::MediaFile, &expected.media),
-        (LIBRARY_DIR_AUDIO, ArtifactKind::MediaFile, &expected.media),
-        (
-            LIBRARY_DIR_THUMBNAILS,
-            ArtifactKind::Thumbnail,
-            &expected.thumbnails,
-        ),
+    let groups: [(&str, ArtifactKind); 3] = [
+        (LIBRARY_DIR_VIDEO, ArtifactKind::MediaFile),
+        (LIBRARY_DIR_AUDIO, ArtifactKind::MediaFile),
+        (LIBRARY_DIR_THUMBNAILS, ArtifactKind::Thumbnail),
     ];
+
+    // Every digest any row names, from either list, lowercased. A stored path that declares no
+    // digest protects nothing here, and needs not to, because only digest-named files are removed.
+    let referenced_digests: std::collections::HashSet<String> = expected
+        .media
+        .iter()
+        .chain(expected.thumbnails.iter())
+        .filter_map(|path| {
+            let file_name = path.rsplit(['/', '\\']).next().unwrap_or_default();
+            declared_content_hash(file_name).map(str::to_ascii_lowercase)
+        })
+        .collect();
 
     let mut removable = Vec::new();
 
-    for (subdir, kind, referenced) in groups {
+    for (subdir, kind) in groups {
         for relative in list_files_relative(&library_dir.join(subdir), library_dir) {
-            if referenced.contains(&relative) {
+            let file_name = relative.rsplit('/').next().unwrap_or_default();
+
+            let Some(digest) = declared_content_hash(file_name) else {
+                continue;
+            };
+
+            if referenced_digests.contains(&digest.to_ascii_lowercase()) {
                 continue;
             }
 
-            let file_name = relative.rsplit('/').next().unwrap_or_default();
-
-            if declared_content_hash(file_name).is_some() {
-                removable.push(DeletableArtifact {
-                    kind,
-                    path: relative,
-                });
-            }
+            removable.push(DeletableArtifact {
+                kind,
+                path: relative,
+            });
         }
     }
 
@@ -826,21 +841,26 @@ pub(crate) fn removable_orphans(
 /// Removes the library files no row references, which is what Diagnostics reports as orphans,
 /// limited to the ones `removable_orphans` recognizes as the app's own.
 ///
-/// Holds [`MEDIA_REGISTRATION_LOCK`] for the whole run and refuses while a media creation is in
-/// flight, since a creation's artifacts sit in the library unreferenced until its row lands. The
-/// unlink itself goes through the same plan a deletion runs, so each path is recounted against the
-/// database right before it goes and every file is removed under the library gate.
+/// Refused while a media creation is running, and holds every new one off until it is done (see
+/// `media_creation::try_exclude_creations`), since a creation's artifacts sit in the library
+/// unreferenced until its row lands. Also holds [`MEDIA_REGISTRATION_LOCK`], which the startup
+/// sweep and the avatar cleanup take. The unlink goes through the same plan a deletion runs, so each
+/// path is recounted against the database right before it goes and every file is removed under the
+/// library gate.
 pub async fn remove_orphan_artifacts<R: Runtime>(
     app: &AppHandle<R>,
 ) -> AppResult<ArtifactCleanupReport> {
-    let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
-
-    if crate::services::media_creation::creations_in_flight() > 0 {
+    // Taken without waiting and before the registration lock. A creation takes the two in the
+    // other order (its gate for the whole run, the lock around the insert), so waiting here while
+    // holding the lock could deadlock.
+    let Some(_creations_excluded) = crate::services::media_creation::try_exclude_creations() else {
         return Err(AppError::from_code(
             AppErrorCode::MediaCreationInProgress,
             "a media is being added, so its files are not referenced yet",
         ));
-    }
+    };
+
+    let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
 
     let pool = shared_pool(app).await?;
     let references =

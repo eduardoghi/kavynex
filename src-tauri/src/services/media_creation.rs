@@ -228,29 +228,18 @@ pub(crate) fn ensure_request_files_were_chosen(request: &CreateMediaRequest) -> 
     ensure_chosen_if_present(ChosenFile::Source, request.cookies_path.as_deref())
 }
 
-/// How many media creations are running. A creation writes its artifacts into the library before
-/// the row that references them lands, so for that stretch they look exactly like orphans.
-/// `library::cleanup::remove_orphan_artifacts` refuses while this is above zero.
-static CREATIONS_IN_FLIGHT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Held shared by every media creation for its whole run, and exclusively by the orphan removal.
+///
+/// A creation writes its artifacts into the library before the row that references them lands, so
+/// for that stretch they look exactly like orphans. A count checked once when the removal starts is
+/// not enough, since a creation starting a moment later could place its file while the removal is
+/// still listing the folder. With the gate, a creation that starts during a removal waits for it,
+/// and a removal that finds a creation running is refused (`try_exclude_creations`).
+static CREATION_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
-pub(crate) fn creations_in_flight() -> usize {
-    CREATIONS_IN_FLIGHT.load(std::sync::atomic::Ordering::SeqCst)
-}
-
-/// Counts one creation for as long as it lives, whichever way it ends.
-struct CreationInFlight;
-
-impl CreationInFlight {
-    fn begin() -> Self {
-        CREATIONS_IN_FLIGHT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Self
-    }
-}
-
-impl Drop for CreationInFlight {
-    fn drop(&mut self) {
-        CREATIONS_IN_FLIGHT.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
-    }
+/// The exclusive side of [`CREATION_GATE`], or `None` while a creation is running.
+pub(crate) fn try_exclude_creations() -> Option<tokio::sync::RwLockWriteGuard<'static, ()>> {
+    CREATION_GATE.try_write().ok()
 }
 
 /// Normalizes a caller-supplied optional string to `None` when it is blank.
@@ -1101,7 +1090,7 @@ pub async fn create_media_async<R: Runtime>(
     app: &AppHandle<R>,
     request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
-    let _in_flight = CreationInFlight::begin();
+    let _creation = CREATION_GATE.read().await;
     let request = normalize_create_media_request(request)?;
 
     ensure_channel_exists(app, request.channel_id).await?;

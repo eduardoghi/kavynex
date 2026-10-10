@@ -529,6 +529,14 @@ fn the_source_mode_deserializes_from_the_wire_spelling() {
 // Deliberately not covered here. The artifact *production* above it. That runs yt-dlp, FFmpeg
 // and an HTTP fetch, none of which belongs in a unit test, and it is also the half where a
 // failure is loud. The registration is the quiet one.
+#[tokio::test]
+async fn the_orphan_removal_is_refused_while_a_creation_holds_the_gate() {
+    // What a running create_media_async holds for its whole run.
+    let _creation = CREATION_GATE.read().await;
+
+    assert!(try_exclude_creations().is_none());
+}
+
 mod registration {
     use super::*;
     use crate::services::database::{get_app_settings_from_pool, set_app_settings_in_pool, Db};
