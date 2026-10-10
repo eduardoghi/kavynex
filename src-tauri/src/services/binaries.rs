@@ -121,7 +121,9 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
 
     for candidate in candidates {
         for dir in std::env::split_paths(path_var) {
-            if dir.as_os_str().is_empty() {
+            // An empty or relative entry (`.`, `bin`) resolves against the current directory, which
+            // is the lookup this function exists to avoid.
+            if !dir.is_absolute() {
                 continue;
             }
 
@@ -155,7 +157,9 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
     // up implicitly.
     for candidate in candidates {
         for dir in std::env::split_paths(path_var) {
-            if dir.as_os_str().is_empty() {
+            // An empty or relative entry resolves against the current directory. Skipped, so a
+            // binary there is never picked up implicitly.
+            if !dir.is_absolute() {
                 continue;
             }
 
@@ -286,8 +290,12 @@ pub fn resolve_js_runtime<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
-/// `path_var` with `dir` put first, unless it is already listed.
-fn path_with_dir_first(path_var: Option<&OsStr>, dir: &Path) -> Option<std::ffi::OsString> {
+/// `path_var` with `dir` added last, unless it is already listed.
+///
+/// Last rather than first. Deno is looked for only when nothing on the child's PATH provides it, and
+/// putting its folder first made any `ffmpeg` or `ffprobe` that happened to sit beside it win over
+/// the ones the PATH names, for every lookup yt-dlp makes by bare name.
+fn path_with_dir_last(path_var: Option<&OsStr>, dir: &Path) -> Option<std::ffi::OsString> {
     let mut dirs: Vec<PathBuf> = path_var
         .map(|value| std::env::split_paths(value).collect())
         .unwrap_or_default();
@@ -296,7 +304,7 @@ fn path_with_dir_first(path_var: Option<&OsStr>, dir: &Path) -> Option<std::ffi:
         return None;
     }
 
-    dirs.insert(0, dir.to_path_buf());
+    dirs.push(dir.to_path_buf());
     std::env::join_paths(dirs).ok()
 }
 
@@ -320,7 +328,7 @@ fn remember_js_runtime(deno: Option<String>) {
 /// yt-dlp looks for Deno on its own PATH. A Mac app opened from Finder has a PATH without Homebrew's
 /// directory, and a Deno placed in the app's tools folder is on no PATH at all, so yt-dlp ran
 /// without a JavaScript runtime even though the app could see one. When Deno was found somewhere
-/// the child's PATH does not list, that directory is put first on it.
+/// the child's PATH does not list, that directory is added at its end.
 pub fn expose_js_runtime_to_child(command: &mut tokio::process::Command) {
     let dir = js_runtime_dir()
         .lock()
@@ -331,7 +339,7 @@ pub fn expose_js_runtime_to_child(command: &mut tokio::process::Command) {
         return;
     };
 
-    if let Some(path) = path_with_dir_first(std::env::var_os("PATH").as_deref(), &dir) {
+    if let Some(path) = path_with_dir_last(std::env::var_os("PATH").as_deref(), &dir) {
         command.env("PATH", path);
     }
 }
@@ -804,6 +812,28 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    #[test]
+    fn resolve_from_path_var_skips_a_relative_entry() {
+        // A relative entry names a folder under whatever the working directory is, the lookup the
+        // resolution exists to avoid. Built under `target/`, which the test's working directory holds.
+        let relative = PathBuf::from("target").join(format!(
+            "kavynex-relative-path-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&relative).unwrap();
+        let name = if cfg!(windows) {
+            "kavynex-fake-tool.exe"
+        } else {
+            "kavynex-fake-tool"
+        };
+        make_executable(&relative.join(name));
+
+        let path_var = std::env::join_paths([relative.as_os_str()]).unwrap();
+        assert!(resolve_from_path_var(&path_var, &[name]).is_none());
+
+        let _ = std::fs::remove_dir_all(&relative);
+    }
+
     #[cfg(windows)]
     #[test]
     fn resolve_from_path_var_honors_pathext_for_bare_candidate() {
@@ -883,16 +913,16 @@ mod tests {
     }
 
     #[test]
-    fn a_deno_folder_missing_from_path_is_put_first_for_the_child() {
+    fn a_deno_folder_missing_from_path_is_added_last_for_the_child() {
         let deno_dir = std::env::temp_dir().join("kavynex-deno-bin");
         let other = std::env::temp_dir().join("kavynex-other-bin");
         let path_var = std::env::join_paths([&other]).unwrap();
 
-        let path = path_with_dir_first(Some(path_var.as_os_str()), &deno_dir).unwrap();
+        let path = path_with_dir_last(Some(path_var.as_os_str()), &deno_dir).unwrap();
 
         assert_eq!(
             std::env::split_paths(&path).collect::<Vec<_>>(),
-            vec![deno_dir, other]
+            vec![other, deno_dir]
         );
     }
 
@@ -901,14 +931,14 @@ mod tests {
         let deno_dir = std::env::temp_dir().join("kavynex-deno-bin");
         let path_var = std::env::join_paths([&deno_dir]).unwrap();
 
-        assert!(path_with_dir_first(Some(path_var.as_os_str()), &deno_dir).is_none());
+        assert!(path_with_dir_last(Some(path_var.as_os_str()), &deno_dir).is_none());
     }
 
     #[test]
     fn a_child_with_no_path_at_all_gets_the_deno_folder() {
         let deno_dir = std::env::temp_dir().join("kavynex-deno-bin");
 
-        let path = path_with_dir_first(None, &deno_dir).unwrap();
+        let path = path_with_dir_last(None, &deno_dir).unwrap();
 
         assert_eq!(
             std::env::split_paths(&path).collect::<Vec<_>>(),

@@ -761,6 +761,14 @@ launching a malicious `yt-dlp.exe`/`ffmpeg.exe` planted next to a downloaded fil
 directory search order included the CWD. See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for
 the (documented, opt-in) fallback to a `tools/` folder inside the app data directory.
 
+An empty or relative `PATH` entry (`.`, `bin`) is skipped too, since it names a folder under the
+working directory. `taskkill.exe`, which every cancel and timeout runs on Windows, is started from
+`%SystemRoot%\System32` by its full path, because a bare name is looked up in the app's own folder
+first. A Deno found outside the child's `PATH` is added at its end rather than its start, so an
+`ffmpeg` beside it does not win over the one the `PATH` names. And every child is started with
+`YTDLP_NO_PLUGINS=1`, because `--ignore-config` drops yt-dlp's configuration files but not its plugin
+folders, and a plugin is Python running in the process that holds the browser cookies.
+
 On Windows the `PATHEXT` expansion additionally **skips `.bat`/`.cmd` shims**, because launching a
 batch file routes through `cmd.exe`, which re-parses the command line and historically reopened
 argument injection (CVE-2024-24576, "BatBadBut") even when the process is spawned as an argv array.

@@ -192,6 +192,12 @@ fn running_inside_appimage() -> bool {
     std::env::var_os("APPIMAGE").is_some()
 }
 
+/// Keeps yt-dlp from loading plugins. `--ignore-config` drops the user's configuration files but not
+/// the plugin folders (in the user's config directory and beside the binary), and a plugin is Python
+/// that runs inside the process holding the browser cookies. The app uses none. Harmless to the
+/// other children, and to a yt-dlp too old to know the variable.
+const NO_YT_DLP_PLUGINS: (&str, &str) = ("YTDLP_NO_PLUGINS", "1");
+
 /// What every yt-dlp and FFmpeg child gets before it is spawned, in one place so no spawn site can
 /// leave one out. No console window, its own process group (so the tree kill reaches FFmpeg under
 /// yt-dlp), no stdin, and none of an AppImage's library variables. Where it starts is still chosen
@@ -200,6 +206,7 @@ pub fn configure_child(command: &mut std::process::Command) {
     command.stdin(std::process::Stdio::null());
     hide_console(command);
     configure_process_group_blocking(command);
+    command.env(NO_YT_DLP_PLUGINS.0, NO_YT_DLP_PLUGINS.1);
     #[cfg(windows)]
     command.env(NO_CWD_IN_EXE_SEARCH.0, NO_CWD_IN_EXE_SEARCH.1);
 
@@ -215,6 +222,7 @@ pub fn configure_child_async(command: &mut tokio::process::Command) {
     command.kill_on_drop(true);
     hide_console_async(command);
     configure_process_group(command);
+    command.env(NO_YT_DLP_PLUGINS.0, NO_YT_DLP_PLUGINS.1);
     #[cfg(windows)]
     command.env(NO_CWD_IN_EXE_SEARCH.0, NO_CWD_IN_EXE_SEARCH.1);
 
@@ -351,6 +359,20 @@ pub fn attach_to_kill_on_close_job(_pid: u32) -> bool {
     false
 }
 
+/// `taskkill.exe` in the system directory, by its full path.
+///
+/// `Command::new("taskkill")` searches the directory the app was started from before the system
+/// directories, so a `taskkill.exe` placed next to the installed app would be what every cancel and
+/// every timeout ran. The same reason `services::file_manager` builds explorer's path from
+/// `%SystemRoot%`.
+#[cfg(target_os = "windows")]
+fn taskkill_path() -> std::path::PathBuf {
+    let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| String::from(r"C:\Windows"));
+    std::path::Path::new(&system_root)
+        .join("System32")
+        .join("taskkill.exe")
+}
+
 /// Kills a spawned child *and* every descendant it created, asynchronously. `yt-dlp` routinely
 /// spawns an `ffmpeg` child (merges, `--convert-thumbnails`), and killing only the direct
 /// child (`Child::kill`/`kill_on_drop`) leaves that grandchild running. On Windows this uses
@@ -358,7 +380,7 @@ pub fn attach_to_kill_on_close_job(_pid: u32) -> bool {
 /// [`configure_process_group`] via the negative pid.
 #[cfg(target_os = "windows")]
 pub async fn kill_process_tree(pid: u32) {
-    let mut command = tokio::process::Command::new("taskkill");
+    let mut command = tokio::process::Command::new(taskkill_path());
     command
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .stdout(Stdio::null())
@@ -435,7 +457,7 @@ pub async fn kill_process_tree(pid: u32) {
 /// touch the async runtime.
 #[cfg(target_os = "windows")]
 pub fn kill_process_tree_blocking(pid: u32) {
-    let mut command = std::process::Command::new("taskkill");
+    let mut command = std::process::Command::new(taskkill_path());
     command
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .stdout(Stdio::null())
@@ -649,6 +671,32 @@ mod tests {
         assert!(command.get_envs().any(|(name, value)| {
             name == NO_CWD_IN_EXE_SEARCH.0 && value == Some(std::ffi::OsStr::new("1"))
         }));
+    }
+
+    #[test]
+    fn a_child_is_told_not_to_load_yt_dlp_plugins() {
+        let mut command = std::process::Command::new("yt-dlp");
+        configure_child(&mut command);
+        let mut async_command = tokio::process::Command::new("yt-dlp");
+        configure_child_async(&mut async_command);
+
+        for envs in [
+            command.get_envs().collect::<Vec<_>>(),
+            async_command.as_std().get_envs().collect::<Vec<_>>(),
+        ] {
+            assert!(envs.iter().any(|(name, value)| {
+                *name == NO_YT_DLP_PLUGINS.0 && *value == Some(std::ffi::OsStr::new("1"))
+            }));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn taskkill_is_run_from_the_system_directory() {
+        let path = taskkill_path();
+
+        assert!(path.is_absolute());
+        assert!(path.ends_with(r"System32\taskkill.exe"));
     }
 
     // Spawns a real child. The whole point of the syscall version is that it no longer depends on a

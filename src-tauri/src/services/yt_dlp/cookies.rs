@@ -88,7 +88,15 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     // picker's own filter and turns a mistyped path into a clean refusal; the header check is what
     // makes the refusal a property of this app rather than of yt-dlp's parser, which matters
     // because `--cookies` is a path yt-dlp *writes back to* (see `has_cookie_file_header`).
-    if path.is_file() && has_txt_extension(path) && has_cookie_file_header(path) {
+    //
+    // Absolute only. A relative value is resolved here against the app's working directory and by
+    // yt-dlp against its own, which is a different, private folder, so the two would name different
+    // files. A picker always answers with an absolute path.
+    if path.is_absolute()
+        && path.is_file()
+        && has_txt_extension(path)
+        && has_cookie_file_header(path)
+    {
         Some(normalized.to_string())
     } else {
         None
