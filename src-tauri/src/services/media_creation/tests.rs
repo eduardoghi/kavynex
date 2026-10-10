@@ -1301,4 +1301,37 @@ mod registration {
 
         let _ = std::fs::remove_dir_all(&library);
     }
+
+    #[tokio::test]
+    async fn a_chosen_thumbnail_that_cannot_be_stored_leaves_the_download_in_place() {
+        // The media is already in the library when the chosen thumbnail is stored, so a thumbnail
+        // that fails (here, a file that no longer exists) must cost the media its image and nothing
+        // more. It used to fail the creation and clean the download up with it.
+        let (app, library) = app_with_library("thumb-best-effort").await;
+        let placed = artifacts_on_disk(&library, "downloaded");
+        let missing_thumbnail = library.join("gone").join("picked.jpg");
+
+        let request = CreateMediaRequest {
+            library_path: library.to_string_lossy().to_string(),
+            thumbnail_source_path: Some(missing_thumbnail.to_string_lossy().to_string()),
+            ..request(MediaSourceMode::YtDlp)
+        };
+        let downloaded = DownloadedMediaResult {
+            file_path: placed.file_path.clone(),
+            suggested_title: "A title".to_string(),
+            youtube_video_id: Some("abc".to_string()),
+            published_at: None,
+            media_type: "video".to_string(),
+            thumbnail_path: None,
+            is_live: false,
+            live_chat_file_path: None,
+        };
+
+        let thumbnail = resolve_downloaded_thumbnail(app.handle(), &request, &downloaded).await;
+
+        assert_eq!(thumbnail, None);
+        assert!(library.join(&placed.file_path).is_file());
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
 }

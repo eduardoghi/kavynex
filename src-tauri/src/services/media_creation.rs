@@ -521,24 +521,44 @@ pub(crate) fn fetched_thumbnail_to_discard(
 /// The supplied case is the one with a loose end. The run is told to skip its own thumbnail when a
 /// manual one is supplied, so a fetched file should not exist, but if one does it is now
 /// unreferenced and is handed to the reference-counted cleanup rather than left in the library.
+///
+/// A supplied thumbnail that cannot be stored (a full disk, a preview that expired, a file that
+/// went away) leaves the media without one, said in the terminal and the log. The download is
+/// already in the library by then, and an image is no reason to throw it away. The live chat and
+/// the fetched thumbnail follow the same rule.
 async fn resolve_downloaded_thumbnail<R: Runtime>(
     app: &AppHandle<R>,
     request: &CreateMediaRequest,
     downloaded: &DownloadedMediaResult,
-) -> AppResult<Option<String>> {
+) -> Option<String> {
     let fetched = normalized_optional(downloaded.thumbnail_path.clone());
 
     match classify_thumbnail_source(request.thumbnail_source_path.as_deref()) {
-        ThumbnailSource::Absent => Ok(fetched),
-        supplied => {
-            let stored = store_thumbnail_source(app, supplied, &request.library_path).await?;
+        ThumbnailSource::Absent => fetched,
+        supplied => match store_thumbnail_source(app, supplied, &request.library_path).await {
+            Ok(stored) => {
+                if let Some(discarded) = fetched_thumbnail_to_discard(fetched, stored.as_deref()) {
+                    cleanup_artifacts_best_effort(app, None, Some(discarded), None).await;
+                }
 
-            if let Some(discarded) = fetched_thumbnail_to_discard(fetched, stored.as_deref()) {
-                cleanup_artifacts_best_effort(app, None, Some(discarded), None).await;
+                stored
             }
+            Err(error) => {
+                logger::warn(
+                    "media_creation",
+                    format!("the chosen thumbnail could not be stored, saving the media without it: {error}"),
+                );
 
-            Ok(stored)
-        }
+                crate::services::yt_dlp::events::emit_download_log_infallible(
+                    app,
+                    &request.yt_dlp_run_id,
+                    "The chosen thumbnail could not be saved, so the media was added without one.",
+                    "system",
+                );
+
+                fetched
+            }
+        },
     }
 }
 
@@ -563,23 +583,7 @@ async fn prepare_yt_dlp_artifacts<R: Runtime>(
     )
     .await?;
 
-    let thumbnail_path = match resolve_downloaded_thumbnail(app, request, &downloaded).await {
-        Ok(thumbnail_path) => thumbnail_path,
-        Err(error) => {
-            // The media (and possibly its live chat replay) are already in the library with nothing
-            // pointing at them, and no marker has been written yet (this is still the preparation
-            // phase), so clean them up here rather than stranding them.
-            cleanup_artifacts_best_effort(
-                app,
-                Some(downloaded.file_path.clone()),
-                None,
-                downloaded.live_chat_file_path.clone(),
-            )
-            .await;
-
-            return Err(error);
-        }
-    };
+    let thumbnail_path = resolve_downloaded_thumbnail(app, request, &downloaded).await;
 
     Ok(PreparedArtifacts {
         file_path: downloaded.file_path,

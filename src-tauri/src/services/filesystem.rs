@@ -219,14 +219,44 @@ const CANCELLABLE_COPY_CHUNK_BYTES: usize = 1024 * 1024;
 /// materially faster than moving the bytes through userspace, and it is also why it cannot be
 /// interrupted. It returns when the whole file has been copied and not before.
 fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
-    fs::copy(source, temp_destination).map(|_| ()).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::FileCopyFailed,
-            "failed to copy file",
-            temp_destination,
-            &e,
-        )
-    })
+    fs::copy(source, temp_destination)
+        .and_then(|_| make_owner_writable(temp_destination))
+        .map_err(|e| {
+            AppError::fs_error(
+                AppErrorCode::FileCopyFailed,
+                "failed to copy file",
+                temp_destination,
+                &e,
+            )
+        })
+}
+
+/// Gives the owner write access to a copy that came out read-only.
+///
+/// `fs::copy` carries the source's permissions over, so a read-only source (an image the user marked
+/// read-only, a file on a read-only share) made a read-only copy, and the fsync that follows could
+/// not open it for writing. The copy failed, and when it was a chosen thumbnail it took the whole
+/// media creation with it. Nothing the app keeps has a reason to be read-only.
+fn make_owner_writable(path: &Path) -> std::io::Result<()> {
+    let mut permissions = fs::metadata(path)?.permissions();
+
+    if !permissions.readonly() {
+        return Ok(());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        permissions.set_mode(permissions.mode() | 0o200);
+    }
+
+    // Only the read-only attribute on Windows, which is what `set_readonly(false)` clears there.
+    #[cfg(not(unix))]
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+
+    fs::set_permissions(path, permissions)
 }
 
 /// Copies `source` to `temp_destination` a chunk at a time, giving up when `cancel` is set.

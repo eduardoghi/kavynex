@@ -998,3 +998,30 @@ fn copying_a_directory_with_an_entry_that_is_neither_file_nor_folder_fails() {
 
     let _ = fs::remove_dir_all(&base);
 }
+
+#[test]
+fn a_read_only_source_is_copied_into_a_writable_file() {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("picked.jpg");
+    let destination = dir.join("copied.jpg");
+    fs::write(&source, b"image bytes").unwrap();
+
+    let mut permissions = fs::metadata(&source).unwrap().permissions();
+    permissions.set_readonly(true);
+    fs::set_permissions(&source, permissions).unwrap();
+
+    let copied = copy_file_atomic(&source, &destination);
+
+    // Back to writable before asserting, so a failure still leaves a directory that can be removed.
+    let mut permissions = fs::metadata(&source).unwrap().permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    permissions.set_readonly(false);
+    fs::set_permissions(&source, permissions).unwrap();
+
+    copied.unwrap();
+    assert_eq!(fs::read(&destination).unwrap(), b"image bytes");
+    assert!(!fs::metadata(&destination).unwrap().permissions().readonly());
+
+    let _ = fs::remove_dir_all(dir);
+}
