@@ -722,16 +722,16 @@ jobs:
     # A CycloneDX SBOM (Software Bill of Materials) of the Rust dependency tree that goes into the
     # shipped binary, published as a release asset. It is generated from the committed Cargo.lock, so
     # it lists the exact crate versions a downloader received: the machine-readable answer to "does
-    # this release contain crate X at version Y?" when an advisory lands later. The JS build-time tree
-    # is deliberately not included here. It is bundled into the frontend assets rather than being a
-    # native dependency of the binary, and is already advisory/license-gated by the frontend-audit job
-    # and pinned in pnpm-lock.yaml.
+    # this release contain crate X at version Y?" when an advisory lands later. The production npm
+    # packages the frontend bundle carries get an SBOM of their own beside it. The JS build-time tree
+    # stays out of both, since it never reaches a user, and is advisory/license-gated by the
+    # frontend-audit job.
     #
     # Two jobs, for the same reason the audit job is separate from publish-tauri. Generating the SBOM
     # means `cargo install`, which compiles a third-party tool and runs its build scripts, so that job
     # holds only `contents: read` and hands the file over as a workflow artifact. The job that can
-    # write to the draft (sbom-upload) checks nothing out and builds nothing. It downloads that one
-    # file and attaches it.
+    # write to the draft (sbom-upload) builds nothing. It downloads the two files and attaches
+    # them.
     sbom:
         name: Generate SBOM
         needs: publish-tauri
@@ -783,11 +783,31 @@ jobs:
                   cp "$SBOM" "kavynex_${VERSION}_sbom.cdx.json"
                   echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-            - name: Hand the SBOM to the upload job
+            # The frontend bundle (React, Mantine, zod and the rest of the production dependencies)
+            # ships inside the binary too, and the Rust SBOM above cannot answer "does this release
+            # contain react@X?". pnpm generates it natively from the committed lockfile, so nothing
+            # is installed or run beyond pnpm itself. `--prod` leaves out the build-time tree, which
+            # never reaches the user.
+            - name: Install pnpm
+              uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+            - name: Generate the frontend SBOM
+              run: |
+                  VERSION=${{ steps.generate.outputs.version }}
+                  pnpm sbom --sbom-format cyclonedx --prod --lockfile-only --sbom-type application \
+                      --out "kavynex_${VERSION}_frontend_sbom.cdx.json"
+                  if [ ! -s "kavynex_${VERSION}_frontend_sbom.cdx.json" ]; then
+                      echo "::error::pnpm sbom produced no frontend SBOM" >&2
+                      exit 1
+                  fi
+
+            - name: Hand the SBOMs to the upload job
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
                   name: sbom
-                  path: kavynex_${{ steps.generate.outputs.version }}_sbom.cdx.json
+                  path: |
+                      kavynex_${{ steps.generate.outputs.version }}_sbom.cdx.json
+                      kavynex_${{ steps.generate.outputs.version }}_frontend_sbom.cdx.json
                   if-no-files-found: error
                   retention-days: 1
 
@@ -828,13 +848,17 @@ jobs:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   VERSION=$(node -p "require('./package.json').version")
-                  SBOM="sbom-artifact/kavynex_${VERSION}_sbom.cdx.json"
-                  if [ ! -f "$SBOM" ]; then
-                      echo "::error::the sbom artifact does not hold kavynex_${VERSION}_sbom.cdx.json" >&2
-                      ls -la sbom-artifact >&2 || true
-                      exit 1
-                  fi
-                  gh release upload "v$VERSION" "$SBOM" --clobber
+                  for NAME in "kavynex_${VERSION}_sbom.cdx.json" "kavynex_${VERSION}_frontend_sbom.cdx.json"; do
+                      if [ ! -f "sbom-artifact/$NAME" ]; then
+                          echo "::error::the sbom artifact does not hold $NAME" >&2
+                          ls -la sbom-artifact >&2 || true
+                          exit 1
+                      fi
+                  done
+                  gh release upload "v$VERSION" \
+                      "sbom-artifact/kavynex_${VERSION}_sbom.cdx.json" \
+                      "sbom-artifact/kavynex_${VERSION}_frontend_sbom.cdx.json" \
+                      --clobber
 
     checksums:
         name: Publish checksums
@@ -972,6 +996,7 @@ jobs:
                       "kavynex-${VERSION}-1.aarch64.rpm" \
                       "kavynex-${VERSION}-1.aarch64.rpm.sig" \
                       "kavynex_${VERSION}_sbom.cdx.json" \
+                      "kavynex_${VERSION}_frontend_sbom.cdx.json" \
                       "latest.json" \
                       "SHA256SUMS.txt" \
                   ; do

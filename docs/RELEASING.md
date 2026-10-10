@@ -61,9 +61,10 @@ actually act on what it says.
    it verbatim into `latest.json`'s `notes`, which the in-app update notice renders as one
    unscrolled block, so anything longer arrives as a wall of text in the update dialog. A
    release here can carry hundreds of commits, which is what made this a real problem rather
-   than a stylistic one. A separate `sbom` job generates a CycloneDX SBOM of the
-   Rust dependency tree (`kavynex_<version>_sbom.cdx.json`) without write access, `sbom-upload`
-   attaches it to the draft, and a `checksums` job then
+   than a stylistic one. A separate `sbom` job generates CycloneDX SBOMs of the
+   Rust dependency tree (`kavynex_<version>_sbom.cdx.json`) and of the production npm packages
+   (`kavynex_<version>_frontend_sbom.cdx.json`) without write access, `sbom-upload` attaches
+   them to the draft, and a `checksums` job then
    downloads every asset, verifies the release is complete (the asset-completeness check.
    A missing installer or SBOM fails the release loudly rather than shipping silently), and
    publishes `SHA256SUMS.txt` on the same release (see `RELEASE-SECURITY.md` for why the checksums,
