@@ -1044,3 +1044,15 @@ fn a_durable_write_replaces_the_file_and_leaves_no_staging_copy() {
 
     let _ = fs::remove_dir_all(dir);
 }
+
+#[cfg(windows)]
+#[test]
+fn a_directory_can_actually_be_flushed_on_windows() {
+    // Opened read-only, every flush failed with access denied, so nothing was ever flushed.
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+
+    assert!(flush_directory(&dir));
+
+    let _ = fs::remove_dir_all(dir);
+}

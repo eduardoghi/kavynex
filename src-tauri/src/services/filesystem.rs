@@ -83,22 +83,27 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
 /// Windows counterpart. `std` cannot open a directory as a `File`, so the handle is obtained via
 /// `CreateFileW` with `FILE_FLAG_BACKUP_SEMANTICS` (required to open a directory) and flushed with
 /// `FlushFileBuffers`. The same operation `sync_all` performs for a file. This closes the same
-/// power-loss window on NTFS with write caching enabled that the Unix path closes; the previous
-/// no-op assumed NTFS never needed it, which is not something the code could demonstrate. Best
-/// effort. Any failure degrades to the previous no-op behavior and is ignored.
+/// power-loss window on NTFS with write caching enabled that the Unix path closes. Best effort. A
+/// failure is ignored, as on Unix.
 #[cfg(windows)]
 pub(crate) fn fsync_parent_dir(path: &Path) {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            let _ = flush_directory(parent);
+        }
+    }
+}
+
+/// Flushes `dir`'s entries to disk and says whether that happened.
+///
+/// The handle is opened for writing as well as reading. `FlushFileBuffers` refuses a handle without
+/// write access, and this used to open the directory read-only, so every call failed with access
+/// denied and nothing was flushed, while the callers' comments relied on it.
+#[cfg(windows)]
+fn flush_directory(dir: &Path) -> bool {
     use std::os::windows::ffi::OsStrExt;
 
-    let Some(parent) = path.parent() else {
-        return;
-    };
-
-    if parent.as_os_str().is_empty() {
-        return;
-    }
-
-    let wide: Vec<u16> = parent
+    let wide: Vec<u16> = dir
         .as_os_str()
         .encode_wide()
         .chain(std::iter::once(0))
@@ -120,6 +125,7 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
     }
 
     const GENERIC_READ: u32 = 0x8000_0000;
+    const GENERIC_WRITE: u32 = 0x4000_0000;
     const FILE_SHARE_READ: u32 = 0x0000_0001;
     const FILE_SHARE_WRITE: u32 = 0x0000_0002;
     const FILE_SHARE_DELETE: u32 = 0x0000_0004;
@@ -134,7 +140,7 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
     unsafe {
         let handle = CreateFileW(
             wide.as_ptr(),
-            GENERIC_READ,
+            GENERIC_READ | GENERIC_WRITE,
             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             std::ptr::null_mut(),
             OPEN_EXISTING,
@@ -143,11 +149,13 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
         );
 
         if handle.is_null() || handle == invalid_handle {
-            return;
+            return false;
         }
 
-        let _ = FlushFileBuffers(handle);
+        let flushed = FlushFileBuffers(handle) != 0;
         let _ = CloseHandle(handle);
+
+        flushed
     }
 }
 
