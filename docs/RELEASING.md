@@ -27,6 +27,11 @@ actually act on what it says.
    version that skipped ahead would keep the updater from ever offering the one that was meant.
 2. Commit the version bump, push to `main`, and wait for `ci.yml` and `codeql.yml` to finish green
    on that commit. The release's first job (`ci-passed`) refuses to go on otherwise.
+   If `release.yml` changed since the last release, dispatch `release-rehearsal.yml` first and
+   wait for it to pass. It runs the same build and checks on one leg per OS with a throwaway
+   signing key and no environment, so it cannot publish anything, and it also installs and starts
+   the artifacts themselves (the `.deb` on `ubuntu:24.04`, the AppImage, the NSIS installer and the
+   `.app`), which the release does not.
 3. Manually trigger the `release` GitHub Actions workflow
    (`.github/workflows/release.yml`, `workflow_dispatch`. There is no automatic release
    on tag or merge). It builds installers across six matrix legs (Windows x64

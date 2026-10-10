@@ -1,0 +1,191 @@
+name: release-rehearsal
+
+# A dry run of release.yml's build and checks, dispatched by hand before a release whenever the
+# release pipeline changed. A step added to release.yml otherwise ran for the first time after
+# ninety minutes of building on six legs, with assets already on the draft.
+#
+# It builds and checks what release.yml builds and checks, then goes one step further and runs the
+# *installed* artifacts, which release.yml does not: the .deb inside a plain ubuntu:24.04 (the oldest
+# system the declared glibc floor promises), the extracted AppImage, the NSIS installer run silently,
+# and the binary inside the macOS .app. release.yml smoke-tests the binary in target/release, which
+# is not what a user runs.
+#
+# Nothing here can publish. No environment, so the real signing key is never in scope, no release is
+# created, and the only permission is contents read. The updater artifacts are signed with a key
+# generated for this run and thrown away, since the build refuses to produce them without one.
+#
+# Keep the build steps in step with release.yml by hand. They are copied rather than shared because
+# release.yml is the job that holds the signing key, and keeping it free of indirection is worth the
+# duplication. A rehearsal that drifted from the release would rehearse the wrong thing.
+
+on:
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: release-rehearsal
+    cancel-in-progress: true
+
+jobs:
+    rehearse:
+        name: Rehearse (${{ matrix.platform }})
+        strategy:
+            fail-fast: false
+            matrix:
+                # One leg per OS family. The arm64 legs build the same code with the host's
+                # default target, and the CI rust job already compiles and tests them.
+                include:
+                    - platform: ubuntu-26.04
+                      args: ""
+                    - platform: windows-2025
+                      args: ""
+                    - platform: macos-26
+                      args: --target aarch64-apple-darwin
+        runs-on: ${{ matrix.platform }}
+        timeout-minutes: 90
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  fetch-depth: 1
+                  persist-credentials: false
+
+            - name: Setup pnpm
+              uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: 26.5.0
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.99.0
+                  targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin' || '' }}
+
+            - name: Install Linux dependencies
+              if: startsWith(matrix.platform, 'ubuntu-')
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils xvfb
+
+            - name: Install frontend dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Build frontend
+              run: pnpm build
+
+            # A key for this run only. `tauri build` refuses to produce the updater artifacts
+            # without one, and the real key lives in the `release` environment, which this
+            # workflow never enters. The signatures it produces match no published key.
+            - name: Generate a throwaway updater signing key
+              shell: bash
+              run: |
+                  pnpm tauri signer generate --ci --password "" --write-keys "$RUNNER_TEMP/rehearsal.key" --force
+                  {
+                      echo "TAURI_SIGNING_PRIVATE_KEY<<KEY_EOF"
+                      cat "$RUNNER_TEMP/rehearsal.key"
+                      echo "KEY_EOF"
+                      echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="
+                  } >> "$GITHUB_ENV"
+
+            - name: Build the bundles
+              shell: bash
+              env:
+                  KAVYNEX_FRONTEND_PREBUILT: "1"
+              run: pnpm tauri build ${{ matrix.args }} -- --locked
+
+            - name: Smoke-test and webview-check the built binary (Linux)
+              if: startsWith(matrix.platform, 'ubuntu-')
+              env:
+                  WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+                  WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+                  xvfb-run -a "$binary" --smoke-test
+                  xvfb-run -a "$binary" --webview-check
+
+            - name: Smoke-test and webview-check the built binary (Windows)
+              if: startsWith(matrix.platform, 'windows-')
+              shell: bash
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex.exe' | head -n1)
+                  "$binary" --smoke-test
+                  "$binary" --webview-check
+
+            - name: Smoke-test and webview-check the built binary (macOS)
+              if: startsWith(matrix.platform, 'macos-')
+              run: |
+                  binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
+                  "$binary" --smoke-test
+                  "$binary" --webview-check
+
+            # The .deb on the oldest system its glibc floor (libc6 >= 2.39) admits. Installing it
+            # there resolves the declared dependencies the way a user's apt would, and starting it
+            # proves the floor is real rather than read off objdump.
+            - name: Install and start the .deb on ubuntu:24.04
+              if: startsWith(matrix.platform, 'ubuntu-')
+              run: |
+                  deb=$(find src-tauri/target -type f -path '*/bundle/deb/*.deb' | head -n1)
+                  mkdir -p "$RUNNER_TEMP/deb"
+                  cp "$deb" "$RUNNER_TEMP/deb/"
+                  docker run --rm -v "$RUNNER_TEMP/deb:/deb:ro" ubuntu:24.04 bash -euo pipefail -c '
+                      export DEBIAN_FRONTEND=noninteractive
+                      apt-get update
+                      apt-get install -y /deb/*.deb xvfb xauth
+                      export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
+                      xvfb-run -a kavynex --smoke-test
+                  '
+
+            # Extract-and-run, because the runner has no FUSE. What is exercised is the bundle's own
+            # copy of the libraries, the part the binary in target/release never touches.
+            - name: Start the AppImage
+              if: startsWith(matrix.platform, 'ubuntu-')
+              env:
+                  APPIMAGE_EXTRACT_AND_RUN: "1"
+              run: |
+                  appimage=$(find "$GITHUB_WORKSPACE/src-tauri/target" -type f -path '*/bundle/appimage/*.AppImage' | head -n1)
+                  chmod +x "$appimage"
+                  xvfb-run -a "$appimage" --smoke-test
+
+            # The NSIS installer run the way an unattended install runs it, then the installed copy
+            # started. The default install mode is per user, into %LOCALAPPDATA%.
+            - name: Install and start the NSIS build (Windows)
+              if: startsWith(matrix.platform, 'windows-')
+              shell: pwsh
+              run: |
+                  $setup = Get-ChildItem -Recurse -Path src-tauri/target -Filter '*-setup.exe' |
+                      Where-Object { $_.FullName -match '\\bundle\\nsis\\' } | Select-Object -First 1
+                  if (-not $setup) { throw "no NSIS installer was built" }
+                  Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+                  $installed = Get-ChildItem -Recurse -Path $env:LOCALAPPDATA -Filter 'kavynex.exe' -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+                  if (-not $installed) { throw "the installer left no kavynex.exe under LOCALAPPDATA" }
+                  Write-Host "Starting $($installed.FullName)"
+                  & $installed.FullName --smoke-test
+                  if ($LASTEXITCODE -ne 0) { throw "the installed binary failed its smoke test" }
+
+            - name: Start the binary inside the .app (macOS)
+              if: startsWith(matrix.platform, 'macos-')
+              run: |
+                  app=$(find src-tauri/target -type d -path '*/bundle/macos/*.app' | head -n1)
+                  "$app/Contents/MacOS/kavynex" --smoke-test
+
+            - name: Keep the bundles for inspection
+              if: ${{ !cancelled() }}
+              uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+              with:
+                  name: rehearsal-${{ strategy.job-index }}
+                  path: |
+                      src-tauri/target/**/release/bundle/**/*.exe
+                      src-tauri/target/**/release/bundle/**/*.msi
+                      src-tauri/target/**/release/bundle/**/*.dmg
+                      src-tauri/target/**/release/bundle/**/*.AppImage
+                      src-tauri/target/**/release/bundle/**/*.deb
+                      src-tauri/target/**/release/bundle/**/*.rpm
+                  if-no-files-found: warn
+                  retention-days: 3
