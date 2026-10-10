@@ -415,7 +415,13 @@ pub async fn stage_database_import(
     source_path: &Path,
     machine_paths: Option<&MachinePaths>,
 ) -> AppResult<()> {
-    if !source_path.exists() {
+    // Off the async runtime, since a source on a mapped drive that went away can stall the stat.
+    let source_exists = {
+        let source = source_path.to_path_buf();
+        run_blocking(move || Ok(source.exists())).await?
+    };
+
+    if !source_exists {
         return Err(AppError::from_code(
             AppErrorCode::DatabaseImportInvalid,
             "the selected file does not exist",

@@ -700,22 +700,32 @@ pub async fn download_media_from_url_async<R: Runtime>(
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
-    let library_dir = resolve_existing_library_dir(library_path)?;
-    let temp_root_dir = yt_dlp_temp_dir(app)?;
+    // Resolving the library touches the disk it lives on, which may be an external or network
+    // drive that stalls, so it runs off the async runtime with the temp directory's creation.
+    let (library_dir, temp_dir) = {
+        let app = app.clone();
+        let library_path = library_path.to_string();
+        let unique_run_dir = format!(
+            "{}-{}",
+            sanitize_filename_component(&normalized_run_id),
+            unique_temp_suffix()
+        );
 
-    let unique_run_dir = format!(
-        "{}-{}",
-        sanitize_filename_component(&normalized_run_id),
-        unique_temp_suffix()
-    );
-    let temp_dir = temp_root_dir.join(unique_run_dir);
+        run_blocking(move || {
+            let library_dir = resolve_existing_library_dir(&library_path)?;
+            let temp_dir = yt_dlp_temp_dir(&app)?.join(unique_run_dir);
 
-    fs::create_dir_all(&temp_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateTempDirFailed,
-            format!("failed to create temporary directory: {e}"),
-        )
-    })?;
+            fs::create_dir_all(&temp_dir).map_err(|e| {
+                AppError::from_code(
+                    AppErrorCode::CreateTempDirFailed,
+                    format!("failed to create temporary directory: {e}"),
+                )
+            })?;
+
+            Ok((library_dir, temp_dir))
+        })
+        .await?
+    };
 
     logger::info(
         "yt_dlp",

@@ -220,39 +220,47 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     pool.close().await;
     vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
 
-    // On disk before anything is rotated. SQLite does not sync a VACUUM INTO target, and the
-    // throttle reads `.bak`'s mtime, so a snapshot promoted and then cut short by a power loss would
-    // read as a recent good backup and stop the next one from being taken for a day.
-    crate::services::filesystem::fsync_file(&temp)?;
+    // The flush, the rotation and the promotion are blocking filesystem work, and the flush of a
+    // freshly vacuumed database can take seconds on a slow or scanned disk. Off the async runtime,
+    // as the utils::task convention has it.
+    let db_path = db_path.to_path_buf();
 
-    // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
-    rotate_backups(db_path);
+    crate::utils::task::run_blocking(move || {
+        // On disk before anything is rotated. SQLite does not sync a VACUUM INTO target, and the
+        // throttle reads `.bak`'s mtime, so a snapshot promoted and then cut short by a power loss
+        // would read as a recent good backup and stop the next one from being taken for a day.
+        crate::services::filesystem::fsync_file(&temp)?;
 
-    // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
-    // generation 0 absent until the next successful backup. A restore still succeeds (the
-    // candidate list falls through to `.bak.1` and beyond), but the newest snapshot silently
-    // did not land, which is only inferable from backup timestamps. Log it before propagating
-    // so the state is observable.
-    if let Err(error) = std::fs::rename(&temp, &backup) {
-        logger::warn(
-            "db_backup",
-            format!(
-                "failed to promote the fresh snapshot after rotating generations; \
-                 the newest backup slot is empty until the next run: {error}"
-            ),
-        );
+        // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
+        rotate_backups(&db_path);
 
-        return Err(backup_error("failed to store database backup", error));
-    }
+        // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
+        // generation 0 absent until the next successful backup. A restore still succeeds (the
+        // candidate list falls through to `.bak.1` and beyond), but the newest snapshot silently
+        // did not land, which is only inferable from backup timestamps. Log it before propagating
+        // so the state is observable.
+        if let Err(error) = std::fs::rename(&temp, &backup) {
+            logger::warn(
+                "db_backup",
+                format!(
+                    "failed to promote the fresh snapshot after rotating generations. \
+                     The newest backup slot is empty until the next run: {error}"
+                ),
+            );
 
-    // Flush the directory entry so a crash right after the rename cannot lose it. The rotation
-    // renames above live in the same directory, so this one flush covers the whole `.bak` family;
-    // without it an unclean shutdown could silently revert to a rotated generation. Mirrors the
-    // fsync the restore/import swaps already do (see resume_interrupted_restore / apply_pending_
-    // database_import). Best effort, like those.
-    crate::services::filesystem::fsync_parent_dir(&backup);
+            return Err(backup_error("failed to store database backup", error));
+        }
 
-    Ok(true)
+        // Flush the directory entry so a crash right after the rename cannot lose it. The rotation
+        // renames above live in the same directory, so this one flush covers the whole `.bak`
+        // family. Without it an unclean shutdown could silently revert to a rotated generation.
+        // Mirrors the fsync the restore/import swaps already do (see resume_interrupted_restore /
+        // apply_pending_database_import). Best effort, like those.
+        crate::services::filesystem::fsync_parent_dir(&backup);
+
+        Ok(true)
+    })
+    .await
 }
 
 /// The existing backup files, most recent first. Rotation always writes the freshest snapshot
