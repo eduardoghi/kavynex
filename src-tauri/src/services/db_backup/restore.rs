@@ -27,6 +27,26 @@ pub(super) fn corrupt_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".corrupt")
 }
 
+/// The write-ahead log of the database set aside at [`corrupt_path`]. SQLite pairs a log with its
+/// database by name (`<database>-wal`), so this is the name under which opening `.corrupt` for
+/// inspection still reads it.
+pub(super) fn corrupt_wal_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".corrupt-wal")
+}
+
+/// Moves the live write-ahead log next to the database just set aside, instead of deleting it.
+///
+/// Commits that were never checkpointed live only in the log, and a session of sporadic writes can
+/// stay under the auto-checkpoint threshold the whole time. Deleting it left the preserved copy
+/// without the most recent part of the library, which is the part someone inspecting it wants. An
+/// older `.corrupt-wal` belonged to the generation that was just rotated away, so it is removed
+/// either way rather than left paired with a database it does not match.
+fn set_aside_corrupt_wal(db_path: &Path) {
+    let corrupt_wal = corrupt_wal_path(db_path);
+    let _ = std::fs::remove_file(&corrupt_wal);
+    let _ = std::fs::rename(sibling(db_path, "-wal"), &corrupt_wal);
+}
+
 /// The database set aside by the most recent restore is `.corrupt` (generation 0); earlier ones
 /// are `.corrupt.1` through `.corrupt.{CORRUPT_ROTATED_GENERATIONS}`.
 pub(super) fn generation_corrupt_path(db_path: &Path, generation: usize) -> PathBuf {
@@ -92,9 +112,10 @@ pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
 
 /// Restores the database from the most recent backup that passes `quick_check`, preferring
 /// the newest generation and falling back to the rotated one. The current (assumed corrupt)
-/// database and its WAL/`-shm` sidecars are moved aside to `.corrupt` rather than deleted,
-/// so they can still be inspected, and the sidecars are dropped so the restored snapshot is
-/// never combined with a stale write-ahead log.
+/// database is moved aside to `.corrupt` rather than deleted, so it can still be inspected, and
+/// its write-ahead log goes with it as `.corrupt-wal` (see [`set_aside_corrupt_wal`]). Neither
+/// sidecar stays under the live name, so the restored snapshot is never combined with a stale
+/// log.
 ///
 /// The restored file is staged and renamed into place so a failure never leaves the live
 /// database missing. The caller must ensure the pool is not already open before calling.
@@ -203,7 +224,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         }
     }
 
-    let _ = std::fs::remove_file(sibling(db_path, "-wal"));
+    set_aside_corrupt_wal(db_path);
     let _ = std::fs::remove_file(sibling(db_path, "-shm"));
 
     std::fs::rename(&staged, db_path)

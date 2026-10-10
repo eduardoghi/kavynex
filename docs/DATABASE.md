@@ -451,8 +451,10 @@ with `DatabaseSchemaTooNew` rather than "succeeding" into a database the next op
 reject. With nothing healthy left, it fails with `NoDatabaseBackupAvailable`.
 
 The current (assumed corrupt) database is moved aside to a sibling `.corrupt` file (never
-deleted), so it can still be inspected, and its `-wal`/`-shm` sidecars are removed so the
-restored snapshot is never combined with a stale write-ahead log. A repeated restore rotates
+deleted), so it can still be inspected. Its write-ahead log goes with it as `.corrupt-wal`, the
+name SQLite pairs with `.corrupt`, since commits never checkpointed exist only there, and its
+`-shm` is removed. Neither stays under the live name, so the restored snapshot is never combined
+with a stale log. Only the newest set-aside database keeps its log. A repeated restore rotates
 the earlier snapshots (`.corrupt` becomes `.corrupt.1`, and so on) rather than overwriting
 them, so the first failure's evidence survives the second, which is when it is most worth
 having. Fewer generations are kept than for `.bak` (`CORRUPT_ROTATED_GENERATIONS`, 2), since each

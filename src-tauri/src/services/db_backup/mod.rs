@@ -245,6 +245,8 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
             .map(|generation| restore::generation_corrupt_path(db_path, generation)),
     );
     paths.push(sibling(db_path, ".corrupt.tmp"));
+    // The set-aside database's write-ahead log, kept beside it (see restore::set_aside_corrupt_wal).
+    paths.push(restore::corrupt_wal_path(db_path));
 
     paths.extend([
         restore::restore_staging_path(db_path),

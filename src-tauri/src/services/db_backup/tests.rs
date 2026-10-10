@@ -338,6 +338,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.corrupt.1",
             "kavynex.db.corrupt.2",
             "kavynex.db.corrupt.tmp",
+            "kavynex.db.corrupt-wal",
             "kavynex.db.restore.tmp",
             "kavynex.db.pre-import",
             "kavynex.db.import-staged",
@@ -2277,6 +2278,28 @@ fn the_daily_backups_come_before_the_pre_migration_snapshots_newest_first() {
             snapshot::pre_migration_path(&db, 14),
             snapshot::pre_migration_path(&db, 13),
         ]
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_restore_keeps_the_corrupt_databases_write_ahead_log_beside_it() {
+    // Commits that were never checkpointed live only in the log, and deleting it left the copy
+    // kept for inspection without them.
+    let dir = temp_dir("restore-corrupt-wal");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    std::fs::write(&db, b"not a database").unwrap();
+    std::fs::write(sibling(&db, "-wal"), b"uncheckpointed frames").unwrap();
+
+    restore_database_from_backup(&db).await.unwrap();
+
+    assert_eq!(
+        std::fs::read(restore::corrupt_wal_path(&db)).unwrap(),
+        b"uncheckpointed frames"
     );
 
     let _ = std::fs::remove_dir_all(&dir);
