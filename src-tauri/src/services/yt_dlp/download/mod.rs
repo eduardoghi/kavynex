@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -9,15 +8,14 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Runtime};
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
-use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata, YtDlpMetadata};
+use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
-use crate::services::filesystem::{clean_matching_files_in_dir, replace_file_safely};
+use crate::services::filesystem::clean_matching_files_in_dir;
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
-use crate::services::thumbnail::download::download_media_thumbnail_async;
 use crate::services::yt_dlp::cookies::{
     normalize_cookies_browser, normalize_cookies_path, redact_cookies_browser_selector,
 };
@@ -35,10 +33,10 @@ use crate::services::yt_dlp::registry::{
 };
 use crate::services::yt_dlp::url::youtube_ref_for_log;
 use crate::utils::bounded_semaphore::BoundedSemaphore;
-use crate::utils::format::{codec_is_present, is_allowed_media_extension};
+use crate::utils::format::codec_is_present;
 use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
-use crate::utils::path::{ensure_path_parent_inside_dir, relative_path_from_base};
+use crate::utils::path::relative_path_from_base;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -149,170 +147,6 @@ fn resolve_format_has_video(format_id: &str, formats: &[YtDlpFormatMetadata]) ->
     None
 }
 
-/// Moves the freshly downloaded temp file into the media directory and returns its final
-/// path. A download filename is deterministic for a given video+format, so a file already at
-/// the destination is content that is already catalogued (and possibly shared with another
-/// channel). It is never overwritten. re-downloading could replace the stored bytes with a
-/// re-encoded variant, silently changing media already in the library. The existing file is
-/// kept, and the caller's duplicate check decides what to do.
-/// Returns the process-wide lock guarding a specific destination path, creating it on first use.
-/// Two concurrent downloads that resolve to the same final file (the same video+format added to
-/// two channels at once) then serialize their check-then-place instead of both writing it. The
-/// registry drops entries whose lock is no longer held by any download, so it stays bounded
-/// across a long session.
-fn destination_placement_lock(path: &Path) -> Arc<std::sync::Mutex<()>> {
-    static LOCKS: std::sync::OnceLock<
-        std::sync::Mutex<HashMap<PathBuf, std::sync::Weak<std::sync::Mutex<()>>>>,
-    > = std::sync::OnceLock::new();
-
-    let registry = LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
-    let mut map = registry
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    if let Some(existing) = map.get(path).and_then(std::sync::Weak::upgrade) {
-        return existing;
-    }
-
-    let lock = Arc::new(std::sync::Mutex::new(()));
-    map.insert(path.to_path_buf(), Arc::downgrade(&lock));
-    // Drop dead entries so the registry does not grow unbounded as files are downloaded.
-    map.retain(|_, weak| weak.strong_count() > 0);
-    lock
-}
-
-/// Picks the media file among what yt-dlp left in the run's directory under `file_name_prefix`.
-///
-/// The directory also holds the live chat replay (`<prefix>.live_chat.json`), and can hold a
-/// subtitle or a format's leftover part. A merged format (`137+140`) matches no single entry of the
-/// metadata, so there is usually no expected extension to go by. Choosing the newest file let the
-/// replay win whenever yt-dlp dated the merged video by the server's Last-Modified (its `--mtime`
-/// option, the default in older releases), and the JSON was then stored as the video. Only a media
-/// extension is a candidate now. The expected one comes first, then the largest, which is the merged
-/// file whenever its parts were left behind.
-fn pick_downloaded_media(
-    candidates: Vec<(PathBuf, u64)>,
-    expected_ext: Option<&str>,
-) -> Option<PathBuf> {
-    let extension_of = |path: &Path| {
-        path.extension()
-            .and_then(|value| value.to_str())
-            .map(|value| value.to_ascii_lowercase())
-    };
-    let expected_ext = expected_ext.map(|value| value.trim_start_matches('.').to_ascii_lowercase());
-
-    candidates
-        .into_iter()
-        .filter(|(path, _)| {
-            extension_of(path).is_some_and(|extension| is_allowed_media_extension(&extension))
-        })
-        .max_by_key(|(path, len)| {
-            let is_expected = expected_ext.is_some() && extension_of(path) == expected_ext;
-            (is_expected, *len)
-        })
-        .map(|(path, _)| path)
-}
-
-fn find_downloaded_media_file(
-    temp_dir: &Path,
-    file_name_prefix: &str,
-    expected_ext: Option<&str>,
-) -> AppResult<PathBuf> {
-    let not_found = || {
-        AppError::from_code(
-            AppErrorCode::YtDlpDownloadedFileNotFound,
-            "download completed but the final file was not found",
-        )
-    };
-
-    let candidates = fs::read_dir(temp_dir)
-        .map_err(|_| not_found())?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_str()
-                .is_some_and(|name| name.starts_with(file_name_prefix))
-        })
-        .filter_map(|entry| {
-            let metadata = entry.metadata().ok()?;
-            metadata.is_file().then(|| (entry.path(), metadata.len()))
-        })
-        .collect();
-
-    pick_downloaded_media(candidates, expected_ext).ok_or_else(not_found)
-}
-
-/// Returns the final path and whether a library file with the same content was kept (the fresh
-/// download was discarded). The caller surfaces the second value to the user.
-///
-/// The library copy is named after its content (`media_<sha256>.<ext>`), like a local import. That
-/// name is what the deep verification checks a file against, and it settles what a file already at
-/// that name means. One whose bytes still hash to the name holds this exact content already (the
-/// same video saved for another channel), so the fresh copy is dropped. One whose bytes do not is a
-/// damaged copy, and the fresh download replaces it, which is the repair a second download is for.
-/// Every row naming the file points at the right bytes either way.
-fn place_downloaded_file(
-    downloaded_temp: &Path,
-    media_dir: &Path,
-    library_dir: &Path,
-) -> AppResult<(PathBuf, bool)> {
-    // The backstop for pick_downloaded_media. Nothing but a media file may land in `video/` or
-    // `audio/`, whatever chose it.
-    let is_media = downloaded_temp
-        .extension()
-        .and_then(|value| value.to_str())
-        .is_some_and(is_allowed_media_extension);
-
-    if !is_media {
-        return Err(AppError::from_code(
-            AppErrorCode::InvalidDownloadedFile,
-            "the downloaded file is not a media file the library accepts",
-        ));
-    }
-
-    // Hashed before any lock is taken, since it reads the whole file.
-    let digest = crate::utils::hash::file_hash(downloaded_temp)?;
-    let extension = crate::utils::path::extension_from_path(downloaded_temp);
-
-    // Serialize the placement into the library against a concurrent migration (see library::lock)
-    // so a just-finished download cannot land in the old directory while the migration is
-    // copying/removing it.
-    let _library_guard = crate::services::library::lock::library_read_guard();
-
-    let final_destination = media_dir
-        .join(crate::services::library::media::content_addressed_media_name(&digest, &extension));
-    ensure_path_parent_inside_dir(&final_destination, library_dir)?;
-
-    // Serialize concurrent placements of this exact destination (the same content finishing for two
-    // channels at once) so they cannot both pass the existence check and write the file. Distinct
-    // from the library guard above, which only serializes against a migration.
-    let placement_lock = destination_placement_lock(&final_destination);
-    let _placement_guard = placement_lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-    let kept_existing = final_destination.is_file()
-        && crate::utils::hash::file_hash(&final_destination).is_ok_and(|stored| stored == digest);
-
-    if !kept_existing {
-        replace_file_safely(downloaded_temp, &final_destination)?;
-    }
-
-    Ok((final_destination, kept_existing))
-}
-
-/// Runs `place_downloaded_file` (a cross-device move can fall back to a full `fs::copy` of a
-/// multi-GB video) on the blocking thread pool, so this heavy I/O never runs directly on an
-/// async task.
-async fn place_downloaded_file_async(
-    downloaded_temp: PathBuf,
-    media_dir: PathBuf,
-    library_dir: PathBuf,
-) -> AppResult<(PathBuf, bool)> {
-    run_blocking(move || place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)).await
-}
-
 fn infer_is_live(metadata_live_status: Option<&str>, was_live: Option<bool>) -> bool {
     if was_live.unwrap_or(false) {
         return true;
@@ -323,84 +157,10 @@ fn infer_is_live(metadata_live_status: Option<&str>, was_live: Option<bool>) -> 
     matches!(normalized.as_str(), "is_live" | "was_live" | "post_live")
 }
 
-fn find_live_chat_temp_file(temp_dir: &Path, file_prefix: &str) -> Option<PathBuf> {
-    let entries = fs::read_dir(temp_dir).ok()?;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-
-        if !path.is_file() {
-            continue;
-        }
-
-        let file_name = path.file_name()?.to_string_lossy().to_string();
-        let normalized_name = file_name.to_lowercase();
-
-        if normalized_name.starts_with(&file_prefix.to_lowercase())
-            && normalized_name.contains("live_chat")
-        {
-            return Some(path);
-        }
-    }
-
-    None
-}
-
-fn ensure_live_chat_dir(library_dir: &Path) -> AppResult<PathBuf> {
-    let live_chat_dir = library_dir.join("live_chat");
-
-    fs::create_dir_all(&live_chat_dir).map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::CreateDirectoryFailed,
-            format!("failed to create live chat directory: {e}"),
-        )
-    })?;
-
-    Ok(live_chat_dir)
-}
-
-fn build_live_chat_relative_path(file_name: &Path) -> String {
-    Path::new("live_chat")
-        .join(file_name)
-        .to_string_lossy()
-        .replace('\\', "/")
-}
-
 /// Cancels every active download and synchronously kills the process tree of each one
 /// whose child has been spawned. Intended to run on app exit. It does not touch the async
 /// runtime, so in-flight yt-dlp/ffmpeg children are terminated instead of being orphaned
 /// when the window closes.
-/// Records a crash marker naming a download's file, the moment it is in the library. Best effort,
-/// like the registration's own marker. A marker that cannot be written costs one launch's automatic
-/// reconciliation, and Diagnostics still reports the file.
-async fn record_placement_marker<R: Runtime>(
-    app: &AppHandle<R>,
-    file_path: &str,
-) -> Option<String> {
-    let app = app.clone();
-    let artifacts = crate::services::pending_media::PendingMediaArtifacts {
-        file_path: Some(file_path.to_string()),
-        ..Default::default()
-    };
-
-    let recorded = run_blocking(move || {
-        crate::services::pending_media::record_pending_media_artifacts(&app, artifacts)
-    })
-    .await;
-
-    match recorded {
-        Ok(marker) => Some(marker),
-        Err(error) => {
-            logger::warn(
-                "yt_dlp",
-                format!("could not record the crash marker for a placed download: {error}"),
-            );
-
-            None
-        }
-    }
-}
-
 pub fn cancel_all_active_downloads_blocking() {
     let pids = crate::services::yt_dlp::registry::signal_cancel_all_and_collect_pids();
 
@@ -408,6 +168,13 @@ pub fn cancel_all_active_downloads_blocking() {
         crate::utils::process::kill_process_tree_blocking(pid);
     }
 }
+
+// Placing a finished download, and keeping it when that fails, live in `placement`. What is stored
+// after the media (the live chat replay, the thumbnail) lives in `post_download`.
+mod placement;
+use placement::*;
+mod post_download;
+use post_download::*;
 
 // The pure request validation, argument-vector construction and outcome classification live in
 // the `command` submodule so they stay unit-testable apart from the async orchestration below.
@@ -439,253 +206,6 @@ mod redaction;
 use redaction::redact_paths_value;
 use redaction::redacted_args_for_log;
 use redaction::{redact_download_output_line, OutputRedaction};
-
-/// Downloads the media's thumbnail, and on failure says so in the terminal and returns `None`.
-///
-/// The error is shown rather than only logged because a media saved without the thumbnail the user
-/// expected is otherwise silent, and the reason (a CDN outage, a firewall) is something they can
-/// act on.
-async fn download_thumbnail_best_effort<R: Runtime>(
-    app: &AppHandle<R>,
-    run_id: &str,
-    library_path: &str,
-    metadata: &YtDlpMetadata,
-    cancel_flag: &AtomicBool,
-) -> Option<String> {
-    match download_media_thumbnail_async(app, library_path, metadata, Some(cancel_flag)).await {
-        Ok(Some(path)) => {
-            emit_download_log_infallible(
-                app,
-                run_id,
-                "Thumbnail downloaded successfully",
-                "system",
-            );
-            Some(path)
-        }
-        Ok(None) => {
-            emit_download_log_infallible(
-                app,
-                run_id,
-                "No thumbnail available for this media",
-                "system",
-            );
-            None
-        }
-        Err(error) => {
-            logger::warn(
-                "yt_dlp",
-                format!("thumbnail download failed, saving the media without one: {error}"),
-            );
-            emit_download_log_infallible(
-                app,
-                run_id,
-                format!(
-                    "The thumbnail could not be downloaded, so the media was saved without one: {}",
-                    error.message
-                ),
-                "system",
-            );
-            None
-        }
-    }
-}
-
-/// Stores the stream's live chat replay in the library, and on failure says so in the terminal and
-/// returns `None`, the way the thumbnail does.
-///
-/// It runs once the media is already in the library. Failing the whole creation over it (a replay
-/// past the decompression ceiling, a full disk) used to leave a download of hours in `video/` with
-/// no row and no crash marker to clean it up, and the user with an error for a video that had
-/// arrived. The replay is the smaller loss of the two.
-async fn store_live_chat_best_effort<R: Runtime>(
-    app: &AppHandle<R>,
-    run_id: &str,
-    temp_dir: &Path,
-    file_prefix: &str,
-    live_chat_dir: Option<&Path>,
-) -> Option<String> {
-    match store_live_chat(app, run_id, temp_dir, file_prefix, live_chat_dir).await {
-        Ok(path) => path,
-        Err(error) => {
-            logger::warn(
-                "yt_dlp",
-                format!(
-                    "live chat replay could not be stored, saving the media without it: {error}"
-                ),
-            );
-            emit_download_log_infallible(
-                app,
-                run_id,
-                format!(
-                    "The live chat replay could not be saved, so the media was saved without it: {}",
-                    error.message
-                ),
-                "system",
-            );
-            None
-        }
-    }
-}
-
-/// The library-relative path of the stored replay, or `None` when yt-dlp wrote none.
-async fn store_live_chat<R: Runtime>(
-    app: &AppHandle<R>,
-    run_id: &str,
-    temp_dir: &Path,
-    file_prefix: &str,
-    live_chat_dir: Option<&Path>,
-) -> AppResult<Option<String>> {
-    let Some(temp_live_chat_file) = find_live_chat_temp_file(temp_dir, file_prefix) else {
-        return Ok(None);
-    };
-
-    let live_chat_file_name = temp_live_chat_file.file_name().ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::InvalidDownloadedFile,
-            "live chat file has no valid name",
-        )
-    })?;
-
-    let live_chat_dir = live_chat_dir.ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::DataDirectoryResolveFailed,
-            "app live chat directory was not initialized",
-        )
-    })?;
-
-    let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
-
-    // Store live chat replays gzip-compressed to save disk; the frontend reader transparently
-    // decompresses them. On the blocking pool, since a long stream's replay is tens of MB to gzip
-    // and that held an async runtime thread for the whole compression. Serialize this library write
-    // against a concurrent migration (see library::lock); the guard lives inside the blocking
-    // closure, never across an await.
-    let kept_existing_live_chat = {
-        let source = temp_live_chat_file.clone();
-        let destination = final_live_chat_destination.clone();
-
-        run_blocking(move || {
-            let _library_guard = crate::services::library::lock::library_read_guard();
-
-            // Never overwrite an already-stored replay, matching place_downloaded_file's "keep the
-            // catalogued bytes" rule for the main media file. The name is deterministic per
-            // video+run, so an existing file is the same replay; without this guard
-            // compress_file_to (via replace_file_safely) would silently discard it on a
-            // re-download.
-            if destination.exists() {
-                return Ok(true);
-            }
-
-            crate::services::live_chat_storage::compress_file_to(&source, &destination)?;
-            Ok(false)
-        })
-        .await?
-    };
-
-    if kept_existing_live_chat {
-        // Same visibility rule as the kept-existing media log. Keeping the stored replay is
-        // correct, but doing it silently reads as "the fresh replay was saved" when it was
-        // discarded.
-        emit_download_log_infallible(
-            app,
-            run_id,
-            "A live chat replay for this video already existed in the library; kept the existing copy and discarded the new one.",
-            "system",
-        );
-    }
-
-    Ok(Some(build_live_chat_relative_path(Path::new(
-        live_chat_file_name,
-    ))))
-}
-
-/// Moves `file` into `dir` under its own name, or under a prefixed one when that name is taken, and
-/// returns where it went.
-fn move_into_dir_without_overwriting(file: &Path, dir: &Path) -> AppResult<PathBuf> {
-    let file_name = file.file_name().ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::InvalidDownloadedFile,
-            "downloaded file has no valid name",
-        )
-    })?;
-
-    let mut destination = dir.join(file_name);
-
-    if destination.exists() {
-        destination = dir.join(format!(
-            "{}-{}",
-            unique_temp_suffix(),
-            file_name.to_string_lossy()
-        ));
-    }
-
-    fs::rename(file, &destination).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::FileRenameFailed,
-            "failed to keep the downloaded file",
-            &destination,
-            &e,
-        )
-    })?;
-
-    Ok(destination)
-}
-
-/// Keeps a finished download that could not be placed into the library, and returns `error` with
-/// where the file went added to its details.
-///
-/// The run's temp directory is removed when the run ends, and the download in it is often the
-/// expensive part, sometimes the only chance at all (a video since removed, a replay that expired).
-/// A disconnected library drive or a full disk is a reason to fail the creation, not to throw the
-/// file away, so it is moved to `recovered-downloads/` in the cache, which nothing sweeps.
-async fn keep_unplaced_download<R: Runtime>(
-    app: &AppHandle<R>,
-    run_id: &str,
-    downloaded_temp: PathBuf,
-    error: AppError,
-) -> AppError {
-    let kept = match crate::services::temp_paths::recovered_downloads_dir(app) {
-        Ok(dir) => {
-            run_blocking(move || move_into_dir_without_overwriting(&downloaded_temp, &dir)).await
-        }
-        Err(dir_error) => Err(dir_error),
-    };
-
-    match kept {
-        Ok(kept_at) => {
-            let name = logger::redact_path(&kept_at);
-
-            emit_download_log_infallible(
-                app,
-                run_id,
-                format!(
-                    "The download could not be added to the library. The file was kept as {name} in the recovered-downloads folder of the app's cache directory."
-                ),
-                "system",
-            );
-
-            let details = match error.details.as_deref() {
-                Some(details) if !details.trim().is_empty() => {
-                    format!("{details}. The downloaded file was kept as recovered-downloads/{name}")
-                }
-                _ => format!("the downloaded file was kept as recovered-downloads/{name}"),
-            };
-
-            AppError {
-                details: Some(details),
-                ..error
-            }
-        }
-        Err(keep_error) => {
-            logger::warn(
-                "yt_dlp",
-                format!("could not keep a download that failed to reach the library: {keep_error}"),
-            );
-
-            error
-        }
-    }
-}
 
 /// How long a killed download may keep running before it is killed again.
 const KILL_GRACE: Duration = Duration::from_secs(10);
@@ -1520,6 +1040,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn unique_temp_dir(suffix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

@@ -49,7 +49,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
     `restore.rs`, `integrity.rs`,
     `external.rs`, `import.rs`), `video_repository/` (`media_page.rs`) and
-    `yt_dlp/download/` (`command.rs`, `redaction.rs`).
+    `yt_dlp/download/` (`command.rs`, `redaction.rs`, `placement.rs`, `post_download.rs`).
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
     common prefix was already naming a directory, so they are now `library/`

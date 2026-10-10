@@ -842,9 +842,15 @@ mod tests {
 
         assert_eq!(summary.removed_entries, 1);
         assert!(!stale.exists());
-        assert!(recent.exists(), "a write that may still be in flight is kept");
+        assert!(
+            recent.exists(),
+            "a write that may still be in flight is kept"
+        );
         assert!(database.exists());
-        assert!(staged_import.exists(), "not the leftover shape, whatever its age");
+        assert!(
+            staged_import.exists(),
+            "not the leftover shape, whatever its age"
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

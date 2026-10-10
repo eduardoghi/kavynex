@@ -27,7 +27,6 @@ use tower_service::Service;
 use crate::services::ssrf_guard::is_disallowed_ip;
 use crate::services::thumbnail::redirect::{next_hop, MAX_REDIRECT_HOPS};
 use crate::services::thumbnail::url::is_allowed_thumbnail_image_host;
-use crate::utils::format::looks_like_supported_image;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const DIRECT_THUMBNAIL_MAX_BYTES: usize = 10 * 1024 * 1024; // 10 MiB
@@ -332,6 +331,7 @@ pub(super) async fn http_get_image(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::format::looks_like_supported_image;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 

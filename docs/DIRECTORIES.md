@@ -323,7 +323,7 @@ opens (`services/library/integrity.rs`) only compares the database with what is 
 
 **yt-dlp downloads are content-addressed too.** yt-dlp writes into the run's temp directory under
 its own name (`youtube_<id>_<format_id>.<ext>`), and `place_downloaded_file` in
-`services/yt_dlp/download/mod.rs` hashes the finished file and stores it as
+`services/yt_dlp/download/placement.rs` hashes the finished file and stores it as
 `media_<sha256>.<ext>`, the same name a local import of those bytes would get
 (`library::media::content_addressed_media_name`). A file already at that name whose bytes still
 hash to it is the same content (the same video saved for another channel), so it is reused and the
@@ -335,7 +335,7 @@ They still work, and the deep check reports them as unverifiable because their n
 hash.
 
 Live chat files are likewise named from the video/run rather than content-hashed (they are
-written once by a yt-dlp run and not re-derived); see `services/yt_dlp/download/mod.rs` and
+written once by a yt-dlp run and not re-derived); see `services/yt_dlp/download/post_download.rs` and
 `services/live_chat_storage.rs` for the exact naming if you need to trace a specific file.
 
 All paths stored in the database (`videos.file_path`, `videos.thumbnail_path`,
