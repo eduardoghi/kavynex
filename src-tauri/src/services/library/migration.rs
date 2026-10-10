@@ -7,6 +7,19 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::constants::MANAGED_LIBRARY_DIRS;
+use crate::services::library::cleanup::LIBRARY_TRASH_DIR;
+
+/// The folders a migration carries to the new library: the four the app writes media into, and the
+/// trash the orphan removal moves files to. The trash has to travel too. Left behind, its files sat
+/// outside the library they could be restored into, nothing purged them any more, and the old
+/// folder stopped being a destination a later move back would accept.
+const MIGRATED_LIBRARY_DIRS: [&str; 5] = [
+    MANAGED_LIBRARY_DIRS[0],
+    MANAGED_LIBRARY_DIRS[1],
+    MANAGED_LIBRARY_DIRS[2],
+    MANAGED_LIBRARY_DIRS[3],
+    LIBRARY_TRASH_DIR,
+];
 use crate::services::filesystem::copy_directory_contents_tracked;
 use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
@@ -157,7 +170,7 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         })?;
 
         let name = entry.file_name().to_string_lossy().to_string();
-        let is_managed_name = MANAGED_LIBRARY_DIRS.contains(&name.as_str());
+        let is_managed_name = MIGRATED_LIBRARY_DIRS.contains(&name.as_str());
 
         // A migration never creates a link, so a managed folder that is one points somewhere else,
         // possibly at the current library's own folder. Copying into it would copy each file onto
@@ -278,7 +291,7 @@ fn for_each_managed_file(
         Ok(())
     }
 
-    for dir_name in MANAGED_LIBRARY_DIRS {
+    for dir_name in MIGRATED_LIBRARY_DIRS {
         let dir = root.join(dir_name);
 
         if dir.is_dir() {
@@ -483,7 +496,7 @@ fn copy_library_contents_reporting(
         )
     })?;
 
-    for dir_name in MANAGED_LIBRARY_DIRS {
+    for dir_name in MIGRATED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
         let destination_dir = new_library_dir.join(dir_name);
 
@@ -517,7 +530,7 @@ fn copy_library_contents_reporting(
 /// directory itself if nothing unrelated is left in it. Best effort. A removal failure only
 /// leaves reclaimable disk behind, never lost data (the new location already holds a full copy).
 fn remove_old_library_contents(old_library_dir: &Path) {
-    for dir_name in MANAGED_LIBRARY_DIRS {
+    for dir_name in MIGRATED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
 
         if source_dir.exists() {
@@ -628,7 +641,7 @@ fn list_leftover_entries(old_library_dir: &Path) -> Vec<String> {
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().to_string();
 
-            if MANAGED_LIBRARY_DIRS.contains(&name.as_str()) {
+            if MIGRATED_LIBRARY_DIRS.contains(&name.as_str()) {
                 None
             } else {
                 Some(name)
@@ -1684,5 +1697,47 @@ mod tests {
         let _ = fs::remove_dir_all(old_root);
         let _ = fs::remove_dir_all(new_root);
         let _ = fs::remove_dir_all(elsewhere);
+    }
+
+    #[test]
+    fn the_trash_moves_with_the_library() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("trash-old");
+        let new_root = unique_test_dir("trash-new");
+        let trashed = Path::new(LIBRARY_TRASH_DIR)
+            .join("20261010T120000Z-1")
+            .join("video")
+            .join("media_a.mp4");
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("media_b.mp4"), b"kept").unwrap();
+        fs::create_dir_all(old_root.join(trashed.parent().unwrap())).unwrap();
+        fs::write(old_root.join(&trashed), b"trashed").unwrap();
+
+        migrate_library_directory_sync(
+            old_root.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            None,
+        )
+        .expect("a library with a trash folder moves");
+
+        assert_eq!(fs::read(new_root.join(&trashed)).unwrap(), b"trashed");
+        assert!(
+            !old_root.join(LIBRARY_TRASH_DIR).exists(),
+            "nothing is left behind for no sweep to reach"
+        );
+
+        let _ = fs::remove_dir_all(old_root);
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn a_folder_holding_only_a_trash_is_a_destination_a_move_can_resume_into() {
+        let root = unique_test_dir("trash-destination");
+        fs::create_dir_all(root.join(LIBRARY_TRASH_DIR)).unwrap();
+
+        ensure_destination_is_migratable(&root).expect("the trash is the app's own folder");
+
+        let _ = fs::remove_dir_all(root);
     }
 }
