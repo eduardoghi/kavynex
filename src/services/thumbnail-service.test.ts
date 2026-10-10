@@ -103,7 +103,6 @@ describe("resolveDisplayThumbnails", () => {
 
         expect(invokeCommand).toHaveBeenCalledWith(TAURI_COMMANDS.RESOLVE_DISPLAY_THUMBNAILS, {
             relativePaths: ["thumbnails/thumb_aaa.jpg"],
-            libraryPath: "/library",
         });
         expect(displayPaths.get("thumbnails/thumb_aaa.jpg")).toBe("/cache/thumb-display/aaa.jpg");
     });
@@ -120,7 +119,6 @@ describe("resolveDisplayThumbnails", () => {
 
         expect(invokeCommand).toHaveBeenCalledWith(TAURI_COMMANDS.RESOLVE_DISPLAY_THUMBNAILS, {
             relativePaths: ["thumbnails/thumb_aaa.jpg"],
-            libraryPath: "/library",
         });
     });
 

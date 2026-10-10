@@ -34,7 +34,7 @@ export async function verifyLibraryContent(
         throw new ClientError("A library folder is required.");
     }
 
-    return streamLibraryVerification(normalized, onProgress);
+    return streamLibraryVerification(onProgress);
 }
 
 /**
@@ -128,6 +128,9 @@ export async function cancelLibraryMigration(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.CANCEL_LIBRARY_MIGRATION);
 }
 
+// The functions below that take the library path send it nowhere. The backend reads the library
+// from the settings. They use it to skip a call that cannot succeed while no library is configured.
+
 export async function getLibrarySummary(path: string): Promise<LibrarySummaryInfo> {
     const normalizedPath = normalizeString(path);
 
@@ -136,9 +139,7 @@ export async function getLibrarySummary(path: string): Promise<LibrarySummaryInf
     }
 
     try {
-        const result = await invokeCommand(TAURI_COMMANDS.GET_LIBRARY_SUMMARY, {
-            libraryPath: normalizedPath,
-        });
+        const result = await invokeCommand(TAURI_COMMANDS.GET_LIBRARY_SUMMARY);
 
         return {
             total_bytes: Number(result.total_bytes ?? 0),
@@ -163,10 +164,7 @@ export async function openLibraryDirectory(path: string): Promise<void> {
     }
 
     await resolveExistingDirectory(normalizedPath);
-    await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
-        path: normalizedPath,
-        libraryPath: normalizedPath,
-    });
+    await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, { path: normalizedPath });
 }
 
 export async function openFileLocation(path: string, libraryPath: string): Promise<void> {
@@ -181,10 +179,7 @@ export async function openFileLocation(path: string, libraryPath: string): Promi
         throw new ClientError("Library path is required.");
     }
 
-    await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
-        path: normalizedPath,
-        libraryPath: normalizedLibraryPath,
-    });
+    await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, { path: normalizedPath });
 }
 
 // Opens the app's log directory in the OS file manager. Unlike the two above it passes no path.

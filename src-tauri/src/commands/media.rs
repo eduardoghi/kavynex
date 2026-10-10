@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Runtime};
 
-use crate::services::library::guard::ensure_configured_library_path;
+use crate::services::library::guard::configured_library_path;
 use crate::services::media_creation::{self, CreateMediaRequest, CreatedMedia};
 use crate::AppResult;
 
@@ -14,14 +14,14 @@ use crate::AppResult;
 /// `services::media_creation` for the ordering and `docs/THREAT-MODEL.md` for what that changed about the
 /// trust boundary.
 ///
-/// The library path is checked against the persisted settings here, before any file is written, like
-/// every other command that writes into the library.
+/// The library is the configured one, read from the settings before any file is written. The
+/// request carries no library path.
 #[tauri::command]
 pub async fn create_media<R: Runtime>(
     app: AppHandle<R>,
-    request: CreateMediaRequest,
+    mut request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
-    ensure_configured_library_path(&app, &request.library_path).await?;
+    request.library_path = configured_library_path(&app).await?;
     media_creation::ensure_request_files_were_chosen(&request)?;
 
     media_creation::create_media_async(&app, request).await
@@ -218,9 +218,10 @@ mod tests {
     }
 
     #[test]
-    fn create_media_command_rejects_a_library_that_is_not_the_configured_one_over_ipc() {
-        // The guard runs before any file is written. The library the request names exists and is
-        // writable, and it must still be refused because it is not the one the settings hold.
+    fn create_media_command_writes_into_the_configured_library_whatever_the_request_names() {
+        // The request used to carry the library, checked against the settings. It carries none now,
+        // and a renderer that still sends one is ignored. The import lands in the configured
+        // library and nothing is written where the payload pointed.
         let root = unique_test_dir("ipc-create-guard");
         let configured = root.join("configured");
         let elsewhere = root.join("elsewhere");
@@ -232,17 +233,17 @@ mod tests {
             memory_db_with_library_and_channel(&configured.canonicalize().unwrap());
         let webview = test_webview(db);
 
-        let error = invoke(
+        invoke(
             &webview,
             "create_media",
             local_request(channel_id, &source, None, &elsewhere, "copy"),
         )
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(configured.join("video").is_dir());
         assert!(
             !elsewhere.join("video").exists(),
-            "nothing may be written into a library the guard refused"
+            "nothing may be written where the payload pointed"
         );
 
         let _ = fs::remove_dir_all(&root);

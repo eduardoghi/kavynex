@@ -61,7 +61,6 @@ export async function persistThumbnailFile(
     return normalizeString(
         await invokeCommand(TAURI_COMMANDS.PERSIST_THUMBNAIL_FILE, {
             path: normalizedSourcePath,
-            libraryPath: normalizedLibraryPath,
         })
     );
 }
@@ -89,7 +88,6 @@ export async function downloadChannelAvatarFromHandle(
     return normalizeString(
         await invokeCommand(TAURI_COMMANDS.DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE, {
             youtubeHandle: normalizedYoutubeHandle,
-            libraryPath: normalizedLibraryPath,
         })
     );
 }
@@ -154,7 +152,6 @@ export async function resolveDisplayThumbnails(
 
     const resolved = await invokeCommand(TAURI_COMMANDS.RESOLVE_DISPLAY_THUMBNAILS, {
         relativePaths: requested,
-        libraryPath: normalizedLibraryPath,
     });
 
     const displayPaths = new Map<string, string>();

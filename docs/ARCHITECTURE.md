@@ -497,7 +497,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download/` (`mod.rs`, `fetch.rs`, `process.rs`), `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
 | Database schema/migrations | `services/db_schema/` |. |
-| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` | `services/database-service.ts` |
+| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the export and import gates in `gates.rs`) | `services/database-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | Deep library check | `commands/library.rs` (`verify_library_content`), `services/library/verification.rs` | `hooks/use-library-verification.ts`, `components/modals/diagnostics-sections/diagnostics-content-verification.tsx` |

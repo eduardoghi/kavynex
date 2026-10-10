@@ -540,9 +540,9 @@ export function collectNetworkRefusalSites(sources) {
 // Regenerate with:
 //     node scripts/verify-command-path-surface.js --print
 export const DECLARED_NETWORK_REFUSAL_SITES = [
-    "commands/database.rs::imported_folder_to_check",
-    "commands/database.rs::prepare_export_destination",
-    "commands/database.rs::prepare_import_source",
+    "services/db_backup/gates.rs::imported_folder_to_check",
+    "services/db_backup/gates.rs::prepare_export_destination",
+    "services/db_backup/gates.rs::prepare_import_source",
     "services/library/guard.rs::paths_refer_to_same_location",
     "services/library/media.rs::stage_media_import_cancellable_sync",
     "services/library/mod.rs::resolve_path_inside_library",
@@ -609,30 +609,26 @@ const GUARD_CLASSES = {
 // Regenerate with:
 //     node scripts/verify-command-path-surface.js --print
 export const DECLARED_PATH_SURFACE = [
-    { command: "check_library_integrity", parameters: ["library_path"], guard: "configured-library" },
     { command: "create_media", parameters: ["source_value", "thumbnail_source_path", "library_path", "cookies_path"], guard: { source_value: "user-picked", thumbnail_source_path: "user-picked", library_path: "configured-library", cookies_path: "user-picked" } },
     { command: "delete_temporary_thumbnail", parameters: ["path"], guard: "cache-confined" },
-    { command: "download_channel_avatar_from_handle", parameters: ["library_path"], guard: "configured-library" },
     { command: "ensure_directory_exists", parameters: ["path"], guard: "chosen-directory" },
     { command: "export_database", parameters: ["destination_path"], guard: "user-picked" },
     { command: "fetch_youtube_comments", parameters: ["cookies_path"], guard: "user-picked" },
     { command: "generate_temporary_thumbnail", parameters: ["path"], guard: "user-picked" },
-    { command: "get_library_summary", parameters: ["library_path"], guard: "configured-library" },
     { command: "import_database", parameters: ["source_path"], guard: "user-picked" },
     { command: "insert_channel", parameters: ["avatar_path"], guard: "managed-relative" },
     { command: "list_yt_dlp_formats", parameters: ["cookies_path"], guard: "user-picked" },
     { command: "migrate_library_directory", parameters: ["old_library_path", "new_library_path"], guard: { old_library_path: "configured-library", new_library_path: "chosen-directory" } },
-    { command: "open_path_in_system", parameters: ["path", "library_path"], guard: { path: "library-confined", library_path: "configured-library" } },
-    { command: "persist_thumbnail_file", parameters: ["path", "library_path"], guard: { path: "user-picked", library_path: "configured-library" } },
+    { command: "open_path_in_system", parameters: ["path"], guard: "library-confined" },
+    { command: "persist_thumbnail_file", parameters: ["path"], guard: "user-picked" },
     { command: "register_library_asset_scope", parameters: ["library_path"], guard: "configured-library" },
     { command: "replace_channel_avatar", parameters: ["avatar_path"], guard: "managed-relative" },
-    { command: "resolve_display_thumbnails", parameters: ["relative_paths", "library_path"], guard: { relative_paths: "managed-relative", library_path: "configured-library" } },
+    { command: "resolve_display_thumbnails", parameters: ["relative_paths"], guard: "managed-relative" },
     { command: "resolve_existing_directory", parameters: ["path"], guard: "chosen-directory" },
     { command: "set_app_settings", parameters: ["library_path"], guard: "chosen-directory" },
     { command: "set_external_backup_dir", parameters: ["path"], guard: "chosen-directory" },
     { command: "stage_manual_thumbnail", parameters: ["path"], guard: "user-picked" },
     { command: "stream_live_chat_file", parameters: ["relative_path"], guard: "managed-relative" },
-    { command: "verify_library_content", parameters: ["library_path"], guard: "configured-library" },
 ];
 
 export function readCommandFiles(commandsDir) {

@@ -382,6 +382,7 @@ pub use integrity::{
 
 // The user-triggered export and the once-a-day external mirror live in the `external` submodule.
 mod external;
+pub(crate) mod gates;
 pub(crate) use external::EXTERNAL_BACKUP_FILE_NAME;
 pub use external::{export_database, mirror_database_to_external_dir};
 // The parent module's mirror tests reach these internals; test-only so a non-test build does not

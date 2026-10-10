@@ -137,7 +137,6 @@ describe("media-service", () => {
             sourceValue: "https://www.youtube.com/watch?v=abc",
             thumbnailSourcePath: null,
             importMode: "copy",
-            libraryPath: "/library",
             publishedAt: "2026-03-31",
             ytDlpRunId: "run-1",
             ytDlpFormatId: "137+140",

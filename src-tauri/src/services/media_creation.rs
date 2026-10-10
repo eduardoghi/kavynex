@@ -55,8 +55,8 @@ pub enum MediaSourceMode {
 ///
 /// Deliberately the same field set the frontend already assembled for its own orchestration, so the
 /// move is a change of *who runs the steps* rather than of what the user is asked for. Every value
-/// here is caller-supplied and none is trusted. `library_path` is checked against the persisted
-/// settings by the command layer, the title goes through the shared validator, and every produced
+/// here is caller-supplied and none is trusted. The library is not among them (the command fills
+/// `library_path` from the settings), the title goes through the shared validator, and every produced
 /// path is re-checked as a managed library-relative path before it reaches a row. The media type is
 /// not asked for at all. A download reports it and a local import takes it from its extension, the
 /// same rule that picks the file's subdirectory, so a row cannot say "video" about a file in
@@ -85,6 +85,9 @@ pub struct CreateMediaRequest {
     pub thumbnail_source_path: Option<String>,
     #[ts(type = "\"copy\" | \"move\"")]
     pub import_mode: ImportMode,
+    /// Not sent by the renderer. `commands::media::create_media` fills it from the settings.
+    #[serde(skip_deserializing)]
+    #[ts(skip)]
     pub library_path: String,
     pub published_at: Option<String>,
     pub yt_dlp_run_id: String,

@@ -292,7 +292,6 @@ export async function createMedia(
         sourceValue: normalizedInput.sourceValue,
         thumbnailSourcePath: normalizedInput.thumbnailSourcePath,
         importMode: normalizedInput.importMode,
-        libraryPath: normalizedInput.libraryPath,
         publishedAt: normalizedInput.publishedAt,
         ytDlpRunId: normalizedInput.ytDlpRunId,
         ytDlpFormatId: normalizedInput.ytDlpFormatId,

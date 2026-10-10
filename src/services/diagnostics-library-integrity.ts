@@ -61,9 +61,8 @@ export async function getLibraryIntegrity(
     // Always call through, even when the database holds no rows. The library folder may still
     // hold orphan files nothing references, which is the half of the report the rows cannot
     // answer.
-    const check = await invokeCommand(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY, {
-        libraryPath: normalizedLibraryPath,
-    });
+    // The backend reads the library from the settings. The path above only says whether one is set.
+    const check = await invokeCommand(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY);
 
     return { report: check.report, mediaByPath: check.mediaTargets };
 }

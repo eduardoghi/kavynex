@@ -5,8 +5,8 @@ use crate::services::channel_repository;
 use crate::services::database::Db;
 use crate::services::library;
 use crate::services::library::guard::{
-    ensure_configured_library_path_in_pool, verify_library_path_then_blocking,
-    verify_library_path_then_blocking_in_pool,
+    configured_library_path_in_pool, verify_library_path_then_blocking,
+    with_configured_library_then_blocking_in_pool,
 };
 use crate::services::library::summary::LibrarySummaryInfo;
 use crate::services::logger;
@@ -204,22 +204,11 @@ pub async fn migrate_library_directory<R: Runtime>(
 }
 
 /// Reports the size and file counts of the configured library directory.
-///
-/// `library_path` arrives over IPC but is verified against the persisted setting before anything
-/// is read, like every other command that takes one. It used to be trusted on its own, documented
-/// as a first-party-webview concession so the settings UI could preview a folder before it was
-/// saved, but no caller ever did that. The settings modal and the diagnostics summary both pass
-/// `settings.libraryPath`, which is the persisted value, and the folder-change flow
-/// (`use-cases/change-library-path.ts`) only ever passes a candidate to `ensure_directory_exists`.
-/// The concession bought nothing and cost the one rule the whole backend rests on.
 #[tauri::command]
-pub async fn get_library_summary(
-    db: State<'_, Db>,
-    library_path: String,
-) -> AppResult<LibrarySummaryInfo> {
+pub async fn get_library_summary(db: State<'_, Db>) -> AppResult<LibrarySummaryInfo> {
     let pool = db.pool().await?;
 
-    verify_library_path_then_blocking_in_pool(&pool, library_path, |library_path| {
+    with_configured_library_then_blocking_in_pool(&pool, |library_path| {
         library::get_library_summary_sync(&library_path)
     })
     .await
@@ -227,25 +216,16 @@ pub async fn get_library_summary(
 
 /// Reveals a path inside the configured library in the OS file manager.
 ///
-/// Verified against the persisted setting for the reason given on `get_library_summary`, and with
-/// one of its own. `resolve_path_inside_library` confines `path` to `library_path`, so a caller
-/// that supplies *both* makes that containment check self-referential. Passing a drive root as
-/// each would satisfy it trivially. The guard is what makes the containment mean something. A
-/// missing `library_path` is rejected here rather than deeper in, so the failure names the real
-/// cause.
+/// `path` is confined to the configured library (`resolve_path_inside_library`). The library comes
+/// from the settings, never from the caller, since a caller supplying both could make that
+/// containment check self-referential by passing a drive root as each.
 #[tauri::command]
-pub async fn open_path_in_system(
-    db: State<'_, Db>,
-    path: String,
-    library_path: Option<String>,
-) -> AppResult<()> {
+pub async fn open_path_in_system(db: State<'_, Db>, path: String) -> AppResult<()> {
     let pool = db.pool().await?;
 
-    verify_library_path_then_blocking_in_pool(
-        &pool,
-        library_path.unwrap_or_default(),
-        move |library_path| library::open_path_in_system_sync(&path, Some(&library_path)),
-    )
+    with_configured_library_then_blocking_in_pool(&pool, move |library_path| {
+        library::open_path_in_system_sync(&path, Some(&library_path))
+    })
     .await
 }
 
@@ -267,21 +247,14 @@ pub async fn open_path_in_system(
 /// command's one unbounded input. Those vectors arrived from IPC with no ceiling, the only
 /// caller-supplied value in the backend without one.
 ///
-/// The guard runs before the rows are read, keeping the check-then-act order every other library
-/// command follows. It is applied directly rather than through
-/// `verify_library_path_then_blocking_in_pool`, whose whole point is coupling the check to the
-/// work. The reference read sits between the two and is async, so it cannot go inside that
-/// helper's blocking closure. What holds the guard here instead is
-/// `check_library_integrity_command_rejects_a_path_that_is_not_the_configured_library`, the
-/// IPC-level test that pins the refusal.
+/// The library is the configured one, read from the settings before the rows are.
 #[tauri::command]
 pub async fn check_library_integrity(
     db: State<'_, Db>,
-    library_path: String,
 ) -> AppResult<library::integrity::LibraryIntegrityCheck> {
     let pool = db.pool().await?;
 
-    ensure_configured_library_path_in_pool(&pool, &library_path).await?;
+    let library_path = configured_library_path_in_pool(&pool).await?;
 
     let references = video_repository::list_media_integrity_references(&pool).await?;
     let avatar_paths = channel_repository::list_channel_avatar_paths(&pool).await?;
@@ -310,21 +283,19 @@ pub async fn check_library_integrity(
 /// proportional to the size of the library, so a second concurrent sweep would read every byte
 /// twice while competing for the same disk.
 ///
-/// The library path is verified against the persisted setting before anything is read, like every
-/// other library command. The guard runs before the slot is claimed so a refused path fails as one
-/// rather than occupying the slot it will not use.
+/// The library is the configured one, read from the settings before the slot is claimed so a run
+/// with no library configured fails without occupying it.
 #[tauri::command]
 pub async fn verify_library_content(
     db: State<'_, Db>,
-    library_path: String,
     on_progress: Channel<library::verification::ContentVerificationEvent>,
 ) -> AppResult<()> {
-    // Begun before the path is checked against the settings, so a migration that finishes after
-    // that check stops the pass instead of leaving it to verify the old location.
+    // Begun before the library is read from the settings, so a migration that finishes after that
+    // read stops the pass instead of leaving it to verify the old location.
     let library_pass = crate::services::library::lock::LibraryPass::begin();
     let pool = db.pool().await?;
 
-    ensure_configured_library_path_in_pool(&pool, &library_path).await?;
+    let library_path = configured_library_path_in_pool(&pool).await?;
 
     let Some(_run) = library::verification::try_begin_verification() else {
         return Err(AppError::from_code(
@@ -780,13 +751,13 @@ mod tests {
         assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
     }
 
-    // The three commands below take a `library_path` over IPC and verify it against the persisted
-    // setting. Each one is pinned separately rather than through a shared loop. They differ in
-    // what a trusted path would have bought an attacker, and the report one of them returns is the
-    // reason this matters at all.
+    // The commands below used to take a `library_path` over IPC and verify it against the persisted
+    // setting. They take none now and read the setting. Each test still names another folder in the
+    // payload, the way a compromised renderer would, and pins that it is not the one acted on. They
+    // differ in what acting on it would have bought an attacker.
 
     #[test]
-    fn get_library_summary_command_rejects_a_path_that_is_not_the_configured_library() {
+    fn get_library_summary_command_reads_the_configured_library_whatever_the_caller_names() {
         let configured = unique_test_dir("summary-configured");
         let elsewhere = unique_test_dir("summary-elsewhere");
         fs::create_dir_all(configured.join("video")).unwrap();
@@ -795,25 +766,30 @@ mod tests {
 
         let webview = test_webview(memory_db_with_library(&configured));
 
-        let error = invoke(
+        let summary = invoke(
             &webview,
             "get_library_summary",
             serde_json::json!({ "libraryPath": elsewhere.to_string_lossy() }),
         )
-        .unwrap_err();
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
 
-        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert_eq!(
+            summary["video_files"], 0,
+            "the configured library is the empty one"
+        );
 
         let _ = fs::remove_dir_all(&configured);
         let _ = fs::remove_dir_all(&elsewhere);
     }
 
     #[test]
-    fn check_library_integrity_command_rejects_a_path_that_is_not_the_configured_library() {
+    fn check_library_integrity_command_walks_the_configured_library_whatever_the_caller_names() {
         // The one that mattered most. The report carries up to five real filenames per category,
         // so a trusted `library_path` made this a directory enumerator for any tree holding a
         // `video/`, `audio/`, `thumbnails/` or `live_chat/` subdirectory. The planted file below is
-        // what such a call would have named back; the guard has to refuse before the walk runs.
+        // what such a call would have named back.
         let configured = unique_test_dir("integrity-configured");
         let elsewhere = unique_test_dir("integrity-elsewhere");
         fs::create_dir_all(&configured).unwrap();
@@ -822,40 +798,32 @@ mod tests {
 
         let webview = test_webview(memory_db_with_library(&configured));
 
-        let error = invoke(
+        let check = invoke(
             &webview,
             "check_library_integrity",
-            serde_json::json!({
-                "libraryPath": elsewhere.to_string_lossy(),
-                "mediaPaths": [],
-                "thumbnailPaths": [],
-                "liveChatPaths": []
-            }),
+            serde_json::json!({ "libraryPath": elsewhere.to_string_lossy() }),
         )
-        .unwrap_err();
+        .unwrap()
+        .deserialize::<serde_json::Value>()
+        .unwrap();
 
-        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert_eq!(check["report"]["orphan_media_files"], 0);
+        assert!(!check.to_string().contains("private.mp4"));
 
         let _ = fs::remove_dir_all(&configured);
         let _ = fs::remove_dir_all(&elsewhere);
     }
 
     #[test]
-    fn verify_library_content_command_rejects_a_path_that_is_not_the_configured_library() {
-        // The same guard the cheap check gets, and it is worth pinning separately because this
-        // command reads every byte of what it is pointed at and reports example filenames back. A
-        // trusted library_path would make it both a directory enumerator and a way to make the app
-        // read an arbitrary tree from end to end.
-        //
-        // The guard runs before the single-run slot is claimed, so a refused call also has to leave
-        // the slot free; the assertion below that a later run can still begin is what pins that.
-        let configured = unique_test_dir("verify-configured");
+    fn verify_library_content_command_refuses_without_a_configured_library() {
+        // This command reads every byte of what it works on, so with no library configured there
+        // is nothing it may read, whatever the caller names. The refusal comes before the
+        // single-run slot is claimed, so a later run can still begin.
         let elsewhere = unique_test_dir("verify-elsewhere");
-        fs::create_dir_all(&configured).unwrap();
         fs::create_dir_all(elsewhere.join("video")).unwrap();
         fs::write(elsewhere.join("video").join("private.mp4"), b"data").unwrap();
 
-        let webview = test_webview(memory_db_with_library(&configured));
+        let webview = test_webview(memory_db());
 
         let error = invoke(
             &webview,
@@ -873,16 +841,14 @@ mod tests {
             .expect("a refused call must not have claimed the single-run slot");
         drop(slot);
 
-        let _ = fs::remove_dir_all(&configured);
         let _ = fs::remove_dir_all(&elsewhere);
     }
 
     #[test]
-    fn open_path_in_system_command_rejects_a_path_that_is_not_the_configured_library() {
-        // `resolve_path_inside_library` confines `path` to `library_path`, so a caller supplying
-        // both makes that containment self-referential. Passing the same outside directory as
-        // each would satisfy it. The guard is what stops the spawn, which is why this asserts the
-        // library-path code rather than a containment failure.
+    fn open_path_in_system_command_confines_the_path_to_the_configured_library() {
+        // `resolve_path_inside_library` confines `path` to the library. When the caller supplied
+        // both, passing the same outside directory as each satisfied it. The library now comes from
+        // the settings, so the outside directory is refused as outside it, and nothing is spawned.
         let configured = unique_test_dir("open-configured");
         let elsewhere = unique_test_dir("open-elsewhere");
         fs::create_dir_all(&configured).unwrap();
@@ -900,7 +866,7 @@ mod tests {
         )
         .unwrap_err();
 
-        assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
+        assert_eq!(error["code"], AppErrorCode::InvalidMediaPath.as_str());
 
         let _ = fs::remove_dir_all(&configured);
         let _ = fs::remove_dir_all(&elsewhere);

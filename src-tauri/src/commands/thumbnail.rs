@@ -2,7 +2,7 @@ use tauri::{AppHandle, Runtime};
 
 use crate::services::chosen_files::{self, ChosenFile};
 use crate::services::library::guard::{
-    ensure_configured_library_path, verify_library_path_then_blocking,
+    configured_library_path, with_configured_library_then_blocking,
 };
 use crate::services::thumbnail;
 use crate::services::thumbnail::display::{self, DisplayThumbnail};
@@ -29,11 +29,10 @@ pub async fn generate_temporary_thumbnail<R: Runtime>(
 pub async fn persist_thumbnail_file<R: Runtime>(
     app: AppHandle<R>,
     path: String,
-    library_path: String,
 ) -> AppResult<String> {
     chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
 
-    verify_library_path_then_blocking(&app, library_path, move |library_path| {
+    with_configured_library_then_blocking(&app, move |library_path| {
         thumbnail::persist_thumbnail_file_sync(&path, &library_path)
     })
     .await
@@ -43,9 +42,8 @@ pub async fn persist_thumbnail_file<R: Runtime>(
 pub async fn download_channel_avatar_from_handle<R: Runtime>(
     app: AppHandle<R>,
     youtube_handle: String,
-    library_path: String,
 ) -> AppResult<String> {
-    ensure_configured_library_path(&app, &library_path).await?;
+    let library_path = configured_library_path(&app).await?;
 
     thumbnail::download_channel_avatar_from_handle_async(&app, &youtube_handle, &library_path).await
 }
@@ -55,15 +53,12 @@ pub async fn download_channel_avatar_from_handle<R: Runtime>(
 ///
 /// Each entry answers the corresponding `relative_paths` entry, and "no derivative" is an ordinary
 /// answer rather than a failure. The caller renders the stored thumbnail for it, which is what it
-/// did before this existed. The command as a whole therefore only fails if the library path itself
-/// does not check out.
+/// did before this existed. The command as a whole therefore only fails when no library is
+/// configured.
 ///
 /// The answer distinguishes a miss that is worth asking about again (`budgetSpent`) from one that is
 /// final (`unavailable`), because only this side can tell them apart and the caller re-asks about
 /// every path it has not settled. See [`DisplayThumbnail`] for what conflating them cost.
-///
-/// The library path goes through `verify_library_path_then_blocking` like every other library read,
-/// so a caller cannot point this at a directory the user has not configured.
 ///
 /// Only one of these runs at a time. The per-call budgets inside the service bound what one call may
 /// do and say nothing about how many are doing it, and this request is fire-and-forget (the grid
@@ -75,11 +70,8 @@ pub async fn download_channel_avatar_from_handle<R: Runtime>(
 pub async fn resolve_display_thumbnails<R: Runtime>(
     app: AppHandle<R>,
     relative_paths: Vec<String>,
-    library_path: String,
 ) -> AppResult<Vec<DisplayThumbnail>> {
-    // Taken before the library-path check rather than after it, so a refused call costs one atomic
-    // rather than a settings read. That ordering is safe only because the refusal reveals nothing. It
-    // is the same answer for a valid and an invalid library path, and no path is touched either way.
+    // Taken before the settings read rather than after it, so a refused call costs one atomic.
     //
     // `all_retryable` bounds the answer by the module's own per-call ceiling rather than by the
     // number the caller sent, which this exit used to inherit. The one place in the module that did.
@@ -89,7 +81,7 @@ pub async fn resolve_display_thumbnails<R: Runtime>(
 
     let app_for_resolve = app.clone();
 
-    verify_library_path_then_blocking(&app, library_path, move |library_path| {
+    with_configured_library_then_blocking(&app, move |library_path| {
         thumbnail::resolve_display_thumbnails_sync(&app_for_resolve, &library_path, &relative_paths)
     })
     .await

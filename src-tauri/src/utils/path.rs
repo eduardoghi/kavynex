@@ -289,6 +289,21 @@ pub fn ensure_relative_path_in_managed_dir(value: &str, expected_dir: &str) -> A
     Ok(())
 }
 
+/// Whether `path` resolves to `protected_dir` or to a directory inside it, comparing canonical paths
+/// so a symlink or a `..`-laden path cannot dodge the check.
+///
+/// Fails open. When either side cannot be canonicalized the answer is `false`, because every caller
+/// checks existence separately and only needs containment decided for a path that does resolve.
+pub fn resolves_inside_dir(path: &Path, protected_dir: &Path) -> bool {
+    let (Ok(canonical_path), Ok(canonical_protected)) =
+        (path.canonicalize(), protected_dir.canonicalize())
+    else {
+        return false;
+    };
+
+    canonical_path.starts_with(&canonical_protected)
+}
+
 pub fn ensure_existing_path_inside_dir(path: &Path, base_dir: &Path) -> AppResult<()> {
     if !path.exists() {
         return Err(AppError::from_code(

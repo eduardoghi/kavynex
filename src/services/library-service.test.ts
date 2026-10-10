@@ -206,7 +206,7 @@ describe("getLibrarySummary", () => {
         expect(invokeCommandMock).not.toHaveBeenCalled();
     });
 
-    it("sends the library as `libraryPath` and fills in what the backend left out", async () => {
+    it("asks for the configured library's summary and fills in what the backend left out", async () => {
         invokeCommandMock.mockResolvedValueOnce({
             total_bytes: 2048,
             formatted_size: "  ",
@@ -220,9 +220,7 @@ describe("getLibrarySummary", () => {
             audio_files: 0,
             thumbnail_files: 0,
         });
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.GET_LIBRARY_SUMMARY, {
-            libraryPath: "D:/Library",
-        });
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.GET_LIBRARY_SUMMARY);
     });
 
     it("lets a backend failure reach the caller", async () => {
@@ -239,7 +237,7 @@ describe("opening paths in the file manager", () => {
         vi.clearAllMocks();
     });
 
-    it("checks the library exists, then opens it as its own library", async () => {
+    it("checks the library exists, then opens it", async () => {
         invokeCommandMock.mockResolvedValueOnce("D:/Library" as never);
 
         await openLibraryDirectory(" D:/Library ");
@@ -249,7 +247,6 @@ describe("opening paths in the file manager", () => {
         });
         expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
             path: "D:/Library",
-            libraryPath: "D:/Library",
         });
     });
 
@@ -262,13 +259,12 @@ describe("opening paths in the file manager", () => {
         expect(invokeVoidMock).not.toHaveBeenCalled();
     });
 
-    it("opens a file location with the library it has to stay inside", async () => {
-        // The backend confines `path` to `libraryPath`, so both have to arrive.
+    it("opens a file location without sending the library", async () => {
+        // The backend confines `path` to the library it reads from the settings.
         await openFileLocation(" video/media_abc.mp4 ", " D:/Library ");
 
         expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
             path: "video/media_abc.mp4",
-            libraryPath: "D:/Library",
         });
     });
 
@@ -288,13 +284,13 @@ describe("library verification", () => {
         vi.clearAllMocks();
     });
 
-    it("streams the verification for the trimmed library path", async () => {
+    it("streams the verification when a library is configured", async () => {
         const report = { checked: 0 };
         vi.mocked(streamLibraryVerification).mockResolvedValueOnce(report as never);
         const onProgress = vi.fn();
 
         await expect(verifyLibraryContent(" D:/Library ", onProgress)).resolves.toBe(report);
-        expect(streamLibraryVerification).toHaveBeenCalledWith("D:/Library", onProgress);
+        expect(streamLibraryVerification).toHaveBeenCalledWith(onProgress);
     });
 
     it("refuses to verify without a library", async () => {

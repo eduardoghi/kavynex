@@ -29,13 +29,14 @@ so a symlink or a `..`-laden path can't walk a write or delete outside the inten
 directory. Every command that reads or writes inside the library directory or the app's
 cache/log directories goes through these helpers rather than joining strings by hand.
 
-On top of that, `src-tauri/src/services/library/guard.rs` never trusts a `library_path`
-argument received over IPC on its own. `ensure_configured_library_path` re-derives the
-library directory from the persisted `app_settings` row and rejects any request whose
-path does not canonicalize to the same location. Comparing canonical paths (not string
-prefixes) so a sibling directory like `library-evil` next to `library` can never be
-mistaken for it. This is what stops a compromised frontend from redirecting a delete/move
-operation at an arbitrary directory by simply passing a different `library_path`.
+On top of that, a command that works inside the library takes no library path from the caller. It
+reads the configured one from the persisted `app_settings` row
+(`services/library/guard.rs::configured_library_path*`), so a compromised frontend has no value to
+redirect a read, a delete or a move with. Two commands still take one, because they are about the
+library folder itself. `register_library_asset_scope` and `migrate_library_directory` (for the
+folder being left) check it with `ensure_configured_library_path`, which rejects a path that does not
+canonicalize to the configured location. Canonical paths, not string prefixes, so a sibling
+directory like `library-evil` next to `library` can never be mistaken for it.
 
 ### Which rule a given path argument needs
 
@@ -43,9 +44,9 @@ The two paragraphs above describe rules that answer different questions, and tel
 the whole of getting a new command right. They are named together here because the failure that
 made this section necessary was applying one and assuming it covered the other.
 
-- **`ensure_configured_library_path` (`services/library/guard.rs`) answers "is this the library?"**
-  It applies to an *absolute* `library_path` argument, and it settles where the operation is
-  rooted. Documented at length above and throughout this file.
+- **The configured library (`services/library/guard.rs`) answers "is this the library?"** It
+  settles where the operation is rooted. Most commands read it from the settings and take no
+  library path at all. The two that take one check it with `ensure_configured_library_path`.
 - **`ensure_managed_library_relative_path` (`utils/path.rs`) answers "is this one of ours inside
   it?"** It applies to a *relative* path naming an artifact, and it requires the first component to
   be one of `MANAGED_LIBRARY_DIRS` (`video/`, `audio/`, `thumbnails/`, `live_chat/`). Its sibling
@@ -85,7 +86,8 @@ Where each applies today, the write side of a creation runs the relative rule on
 produces (`media_creation::ensure_managed_prepared_paths`), and `stream_live_chat_file` runs it on
 the `relative_path` it receives. `delete_thumbnail_file` used to run it on the artifact path it
 received (see its own section below for what its absence cost, and why the command is gone).
-`library_path` arguments run the absolute rule. A command taking both runs both.
+The library itself is the settings' answer, never the caller's, except in the two commands named
+above.
 
 **Which rule each path answers to is now declared per parameter**, in
 `scripts/verify-command-path-surface.js`'s `DECLARED_PATH_SURFACE`, and CI refuses an unclassified
@@ -122,9 +124,9 @@ past a literal prefix match), and the functions applying it are:
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
 | `media_protocol::may_resolve` | a media request on the player's `kvxmedia:` protocol, unless it is on the share the library itself is on |
 | `yt_dlp::cookies::is_safe_selector_component` | the profile and container of a `--cookies-from-browser` selector, which yt-dlp resolves as a folder when it looks like a path |
-| `commands/database.rs::prepare_import_source` | the database import source |
-| `commands/database.rs::prepare_export_destination` | the database export destination |
-| `commands/database.rs::imported_folder_to_check` | the library and mirror folders an imported database names, which come from the file rather than from the user and are only taken on a machine that has none configured |
+| `db_backup::gates::prepare_import_source` | the database import source |
+| `db_backup::gates::prepare_export_destination` | the database export destination |
+| `db_backup::gates::imported_folder_to_check` | the library and mirror folders an imported database names, which come from the file rather than from the user and are only taken on a machine that has none configured |
 
 A library or a cookies file the user deliberately keeps on a share is not blocked from *existing*,
 only from being reached through a path the renderer supplies; copy it locally and the flow works.
@@ -201,7 +203,7 @@ case has limited blast radius:
   is a UNC/network location (`services/thumbnail/temp.rs::validate_source_media_path`), since a
   picker can return one.
 - `export_database`: the destination is **extension-gated** to `.db`/`.sqlite`/
-  `.sqlite3` (`commands/database.rs::validate_export_destination`) so the exported
+  `.sqlite3` (`services/db_backup/gates.rs::validate_export_destination`) so the exported
   database cannot be written over an arbitrary file such as a document or a key, a
   **network location is refused outright** (`prepare_export_destination`, see the cross-cutting
   rule above, since this is the direction where a share is an exfiltration of every row, not only an
@@ -213,7 +215,7 @@ case has limited blast radius:
   dialog (`services/chosen_files.rs`), so overwriting another app's `.db`/`.sqlite` file takes the
   user choosing that file.
 - `import_database`: the mirror image of the export gate, on the way in
-  (`commands/database.rs::prepare_import_source`). The source is **extension-gated** to the same
+  (`services/db_backup/gates.rs::prepare_import_source`). The source is **extension-gated** to the same
   `.db`/`.sqlite`/`.sqlite3` list the export uses (one shared `DATABASE_FILE_EXTENSIONS`, so the
   two directions cannot drift), and a **network location is refused outright**. `stage_database_import`
   stats and then opens this path, and on Windows the stat alone authenticates to the host over SMB
@@ -234,23 +236,23 @@ case has limited blast radius:
   missing row. The renderer additionally refuses to turn a network-shaped stored path into a URL
   (`utils/media-utils.ts::resolveStoredPath`).
 
-### The three library-reading commands are guarded
+### The library-reading commands take no library path
 
-`get_library_summary`, `check_library_integrity` and `open_path_in_system` take a `library_path`
-over IPC and verify it against the persisted setting
-(`library::guard::ensure_configured_library_path_in_pool`), like every other command that takes
-one.
+`get_library_summary`, `check_library_integrity`, `verify_library_content` and `open_path_in_system`
+read the library from the settings, like `persist_thumbnail_file`,
+`download_channel_avatar_from_handle`, `resolve_display_thumbnails` and `create_media`. Until
+2026-10 each took a `library_path` and checked it against the setting, which made the backend police
+a value it already had. The renderer still sends one where an old caller does, and it is ignored.
 
-They are named here rather than left to the rule above because they were an exception to it until
-2026-07-30, on the grounds that onboarding and the change-library flow needed them to act on a
-candidate folder before it was persisted. No caller ever did. What the exception cost while it
-stood, per command, is in
+The first three were once an exception even to that check, on the grounds that onboarding and the
+change-library flow needed them to act on a candidate folder before it was persisted. No caller ever
+did. What the exception cost while it stood, per command, is in
 [`decisions/2026-07-30-no-unguarded-library-path.md`](decisions/2026-07-30-no-unguarded-library-path.md);
 the short version is that the integrity report names real filenames, so a trusted `library_path`
 made it a directory enumerator for any tree on disk.
 
-Two platform-specific defenses inside `open_path_in_system` sit alongside the guard, because
-defense in depth is the point and neither costs anything:
+Two platform-specific defenses inside `open_path_in_system` sit alongside that, because defense in
+depth is the point and neither costs anything:
 
 - A UNC / network path (`\\host\share`): merely resolving one on Windows triggers an
   SMB/NTLM authentication handshake, leaking the user's NTLM hash to `host`.
@@ -262,28 +264,15 @@ defense in depth is the point and neither costs anything:
   than showing it. `-R` reveals files and directories alike, so revealing unconditionally costs
   nothing and keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
-The guard also subsumes part of the cross-cutting UNC rule for the other two. A network
-`library_path` aimed at a local configured library is refused by
-`paths_refer_to_same_location` before anything is canonicalized. When the configured library is
-itself on a share, a network `library_path` is compared to it by host and share name first
-(`utils::path::network_share_prefix`, case-insensitive) and refused, still before any
-canonicalize, when they differ. A genuinely network-hosted library therefore still resolves,
-which is the supported configuration, without a hostile caller being able to point the guard at
-a second host.
+Where a command still takes a library path (`register_library_asset_scope`,
+`migrate_library_directory`), the guard also covers part of the cross-cutting UNC rule. A network
+path aimed at a local configured library is refused by `paths_refer_to_same_location` before
+anything is canonicalized. When the configured library is itself on a share, a network path is
+compared to it by host and share name first (`utils::path::network_share_prefix`,
+case-insensitive) and refused, still before any canonicalize, when they differ.
 
-Each command has an IPC-level test pinning the refusal
-(`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`), so an unguarded
-`library_path` cannot come back by accident.
-
-Two of the three reach the guard through `verify_library_path_then_blocking_in_pool`, which couples
-the check to the work so neither can run without the other. `check_library_integrity` applies
-`ensure_configured_library_path_in_pool` directly instead, and the reason belongs here rather
-than being left to read as an oversight. It reads the stored paths from the pool
-between the check and the filesystem walk (see below), and that read is async, so it cannot sit
-inside the helper's blocking closure. The ordering is unchanged (the guard still runs before
-anything is read), but what holds it there is that command's IPC test rather than the helper's
-shape. A third command that needs the same structure should get an async-closure variant of the
-helper rather than a second hand-rolled copy.
+Each library-reading command has an IPC-level test that names another folder in the payload and
+pins that the configured library is the one acted on (`commands/library.rs`).
 
 #### `check_library_integrity` reads the stored paths itself
 
@@ -294,7 +283,7 @@ nothing else. So a check whose output is capped at five examples per category co
 proportional to the whole library, in both directions, to hand the backend rows it could reach with
 two queries on a pool it already holds.
 
-Both halves are gone. The command takes only `library_path`, and
+Both halves are gone. The command takes no arguments, and
 `list_media_integrity_references` is no longer registered. Two things follow that belong in this
 document rather than only in the architecture guide.
 
@@ -407,14 +396,14 @@ replaced a sequence the renderer drove across seven IPC calls, and the reason it
 rather than only in the architecture guide is that the sequence had two properties a security review
 has to care about.
 
-**It carries four caller-supplied paths, and each satisfies the cross-cutting rule above.** They are
+**It carries three caller-supplied paths, and each satisfies the cross-cutting rule above.** They are
 listed here because the grouping is what made them easy to lose sight of. They arrive inside one
-`CreateMediaRequest` rather than as four named parameters, so nothing about the signature says this
+`CreateMediaRequest` rather than as named parameters, so nothing about the signature says this
 is the app's largest path surface.
 
 | Field | How it satisfies the rule |
 |---|---|
-| `library_path` | Checked against the persisted setting by the command layer (`ensure_configured_library_path`) before any file is written, like every other library write. |
+| `library_path` | Not sent. The command fills it from the settings (`configured_library_path`) before any file is written, and a value in the payload is ignored. |
 | `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::stage_media_import_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
 | `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. This row used to credit `picked.rs` with the refusal, and `picked.rs` only ever guarded the staged preview (`stage_manual_thumbnail`), not this branch, so a UNC spelling reached the stat here. Fixed, and the table is what should have caught it: the script that holds it against the code checks that a listed site exists, not that a given parameter flows through it. |
 | `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |

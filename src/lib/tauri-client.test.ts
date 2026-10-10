@@ -400,15 +400,14 @@ describe("streamLibraryVerification", () => {
         cancelled: false,
     };
 
-    it("passes the library path and the channel, reports progress and resolves with the report", async () => {
+    it("passes only the channel, reports progress and resolves with the report", async () => {
         invokeMock.mockResolvedValue(null);
         const onProgress = vi.fn();
 
-        const verifying = streamLibraryVerification("D:/Library", onProgress);
+        const verifying = streamLibraryVerification(onProgress);
         await flushPromises();
 
         expect(invokeMock).toHaveBeenCalledWith(TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT, {
-            libraryPath: "D:/Library",
             onProgress: expect.any(FakeChannel),
         });
 
@@ -430,7 +429,7 @@ describe("streamLibraryVerification", () => {
         const spy = vi.spyOn(console, "error").mockImplementation(() => {});
         invokeMock.mockResolvedValue(null);
 
-        const verifying = streamLibraryVerification("D:/Library", vi.fn());
+        const verifying = streamLibraryVerification(vi.fn());
         await flushPromises();
 
         channelPassedAs("onProgress").onmessage({ kind: "done", report: { checked: "3" } });
@@ -445,7 +444,7 @@ describe("streamLibraryVerification", () => {
             message: "a verification is already running",
         });
 
-        await expect(streamLibraryVerification("D:/Library", vi.fn())).rejects.toMatchObject({
+        await expect(streamLibraryVerification(vi.fn())).rejects.toMatchObject({
             code: "LIBRARY_VERIFICATION_IN_PROGRESS",
         });
     });

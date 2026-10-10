@@ -5,8 +5,8 @@
  *
  * Deliberately the same field set the frontend already assembled for its own orchestration, so the
  * move is a change of *who runs the steps* rather than of what the user is asked for. Every value
- * here is caller-supplied and none is trusted. `library_path` is checked against the persisted
- * settings by the command layer, the title goes through the shared validator, and every produced
+ * here is caller-supplied and none is trusted. The library is not among them (the command fills
+ * `library_path` from the settings), the title goes through the shared validator, and every produced
  * path is re-checked as a managed library-relative path before it reaches a row. The media type is
  * not asked for at all. A download reports it and a local import takes it from its extension, the
  * same rule that picks the file's subdirectory, so a row cannot say "video" about a file in
@@ -21,7 +21,7 @@ sourceValue: string,
  * A managed `thumbnails/...` path, a remote URL, or an absolute path the user picked. Absent
  * means "derive one", from the download's own thumbnail, or from the media file itself.
  */
-thumbnailSourcePath: string | null, importMode: "copy" | "move", libraryPath: string, publishedAt: string | null, ytDlpRunId: string, ytDlpFormatId: string, 
+thumbnailSourcePath: string | null, importMode: "copy" | "move", publishedAt: string | null, ytDlpRunId: string, ytDlpFormatId: string, 
 /**
  * Resolved from the format metadata before the download starts, so an already-registered video
  * fails fast instead of after fetching the whole file.

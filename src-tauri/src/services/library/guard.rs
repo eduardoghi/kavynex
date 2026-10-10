@@ -1,13 +1,12 @@
-//! Cross-checks a `library_path` received over IPC against the library directory
-//! persisted in the application settings.
+//! The library folder a command works in, read from the application settings.
 //!
-//! Commands that create or delete files inside the library receive the library path from
-//! the frontend for convenience, but that value must never be trusted on its own. A
-//! compromised frontend could otherwise point a destructive command (delete a media
-//! file, remove a migrated directory tree) at an arbitrary location on disk. Every
-//! mutating command re-derives the expected directory from the persisted settings and
-//! rejects any request that does not point at it, mirroring the check done by
-//! `register_library_asset_scope`.
+//! A command that works inside the library takes no library path from the caller. It reads the
+//! configured one here (`configured_library_path*`, `with_configured_library_then_blocking*`), so a
+//! compromised frontend has no value to point a read or a write somewhere else with.
+//!
+//! The two commands that do take one are the ones about the library folder itself.
+//! `register_library_asset_scope` and `migrate_library_directory` (its old folder) cross-check the
+//! value against the settings with `ensure_configured_library_path` and refuse anything else.
 
 use std::path::PathBuf;
 
@@ -27,10 +26,19 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// Generic over the runtime for the reason [`crate::services::database::shared_pool`] is. The bare
 /// `AppHandle` alias is the real runtime, which a mock-runtime test cannot produce.
 pub async fn configured_library_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
-    let pool = shared_pool(app).await?;
-    let settings = get_app_settings_from_pool(&pool).await?;
+    Ok(PathBuf::from(configured_library_path(app).await?))
+}
 
-    let library_path = settings
+/// The configured library folder as the settings store it, refused when none is configured.
+pub async fn configured_library_path<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
+    let pool = shared_pool(app).await?;
+    configured_library_path_in_pool(&pool).await
+}
+
+/// [`configured_library_path`] against a pool the caller already holds.
+pub async fn configured_library_path_in_pool(pool: &SqlitePool) -> AppResult<String> {
+    get_app_settings_from_pool(pool)
+        .await?
         .library_path
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
@@ -39,9 +47,33 @@ pub async fn configured_library_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Ap
                 AppErrorCode::InvalidLibraryPath,
                 "no library folder is configured",
             )
-        })?;
+        })
+}
 
-    Ok(PathBuf::from(library_path))
+/// Runs `f` on a blocking thread with the configured library folder.
+pub async fn with_configured_library_then_blocking<F, T, R: Runtime>(
+    app: &AppHandle<R>,
+    f: F,
+) -> AppResult<T>
+where
+    F: FnOnce(String) -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let library_path = configured_library_path(app).await?;
+    run_blocking(move || f(library_path)).await
+}
+
+/// [`with_configured_library_then_blocking`] against a pool the caller already holds.
+pub async fn with_configured_library_then_blocking_in_pool<F, T>(
+    pool: &SqlitePool,
+    f: F,
+) -> AppResult<T>
+where
+    F: FnOnce(String) -> AppResult<T> + Send + 'static,
+    T: Send + 'static,
+{
+    let library_path = configured_library_path_in_pool(pool).await?;
+    run_blocking(move || f(library_path)).await
 }
 
 /// Returns true when both strings point at the same location on disk. Each side is
@@ -205,27 +237,6 @@ where
     T: Send + 'static,
 {
     ensure_configured_library_path(app, &library_path).await?;
-    run_blocking(move || f(library_path)).await
-}
-
-/// [`verify_library_path_then_blocking`] against a pool the caller already holds, for the same
-/// reason [`ensure_configured_library_path_in_pool`] exists. It lets a command keep `State<'_, Db>`
-/// and stay drivable through a real IPC round trip.
-///
-/// The coupling is the point here too. These are read-only commands, so the risk they carry is not
-/// a destructive write but a *read* through a base directory the caller chose. A directory listing
-/// or a file-manager spawn aimed anywhere on disk. Pairing the check with the work makes running
-/// one without the other impossible rather than merely discouraged.
-pub async fn verify_library_path_then_blocking_in_pool<F, T>(
-    pool: &SqlitePool,
-    library_path: String,
-    f: F,
-) -> AppResult<T>
-where
-    F: FnOnce(String) -> AppResult<T> + Send + 'static,
-    T: Send + 'static,
-{
-    ensure_configured_library_path_in_pool(pool, &library_path).await?;
     run_blocking(move || f(library_path)).await
 }
 

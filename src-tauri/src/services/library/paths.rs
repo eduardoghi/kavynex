@@ -168,15 +168,38 @@ pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
 /// be canonicalized is treated as *not* inside (fail open); callers validate existence separately,
 /// so this only decides containment for a directory that does resolve.
 pub fn library_path_is_inside_dir(library_path: &str, protected_dir: &Path) -> bool {
-    let candidate = library_input_path(library_path);
+    crate::utils::path::resolves_inside_dir(&library_input_path(library_path), protected_dir)
+}
 
-    let (Ok(canonical_candidate), Ok(canonical_protected)) =
-        (candidate.canonicalize(), protected_dir.canonicalize())
-    else {
-        return false;
-    };
+/// Rejects a non-empty `library_path` that is not an existing directory (or is a filesystem
+/// root). The whole security model re-derives the library directory from this stored value and
+/// trusts it (see `services::library::guard`); enforcing it at the write boundary stops a
+/// compromised frontend from persisting an arbitrary base path that a later delete/move command
+/// would then operate inside. An empty value is the valid "not configured yet" state and the
+/// legitimate flow always persists a path already created by `ensure_directory_exists`.
+pub fn validate_settings_library_path(
+    library_path: &str,
+    config_dir: Option<&Path>,
+) -> AppResult<()> {
+    if library_path.trim().is_empty() {
+        return Ok(());
+    }
 
-    canonical_candidate.starts_with(&canonical_protected)
+    resolve_existing_library_dir(library_path)?;
+
+    // Refuse a library that lives in (or under) the app's config directory, where the database and
+    // every backup generation are kept. Nesting it there would defeat the "backups off the library
+    // volume" intent and run the managed-subdirectory cleanup in the same tree as the database.
+    if let Some(config_dir) = config_dir {
+        if library_path_is_inside_dir(library_path, config_dir) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidLibraryPath,
+                "the library folder cannot be inside the application data directory",
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 pub fn ensure_directory_exists_sync(path: &str) -> AppResult<String> {
@@ -587,5 +610,69 @@ mod tests {
         // Clean up via the verbatim path so removal is also not capped at MAX_PATH.
         let _ = fs::remove_dir_all(&canonical);
         let _ = fs::remove_dir_all(to_extended_length_path(base));
+    }
+
+    #[test]
+    fn validate_settings_library_path_accepts_empty_as_not_configured() {
+        validate_settings_library_path("", None).unwrap();
+        validate_settings_library_path("   ", None).unwrap();
+    }
+
+    #[test]
+    fn validate_settings_library_path_accepts_an_existing_directory() {
+        let dir = unique_test_dir("existing");
+        fs::create_dir_all(&dir).unwrap();
+
+        validate_settings_library_path(&dir.to_string_lossy(), None).unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn validate_settings_library_path_rejects_a_missing_directory() {
+        let missing = unique_test_dir("missing");
+        let error = validate_settings_library_path(&missing.to_string_lossy(), None).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+    }
+
+    #[test]
+    fn validate_settings_library_path_rejects_a_directory_inside_the_config_dir() {
+        // A library nested in the app config directory (where the database and its backups live) is
+        // refused so library maintenance never runs in the same tree as the database.
+        let config_dir = unique_test_dir("config");
+        let library = config_dir.join("library");
+        fs::create_dir_all(&library).unwrap();
+
+        let error = validate_settings_library_path(&library.to_string_lossy(), Some(&config_dir))
+            .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+
+        let _ = fs::remove_dir_all(&config_dir);
+    }
+
+    #[test]
+    fn validate_settings_library_path_accepts_a_directory_outside_the_config_dir() {
+        let config_dir = unique_test_dir("config-sibling");
+        let library = unique_test_dir("library-sibling");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::create_dir_all(&library).unwrap();
+
+        validate_settings_library_path(&library.to_string_lossy(), Some(&config_dir)).unwrap();
+
+        let _ = fs::remove_dir_all(&config_dir);
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn validate_settings_library_path_rejects_a_file() {
+        let dir = unique_test_dir("file");
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("not-a-dir.txt");
+        fs::write(&file, b"x").unwrap();
+
+        let error = validate_settings_library_path(&file.to_string_lossy(), None).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -181,11 +181,10 @@ function isLiveChatBatchMessage(message: unknown): boolean {
 // invoke response travel independently, so resolving when the command returns could race the last
 // in-flight message. Here that would drop the report itself, since `done` is what carries it.
 //
-// Rejects when the command fails (a library path that is not the configured one, a verification
-// already running), and also when the run ends without a `done` message, which would otherwise be
+// Rejects when the command fails (no library configured, a verification already running), and also
+// when the run ends without a `done` message, which would otherwise be
 // an await that never settles and a dialog stuck on "verifying" forever.
 export async function streamLibraryVerification(
-    libraryPath: string,
     onProgress: (checked: number, total: number) => void
 ): Promise<ContentVerificationReport> {
     const channel = new Channel<ContentVerificationEvent>();
@@ -224,7 +223,7 @@ export async function streamLibraryVerification(
         settle(event.report);
     };
 
-    await invokeCommand(TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT, { libraryPath, onProgress: channel });
+    await invokeCommand(TAURI_COMMANDS.VERIFY_LIBRARY_CONTENT, { onProgress: channel });
 
     // Awaited after the invoke, not instead of it. Channel messages and the invoke response travel
     // independently, so resolving on the return could race the `done` that carries the report.

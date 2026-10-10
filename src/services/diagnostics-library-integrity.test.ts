@@ -27,24 +27,14 @@ describe("getLibraryIntegrity", () => {
         invokeCommandMock.mockResolvedValue(checkResult());
     });
 
-    it("asks the backend for the whole check with nothing but the library path", async () => {
-        // The point of the command taking one argument. The renderer no longer reads every media
-        // row to build three arrays of stored paths and send them back. A payload carrying any of
-        // those again would mean the round trip came back.
+    it("asks the backend for the whole check with no arguments at all", async () => {
+        // The renderer no longer reads every media row to build three arrays of stored paths and
+        // send them back, and the backend reads the library from the settings. A payload carrying
+        // anything again would mean one of those came back.
         await getLibraryIntegrity("/library");
 
         expect(invokeCommandMock).toHaveBeenCalledTimes(1);
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY, {
-            libraryPath: "/library",
-        });
-    });
-
-    it("trims the library path before sending it", async () => {
-        await getLibraryIntegrity("  /library  ");
-
-        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY, {
-            libraryPath: "/library",
-        });
+        expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.CHECK_LIBRARY_INTEGRITY);
     });
 
     it("passes the report through and exposes the targets as the lookup the rules expect", async () => {
