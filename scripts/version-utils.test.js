@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
     findVersionMismatch,
+    allowedNextVersions,
+    compareSemver,
     isValidSemver,
+    nextVersionProblem,
+    rotateChangelog,
     parseCargoVersion,
     replaceCargoVersion,
 } from "./version-utils.js";
@@ -116,5 +120,53 @@ describe("findVersionMismatch", () => {
         expect(message).toContain("package.json=1.1.1");
         expect(message).toContain("tauri.conf.json=1.1.0");
         expect(message).toContain("Cargo.toml=1.1.1");
+    });
+});
+
+describe("compareSemver", () => {
+    it("orders by major, then minor, then patch, numerically", () => {
+        expect(compareSemver("1.8.0", "1.70.0")).toBeLessThan(0);
+        expect(compareSemver("2.0.0", "1.99.99")).toBeGreaterThan(0);
+        expect(compareSemver("1.2.3", "1.2.3")).toBe(0);
+        expect(compareSemver("1.2.10", "1.2.9")).toBeGreaterThan(0);
+    });
+});
+
+describe("nextVersionProblem", () => {
+    it("allows one step on one component", () => {
+        expect(allowedNextVersions("1.7.0")).toEqual(["1.7.1", "1.8.0", "2.0.0"]);
+        expect(nextVersionProblem("1.7.0", "1.8.0")).toBeNull();
+        expect(nextVersionProblem("1.7.3", "1.7.4")).toBeNull();
+        expect(nextVersionProblem("1.7.3", "2.0.0")).toBeNull();
+    });
+
+    it("names what was expected otherwise", () => {
+        expect(nextVersionProblem("1.7.0", "1.70.0")).toContain("1.7.1, 1.8.0, 2.0.0");
+        expect(nextVersionProblem("1.7.0", "1.7.0")).not.toBeNull();
+        expect(nextVersionProblem("1.7.3", "1.8.3")).not.toBeNull();
+    });
+});
+
+describe("rotateChangelog", () => {
+    it("keeps CRLF line endings", () => {
+        const rotated = rotateChangelog("## [Unreleased]\r\n\r\n- A fix.\r\n", "1.8.0", "2026-10-10");
+
+        expect(rotated.text).toBe(
+            "## [Unreleased]\r\n\r\n## [1.8.0] (2026-10-10)\r\n\r\n- A fix.\r\n"
+        );
+    });
+
+    it("stops the Unreleased body at the next release heading", () => {
+        const rotated = rotateChangelog(
+            "## [Unreleased]\n\n## [1.7.0] (2026-09-27)\n\n- Old.\n",
+            "1.8.0",
+            "x"
+        );
+
+        expect(rotated).toEqual({ empty: true });
+    });
+
+    it("is null without an Unreleased heading", () => {
+        expect(rotateChangelog("# Changelog\n", "1.8.0", "x")).toBeNull();
     });
 });

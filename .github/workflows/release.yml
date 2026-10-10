@@ -374,6 +374,16 @@ jobs:
 
                   exit 1
 
+            # Releases are immutable, so a version published by mistake stays. One step past the
+            # newest published release, the same rule bump-version.js applies to package.json.
+            - name: Verify the version follows the newest published release
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh release list --exclude-drafts --limit 100 --json tagName --jq '.[].tagName' > published-tags.txt
+                  node scripts/verify-version-advances.js published-tags.txt
+
             - name: Build release notes
               id: release_notes
               shell: bash

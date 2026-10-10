@@ -27,10 +27,11 @@ function baseFiles() {
         "package.json": JSON.stringify({ name: "kavynex", version: "1.1.1" }, null, 2) + "\n",
         "tauri.conf.json": JSON.stringify({ version: "1.1.1" }, null, 4) + "\n",
         "Cargo.toml": `[package]\nname = "kavynex"\nversion = "1.1.1"\nedition = "2021"\n`,
+        "CHANGELOG.md": "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- Something users notice.\n",
     };
 }
 
-function run({ newVersion, files, runCargoUpdate }) {
+function run({ newVersion, files, runCargoUpdate, force }) {
     const fs = fakeFs(files ?? baseFiles());
     const error = vi.fn();
     const exitCode = bumpVersion({
@@ -41,6 +42,8 @@ function run({ newVersion, files, runCargoUpdate }) {
         runCargoUpdate: runCargoUpdate ?? (() => 0),
         log: vi.fn(),
         error,
+        force,
+        today: "2026-10-10",
     });
 
     return { exitCode, files: fs.files, error };
@@ -102,5 +105,50 @@ describe("bumpVersion", () => {
         expect(error).toHaveBeenCalledWith(expect.stringContaining("Cargo.lock was NOT updated"));
         // The manifests were still rewritten; only the lockfile step failed.
         expect(JSON.parse(files["package.json"]).version).toBe("1.2.0");
+    });
+
+    it("moves the Unreleased notes under the new version", () => {
+        const { exitCode, files } = run({ newVersion: "1.2.0" });
+
+        expect(exitCode).toBe(0);
+        expect(files["CHANGELOG.md"]).toBe(
+            "# Changelog\n\n## [Unreleased]\n\n## [1.2.0] (2026-10-10)\n\n### Fixed\n\n- Something users notice.\n"
+        );
+    });
+
+    it("refuses a version that skips ahead, and writes nothing", () => {
+        const { exitCode, files, error } = run({ newVersion: "1.12.0" });
+
+        expect(exitCode).toBe(1);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("1.1.2, 1.2.0, 2.0.0"));
+        expect(JSON.parse(files["package.json"]).version).toBe("1.1.1");
+    });
+
+    it("refuses an older version", () => {
+        const { exitCode } = run({ newVersion: "1.1.0" });
+
+        expect(exitCode).toBe(1);
+    });
+
+    it("refuses a release whose Unreleased section is empty", () => {
+        const files = baseFiles();
+        files["CHANGELOG.md"] = "# Changelog\n\n## [Unreleased]\n\n## [1.1.1] (2026-09-27)\n";
+
+        const { exitCode, error, files: after } = run({ newVersion: "1.2.0", files });
+
+        expect(exitCode).toBe(1);
+        expect(error).toHaveBeenCalledWith(expect.stringContaining("Unreleased section is empty"));
+        expect(JSON.parse(after["package.json"]).version).toBe("1.1.1");
+    });
+
+    it("accepts either refusal with --force", () => {
+        const files = baseFiles();
+        files["CHANGELOG.md"] = "# Changelog\n\n## [Unreleased]\n";
+
+        const { exitCode, files: after } = run({ newVersion: "3.0.0", files, force: true });
+
+        expect(exitCode).toBe(0);
+        expect(JSON.parse(after["package.json"]).version).toBe("3.0.0");
+        expect(after["CHANGELOG.md"]).toBe("# Changelog\n\n## [Unreleased]\n");
     });
 });

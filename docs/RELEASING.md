@@ -18,6 +18,13 @@ actually act on what it says.
    `scripts/verify-release-version.js` (run in both `ci.yml` and `release.yml`) fails the
    build if these three files ever disagree, so always use the bump script rather than
    editing versions by hand.
+
+   The script also moves `CHANGELOG.md`'s Unreleased section under a `## [x.y.z] (date)` heading,
+   and it refuses an empty Unreleased section or a version that is not one step past the current
+   one (`1.7.0` can become `1.7.1`, `1.8.0` or `2.0.0`). `--force` overrides both. The release
+   workflow repeats the step check against the newest *published* release
+   (`scripts/verify-version-advances.js`), since a published release cannot be changed and a
+   version that skipped ahead would keep the updater from ever offering the one that was meant.
 2. Commit the version bump, push to `main`, and wait for `ci.yml` and `codeql.yml` to finish green
    on that commit. The release's first job (`ci-passed`) refuses to go on otherwise.
 3. Manually trigger the `release` GitHub Actions workflow
