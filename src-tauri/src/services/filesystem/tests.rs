@@ -1056,3 +1056,36 @@ fn a_directory_can_actually_be_flushed_on_windows() {
 
     let _ = fs::remove_dir_all(dir);
 }
+
+#[test]
+fn a_written_file_read_back_past_the_cache_hashes_like_a_plain_read() {
+    // Sizes that are not a multiple of the sector size, so the unbuffered read's last chunk is a
+    // short one, and one past a whole chunk.
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+
+    for size in [0_usize, 1, 3 * 4096 + 123, (1 << 20) + 7] {
+        let path = dir.join(format!("written-{size}.bin"));
+        let bytes: Vec<u8> = (0..size).map(|index| (index % 251) as u8).collect();
+        fs::write(&path, &bytes).unwrap();
+        fsync_file(&path).unwrap();
+
+        let expected = crate::utils::hash::file_hash(&path).unwrap();
+
+        #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+        {
+            let uncached = uncached_file_hash(&path, None)
+                .expect("the platform's uncached read should be available")
+                .unwrap();
+            assert_eq!(uncached, expected, "size {size}");
+        }
+
+        assert_eq!(
+            written_file_hash(&path, None).unwrap(),
+            expected,
+            "size {size}"
+        );
+    }
+
+    let _ = fs::remove_dir_all(&dir);
+}

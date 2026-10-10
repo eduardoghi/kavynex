@@ -349,7 +349,12 @@ fn copy_bytes_in_chunks_verified(
     let mut hasher = sha2::Sha256::new();
     let copied = copy_chunks(source, temp_destination, cancel, Some(&mut hasher))?;
     let read_digest = crate::utils::hash::hex_digest(hasher);
-    let written_digest = crate::utils::hash::file_hash_cancellable(temp_destination, cancel)?;
+
+    // Flushed before it is read back, and read back from the device as far as the platform allows.
+    // Read back through the cache, a write the drive or the share lost is still sitting in memory
+    // and hashes fine, and the migration deletes the original on the strength of that hash.
+    fsync_file(temp_destination)?;
+    let written_digest = written_file_hash(temp_destination, cancel)?;
 
     match copy_verification_problem(expected_len, copied, &read_digest, &written_digest) {
         None => Ok(()),
@@ -359,6 +364,107 @@ fn copy_bytes_in_chunks_verified(
             format!("path: {}", crate::services::logger::redact_path(source)),
         )),
     }
+}
+
+/// Hashes a file just written and flushed, reading it from the device rather than from the OS cache
+/// where the platform allows it, and through the cache otherwise.
+fn written_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> AppResult<String> {
+    match uncached_file_hash(path, cancel) {
+        Some(result) => result,
+        None => crate::utils::hash::file_hash_cancellable(path, cancel),
+    }
+}
+
+/// Hashes what `reader` yields, stopping when `cancel` is set (with the error the cached hash gives
+/// for it). `None` when a read fails, so the caller can fall back to a cached read.
+#[cfg(any(windows, target_os = "macos"))]
+fn hash_reader_or_give_up(
+    path: &Path,
+    reader: &mut impl std::io::Read,
+    buffer: &mut [u8],
+    cancel: Option<&AtomicBool>,
+) -> Option<AppResult<String>> {
+    use sha2::Digest;
+
+    let mut hasher = sha2::Sha256::new();
+
+    loop {
+        if crate::utils::hash::is_cancelled(cancel) {
+            return Some(crate::utils::hash::file_hash_cancellable(path, cancel));
+        }
+
+        match reader.read(buffer) {
+            Ok(0) => return Some(Ok(crate::utils::hash::hex_digest(hasher))),
+            Ok(read) => hasher.update(&buffer[..read]),
+            Err(_) => return None,
+        }
+    }
+}
+
+/// Windows reads with `FILE_FLAG_NO_BUFFERING`, which bypasses the cache and needs the buffer and
+/// each read aligned to the sector size. 4096 covers the sector sizes drives report, and a read the
+/// device refuses all the same falls back to a cached one.
+#[cfg(windows)]
+fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    const FILE_FLAG_NO_BUFFERING: u32 = 0x2000_0000;
+    const ALIGN: usize = 4096;
+    const CHUNK: usize = 1 << 20;
+
+    let mut file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_NO_BUFFERING)
+        .open(path)
+        .ok()?;
+
+    let mut storage = vec![0_u8; CHUNK + ALIGN];
+    let offset = storage.as_ptr().align_offset(ALIGN);
+    let buffer = &mut storage[offset..offset + CHUNK];
+
+    hash_reader_or_give_up(path, &mut file, buffer, cancel)
+}
+
+/// Linux drops the file's pages from the cache once the flush has made them clean, so the read that
+/// follows goes to the device.
+#[cfg(target_os = "linux")]
+fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+    use std::os::unix::io::AsRawFd;
+
+    let file = fs::File::open(path).ok()?;
+
+    // SAFETY: the descriptor is open for the whole call. The advice only drops clean cached pages.
+    let advised = unsafe { libc::posix_fadvise(file.as_raw_fd(), 0, 0, libc::POSIX_FADV_DONTNEED) };
+
+    if advised != 0 {
+        return None;
+    }
+
+    drop(file);
+
+    Some(crate::utils::hash::file_hash_cancellable(path, cancel))
+}
+
+/// macOS reads through a descriptor with `F_NOCACHE` set, which keeps the read out of the cache.
+#[cfg(target_os = "macos")]
+fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+    use std::os::unix::io::AsRawFd;
+
+    let mut file = fs::File::open(path).ok()?;
+
+    // SAFETY: the descriptor is open for the whole call, and F_NOCACHE only changes its caching.
+    if unsafe { libc::fcntl(file.as_raw_fd(), libc::F_NOCACHE, 1) } == -1 {
+        return None;
+    }
+
+    let mut buffer = vec![0_u8; 1 << 20];
+
+    hash_reader_or_give_up(path, &mut file, &mut buffer, cancel)
+}
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+fn uncached_file_hash(_path: &Path, _cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+    None
 }
 
 /// What is wrong with a verified copy, or `None` when it holds exactly the source's bytes.

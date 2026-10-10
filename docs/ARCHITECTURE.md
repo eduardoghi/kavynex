@@ -413,8 +413,11 @@ caller refuse anything else before resolving it. See `docs/THREAT-MODEL.md`.
 On the backend side (`commands/library.rs`), the *old* path is the one verified against persisted
 settings, since that is the directory the migration removes; a destination inside the app
 config directory is refused; the destination volume must have room for what is left to copy
-(`NOT_ENOUGH_SPACE_FOR_LIBRARY`); after the copy every file is compared by size with the original,
-and the old folder is kept when one did not arrive whole (`LIBRARY_COPY_INCOMPLETE`); a commit
+(`NOT_ENOUGH_SPACE_FOR_LIBRARY`); each file is hashed as it is read, flushed, and read back past the
+OS cache (unbuffered on Windows, cache dropped on Linux, `F_NOCACHE` on macOS) to be hashed again, a
+library holding a link to a file elsewhere is refused because the move cannot carry it, and after the
+copy every file is compared by size with the original, the old folder being kept when one did not
+arrive whole (`LIBRARY_COPY_INCOMPLETE`); a commit
 marker is written next to the database before the old directory goes, so a crash mid-move is
 self-healed by `reconcile_interrupted_migration` on the next `get_app_settings`; and once the move
 succeeds the old directory's asset-scope grant is revoked.

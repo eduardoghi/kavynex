@@ -222,11 +222,20 @@ fn for_each_managed_file(
                 )
             })?;
 
+            let path = entry.path();
+
+            // Refused rather than skipped. The copy and the completeness check would both pass it
+            // over, the old folder's removal would take the link, and every row naming the file
+            // would read as missing in the new library. The app never makes links of its own, so
+            // this is one the user put there, and only they can say what it should become.
             if crate::services::filesystem::dir_entry_is_symlink(&entry) {
-                continue;
+                return Err(AppError::with_details(
+                    AppErrorCode::InvalidSourceFile,
+                    "the library holds a link to a file elsewhere, which a move cannot carry; replace it with the file itself and try again",
+                    format!("path: {}", logger::redact_path(&path)),
+                ));
             }
 
-            let path = entry.path();
             let child = relative.join(entry.file_name());
 
             // An entry this walk cannot classify or size is an error rather than a skip. The copy
@@ -1640,5 +1649,40 @@ mod tests {
 
         let _ = fs::remove_dir_all(old_root);
         let _ = fs::remove_dir_all(new_root);
+    }
+
+    // A file symlink needs Developer Mode or admin on Windows. The refusal itself is platform
+    // independent (`dir_entry_is_symlink`).
+    #[cfg(unix)]
+    #[test]
+    fn a_library_holding_a_link_to_a_file_is_not_moved() {
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let old_root = unique_test_dir("file-link-old");
+        let new_root = unique_test_dir("file-link-new");
+        let elsewhere = unique_test_dir("file-link-target");
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::create_dir_all(&elsewhere).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video").unwrap();
+        fs::write(elsewhere.join("b.mp4"), b"linked video").unwrap();
+        std::os::unix::fs::symlink(
+            elsewhere.join("b.mp4"),
+            old_root.join("video").join("b.mp4"),
+        )
+        .unwrap();
+
+        let result = migrate_library_directory_sync(
+            old_root.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            None,
+        );
+
+        assert!(result.is_err(), "a move would have dropped the linked file");
+        assert!(old_root.join("video").join("a.mp4").exists());
+        assert!(fs::symlink_metadata(old_root.join("video").join("b.mp4")).is_ok());
+
+        let _ = fs::remove_dir_all(old_root);
+        let _ = fs::remove_dir_all(new_root);
+        let _ = fs::remove_dir_all(elsewhere);
     }
 }
