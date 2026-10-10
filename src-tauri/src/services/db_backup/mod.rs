@@ -490,6 +490,10 @@ pub(super) fn record_database_swap(db_path: &Path) {
         .unwrap_or_default()
         .as_secs();
 
+    // The previous swap's time goes first, so a write that fails below leaves no marker rather than
+    // one naming a swap from months ago.
+    let _ = std::fs::remove_file(swap_marker_path(db_path));
+
     if let Err(error) = crate::services::filesystem::write_file_durably(
         &swap_marker_path(db_path),
         now.to_string().as_bytes(),
@@ -514,15 +518,19 @@ fn swap_is_within(now: SystemTime, swapped_at: SystemTime, window: Duration) -> 
 /// Read from the marker the swap writes. The set-aside database (`.pre-import`, `.corrupt`) keeps
 /// the modification time of its last write, because a rename does not change it, so a restore of a
 /// database nothing had written for weeks read as a swap from weeks ago and let the orphan removal
-/// run at once. Those times are only the answer for a swap made before the marker existed.
+/// run at once. Those times are still consulted, alongside the marker rather than only without
+/// one, so a marker a later swap failed to rewrite cannot end the window early. Either answering
+/// recent is enough, which errs toward refusing the removal.
 pub(crate) fn database_swapped_within(db_path: &Path, window: Duration) -> bool {
     let now = SystemTime::now();
 
-    if let Some(secs) = std::fs::read_to_string(swap_marker_path(db_path))
+    let marked_recent = std::fs::read_to_string(swap_marker_path(db_path))
         .ok()
         .and_then(|text| text.trim().parse::<u64>().ok())
-    {
-        return swap_is_within(now, UNIX_EPOCH + Duration::from_secs(secs), window);
+        .is_some_and(|secs| swap_is_within(now, UNIX_EPOCH + Duration::from_secs(secs), window));
+
+    if marked_recent {
+        return true;
     }
 
     [pre_import_path(db_path), restore::corrupt_path(db_path)]

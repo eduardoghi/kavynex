@@ -609,8 +609,33 @@ async fn a_restore_of_a_database_nobody_wrote_for_weeks_still_reads_as_a_recent_
 }
 
 #[test]
-fn an_old_swap_marker_ends_the_window_whatever_the_set_aside_file_says() {
+fn an_old_swap_marker_and_an_old_set_aside_file_end_the_window() {
     let dir = temp_dir("swap-old");
+    let db = dir.join("kavynex.db");
+    std::fs::write(corrupt_path(&db), b"set aside long ago").unwrap();
+    let sixty_days = Duration::from_secs(60 * 24 * 60 * 60);
+    filetime_set(&corrupt_path(&db), SystemTime::now() - sixty_days);
+
+    let sixty_days_ago = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        - sixty_days.as_secs();
+    std::fs::write(swap_marker_path(&db), sixty_days_ago.to_string()).unwrap();
+
+    assert!(!database_swapped_within(
+        &db,
+        Duration::from_secs(30 * 24 * 60 * 60)
+    ));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_marker_a_later_swap_failed_to_rewrite_does_not_end_the_window() {
+    // The set-aside file is never newer than the swap that set it aside, so a recent one means a
+    // recent swap whatever an older marker says. That marker is what a failed rewrite leaves.
+    let dir = temp_dir("swap-stale-marker");
     let db = dir.join("kavynex.db");
     std::fs::write(corrupt_path(&db), b"set aside a moment ago").unwrap();
 
@@ -621,7 +646,7 @@ fn an_old_swap_marker_ends_the_window_whatever_the_set_aside_file_says() {
         - 60 * 24 * 60 * 60;
     std::fs::write(swap_marker_path(&db), sixty_days_ago.to_string()).unwrap();
 
-    assert!(!database_swapped_within(
+    assert!(database_swapped_within(
         &db,
         Duration::from_secs(30 * 24 * 60 * 60)
     ));
