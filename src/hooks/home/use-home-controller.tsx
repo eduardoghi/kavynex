@@ -49,6 +49,7 @@ export function useHomeController(): HomeController {
     const diagnosticsState = useDiagnostics({
         libraryPath,
         importMode,
+        isLibraryUnreachable: settingsState.isLibraryUnreachable,
         onError: errorState.showError,
     });
 

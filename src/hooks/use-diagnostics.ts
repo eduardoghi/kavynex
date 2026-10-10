@@ -15,6 +15,9 @@ import { useRequestGuard } from "./use-request-guard";
 type UseDiagnosticsOptions = {
     libraryPath: string;
     importMode: ImportMode;
+    // The configured library folder could not be reached at startup (a drive that is not
+    // connected). The report then says so instead of reading the folder as empty.
+    isLibraryUnreachable?: boolean;
     onError: (message: string) => void;
 };
 
@@ -47,6 +50,7 @@ export type DiagnosticsController = {
 export function useDiagnostics({
     libraryPath,
     importMode,
+    isLibraryUnreachable = false,
     onError,
 }: UseDiagnosticsOptions): DiagnosticsController {
     const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
@@ -76,6 +80,7 @@ export function useDiagnostics({
             const summary = await getDiagnosticsSummary({
                 libraryPath,
                 importMode,
+                isLibraryUnreachable,
             });
 
             if (!requestGuard.isCurrent(requestId)) {
@@ -100,7 +105,7 @@ export function useDiagnostics({
                 setIsLoadingDiagnostics(false);
             }
         }
-    }, [importMode, libraryPath, onError, requestGuard]);
+    }, [importMode, isLibraryUnreachable, libraryPath, onError, requestGuard]);
 
     const openDiagnostics = useCallback(async (): Promise<void> => {
         setDiagnosticsOpen(true);

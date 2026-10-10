@@ -44,6 +44,8 @@ export type AppDiagnostics = {
     platform: string;
     arch: string;
     libraryPath: string;
+    // The configured library folder could not be reached, so nothing was read from it.
+    libraryUnreachable: boolean;
     importMode: string;
     externalTools: ExternalToolsStatus;
     librarySummary: LibrarySummaryInfo;

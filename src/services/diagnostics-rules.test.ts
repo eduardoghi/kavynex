@@ -16,6 +16,7 @@ function baseDiagnostics(): AppDiagnostics {
         platform: "Windows",
         arch: "x64",
         libraryPath: "/library",
+        libraryUnreachable: false,
         importMode: "copy",
         externalTools: {
             yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
@@ -122,6 +123,23 @@ describe("buildDiagnosticsIssues", () => {
 
         expect(codes).toEqual(["LIBRARY_PATH_NOT_CONFIGURED"]);
         expect(codes).not.toContain("LIBRARY_EMPTY");
+    });
+
+    it("names an unreachable library folder instead of reporting it as empty", () => {
+        // Nothing is read from the folder then, so the summary is all zeros. That used to raise
+        // "Library is empty" and "Database has media, but library files were not found".
+        const input = baseDiagnostics();
+        input.libraryUnreachable = true;
+        input.librarySummary.total_bytes = 0;
+        input.librarySummary.video_files = 0;
+        input.librarySummary.audio_files = 0;
+        input.librarySummary.thumbnail_files = 0;
+        input.mediaRepositoryStats.total_media = 12;
+        input.externalTools.ffmpeg.healthy = false;
+
+        const codes = buildDiagnosticsIssues(input).map((issue) => issue.code);
+
+        expect(codes).toEqual(["LIBRARY_UNREACHABLE", "FFMPEG_NOT_AVAILABLE"]);
     });
 
     it("flags YT_DLP_NOT_AVAILABLE when yt-dlp is unhealthy", () => {

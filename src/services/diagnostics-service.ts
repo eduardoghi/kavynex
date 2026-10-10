@@ -29,6 +29,7 @@ import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
 type GetDiagnosticsInput = {
     libraryPath: string;
     importMode: ImportMode;
+    isLibraryUnreachable?: boolean;
 };
 
 function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
@@ -143,7 +144,9 @@ function deriveLiveChatIntegrity(report: LibraryIntegrityReport): LiveChatIntegr
 // are read off it, the results come back keyed by the same names, and the failure report reads
 // the label of the entry whose run rejected. The library path is bound here, once, because two
 // of the checks take it and a runner that takes no argument is what lets `settleAll` stay typed.
-function diagnosticChecks(libraryPath: string) {
+// With the library folder unreachable, the two checks that read it are not run at all. Each would
+// only fail, and a failure reads as "could not run the check" next to the real cause.
+function diagnosticChecks(libraryPath: string, libraryUnreachable: boolean) {
     return {
         appVersion: { code: "APP_VERSION", label: "app version", run: () => getVersion() },
         runtimeInfo: {
@@ -159,7 +162,10 @@ function diagnosticChecks(libraryPath: string) {
         librarySummary: {
             code: "LIBRARY_SUMMARY",
             label: "library summary",
-            run: () => getLibrarySummary(libraryPath),
+            run: () =>
+                libraryUnreachable
+                    ? Promise.resolve(defaultLibrarySummary())
+                    : getLibrarySummary(libraryPath),
         },
         liveChatStorage: {
             code: "LIVE_CHAT_STORAGE",
@@ -174,7 +180,10 @@ function diagnosticChecks(libraryPath: string) {
         libraryIntegrity: {
             code: "LIBRARY_INTEGRITY",
             label: "library integrity",
-            run: () => getLibraryIntegrity(libraryPath),
+            run: () =>
+                libraryUnreachable
+                    ? Promise.resolve({ report: defaultLibraryIntegrity(), mediaByPath: {} })
+                    : getLibraryIntegrity(libraryPath),
         },
     } as const;
 }
@@ -240,7 +249,8 @@ export async function getDiagnosticsSummary(
 ): Promise<DiagnosticsSummary> {
     const normalizedLibraryPath = input.libraryPath.trim();
 
-    const checks = diagnosticChecks(normalizedLibraryPath);
+    const libraryUnreachable = Boolean(input.isLibraryUnreachable) && normalizedLibraryPath !== "";
+    const checks = diagnosticChecks(normalizedLibraryPath, libraryUnreachable);
     const settled = await settleAll(checks);
 
     const libraryIntegrityResult = settledValue(settled.libraryIntegrity, {
@@ -255,6 +265,7 @@ export async function getDiagnosticsSummary(
         platform: runtimeInfo.platform,
         arch: runtimeInfo.arch,
         libraryPath: normalizedLibraryPath,
+        libraryUnreachable,
         importMode: input.importMode,
         externalTools: settledValue(settled.externalTools, defaultExternalToolsStatus()),
         librarySummary: settledValue(settled.librarySummary, defaultLibrarySummary()),

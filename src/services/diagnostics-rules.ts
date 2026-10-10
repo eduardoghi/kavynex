@@ -50,6 +50,27 @@ const ISSUE_CODES_WITH_FILES_ON_DISK: ReadonlySet<string> = new Set([
     "ORPHAN_LIVE_CHAT_FILES",
 ]);
 
+// The issues worked out from what is in the library folder. Meaningless when the folder could not be
+// read (see the end of buildDiagnosticsIssues).
+const LIBRARY_CONTENT_ISSUE_CODES: ReadonlySet<string> = new Set([
+    "LIBRARY_EMPTY",
+    "LIBRARY_FILES_WITHOUT_DATABASE_ROWS",
+    "THUMBNAILS_WITHOUT_DATABASE_ROWS",
+    "DATABASE_MEDIA_WITHOUT_LIBRARY_FILES",
+    "DATABASE_THUMBNAILS_WITHOUT_LIBRARY_FILES",
+    "THUMBNAILS_WITHOUT_MEDIA_FILES",
+    "MISSING_MEDIA_FILES_ON_DISK",
+    "MISSING_THUMBNAIL_FILES_ON_DISK",
+    "CORRUPT_MEDIA_FILES_ON_DISK",
+    "CORRUPT_THUMBNAIL_FILES_ON_DISK",
+    "ORPHAN_MEDIA_FILES",
+    "ORPHAN_THUMBNAIL_FILES",
+    "INVALID_PATH_REFERENCES",
+    "MISSING_LIVE_CHAT_FILES",
+    "CORRUPT_LIVE_CHAT_FILES",
+    "ORPHAN_LIVE_CHAT_FILES",
+]);
+
 // Attaches concrete example paths to an issue so the user can see and act on the specific files
 // manually (the diagnostics only report. They never delete). Blank entries are dropped and the
 // `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
@@ -408,6 +429,22 @@ export function buildDiagnosticsIssues(
             title: "Some non-live media items have a live chat file linked",
             description: `${subject} not marked as live but still have a live chat replay file linked.`,
         });
+    }
+
+    // Nothing was read from an unreachable folder, so every rule that compares the database with
+    // its contents would report against zeros. Those used to say the library was empty and its
+    // media missing, when the drive was simply not connected. One issue names the real cause.
+    if (input.libraryUnreachable) {
+        return sortDiagnosticsIssues([
+            {
+                code: "LIBRARY_UNREACHABLE",
+                severity: "error",
+                title: "Library folder cannot be reached",
+                description:
+                    "The library folder is configured, but it is not available right now. If it is on an external or network drive, connect it and restart Kavynex. The checks that read the folder were skipped.",
+            },
+            ...issues.filter((issue) => !LIBRARY_CONTENT_ISSUE_CODES.has(issue.code)),
+        ]);
     }
 
     return sortDiagnosticsIssues(issues);

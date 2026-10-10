@@ -465,6 +465,7 @@ describe("useHomeController", () => {
         expect(useDiagnostics).toHaveBeenCalledWith({
             libraryPath: "/library",
             importMode: "copy",
+            isLibraryUnreachable: false,
             onError: mockErrorState.showError,
         });
     });

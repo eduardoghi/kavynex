@@ -12,6 +12,7 @@ function createSummary(): DiagnosticsSummary {
             platform: "windows",
             arch: "x86_64",
             libraryPath: "/library",
+            libraryUnreachable: false,
             importMode: "copy",
             externalTools: {
                 yt_dlp: {

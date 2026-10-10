@@ -436,6 +436,31 @@ describe("diagnostics-service", () => {
         ]);
     });
 
+    it("does not read an unreachable library folder and reports it as unreachable", async () => {
+        getVersionMock.mockResolvedValueOnce("0.1.0");
+        getRuntimeDiagnosticsInfoMock.mockResolvedValueOnce({ platform: "Windows", arch: "x64" });
+        getExternalToolsStatusMock.mockResolvedValueOnce({
+            yt_dlp: { path: "/tools/yt-dlp", version: "2026.01.01", healthy: true, release_age_days: null },
+            ffmpeg: { path: "/tools/ffmpeg", version: "7.0", healthy: true, release_age_days: null },
+        });
+        getMediaRepositoryStatsMock.mockResolvedValueOnce(
+            createMediaRepositoryStats({ total_media: 3, total_video_media: 3 })
+        );
+        mockHealthyLiveChatDiagnostics();
+
+        const result = await getDiagnosticsSummary({
+            libraryPath: "/library",
+            importMode: "copy",
+            isLibraryUnreachable: true,
+        });
+
+        // Each would only fail, and its failure would read as a second, unrelated problem.
+        expect(getLibrarySummaryMock).not.toHaveBeenCalled();
+        expect(getLibraryIntegrityMock).not.toHaveBeenCalled();
+        expect(result.diagnostics.libraryUnreachable).toBe(true);
+        expect(result.issues.map((item) => item.code)).toEqual(["LIBRARY_UNREACHABLE"]);
+    });
+
     it("surfaces a failed diagnostic check as a warning instead of a silent healthy default", async () => {
         getVersionMock.mockResolvedValueOnce("0.1.0");
 

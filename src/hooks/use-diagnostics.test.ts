@@ -38,6 +38,7 @@ function createSummary(label: string): DiagnosticsSummary {
             platform: "unknown",
             arch: "unknown",
             libraryPath: `/library/${label}`,
+            libraryUnreachable: false,
             importMode: "copy",
             externalTools: {
                 yt_dlp: {
@@ -160,6 +161,7 @@ describe("useDiagnostics", () => {
         expect(getDiagnosticsSummaryMock).toHaveBeenCalledWith({
             libraryPath: "/library",
             importMode: "copy",
+            isLibraryUnreachable: false,
         });
 
         await waitFor(() => {
