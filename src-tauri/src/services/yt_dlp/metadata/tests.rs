@@ -680,3 +680,21 @@ fn a_comment_backup_asks_yt_dlp_for_no_more_than_one_media_can_store() {
         )
     );
 }
+
+#[test]
+fn the_cookie_database_yt_dlp_found_by_itself_is_hidden() {
+    // A bare `--cookies-from-browser chrome` names no profile, so the path yt-dlp reports finding
+    // is nothing the app passed and cannot be matched by value.
+    let line = r#"[Cookies] Extracting cookies from: "C:\Users\alice\AppData\Local\Google\Chrome\User Data\Default\Network\Cookies""#;
+
+    assert_eq!(
+        redact_cookies_from_line(line, None, Some("chrome")),
+        r#"[Cookies] Extracting cookies from: "<redacted>""#
+    );
+
+    let unterminated = r#"[Cookies] Extracting cookies from: "/home/alice/.config/chromium"#;
+    assert_eq!(
+        redact_cookies_from_line(unterminated, None, Some("chromium")),
+        r#"[Cookies] Extracting cookies from: "<redacted>"#
+    );
+}

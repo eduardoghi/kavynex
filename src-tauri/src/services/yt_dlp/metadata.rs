@@ -336,7 +336,8 @@ pub(crate) fn redact_cookies_from_line(
     cookies_path: Option<&str>,
     cookies_browser: Option<&str>,
 ) -> String {
-    let mut redacted = redact_cookies_path_from_line(line, cookies_path);
+    let mut redacted =
+        redact_cookie_database_path(&redact_cookies_path_from_line(line, cookies_path));
 
     let Some(selector) = cookies_browser
         .map(str::trim)
@@ -368,6 +369,29 @@ pub(crate) fn redact_cookies_from_line(
     }
 
     redacted
+}
+
+/// What yt-dlp prints before the path of the browser's cookie database it found by itself. With a
+/// bare `--cookies-from-browser chrome` no profile was given, so nothing the app passed can be
+/// matched, and the path it found sits under the user's home directory.
+const COOKIE_DATABASE_PREFIX: &str = "Extracting cookies from: \"";
+
+/// Hides the quoted path after [`COOKIE_DATABASE_PREFIX`], keeping the rest of the line.
+fn redact_cookie_database_path(line: &str) -> String {
+    let Some(start) = line.find(COOKIE_DATABASE_PREFIX) else {
+        return line.to_string();
+    };
+
+    let path_start = start + COOKIE_DATABASE_PREFIX.len();
+    let Some(path_len) = line[path_start..].find('"') else {
+        return format!("{}<redacted>", &line[..path_start]);
+    };
+
+    format!(
+        "{}<redacted>{}",
+        &line[..path_start],
+        &line[path_start + path_len..]
+    )
 }
 
 /// Replaces every ASCII-case-insensitive occurrence of `needle` in `haystack`. Uses
