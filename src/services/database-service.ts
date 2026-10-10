@@ -3,8 +3,9 @@ import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import { pickFolder } from "./file-dialog-service";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
+import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStatus";
 
-export type { DatabaseBackupStatus, DatabaseIntegrityReport };
+export type { DatabaseBackupStatus, DatabaseIntegrityReport, ExternalBackupStatus };
 
 /**
  * Initializes the backend database (creating and migrating the schema on first call)
@@ -45,6 +46,13 @@ export async function restoreDatabaseFromBackup(): Promise<void> {
  */
 export async function exportDatabase(destinationPath: string): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.EXPORT_DATABASE, { destinationPath });
+}
+
+/**
+ * Whether the external database mirror is set up, its folder reachable, and when it last copied.
+ */
+export async function getExternalBackupStatus(): Promise<ExternalBackupStatus> {
+    return invokeCommand(TAURI_COMMANDS.GET_EXTERNAL_BACKUP_STATUS);
 }
 
 /**

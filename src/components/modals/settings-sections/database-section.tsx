@@ -10,9 +10,46 @@ function formatBackedUpAt(backedUpAtMs: number): string {
     return new Date(backedUpAtMs).toLocaleString("en-US");
 }
 
+// A mirror older than this is called out. The copy runs once a day while the app is open, so a few
+// days without one means the folder has been unreachable or the app has not run.
+const STALE_MIRROR_MS = 3 * 24 * 60 * 60 * 1000;
+
+function ExternalBackupStatusLine({
+    status,
+}: {
+    status: NonNullable<SettingsController["externalBackupStatus"]>;
+}): JSX.Element {
+    if (!status.reachable) {
+        return (
+            <Text size="sm" c="yellow.7">
+                The folder cannot be reached right now, so no copy is being made. Connect the drive or
+                the network share, or choose another folder.
+            </Text>
+        );
+    }
+
+    if (status.mirroredAtMs === null) {
+        return (
+            <Text size="sm" c="dimmed">
+                No copy yet. The first one is made within a minute of the app starting.
+            </Text>
+        );
+    }
+
+    const isStale = Date.now() - status.mirroredAtMs > STALE_MIRROR_MS;
+
+    return (
+        <Text size="sm" c={isStale ? "yellow.7" : "dimmed"}>
+            Last copy: {formatBackedUpAt(status.mirroredAtMs)}.
+            {isStale && " That is more than three days ago."}
+        </Text>
+    );
+}
+
 type DatabaseSectionProps = Pick<
     SettingsController,
     | "backupStatus"
+    | "externalBackupStatus"
     | "databaseBusy"
     | "databaseMessage"
     | "pendingImportPath"
@@ -34,6 +71,7 @@ type DatabaseSectionProps = Pick<
 
 export function DatabaseSection({
     backupStatus,
+    externalBackupStatus,
     databaseBusy,
     databaseMessage,
     pendingImportPath,
@@ -231,6 +269,10 @@ export function DatabaseSection({
                     {externalBackupDir || "Not configured"}
                 </Text>
             </Group>
+
+            {externalBackupDir && externalBackupStatus?.configured && (
+                <ExternalBackupStatusLine status={externalBackupStatus} />
+            )}
 
             <Group gap="sm">
                 <AppButton

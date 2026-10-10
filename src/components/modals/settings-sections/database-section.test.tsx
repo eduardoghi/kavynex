@@ -8,6 +8,7 @@ type SectionProps = Parameters<typeof DatabaseSection>[0];
 function baseProps(overrides: Partial<SectionProps> = {}): SectionProps {
     return {
         backupStatus: null,
+        externalBackupStatus: null,
         databaseBusy: "idle",
         databaseMessage: null,
         pendingImportPath: null,
@@ -211,5 +212,55 @@ describe("DatabaseSection", () => {
         fireEvent.click(screen.getByRole("button", { name: /turn off/i }));
 
         expect(onClearExternalBackupDir).toHaveBeenCalledTimes(1);
+    });
+
+    it("says when the external backup folder cannot be reached", () => {
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    externalBackupDir: "E:\Backups",
+                    externalBackupStatus: { configured: true, reachable: false, mirroredAtMs: null },
+                })}
+            />
+        );
+
+        expect(screen.getByText(/cannot be reached right now/)).toBeInTheDocument();
+    });
+
+    it("calls out a mirror that has not been refreshed for days", () => {
+        const fiveDaysAgo = Date.now() - 5 * 24 * 60 * 60 * 1000;
+
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    externalBackupDir: "/mnt/backups",
+                    externalBackupStatus: {
+                        configured: true,
+                        reachable: true,
+                        mirroredAtMs: fiveDaysAgo,
+                    },
+                })}
+            />
+        );
+
+        expect(screen.getByText(/more than three days ago/)).toBeInTheDocument();
+    });
+
+    it("shows a recent mirror's date without a warning", () => {
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    externalBackupDir: "/mnt/backups",
+                    externalBackupStatus: {
+                        configured: true,
+                        reachable: true,
+                        mirroredAtMs: Date.now(),
+                    },
+                })}
+            />
+        );
+
+        expect(screen.getByText(/Last copy:/)).toBeInTheDocument();
+        expect(screen.queryByText(/more than three days ago/)).toBeNull();
     });
 });

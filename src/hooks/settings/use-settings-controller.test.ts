@@ -16,6 +16,9 @@ vi.mock("../../services/database-service", () => ({
     importDatabase: vi.fn(),
     getDatabaseBackupStatus: vi.fn(),
     getDatabaseImportUndoStatus: vi.fn(),
+    getExternalBackupStatus: vi.fn(() =>
+        Promise.resolve({ configured: false, reachable: false, mirroredAtMs: null })
+    ),
     undoDatabaseImport: vi.fn(),
 }));
 

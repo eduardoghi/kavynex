@@ -24,6 +24,49 @@ use crate::{AppError, AppErrorCode, AppResult};
 pub(crate) const EXTERNAL_BACKUP_FILE_NAME: &str = "kavynex-backup.db";
 pub(super) const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
 
+/// Whether the external mirror is set up, reachable and recent, for Settings to show. The mirror is
+/// the one copy that outlives the disk the database is on, and when its folder went away (a drive
+/// unplugged, a share offline, a drive letter reassigned) the daily copy stopped with nothing saying
+/// so.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/types/generated/")]
+pub struct ExternalBackupStatus {
+    pub configured: bool,
+    /// The folder is there as a directory right now.
+    pub reachable: bool,
+    /// When the current mirror was written, in epoch milliseconds. `None` before the first copy, or
+    /// when the folder cannot be reached.
+    #[ts(type = "number | null")]
+    pub mirrored_at_ms: Option<u64>,
+}
+
+/// Reads [`ExternalBackupStatus`] for the configured folder `external_dir` (empty when the mirror is
+/// off). Blocking, since the folder can be a stalled network share.
+pub fn external_backup_status(external_dir: &str) -> ExternalBackupStatus {
+    let external_dir = external_dir.trim();
+
+    if external_dir.is_empty() {
+        return ExternalBackupStatus::default();
+    }
+
+    let dir = Path::new(external_dir);
+
+    if !dir.is_dir() {
+        return ExternalBackupStatus {
+            configured: true,
+            reachable: false,
+            mirrored_at_ms: None,
+        };
+    }
+
+    ExternalBackupStatus {
+        configured: true,
+        reachable: true,
+        mirrored_at_ms: super::modified_ms(&external_backup_path(dir)),
+    }
+}
+
 /// Exports a consistent, self-contained snapshot of the database to a user-chosen path via
 /// `VACUUM INTO` (WAL-safe. The snapshot is always fully checkpointed, never combined with a
 /// live write-ahead log). Refuses to export a database that fails `quick_check` so a corrupt
@@ -158,7 +201,12 @@ pub async fn mirror_database_to_external_dir(
         let staged = staged.clone();
         let should_skip = run_blocking(move || {
             if !external_dir.is_dir() {
-                // The chosen directory is gone (drive unplugged, share offline); skip quietly.
+                // The chosen directory is gone (drive unplugged, share offline). Skipped rather than
+                // recreated, and logged, since Settings is the only other place that says so.
+                crate::services::logger::warn(
+                    "db_backup",
+                    "external backup skipped: the chosen folder cannot be reached",
+                );
                 return Ok::<bool, AppError>(true);
             }
 

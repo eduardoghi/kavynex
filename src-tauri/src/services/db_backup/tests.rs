@@ -253,6 +253,39 @@ async fn mirror_writes_a_readable_copy_into_the_external_dir() {
 }
 
 #[tokio::test]
+async fn the_external_backup_status_says_whether_the_folder_is_there_and_when_it_was_copied() {
+    assert_eq!(
+        external_backup_status("  "),
+        ExternalBackupStatus::default()
+    );
+
+    let missing = temp_dir("ext-status-missing").join("gone");
+    let status = external_backup_status(&missing.to_string_lossy());
+    assert!(status.configured);
+    assert!(!status.reachable);
+    assert_eq!(status.mirrored_at_ms, None);
+
+    let dir = temp_dir("ext-status");
+    let db = dir.join("kavynex.db");
+    let external = temp_dir("ext-status-target");
+    seed_db(&db).await;
+
+    let before = external_backup_status(&external.to_string_lossy());
+    assert!(before.reachable);
+    assert_eq!(before.mirrored_at_ms, None, "nothing copied yet");
+
+    assert!(mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+    assert!(external_backup_status(&external.to_string_lossy())
+        .mirrored_at_ms
+        .is_some());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&external);
+}
+
+#[tokio::test]
 async fn mirror_is_throttled_when_recent() {
     let dir = temp_dir("ext-throttle-src");
     let db = dir.join("kavynex.db");

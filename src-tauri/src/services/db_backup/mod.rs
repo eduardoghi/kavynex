@@ -446,7 +446,9 @@ pub use integrity::{
 mod external;
 pub(crate) mod gates;
 pub(crate) use external::EXTERNAL_BACKUP_FILE_NAME;
-pub use external::{export_database, mirror_database_to_external_dir};
+pub use external::{
+    export_database, external_backup_status, mirror_database_to_external_dir, ExternalBackupStatus,
+};
 // The parent module's mirror tests reach these internals; test-only so a non-test build does not
 // flag the imports unused.
 #[cfg(test)]

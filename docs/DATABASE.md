@@ -410,7 +410,10 @@ via the throttle and returns without a redundant second snapshot.
 
 Before snapshotting, the source database must pass `PRAGMA quick_check` (`is_healthy`); a
 database that fails it is skipped so a corrupt database is never allowed to overwrite a
-good backup. A database with no channel and no media is skipped too while any daily generation still
+good backup. The fresh snapshot passes the same check before any generation is rotated for it, and
+while the weekly full `integrity_check` has found damage nothing has cleared (`.integrity-failed`),
+no snapshot is taken, so the generations from before the damage stay. A database with no channel and
+no media is skipped too while any daily generation still
 holds a library, since the daily snapshot of a database recreated empty would otherwise push out one
 good generation a day. For the same reason, a database file that is missing while snapshots of it
 are still on disk is not created on open (`DatabaseMissing`). The startup recovery offers the restore,
@@ -507,9 +510,11 @@ up separately.
   is refused, so a corrupt database never overwrites a good mirror. If the final promotion fails
   (a removable/network target pulled mid-write), the freshly exported `.new` file is kept, not
   deleted, so the newest good copy is never thrown away.
-- **Skipped quietly** when the chosen directory does not exist (external drive unplugged, share
-  offline) rather than recreated, because a recreated folder at a path that now resolves to a different
-  device would silently write the backup to the wrong place.
+- **Skipped** when the chosen directory does not exist (external drive unplugged, share offline)
+  rather than recreated, because a recreated folder at a path that now resolves to a different device
+  would silently write the backup to the wrong place. The skip is logged, and Settings > Database
+  shows whether the folder can be reached and when the last copy was written
+  (`get_external_backup_status`), calling out a copy more than three days old.
 - **Validated at the setting boundary** (`set_external_backup_dir`): the directory must exist and
   must not be inside the app config directory. Pointing the off-volume backup at the very
   directory it exists to outlive would silently defeat its purpose.

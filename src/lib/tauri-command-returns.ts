@@ -22,6 +22,7 @@ import type {
 } from "../types/diagnostics";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
 import type { KeptFilesSummary } from "../types/generated/KeptFilesSummary";
+import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStatus";
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
@@ -108,6 +109,7 @@ export type TauriCommandReturns = {
     get_app_settings: StoredAppSettingsPayload;
     set_app_settings: void;
     set_external_backup_dir: void;
+    get_external_backup_status: ExternalBackupStatus;
 
     list_channels: Channel[];
     find_channel_by_youtube_handle: Channel | null;

@@ -72,6 +72,7 @@ export const TAURI_COMMANDS = {
     GET_APP_SETTINGS: "get_app_settings",
     SET_APP_SETTINGS: "set_app_settings",
     SET_EXTERNAL_BACKUP_DIR: "set_external_backup_dir",
+    GET_EXTERNAL_BACKUP_STATUS: "get_external_backup_status",
 
     LIST_CHANNELS: "list_channels",
     FIND_CHANNEL_BY_YOUTUBE_HANDLE: "find_channel_by_youtube_handle",

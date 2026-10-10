@@ -93,6 +93,20 @@ pub async fn set_app_settings(
     .await
 }
 
+/// Whether the external database mirror is set up, reachable and recent, for Settings.
+#[tauri::command]
+pub async fn get_external_backup_status(
+    db: State<'_, Db>,
+) -> AppResult<crate::services::db_backup::ExternalBackupStatus> {
+    let pool = db.pool().await?;
+    let dir = get_app_settings_from_pool(&pool)
+        .await?
+        .external_backup_dir
+        .unwrap_or_default();
+
+    run_blocking(move || Ok(crate::services::db_backup::external_backup_status(&dir))).await
+}
+
 #[tauri::command]
 pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResult<()> {
     let trimmed = path.trim().to_string();

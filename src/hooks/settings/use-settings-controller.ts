@@ -6,9 +6,11 @@ import {
     exportDatabase,
     getDatabaseBackupStatus,
     getDatabaseImportUndoStatus,
+    getExternalBackupStatus,
     importDatabase,
     undoDatabaseImport,
     type DatabaseBackupStatus,
+    type ExternalBackupStatus,
 } from "../../services/database-service";
 import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/library-service";
 import { parseAppError } from "../../utils/app-error";
@@ -34,6 +36,8 @@ type DatabaseMessage = {
 type UseSettingsControllerOptions = {
     opened: boolean;
     libraryPath: string;
+    // The configured mirror folder. A change re-reads the mirror's status.
+    externalBackupDir?: string;
 };
 
 export type SettingsController = {
@@ -44,6 +48,8 @@ export type SettingsController = {
     // Null until the status has been read (or when reading it failed), so the UI can stay silent
     // rather than claim a size or a backup date it does not have.
     backupStatus: DatabaseBackupStatus | null;
+    // Null until read, or when reading it failed.
+    externalBackupStatus: ExternalBackupStatus | null;
     databaseBusy: "idle" | "exporting" | "importing" | "undoing";
     databaseMessage: DatabaseMessage | null;
     pendingImportPath: string | null;
@@ -67,12 +73,16 @@ export type SettingsController = {
 export function useSettingsController({
     opened,
     libraryPath,
+    externalBackupDir = "",
 }: UseSettingsControllerOptions): SettingsController {
     const [librarySummary, setLibrarySummary] = useState<LibrarySummaryInfo>(EMPTY_LIBRARY_SUMMARY);
     const [isLoadingLibrarySummary, setIsLoadingLibrarySummary] = useState(false);
     const [librarySummaryError, setLibrarySummaryError] = useState("");
 
     const [backupStatus, setBackupStatus] = useState<DatabaseBackupStatus | null>(null);
+    const [externalBackupStatus, setExternalBackupStatus] = useState<ExternalBackupStatus | null>(
+        null
+    );
 
     const [databaseBusy, setDatabaseBusy] = useState<
         "idle" | "exporting" | "importing" | "undoing"
@@ -352,6 +362,36 @@ export function useSettingsController({
         };
     }, [opened, libraryPath, loadLibrarySummary, summaryGuard]);
 
+    // Whether the mirror's folder is there and when it last copied. Read on open and whenever the
+    // folder changes, since choosing a new one makes the old answer wrong.
+    useEffect(() => {
+        if (!opened) {
+            return;
+        }
+
+        let cancelled = false;
+
+        void (async () => {
+            try {
+                const status = await getExternalBackupStatus();
+
+                if (!cancelled) {
+                    setExternalBackupStatus(status);
+                }
+            } catch (error) {
+                logError("settings-modal", "Failed to read the external backup status.", error);
+
+                if (!cancelled) {
+                    setExternalBackupStatus(null);
+                }
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [opened, externalBackupDir]);
+
     // Memoized for a stable identity across renders, matching every sibling controller hook. Not
     // load-bearing today (settings-modal destructures individual fields), but it keeps this hook
     // consistent with the others and safe to pass whole to a memoized consumer later.
@@ -361,6 +401,7 @@ export function useSettingsController({
         librarySummaryError,
         refreshLibrarySummary,
         backupStatus,
+        externalBackupStatus,
         databaseBusy,
         databaseMessage,
         pendingImportPath,

@@ -50,6 +50,7 @@ import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupRe
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type { DatabaseBackupStatus } from "../types/generated/DatabaseBackupStatus";
 import type { KeptFilesSummary } from "../types/generated/KeptFilesSummary";
+import type { ExternalBackupStatus } from "../types/generated/ExternalBackupStatus";
 import type { DisplayThumbnail } from "../types/generated/DisplayThumbnail";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
@@ -266,6 +267,12 @@ const keptFilesSummarySchema = z.object({
     recoveredDownloads: folderSummarySchema,
 });
 
+const externalBackupStatusSchema = z.object({
+    configured: z.boolean(),
+    reachable: z.boolean(),
+    mirroredAtMs: z.number().nullable(),
+});
+
 const databaseBackupStatusSchema = z.object({
     available: z.boolean(),
     backedUpAtMs: z.number().nullable(),
@@ -335,6 +342,8 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     check_library_integrity: libraryIntegrityCheckSchema satisfies z.ZodType<LibraryIntegrityCheck>,
     get_kept_files_summary: keptFilesSummarySchema satisfies z.ZodType<KeptFilesSummary>,
+    get_external_backup_status:
+        externalBackupStatusSchema satisfies z.ZodType<ExternalBackupStatus>,
     migrate_library_directory:
         migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,
     list_live_chat_files: z.array(z.string()),

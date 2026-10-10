@@ -103,7 +103,7 @@ export function SettingsModal({
     onChooseExternalBackupDir,
     onClearExternalBackupDir,
 }: SettingsModalProps): JSX.Element {
-    const controller = useSettingsController({ opened, libraryPath });
+    const controller = useSettingsController({ opened, libraryPath, externalBackupDir });
 
     // Read from context rather than threaded through Home like the other settings. It is a
     // per-device presentation choice kept in localStorage (like the color scheme), not part of
@@ -229,6 +229,7 @@ export function SettingsModal({
                         cancelUndoImport={controller.cancelUndoImport}
                         confirmUndoImportAction={controller.confirmUndoImportAction}
                         externalBackupDir={externalBackupDir}
+                        externalBackupStatus={controller.externalBackupStatus}
                         isSavingExternalBackupDir={isSavingExternalBackupDir}
                         onChooseExternalBackupDir={onChooseExternalBackupDir}
                         onClearExternalBackupDir={onClearExternalBackupDir}
