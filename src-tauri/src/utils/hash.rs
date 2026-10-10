@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -7,8 +7,12 @@ use sha2::{Digest, Sha256};
 
 use crate::{AppError, AppErrorCode, AppResult};
 
-/// How much data moves per read in the streaming helpers here.
-const HASH_CHUNK_BYTES: usize = 8192;
+/// How much data moves per read in the streaming helpers here. A media file is hashed up to four
+/// times on its way into the library (the preview's name, the import's, the copy check, the
+/// read-back after a move), and at 8 KiB a gigabyte was over a hundred thousand reads, each one
+/// passing through an antivirus filter on Windows and a slow bus on an external drive. On the heap,
+/// since a buffer this size is too much for a thread's stack.
+const HASH_CHUNK_BYTES: usize = 1024 * 1024;
 
 /// Streams everything `reader` yields into `writer`, returning the SHA-256 of the bytes that passed
 /// through. A tee that hashes what it copies.
@@ -32,7 +36,7 @@ const HASH_CHUNK_BYTES: usize = 8192;
 /// dodge.
 pub fn hash_while_copying<R: Read, W: Write>(reader: &mut R, writer: &mut W) -> AppResult<String> {
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; HASH_CHUNK_BYTES];
+    let mut buffer = vec![0_u8; HASH_CHUNK_BYTES];
 
     loop {
         let read = reader.read(&mut buffer).map_err(|e| {
@@ -108,9 +112,9 @@ pub fn file_hash_cancellable(path: &Path, cancel: Option<&AtomicBool>) -> AppRes
         )
     })?;
 
-    let mut reader = BufReader::new(file);
+    let mut reader = file;
     let mut hasher = Sha256::new();
-    let mut buffer = [0_u8; HASH_CHUNK_BYTES];
+    let mut buffer = vec![0_u8; HASH_CHUNK_BYTES];
 
     loop {
         // Checked at the top of the loop, so a flag already set when the call starts stops it
@@ -208,7 +212,7 @@ mod tests {
 
         assert_eq!(copied, payload, "the copy must be byte-exact");
 
-        // The two hashers here take different routes to the same answer (a BufReader over a file
+        // The two hashers here take different routes to the same answer (reads from a file
         // versus a tee over a slice), so agreeing is a real cross-check on both.
         let path = std::env::temp_dir().join(format!(
             "kavynex-hash-stream-{}.bin",
