@@ -209,6 +209,81 @@ describe("useDisplayThumbnails", () => {
         }
     });
 
+    it("asks again about what a call left for later even when it settled the rest", async () => {
+        // A call that hit the backend's per-call generation budget settles part of the request.
+        // Retrying only when nothing at all settled left the rest drawing full-size files.
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+
+        try {
+            vi.mocked(resolveDisplayThumbnails)
+                .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
+                .mockResolvedValue(resolvedAll({ "thumbnails/thumb_b.jpg": "/cache/b.jpg" }));
+
+            const { result } = renderHook(() =>
+                useDisplayThumbnails(
+                    ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"],
+                    "/library"
+                )
+            );
+
+            await waitFor(() => {
+                expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
+            });
+
+            await act(async () => {
+                await vi.advanceTimersByTimeAsync(2000);
+            });
+
+            expect(resolveDisplayThumbnails).toHaveBeenLastCalledWith(
+                ["thumbnails/thumb_b.jpg"],
+                "/library"
+            );
+            await waitFor(() => {
+                expect(result.current.get("thumbnails/thumb_b.jpg")).toBe("/cache/b.jpg");
+            });
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("keeps what a superseded request settled instead of asking about it again", async () => {
+        // A page appended while the previous one is resolving supersedes it. On a cold cache that is
+        // most requests, and dropping the answer made the next one ask about the same paths.
+        let settleFirst: (value: DisplayThumbnailResolution) => void = () => {};
+        vi.mocked(resolveDisplayThumbnails)
+            .mockReturnValueOnce(
+                new Promise((resolve) => {
+                    settleFirst = resolve;
+                })
+            )
+            .mockResolvedValue(resolvedAll({ "thumbnails/thumb_b.jpg": "/cache/b.jpg" }));
+
+        const { result, rerender } = renderHook(
+            ({ paths }: { paths: string[] }) => useDisplayThumbnails(paths, "/library"),
+            { initialProps: { paths: ["thumbnails/thumb_a.jpg"] } }
+        );
+
+        rerender({ paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg"] });
+
+        await act(async () => {
+            settleFirst(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }));
+        });
+
+        await waitFor(() => {
+            expect(result.current.get("thumbnails/thumb_a.jpg")).toBe("/cache/a.jpg");
+        });
+
+        rerender({
+            paths: ["thumbnails/thumb_a.jpg", "thumbnails/thumb_b.jpg", "thumbnails/thumb_c.jpg"],
+        });
+
+        await waitFor(() => {
+            expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(3);
+        });
+        const lastRequest = vi.mocked(resolveDisplayThumbnails).mock.calls[2]?.[0] ?? [];
+        expect(lastRequest).not.toContain("thumbnails/thumb_a.jpg");
+    });
+
     it("gives up re-asking once the retry budget is spent", async () => {
         // The bound, and it is what keeps the retry above from being a background timer for the rest
         // of the session. Contention clears in a round or two (the call holding the slot finishes),

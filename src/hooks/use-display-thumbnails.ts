@@ -109,6 +109,11 @@ export function useDisplayThumbnails(
     const retriedRequestRef = useRef<string | null>(null);
     const retryTimerRef = useRef<number | null>(null);
 
+    // The library the settled set and the map belong to. A resolution that lands after the request
+    // it answered was superseded is still kept when it is for this library, since its answers are
+    // as true as they were. One for a library no longer in use is dropped.
+    const currentLibraryRef = useRef(libraryPath);
+
     // A stable identity for "which paths are being asked about", so the effect below re-runs when
     // the set changes and not when the array is merely rebuilt with the same contents, which the
     // grid does on every render of its parent.
@@ -128,6 +133,7 @@ export function useDisplayThumbnails(
         // with it, or the next request would skip paths whose derivatives no longer apply. This
         // effect is declared before the fetch below so it runs first in the same commit.
         settledPathsRef.current = new Set();
+        currentLibraryRef.current = libraryPath;
         setDisplayThumbnails(EMPTY_DISPLAY_THUMBNAILS);
         // Forces the retry budget below to reset on the next request too. Every path it was
         // counting attempts for belongs to a library that is no longer in use.
@@ -160,32 +166,46 @@ export function useDisplayThumbnails(
                     libraryPath
                 );
 
-                if (disposed) {
+                // A library that changed meanwhile makes every answer here about the wrong folder.
+                if (currentLibraryRef.current !== libraryPath) {
                     return;
                 }
 
                 // Recorded before the state update rather than inside it. A state updater must stay
                 // pure, and React may call it more than once for a single commit. Every settled path
                 // is recorded, including the ones with no derivative. That is what stops a path
-                // that can never resolve from riding along on every later request.
+                // that can never resolve from riding along on every later request. Recorded even
+                // when the request was superseded (a page appended while this one ran, which on a
+                // cold cache is most of them), since the request that replaced it skips what is
+                // recorded and would otherwise ask about these again behind the backend's one slot.
                 for (const path of settledPaths) {
                     settledPathsRef.current.add(path);
                 }
 
-                // Nothing at all was settled, so this call decided nothing about any of these
-                // paths. The backend was busy rather than unable to answer, which is what its
-                // "budgetSpent" means. Re-ask on a timer instead of waiting for the item list to
-                // change, because the list may never change again. The last page of a channel has
-                // no later append behind it, so a request refused here would otherwise leave those
-                // cards decoding the full-resolution stored file for the rest of the session. That
-                // is the same outcome MAX_GENERATIONS_PER_CALL was raised from 64 to 100 to remove,
-                // reached through a different door. The backend's single resolve slot.
-                if (settledPaths.size === 0 && retriesSpentRef.current < MAX_DISPLAY_RETRIES) {
-                    retriesSpentRef.current += 1;
-                    retryTimerRef.current = window.setTimeout(() => {
-                        retryTimerRef.current = null;
-                        setRetryTick((tick) => tick + 1);
-                    }, DISPLAY_RETRY_DELAY_MS);
+                // Paths of this request the backend left for later. The backend was busy (its one
+                // resolve slot taken by another page) or ran out of its per-call generation budget,
+                // which is what its "budgetSpent" means. Re-ask on a timer instead of waiting for the
+                // item list to change, because the list may never change again. The last page of a
+                // channel has no later append behind it, so a request left unanswered here would
+                // leave those cards decoding the full-resolution stored file for the rest of the
+                // session. A call that settled something made progress, and progress restores the
+                // budget. The budget only runs out on calls that settle nothing, which is the
+                // backend that genuinely cannot answer. A superseded request schedules nothing, the
+                // one that replaced it does.
+                const leftForLater = requested.some((path) => !settledPaths.has(path));
+
+                if (!disposed && leftForLater) {
+                    if (settledPaths.size > 0) {
+                        retriesSpentRef.current = 0;
+                    }
+
+                    if (retriesSpentRef.current < MAX_DISPLAY_RETRIES) {
+                        retriesSpentRef.current += 1;
+                        retryTimerRef.current = window.setTimeout(() => {
+                            retryTimerRef.current = null;
+                            setRetryTick((tick) => tick + 1);
+                        }, DISPLAY_RETRY_DELAY_MS);
+                    }
                 }
 
                 // Checked after the ref update, not before it. A call that settled paths without
