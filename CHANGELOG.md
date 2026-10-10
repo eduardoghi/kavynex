@@ -17,6 +17,18 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   copied, and checks there is room before starting.
 - yt-dlp is told where Deno is when it is installed, which some YouTube formats need.
 - Add Media explains what the move import mode does to the original file.
+- When the database file is missing but its backups are still there, Kavynex offers to restore one
+  or to start with an empty library, instead of quietly creating an empty database.
+- Diagnostics has a Compact database button that gives the space left by deleted media and comments
+  back to the disk.
+- Settings > Database says when the external backup folder cannot be reached and when the last copy
+  was written, and calls out a copy more than three days old.
+- Diagnostics shows the downloads kept after they could not be placed in the library and the files
+  in the library's trash, with a button to open each folder.
+- The import form can check for yt-dlp and FFmpeg again after you install them, without reopening.
+- The import form warns when the built-in player usually cannot play the picked file type (AVI, WMV,
+  FLV, MPEG, WMA, AIFF). The file is still added.
+- The arrow keys, Home and End move between media cards, and the grid is a single Tab stop.
 
 ### Changed
 
@@ -32,6 +44,16 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   trash instead of deleted.
 - A local media's publication date must be a YYYY-MM-DD date.
 - Times a media was added are shown in local time.
+- Downloads kept after a failed placement are stored in the app's data folder instead of its cache,
+  where the system could clear them.
+- Cancel stays available until the media is in the library, and the import says what it is doing
+  after the download ends.
+- Comments are fetched and saved in one step, so closing the window during a refresh no longer
+  loses it, and opening a media with many comments reads only what it shows.
+- Settings opens on the update the startup check already found, instead of asking you to check
+  again.
+- The database import confirmation shows the picked file's name and takes keyboard focus.
+- Two unused comment indexes are dropped from the database, which speeds up saving comments.
 
 ### Fixed
 
@@ -71,6 +93,28 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 - Channels whose handles differ only in case, from before that was checked, can be renamed again.
 - A thumbnail preview cut short is no longer reused or saved as the media's thumbnail.
 - Display thumbnails keep being resolved until every page has them.
+- The daily backup no longer replaces backups that hold a library with a copy of an empty database,
+  checks each new snapshot before rotating, and stops rotating after a failed integrity check.
+- Restoring, exporting or importing a database that another program is holding says so instead of
+  calling it damaged.
+- A restore keeps this machine's library and backup folders, and reports media files missing from
+  the restored library.
+- The library's trash moves with the library, and its 30-day window counts from when the files were
+  moved there.
+- Cancelling a local import works during the thumbnail step too.
+- Each yt-dlp run gets its own copy of the cookies file, so two runs cannot overwrite it.
+- A download no longer leaves empty folders in the library when it fails.
+- A failed copy, move or rename, a missing source file and a file that could not be deleted get an
+  explanation instead of a pointer to the log.
+- The channel's media stay on screen when reloading the list fails, with a Try again button.
+- Creating a channel is no longer reported as failed when only reloading the channel list failed,
+  and a YouTube avatar that cannot be downloaded no longer stops the channel from being created.
+- A download's log keeps working when one of its event listeners fails to register, and says so.
+- Download errors show the end of yt-dlp's output instead of all of it, and log lines can no longer
+  span several lines or grow without bound.
+- Files that an antivirus or the search indexer holds for a moment on Windows are retried instead of
+  failing the import, download or backup.
+- Media files are served with correct responses for out-of-range and empty requests.
 
 ### Security
 
@@ -92,3 +136,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 - A folder picked for the backup mirror is not accepted as the library, or the reverse.
 - The window only navigates to the app's own address on each platform, drag and drop is off, and
   `Object.prototype` is frozen.
+- The webview can no longer read the live chat folder directly. Live chat is streamed by the app.
+- Relative folders in PATH are skipped when looking for tools, `taskkill` is run from the system
+  folder, and yt-dlp plugins are disabled.
+- Database files opened from outside (an import, the backup mirror) are opened with SQLite's
+  defensive settings, and a thumbnail picked from disk has to be an image under 25 MB.
