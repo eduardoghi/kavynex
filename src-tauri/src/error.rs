@@ -182,6 +182,8 @@ pub enum AppErrorCode {
     InvalidYoutubeVideoId,
     YtDlpRunAlreadyActive,
     TooManyConcurrentYtDlpRuns,
+    // Too many FFmpeg previews or media reads at once. Not a yt-dlp run, which the code above names.
+    TooManyConcurrentMediaJobs,
     YtDlpInvalidMetadata,
     YtDlpEventEmitFailed,
     YtDlpMetadataTimeout,
@@ -346,6 +348,7 @@ impl AppErrorCode {
             Self::InvalidYoutubeVideoId => "INVALID_YOUTUBE_VIDEO_ID",
             Self::YtDlpRunAlreadyActive => "YT_DLP_RUN_ALREADY_ACTIVE",
             Self::TooManyConcurrentYtDlpRuns => "TOO_MANY_CONCURRENT_YT_DLP_RUNS",
+            Self::TooManyConcurrentMediaJobs => "TOO_MANY_CONCURRENT_MEDIA_JOBS",
             Self::YtDlpInvalidMetadata => "YT_DLP_INVALID_METADATA",
             Self::YtDlpEventEmitFailed => "YT_DLP_EVENT_EMIT_FAILED",
             Self::YtDlpMetadataTimeout => "YT_DLP_METADATA_TIMEOUT",

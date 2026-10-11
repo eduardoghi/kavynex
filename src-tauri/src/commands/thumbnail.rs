@@ -16,6 +16,12 @@ pub async fn generate_temporary_thumbnail<R: Runtime>(
 ) -> AppResult<String> {
     chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
 
+    // Each preview hashes the whole source and can run FFmpeg for up to a minute on the blocking
+    // pool every other command offloads to. Bounded like every other place that starts a child.
+    let _permit = PREVIEW_SEMAPHORE
+        .acquire(crate::AppErrorCode::TooManyConcurrentMediaJobs)
+        .await?;
+
     let preview =
         run_blocking(move || thumbnail::generate_temporary_thumbnail_sync(&app, &path)).await?;
 
@@ -24,6 +30,9 @@ pub async fn generate_temporary_thumbnail<R: Runtime>(
 
     Ok(preview)
 }
+
+static PREVIEW_SEMAPHORE: crate::utils::bounded_semaphore::BoundedSemaphore =
+    crate::utils::bounded_semaphore::BoundedSemaphore::new(2, 4);
 
 #[tauri::command]
 pub async fn persist_thumbnail_file<R: Runtime>(

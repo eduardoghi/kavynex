@@ -344,7 +344,7 @@ pub fn handle<R: Runtime>(
         // is refused rather than queued. Each read holds a blocking thread and a buffer of up to the
         // response window, and the blocking pool is the one every other command offloads to.
         let Ok(_permit) = MEDIA_READ_SEMAPHORE
-            .acquire(crate::AppErrorCode::TooManyConcurrentYtDlpRuns)
+            .acquire(crate::AppErrorCode::TooManyConcurrentMediaJobs)
             .await
         else {
             responder.respond(empty_response(StatusCode::SERVICE_UNAVAILABLE));

@@ -285,6 +285,8 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     [LOG_DIRECTORY_OPEN_FAILED_ERROR_CODE]:
         "Kavynex could not open the log folder. Diagnostics shows its path, so it can still be opened by hand.",
     FOLDER_OPEN_FAILED: "Kavynex could not open that folder in the file manager.",
+    TOO_MANY_CONCURRENT_MEDIA_JOBS:
+        "Kavynex is already working on several files. Try again in a moment.",
     KEPT_FOLDER_EMPTY: "That folder no longer holds any files. Refresh Diagnostics to update the report.",
     // The backend message says which of its two reasons applies, and both are actionable.
     DATABASE_COMPACTION_REFUSED: "The database was not compacted.",
