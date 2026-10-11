@@ -157,6 +157,8 @@ describe("DatabaseSection", () => {
 
         expect(confirmImportAction).toHaveBeenCalledTimes(1);
         expect(cancelImport).toHaveBeenCalledTimes(1);
+        // The confirmation goes away with the focus inside it, so focus goes back to its button.
+        expect(screen.getByRole("button", { name: /import database/i })).toHaveFocus();
     });
 
     it("names the selected file and moves focus to the import question", () => {

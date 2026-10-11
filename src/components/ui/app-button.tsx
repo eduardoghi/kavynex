@@ -1,5 +1,5 @@
 import { Button, type ButtonProps } from "@mantine/core";
-import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, ReactNode, Ref } from "react";
 
 type AppButtonVariant = "primary" | "secondary" | "danger" | "ghost";
 
@@ -12,6 +12,8 @@ type AppButtonProps = Omit<ButtonProps, "variant" | "color" | "style"> &
     NativeButtonProps & {
         appVariant?: AppButtonVariant;
         children: ReactNode;
+        // A plain prop in React 19, handed to the Mantine button with the rest.
+        ref?: Ref<HTMLButtonElement>;
         style?: CSSProperties;
     };
 

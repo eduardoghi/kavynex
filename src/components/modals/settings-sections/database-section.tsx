@@ -99,6 +99,10 @@ export function DatabaseSection({
     // replace the database before confirming.
     const importConfirmRef = useRef<HTMLDivElement>(null);
     const undoConfirmRef = useRef<HTMLDivElement>(null);
+    // And back to the button on Cancel. The confirmation goes away with the focus inside it, which
+    // otherwise dropped to the page.
+    const importButtonRef = useRef<HTMLButtonElement>(null);
+    const undoButtonRef = useRef<HTMLButtonElement>(null);
 
     useEffect(() => {
         if (pendingImportPath) {
@@ -161,6 +165,7 @@ export function DatabaseSection({
                 </AppButton>
 
                 <AppButton
+                    ref={importButtonRef}
                     appVariant="secondary"
                     leftSection={<Upload size={16} />}
                     onClick={() => {
@@ -173,6 +178,7 @@ export function DatabaseSection({
 
                 {canUndoImport && (
                     <AppButton
+                        ref={undoButtonRef}
                         appVariant="ghost"
                         leftSection={<Undo2 size={16} />}
                         onClick={requestUndoImport}
@@ -224,7 +230,10 @@ export function DatabaseSection({
                             </AppButton>
                             <AppButton
                                 appVariant="ghost"
-                                onClick={cancelUndoImport}
+                                onClick={() => {
+                                    cancelUndoImport();
+                                    undoButtonRef.current?.focus();
+                                }}
                                 disabled={databaseBusy === "undoing"}
                             >
                                 Cancel
@@ -268,7 +277,10 @@ export function DatabaseSection({
                             </AppButton>
                             <AppButton
                                 appVariant="ghost"
-                                onClick={cancelImport}
+                                onClick={() => {
+                                    cancelImport();
+                                    importButtonRef.current?.focus();
+                                }}
                                 disabled={databaseBusy === "importing"}
                             >
                                 Cancel

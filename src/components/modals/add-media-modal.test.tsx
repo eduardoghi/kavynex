@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AddMediaModal } from "./add-media-modal";
 import { renderWithMantine } from "../../test/test-utils";
@@ -264,6 +264,29 @@ describe("AddMediaModal", () => {
         renderAddMediaModal({ form: { sourceMode: "yt-dlp" } });
 
         expect(await screen.findByText("yt-dlp was not found")).toBeInTheDocument();
+    });
+
+    it("puts focus back in the form when Check again finds the missing tool", async () => {
+        const missing = { path: "", version: "", healthy: false, release_age_days: null };
+        const found = { path: "yt-dlp", version: "2026.08.19", healthy: true, release_age_days: 10 };
+        const ffmpeg = { path: "ffmpeg", version: "7.1", healthy: true, release_age_days: null };
+        const deno = { path: "/tools/deno", version: "deno 2.8.3", healthy: true, release_age_days: null };
+
+        vi.mocked(getExternalToolsStatus)
+            .mockResolvedValueOnce({ yt_dlp: missing, ffmpeg, js_runtime: deno })
+            .mockResolvedValueOnce({ yt_dlp: found, ffmpeg, js_runtime: deno });
+
+        renderAddMediaModal({ form: { sourceMode: "yt-dlp" } });
+
+        const checkAgain = await screen.findByRole("button", { name: "Check again" });
+        checkAgain.focus();
+        fireEvent.click(checkAgain);
+
+        await waitFor(() =>
+            expect(screen.queryByText("yt-dlp was not found")).not.toBeInTheDocument()
+        );
+        await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+        expect(document.activeElement?.closest("[role='dialog']")).not.toBeNull();
     });
 
     it("has no detectable accessibility violations in each source mode", async () => {

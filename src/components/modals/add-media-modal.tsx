@@ -5,7 +5,7 @@ import {
     Stack,
     TextInput,
 } from "@mantine/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AddMediaFormController } from "../../hooks/use-add-media-form";
 import type { ImportMode } from "../../types/settings";
 import { AddMediaModalActions } from "./add-media-sections/add-media-modal-actions";
@@ -116,6 +116,31 @@ export function AddMediaModal({
     // answer only matters to someone who is about to import something.
     const toolsAvailability = useExternalToolsAvailability(opened, sourceMode);
 
+    // Check again sits inside the warning, which goes away when the check finds the tools. Focus
+    // was on that button, so it fell to the page. It goes to the form the warning stood above.
+    const formStackRef = useRef<HTMLDivElement>(null);
+    const missingToolCount = toolsAvailability.missingTools.length;
+    const previousMissingToolCount = useRef(missingToolCount);
+
+    useEffect(() => {
+        const hadWarning = previousMissingToolCount.current > 0;
+        previousMissingToolCount.current = missingToolCount;
+
+        if (!hadWarning || missingToolCount > 0) {
+            return;
+        }
+
+        const active = document.activeElement;
+
+        if (active && active !== document.body && document.contains(active)) {
+            return;
+        }
+
+        formStackRef.current
+            ?.querySelector<HTMLElement>("input:not([disabled]), button:not([disabled])")
+            ?.focus();
+    }, [missingToolCount]);
+
     const canSubmit = isUrlMode
         ? mediaUrl.trim() !== "" && selectedYtDlpFormatId.trim() !== ""
         : mediaPath.trim() !== "";
@@ -205,7 +230,7 @@ export function AddMediaModal({
                     scrollbarSize={10}
                     type="always"
                 >
-                    <Stack gap="md" pr="xs">
+                    <Stack gap="md" pr="xs" ref={formStackRef}>
                         <ExternalToolsWarning
                             missingTools={toolsAvailability.missingTools}
                             isChecking={toolsAvailability.isChecking}
