@@ -51,7 +51,9 @@ pub async fn set_app_settings(
         .library_path
         .unwrap_or_default();
 
-    if trimmed_library_path != stored_library_path.trim() {
+    let library_changed = trimmed_library_path != stored_library_path.trim();
+
+    if library_changed {
         // A new library folder has to be one the user picked. Checked before anything resolves it,
         // so a made-up `\\host\share` is refused without an SMB handshake. See
         // services::chosen_folders.
@@ -90,7 +92,25 @@ pub async fn set_app_settings(
             external_backup_dir: None,
         },
     )
-    .await
+    .await?;
+
+    // A library the user just picked supersedes any migration commit marker still on disk. A marker
+    // whose removal failed after a completed migration names that migration's target, and the next
+    // settings read would otherwise adopt it back over the folder picked here (see
+    // library::recovery::evaluate_recovery). An interrupted migration has already been reconciled by
+    // the settings read that came before this save.
+    if library_changed {
+        if let Some(config_dir) = db.path().parent().filter(|dir| !dir.as_os_str().is_empty()) {
+            let marker = library::recovery::commit_marker_path(config_dir);
+            run_blocking(move || {
+                library::recovery::clear_commit_marker(&marker);
+                Ok(())
+            })
+            .await?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Whether the external database mirror is set up, reachable and recent, for Settings.
@@ -238,6 +258,33 @@ mod tests {
                 "checkUpdatesOnStartup": true
             }),
         )
+    }
+
+    #[test]
+    fn picking_a_library_drops_a_migration_marker_left_behind() {
+        // A completed migration whose marker could not be removed. Left there, the next settings
+        // read would adopt the migration target back over the folder picked here.
+        let config = unique_test_dir("marker-config");
+        fs::create_dir_all(&config).unwrap();
+        let marker = library::recovery::commit_marker_path(&config);
+        fs::write(&marker, "/some/earlier/migration/target").unwrap();
+
+        let picked = unique_test_dir("marker-picked");
+        fs::create_dir_all(&picked).unwrap();
+        let picked_path = picked.to_string_lossy().to_string();
+        crate::services::chosen_folders::record(
+            crate::services::chosen_folders::FolderPurpose::Library,
+            &picked_path,
+        );
+
+        let webview = test_webview(Db::new(config.join("kavynex.db")));
+
+        set_settings_over_ipc(&webview, "copy", &picked_path).expect("store the picked library");
+
+        assert!(!marker.exists());
+
+        let _ = fs::remove_dir_all(&config);
+        let _ = fs::remove_dir_all(&picked);
     }
 
     #[test]

@@ -67,6 +67,11 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   to `kavynex-bak.db`, `kavynex-bak-1.db`, `kavynex-pre-migration-v15.db` and so on so Settings >
   Database > Import reads them directly. Nothing deletes this folder. Diagnostics reports it and opens
   it.
+- `library-migration-commit` (beside the database, not a `kavynex.db.` sibling): the new library
+  path, written once a library move has copied everything and before the old folder is removed. A
+  launch that finds the stored library emptied and this folder populated adopts it, so a move cut
+  short does not look like a lost library (`library/recovery.rs`). It is removed once the new path
+  is stored, and choosing another library in Settings removes it too.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
   (the snapshot being vacuumed, before it is promoted to `.bak`), `.after-damage.tmp` (the same for
   `.after-damage`), `.import-staged` /
