@@ -92,7 +92,12 @@ where
         buf.pop();
     }
 
-    Some(String::from_utf8_lossy(buf).to_string())
+    // The bytes move into the string when they are valid UTF-8, which is nearly always, instead of
+    // being copied. A line can be the 128 MiB metadata JSON, and the copy doubled what it held.
+    Some(match String::from_utf8(std::mem::take(buf)) {
+        Ok(text) => text,
+        Err(error) => String::from_utf8_lossy(error.as_bytes()).into_owned(),
+    })
 }
 
 /// Drains a pipe to its end, retaining at most `max_bytes`; bytes past the cap are read and

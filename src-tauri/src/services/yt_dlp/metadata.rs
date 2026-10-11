@@ -71,8 +71,9 @@ where
     let mut json_payload = String::new();
     let mut log_lines: Vec<String> = Vec::new();
 
-    while let Some(line_value) = read_lossy_line(&mut reader, &mut line_buf).await {
-        let line = line_value.trim_end().to_string();
+    while let Some(mut line) = read_lossy_line(&mut reader, &mut line_buf).await {
+        // Trimmed in place, since this line can be the whole metadata JSON.
+        line.truncate(line.trim_end().len());
 
         if line.trim().is_empty() {
             continue;
