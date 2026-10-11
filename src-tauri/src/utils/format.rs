@@ -64,6 +64,19 @@ pub fn allowed_media_extensions_label() -> String {
 pub const ALLOWED_THUMBNAIL_EXTENSIONS: [&str; 7] =
     ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"];
 
+/// A BMP file header. `BM` alone is two printable letters, so any text file starting with them
+/// passed. The header also has four reserved bytes that are zero and the offset of the pixel data,
+/// which comes after the 14-byte file header and a DIB header of at least 12.
+fn looks_like_bmp(bytes: &[u8]) -> bool {
+    if bytes.len() < 14 || !bytes.starts_with(b"BM") || bytes[6..10] != [0, 0, 0, 0] {
+        return false;
+    }
+
+    let pixel_offset = u32::from_le_bytes([bytes[10], bytes[11], bytes[12], bytes[13]]);
+
+    pixel_offset >= 26
+}
+
 /// Sniffs `bytes` against the magic numbers of the image formats this app accepts. The
 /// Content-Type header on a direct thumbnail download is attacker-controlled (any server the
 /// URL points to), so it is not sufficient on its own to prove the bytes are actually an
@@ -72,12 +85,11 @@ pub fn looks_like_supported_image(bytes: &[u8]) -> bool {
     const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
     const JPEG_SIGNATURE: &[u8] = b"\xFF\xD8\xFF";
     const GIF_SIGNATURE: &[u8] = b"GIF8";
-    const BMP_SIGNATURE: &[u8] = b"BM";
 
     if bytes.starts_with(PNG_SIGNATURE)
         || bytes.starts_with(JPEG_SIGNATURE)
         || bytes.starts_with(GIF_SIGNATURE)
-        || bytes.starts_with(BMP_SIGNATURE)
+        || looks_like_bmp(bytes)
     {
         return true;
     }

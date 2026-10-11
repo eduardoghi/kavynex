@@ -344,7 +344,9 @@ mod tests {
         assert!(looks_like_supported_image(b"\x89PNG\r\n\x1a\nrest-of-file"));
         assert!(looks_like_supported_image(b"\xFF\xD8\xFFrest-of-file"));
         assert!(looks_like_supported_image(b"GIF89arest-of-file"));
-        assert!(looks_like_supported_image(b"BMrest-of-file"));
+        assert!(looks_like_supported_image(
+            b"BM\x46\x00\x00\x00\x00\x00\x00\x00\x36\x00\x00\x00rest-of-file"
+        ));
         assert!(looks_like_supported_image(b"RIFF\x00\x00\x00\x00WEBPrest"));
         assert!(looks_like_supported_image(b"\x00\x00\x00\x18ftypavifrest"));
         assert!(looks_like_supported_image(b"\x00\x00\x00\x18ftypavisrest"));
@@ -353,6 +355,8 @@ mod tests {
     #[test]
     fn looks_like_supported_image_rejects_arbitrary_bytes() {
         assert!(!looks_like_supported_image(b"not an image, just text"));
+        // Two letters are not a BMP header. Text that happens to start with them is still text.
+        assert!(!looks_like_supported_image(b"BMW owners club notes"));
         assert!(!looks_like_supported_image(b"<html><body>evil</body>"));
         assert!(!looks_like_supported_image(b"RIFF\x00\x00\x00\x00WAVEfmt "));
     }
