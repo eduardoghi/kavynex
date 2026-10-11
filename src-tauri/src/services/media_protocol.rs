@@ -911,3 +911,77 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+// Properties over generated input, beside the cases above. Both functions read text the webview
+// builds from a file name or a media element, which is where an unexpected shape comes from.
+#[cfg(test)]
+mod properties {
+    use proptest::prelude::*;
+
+    use super::{parse_byte_range, percent_decode};
+
+    /// `value` with every byte written as a `%XX` escape.
+    fn escape_every_byte(value: &str, upper: bool) -> String {
+        value
+            .bytes()
+            .map(|byte| {
+                if upper {
+                    format!("%{byte:02X}")
+                } else {
+                    format!("%{byte:02x}")
+                }
+            })
+            .collect()
+    }
+
+    proptest! {
+        #[test]
+        fn decoding_reverses_an_escape_of_every_byte(value in any::<String>(), upper in any::<bool>()) {
+            prop_assert_eq!(percent_decode(&escape_every_byte(&value, upper)), value);
+        }
+
+        #[test]
+        fn text_without_a_percent_sign_decodes_to_itself(value in "[^%]{0,40}") {
+            prop_assert_eq!(percent_decode(&value), value);
+        }
+
+        #[test]
+        fn decoding_never_makes_the_text_longer(value in "([a-z0-9%]|%[0-9A-Fa-f]{2}){0,30}") {
+            prop_assert!(percent_decode(&value).len() <= value.len());
+        }
+
+        #[test]
+        fn a_parsed_range_lies_inside_the_resource(
+            header in "bytes= ?[0-9]{0,7} ?- ?[0-9]{0,7}",
+            len in 0u64..2_000_000,
+        ) {
+            if let Some((start, end)) = parse_byte_range(&header, len) {
+                prop_assert!(start <= end && end < len, "{header:?} over {len} gave {start}-{end}");
+            }
+        }
+
+        #[test]
+        fn any_header_parses_to_a_range_inside_the_resource_or_none(
+            header in any::<String>(),
+            len in any::<u64>(),
+        ) {
+            if let Some((start, end)) = parse_byte_range(&header, len) {
+                prop_assert!(start <= end && end < len);
+            }
+        }
+
+        #[test]
+        fn an_open_range_runs_to_the_last_byte(start in 0u64..1_000_000, extra in 1u64..1_000_000) {
+            let len = start + extra;
+            prop_assert_eq!(parse_byte_range(&format!("bytes={start}-"), len), Some((start, len - 1)));
+        }
+
+        #[test]
+        fn a_suffix_range_is_the_last_bytes(suffix in 1u64..2_000_000, len in 1u64..1_000_000) {
+            prop_assert_eq!(
+                parse_byte_range(&format!("bytes=-{suffix}"), len),
+                Some((len.saturating_sub(suffix), len - 1))
+            );
+        }
+    }
+}

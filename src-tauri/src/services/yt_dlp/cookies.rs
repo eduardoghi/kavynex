@@ -1043,3 +1043,61 @@ mod tests {
         assert!(empty.is_empty());
     }
 }
+
+// Properties over generated selectors. The parser decides what reaches the argv of yt-dlp, so what
+// it accepts has to be safe and has to mean the same thing when yt-dlp reads it back.
+#[cfg(test)]
+mod properties {
+    use proptest::prelude::*;
+
+    use super::{parse_cookies_browser_selector, SUPPORTED_BROWSERS, SUPPORTED_KEYRINGS};
+    use crate::utils::path::is_network_path;
+
+    /// Something shaped like `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, with any printable text in
+    /// each part, separators included.
+    fn selector_like() -> impl Strategy<Value = String> {
+        (
+            prop::sample::select(vec!["firefox", "Chrome", " edge ", "brave", "netscape"]),
+            "(\\+[a-zA-Z]{0,8})?",
+            "(:[ -~]{0,12})?",
+            "(::[ -~]{0,12})?",
+        )
+            .prop_map(|(browser, keyring, profile, container)| {
+                format!("{browser}{keyring}{profile}{container}")
+            })
+    }
+
+    proptest! {
+        #[test]
+        fn an_accepted_selector_is_safe_to_hand_to_yt_dlp(value in selector_like()) {
+            if let Some(selector) = parse_cookies_browser_selector(&value) {
+                prop_assert!(SUPPORTED_BROWSERS.contains(&selector.browser.as_str()));
+
+                if let Some(keyring) = &selector.keyring {
+                    prop_assert!(SUPPORTED_KEYRINGS.contains(&keyring.as_str()));
+                }
+
+                for part in [&selector.profile, &selector.container].into_iter().flatten() {
+                    prop_assert!(!part.is_empty());
+                    prop_assert!(!part.starts_with('-'));
+                    prop_assert!(!part.chars().any(char::is_control));
+                    prop_assert!(!is_network_path(part));
+                }
+            }
+        }
+
+        #[test]
+        fn the_argument_reads_back_as_the_same_selector(value in selector_like()) {
+            if let Some(selector) = parse_cookies_browser_selector(&value) {
+                let argument = selector.to_argument();
+                prop_assert_eq!(
+                    parse_cookies_browser_selector(&argument),
+                    Some(selector),
+                    "{:?} became {:?}",
+                    value,
+                    argument
+                );
+            }
+        }
+    }
+}

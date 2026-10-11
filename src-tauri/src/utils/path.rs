@@ -926,3 +926,104 @@ mod tests {
         let _ = fs::remove_dir_all(base_dir);
     }
 }
+
+// The cases above pin the shapes someone thought of. These run each check over generated input, so
+// what they assert has to hold for every path, including the ones nobody wrote down.
+#[cfg(test)]
+mod properties {
+    use std::path::Component;
+
+    use proptest::prelude::*;
+
+    use super::{is_network_path, sanitize_relative_path_strict};
+
+    /// Text made of what a relative path is built from, separators and the characters the checks
+    /// treat specially included.
+    const PATH_TEXT: &str = r"[A-Za-z0-9 ._:/\\-]{0,40}";
+
+    fn separator() -> impl Strategy<Value = char> {
+        prop::sample::select(vec!['/', '\\'])
+    }
+
+    fn components() -> impl Strategy<Value = Vec<String>> {
+        prop::collection::vec("[A-Za-z0-9_]{1,8}", 0..4)
+    }
+
+    proptest! {
+        #[test]
+        fn a_sanitized_path_is_only_plain_components(raw in PATH_TEXT) {
+            if let Ok(path) = sanitize_relative_path_strict(&raw) {
+                prop_assert!(path.is_relative());
+
+                for part in path.components() {
+                    prop_assert!(matches!(part, Component::Normal(_)), "{raw:?} gave {path:?}");
+
+                    let text = part.as_os_str().to_str().unwrap();
+                    prop_assert!(!text.contains(':'));
+                    prop_assert!(!text.trim().is_empty());
+                }
+            }
+        }
+
+        #[test]
+        fn sanitizing_a_sanitized_path_changes_nothing(raw in PATH_TEXT) {
+            if let Ok(path) = sanitize_relative_path_strict(&raw) {
+                let again = sanitize_relative_path_strict(path.to_str().unwrap()).unwrap();
+                prop_assert_eq!(again, path);
+            }
+        }
+
+        #[test]
+        fn a_parent_segment_is_refused_wherever_it_sits(
+            before in components(),
+            after in components(),
+        ) {
+            let mut parts = before;
+            parts.push("..".to_string());
+            parts.extend(after);
+
+            prop_assert!(sanitize_relative_path_strict(&parts.join("/")).is_err());
+        }
+
+        #[test]
+        fn a_share_is_a_network_path_whatever_the_separators(
+            host in "[a-z0-9]{1,10}",
+            share in "[a-z0-9]{1,10}",
+            first in separator(),
+            second in separator(),
+            third in separator(),
+            lead in " {0,2}",
+        ) {
+            let path = format!("{lead}{first}{second}{host}{third}{share}");
+            prop_assert!(is_network_path(&path), "{path:?}");
+        }
+
+        #[test]
+        fn a_drive_behind_a_namespace_prefix_is_local(
+            prefix in prop::sample::select(vec![r"\\?\", r"\\.\", r"\??\"]),
+            drive in "[A-Za-z]",
+            parts in components(),
+        ) {
+            let path = format!(r"{prefix}{drive}:\{}", parts.join(r"\"));
+            prop_assert!(!is_network_path(&path), "{path:?}");
+        }
+
+        #[test]
+        fn a_dot_component_behind_a_namespace_prefix_is_refused(
+            prefix in prop::sample::select(vec![r"\\?\", r"\\.\", r"\??\"]),
+            drive in "[A-Za-z]",
+            dots in prop::sample::select(vec![".", "..", ".. ", " ."]),
+            parts in components(),
+        ) {
+            let path = format!(r"{prefix}{drive}:\{dots}\{}", parts.join(r"\"));
+            prop_assert!(is_network_path(&path), "{path:?}");
+        }
+
+        #[test]
+        fn a_drive_or_relative_path_is_local(drive in "[A-Za-z]", parts in components()) {
+            let drive_path = format!(r"{drive}:\{}", parts.join(r"\"));
+            prop_assert!(!is_network_path(&drive_path));
+            prop_assert!(!is_network_path(&parts.join("/")));
+        }
+    }
+}
