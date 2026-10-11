@@ -2,18 +2,42 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useHomeDiagnosticsFocus } from "./use-home-diagnostics-focus";
 
-function setup() {
+function setup(isPlayerOpen = false) {
     const closeDiagnostics = vi.fn();
     const setSelectedChannelId = vi.fn();
+    const closePlayer = vi.fn();
 
     const { result } = renderHook(() =>
-        useHomeDiagnosticsFocus({ closeDiagnostics, setSelectedChannelId })
+        useHomeDiagnosticsFocus({
+            closeDiagnostics,
+            setSelectedChannelId,
+            isPlayerOpen,
+            closePlayer,
+        })
     );
 
-    return { result, closeDiagnostics, setSelectedChannelId };
+    return { result, closeDiagnostics, setSelectedChannelId, closePlayer };
 }
 
 describe("useHomeDiagnosticsFocus", () => {
+    it("closes the player first, so the grid it hid can take the focus", () => {
+        const open = setup(true);
+
+        act(() => {
+            open.result.current.handleOpenDiagnosticsMedia({ channelId: 7, mediaId: 42 });
+        });
+
+        expect(open.closePlayer).toHaveBeenCalledTimes(1);
+
+        const closed = setup(false);
+
+        act(() => {
+            closed.result.current.handleOpenDiagnosticsMedia({ channelId: 7, mediaId: 42 });
+        });
+
+        expect(closed.closePlayer).not.toHaveBeenCalled();
+    });
+
     it("starts with no focused media", () => {
         const { result } = setup();
         expect(result.current.focusMediaId).toBeNull();

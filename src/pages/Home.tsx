@@ -65,9 +65,14 @@ export default function Home(): JSX.Element {
         editMediaTitle: controller.mediaActions.editMediaTitle,
     });
 
+    const { closePlayer } = playerActions;
+    const handleClosePlayer = useCallback(() => void closePlayer(), [closePlayer]);
+
     const diagnosticsFocus = useHomeDiagnosticsFocus({
         closeDiagnostics: controller.diagnostics.closeDiagnostics,
         setSelectedChannelId: channels.setSelectedChannelId,
+        isPlayerOpen: showPlayer,
+        closePlayer: handleClosePlayer,
     });
 
     const handleMarkWatched = useCallback(
