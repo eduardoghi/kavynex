@@ -297,6 +297,15 @@ pub async fn check_library_integrity(
 /// proportional to the size of the library, so a second concurrent sweep would read every byte
 /// twice while competing for the same disk.
 ///
+/// Drops every artifact after the first naming the same file. Content-addressed files are shared
+/// (the same video in two channels, a thumbnail reused as an avatar), and a queue built per reference
+/// hashed a multi-gigabyte file once per row it appears in, and counted it that many times in the
+/// progress and the report.
+fn keep_each_file_once(artifacts: &mut Vec<library::verification::VerifiableArtifact>) {
+    let mut seen = std::collections::HashSet::new();
+    artifacts.retain(|artifact| seen.insert(artifact.relative_path.clone()));
+}
+
 /// The library is the configured one, read from the settings before the slot is claimed so a run
 /// with no library configured fails without occupying it.
 #[tauri::command]
@@ -347,6 +356,8 @@ pub async fn verify_library_content(
             subtree: ManagedSubtree::Thumbnails,
         });
     }
+
+    keep_each_file_once(&mut artifacts);
 
     let progress_channel = on_progress.clone();
 
@@ -465,6 +476,36 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    #[test]
+    fn a_file_shared_by_several_rows_is_verified_once() {
+        let artifact = |path: &str, subtree| library::verification::VerifiableArtifact {
+            relative_path: path.to_string(),
+            subtree,
+        };
+        let mut artifacts = vec![
+            artifact("video/media_a.mp4", ManagedSubtree::Media),
+            artifact("thumbnails/thumb_a.jpg", ManagedSubtree::Thumbnails),
+            artifact("video/media_a.mp4", ManagedSubtree::Media),
+            artifact("thumbnails/thumb_a.jpg", ManagedSubtree::Thumbnails),
+            artifact("video/media_b.mp4", ManagedSubtree::Media),
+        ];
+
+        keep_each_file_once(&mut artifacts);
+
+        let paths: Vec<&str> = artifacts
+            .iter()
+            .map(|artifact| artifact.relative_path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "video/media_a.mp4",
+                "thumbnails/thumb_a.jpg",
+                "video/media_b.mp4"
+            ]
+        );
+    }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
