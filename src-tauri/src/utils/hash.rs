@@ -74,7 +74,7 @@ pub(crate) fn hex_digest(hasher: Sha256) -> String {
 }
 
 /// True once the caller's cancel flag is set. `None` means the caller did not offer one, which is
-/// every call site but the media import, so the common path pays one `Option` check per 8 KiB
+/// every call site but the media import, so the common path pays one `Option` check per 1 MiB
 /// chunk and nothing else.
 pub(crate) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
     cancel.is_some_and(|flag| flag.load(Ordering::SeqCst))
@@ -87,9 +87,10 @@ pub(crate) fn is_cancelled(cancel: Option<&AtomicBool>) -> bool {
 /// user who changes their mind about importing a 50 GB file from a slow external drive would
 /// otherwise have nothing to click and no way out but killing the app.
 ///
-/// The flag is read once per 8 KiB chunk, which is frequent enough that a cancel is felt as
-/// immediate and cheap enough not to matter next to the read itself. Nothing is written here, so
-/// there is nothing to undo. The function simply stops and reports the cancellation.
+/// The flag is read once per chunk (`HASH_CHUNK_BYTES`, 1 MiB), which is frequent enough that a
+/// cancel is felt as immediate and cheap enough not to matter next to the read itself. Nothing is
+/// written here, so there is nothing to undo. The function simply stops and reports the
+/// cancellation.
 pub fn file_hash_cancellable(path: &Path, cancel: Option<&AtomicBool>) -> AppResult<String> {
     if !path.exists() {
         return Err(AppError::from_code(

@@ -117,8 +117,10 @@ const MAX_RESOLVED_PER_CALL: usize = 512;
 ///
 /// A derivative is capped at [`DISPLAY_THUMBNAIL_MAX_WIDTH`] wide and JPEG-encoded, so it runs tens
 /// of kilobytes, and this holds a few thousand of them, which is more than a session draws. It
-/// exists because the directory otherwise has no bound at all. A derivative is never deleted when
-/// its media is, since nothing in the database refers to one (see the module docs).
+/// exists because the directory otherwise has no bound at all. A derivative goes when the canonical
+/// thumbnail it was made from is unlinked (`library::cleanup` through [`display_derivative_path`]),
+/// but nothing in the database refers to one, so a derivative whose thumbnail stays only leaves
+/// through this ceiling.
 ///
 /// **Enforced by the startup sweep** (`services::temp_cleanup::cleanup_stale_temp_files_sync`), not on
 /// write. A session that draws more than this grows past it and is trimmed back on the next launch.
