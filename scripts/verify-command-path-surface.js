@@ -549,7 +549,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
     "services/library/mod.rs::resolve_path_inside_library",
     "services/media_protocol.rs::may_resolve",
     "services/thumbnail/persist.rs::persist_thumbnail_file_sync",
-    "services/thumbnail/persist.rs::persist_thumbnail_from_source",
+    "services/thumbnail/persist.rs::persist_thumbnail_guarded",
     "services/thumbnail/picked.rs::validate_picked_thumbnail_path",
     "services/thumbnail/temp.rs::validate_source_media_path",
     "services/thumbnail/temp.rs::validate_temporary_thumbnail_delete_path",

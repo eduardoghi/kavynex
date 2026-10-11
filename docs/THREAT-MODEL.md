@@ -109,7 +109,7 @@ past a literal prefix match), and the functions applying it are:
 | `thumbnail::temp::validate_temporary_thumbnail_delete_path` | the preview being discarded |
 | `thumbnail::picked::validate_picked_thumbnail_path` | the image staged for a manual thumbnail |
 | `thumbnail::persist::persist_thumbnail_file_sync` | the source of a persisted thumbnail or avatar as it arrives over IPC (`persist_thumbnail_file`, and `create_media`'s local thumbnail branch), refused before the library directory is even resolved |
-| `thumbnail::persist::persist_thumbnail_from_source` | the same source one level down, so the download path and any later caller inherit the refusal |
+| `thumbnail::persist::persist_thumbnail_guarded` | the same source one level down, behind both `persist_thumbnail_from_source` and `persist_thumbnail_from_source_in_pass`, so the download path and any later caller inherit the refusal |
 | `library::media::stage_media_import_cancellable_sync` | the import source |
 | `library::guard::paths_refer_to_same_location` | a network path aimed at a local library, or at another share than the one a network-hosted library lives on |
 | `utils::path::network_share_prefix` | not a refusal of its own: the host-and-share reading the guard compares before it will canonicalize a network path against a network-hosted library |
