@@ -232,11 +232,6 @@ export function blake2b512OfFile(path) {
     });
 }
 
-// Verifies every entry's signature against the file it names in `assetsDir`, the copy of the
-// release the checksums job downloaded. The structural check proves a signature is there. Only
-// this proves it is the right one, made with the key the shipped app trusts, for the bytes the
-// entry serves. Without it, a leg signing with a rotated or wrong key (or an entry whose signature
-// and url came from different merges) passes every other gate and fails on each user's machine.
 // The public key the signatures are checked against. The one in tauri.conf.json, unless a
 // key rotation's bridging release says otherwise. That release ships the new key in the config while
 // still being signed with the old one (docs/RELEASE-SECURITY.md), so it is verified against the old
@@ -248,6 +243,11 @@ export function pubkeyToVerifyWith(configPubkey, overridePubkey) {
     return override !== "" ? override : configPubkey;
 }
 
+// Verifies every entry's signature against the file it names in `assetsDir`, the copy of the
+// release the checksums job downloaded. The structural check proves a signature is there. Only
+// this proves it is the right one, made with the key the shipped app trusts, for the bytes the
+// entry serves. Without it, a leg signing with a rotated or wrong key (or an entry whose signature
+// and url came from different merges) passes every other gate and fails on each user's machine.
 export async function findSignatureProblems(manifest, assetsDir, publicKeyBase64) {
     const problems = [];
     const digests = new Map();
