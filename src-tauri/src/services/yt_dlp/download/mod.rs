@@ -1000,6 +1000,31 @@ pub async fn download_media_from_url_async<R: Runtime>(
             .await
         };
 
+        // A cancel that arrived while the live chat or the thumbnail was being saved. The Cancel
+        // button stays up until the media is registered, so it has to mean the same thing here as
+        // before the placement. What this run put in the library goes to the trash (each file
+        // reference-counted, so one another row already uses is kept), and nothing is registered.
+        if cancel_flag.load(Ordering::SeqCst) {
+            discard_cancelled_placement(
+                app,
+                [
+                    Some(file_path.clone()),
+                    thumbnail_path.clone(),
+                    live_chat_file_path.clone(),
+                ],
+                placement_marker,
+            )
+            .await;
+
+            let message = "yt-dlp download cancelled";
+            emit_download_cancelled(app, &normalized_run_id, message);
+
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadCancelled,
+                message,
+            ));
+        }
+
         let result = DownloadedMediaResult {
             file_path,
             suggested_title: suggested_title.clone(),
@@ -2240,5 +2265,65 @@ mod tests {
         assert!(!outcome.stalled);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[tokio::test]
+    async fn a_cancel_after_the_placement_moves_the_runs_files_to_the_trash_and_clears_its_marker()
+    {
+        use crate::services::database::{get_app_settings_from_pool, set_app_settings_in_pool, Db};
+        use tauri::test::{mock_builder, mock_context, noop_assets};
+        use tauri::Manager;
+
+        let library =
+            std::env::temp_dir().join(format!("kavynex_cancel_placed_{}", unique_temp_suffix()));
+        fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .unwrap();
+        let mut settings = get_app_settings_from_pool(&pool).await.unwrap();
+        settings.library_path = Some(library.to_string_lossy().to_string());
+        set_app_settings_in_pool(&pool, &settings).await.unwrap();
+        app.manage(Db::from_pool(pool));
+
+        let relative = format!(
+            "{}/media_cancelled_{}.mp4",
+            crate::constants::LIBRARY_DIR_VIDEO,
+            unique_temp_suffix()
+        );
+        fs::write(library.join(&relative), b"placed before the cancel").unwrap();
+        let marker = record_placement_marker(app.handle(), &relative).await;
+        assert!(marker.is_some());
+
+        discard_cancelled_placement(
+            app.handle(),
+            [Some(relative.clone()), None, None],
+            marker.clone(),
+        )
+        .await;
+
+        assert!(
+            !library.join(&relative).exists(),
+            "nothing stays registered-looking"
+        );
+        assert!(
+            library
+                .join(crate::services::library::cleanup::LIBRARY_TRASH_DIR)
+                .is_dir(),
+            "the file went to the trash rather than being deleted"
+        );
+        let marker_dir = app
+            .path()
+            .app_cache_dir()
+            .unwrap()
+            .join(crate::constants::TEMP_DIR_PENDING_MEDIA);
+        assert!(!marker_dir.join(marker.unwrap()).exists());
+
+        let _ = fs::remove_dir_all(&library);
     }
 }

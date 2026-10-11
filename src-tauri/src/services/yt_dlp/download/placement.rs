@@ -209,6 +209,46 @@ pub(super) async fn record_placement_marker<R: Runtime>(
     }
 }
 
+/// Moves what a cancelled run already put in the library to the library's trash and clears the
+/// run's crash marker. Best effort. Whatever is left is what the marker sweep reconciles on the next
+/// launch, which is where the files would have gone anyway.
+pub(super) async fn discard_cancelled_placement<R: Runtime>(
+    app: &AppHandle<R>,
+    [file_path, thumbnail_path, live_chat_file_path]: [Option<String>; 3],
+    placement_marker: Option<String>,
+) {
+    let trashed = crate::services::library::cleanup::trash_unreferenced_artifacts(
+        app,
+        file_path,
+        thumbnail_path,
+        live_chat_file_path,
+    )
+    .await;
+
+    if let Err(error) = trashed {
+        logger::warn(
+            "yt_dlp",
+            format!("could not move a cancelled download's files to the trash: {error}"),
+        );
+        return;
+    }
+
+    if let Some(marker) = placement_marker {
+        let app = app.clone();
+        let cleared = run_blocking(move || {
+            crate::services::pending_media::clear_pending_media_artifacts(&app, &marker)
+        })
+        .await;
+
+        if let Err(error) = cleared {
+            logger::warn(
+                "yt_dlp",
+                format!("could not clear a cancelled download's crash marker: {error}"),
+            );
+        }
+    }
+}
+
 /// Moves `file` into `dir` under its own name, or under a prefixed one when that name is taken, and
 /// returns where it went.
 ///

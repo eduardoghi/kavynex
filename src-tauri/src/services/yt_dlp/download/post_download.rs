@@ -77,6 +77,8 @@ pub(super) async fn download_thumbnail_best_effort<R: Runtime>(
             );
             Some(path)
         }
+        // The search also ends early on a cancel, which says nothing about the video.
+        Ok(None) if cancel_flag.load(std::sync::atomic::Ordering::SeqCst) => None,
         Ok(None) => {
             emit_download_log_infallible(
                 app,
