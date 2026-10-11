@@ -64,17 +64,28 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
         }
 
         let entry_path = entry.path();
-        let entry_metadata = entry.metadata().map_err(|e| {
-            AppError::fs_error(
-                AppErrorCode::ReadDirEntryFailed,
-                "failed to read entry metadata",
-                &entry_path,
-                &e,
-            )
-        })?;
+        let entry_metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            // Listed and then renamed or removed before it could be read, which is what a download
+            // or an import does to its `.tmp` files while this walks. Gone is not an error here.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(AppError::fs_error(
+                    AppErrorCode::ReadDirEntryFailed,
+                    "failed to read entry metadata",
+                    &entry_path,
+                    &e,
+                ))
+            }
+        };
 
         if entry_metadata.is_dir() {
-            total_bytes = total_bytes.saturating_add(calculate_directory_size(&entry_path)?);
+            match calculate_directory_size(&entry_path) {
+                Ok(bytes) => total_bytes = total_bytes.saturating_add(bytes),
+                // A folder removed after it was listed (a download's run folder). See above.
+                Err(_) if !entry_path.exists() => continue,
+                Err(error) => return Err(error),
+            }
         } else if entry_metadata.is_file() {
             total_bytes = total_bytes.saturating_add(entry_metadata.len());
         }
@@ -127,17 +138,27 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
         }
 
         let entry_path = entry.path();
-        let entry_metadata = entry.metadata().map_err(|e| {
-            AppError::fs_error(
-                AppErrorCode::ReadDirEntryFailed,
-                "failed to read entry metadata",
-                &entry_path,
-                &e,
-            )
-        })?;
+        let entry_metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            // Listed and then renamed or removed before it could be read, which is what a download
+            // or an import does to its `.tmp` files while this walks. Gone is not an error here.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(AppError::fs_error(
+                    AppErrorCode::ReadDirEntryFailed,
+                    "failed to read entry metadata",
+                    &entry_path,
+                    &e,
+                ))
+            }
+        };
 
         if entry_metadata.is_dir() {
-            total_files = total_files.saturating_add(count_files_in_directory(&entry_path)?);
+            match count_files_in_directory(&entry_path) {
+                Ok(files) => total_files = total_files.saturating_add(files),
+                Err(_) if !entry_path.exists() => continue,
+                Err(error) => return Err(error),
+            }
         } else if entry_metadata.is_file() {
             total_files = total_files.saturating_add(1);
         }
