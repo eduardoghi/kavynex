@@ -359,9 +359,13 @@ impl RunCookies {
         ));
         let copy = scratch.join("cookies.txt");
 
+        // fs::copy rather than a read and a write, because it keeps the original's permissions.
+        // A cookies file is a signed-in session, usually readable by its owner only, and a copy
+        // created anew would take the default umask instead. The snapshot is read back from the
+        // copy, which holds the same bytes.
         let copied = std::fs::create_dir_all(&scratch)
-            .and_then(|_| std::fs::read(&original))
-            .and_then(|bytes| std::fs::write(&copy, &bytes).map(|_| bytes));
+            .and_then(|_| std::fs::copy(&original, &copy))
+            .and_then(|_| std::fs::read(&copy));
 
         let snapshot =
             match copied {
@@ -661,6 +665,31 @@ mod tests {
         );
 
         let _ = fs::remove_file(&file);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_runs_copy_keeps_the_owner_only_permissions_of_the_cookies_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        fs::set_permissions(&original, fs::Permissions::from_mode(0o600)).unwrap();
+        let scratch_root = unique_temp_path("cookie-scratch-mode");
+        fs::create_dir_all(&scratch_root).unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        let copy = std::path::PathBuf::from(run.path().unwrap());
+
+        assert_eq!(
+            fs::metadata(&copy).unwrap().permissions().mode() & 0o777,
+            0o600,
+            "a signed-in session must not become readable by other users"
+        );
+
+        drop(run);
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
     }
 
     #[test]
