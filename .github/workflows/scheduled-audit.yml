@@ -354,6 +354,102 @@ jobs:
                           --comment "The bundled SQLite is now \`$BUNDLED\`, in step with the latest release: $RUN_URL"
                   fi
 
+    # The cargo tools the workflows install are pinned to exact versions (`cargo install <tool>@<ver>`,
+    # kept consistent by scripts/verify-rust-toolchain.js), and Dependabot cannot see those lines. An
+    # old cargo-audit or cargo-deny can stop parsing the advisory database after a format change, and
+    # both gate every release. This keeps one tracking issue open while any pin is behind the
+    # latest release on crates.io, like the two jobs above.
+    cargo-tool-pins:
+        name: Pinned cargo tools freshness
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            contents: read
+            issues: write
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: Compare each pinned tool with its latest release
+              id: pins
+              run: |
+                  PINS=$(grep -rhoE 'cargo install [a-z0-9_-]+@[0-9][0-9A-Za-z.+-]*' .github/workflows \
+                      | sed 's/^cargo install //' | sort -u)
+
+                  if [ -z "$PINS" ]; then
+                      echo "::error::no pinned cargo install was found in .github/workflows"
+                      exit 1
+                  fi
+
+                  BEHIND=""
+
+                  for pin in $PINS; do
+                      tool=${pin%@*}
+                      pinned=${pin#*@}
+                      latest=$(curl --fail --silent --show-error \
+                          --user-agent "kavynex-scheduled-audit (github.com/${GITHUB_REPOSITORY})" \
+                          "https://crates.io/api/v1/crates/$tool" | jq -r '.crate.max_stable_version')
+
+                      if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+                          echo "::error::could not read the latest release of $tool from crates.io"
+                          exit 1
+                      fi
+
+                      echo "$tool pinned at $pinned, latest $latest"
+
+                      if [ "$pinned" != "$latest" ]; then
+                          BEHIND="$BEHIND $tool $pinned -> $latest;"
+                      fi
+                  done
+
+                  if [ -n "$BEHIND" ]; then
+                      echo "stale=true" >> "$GITHUB_OUTPUT"
+                      echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+                      echo "### Pinned cargo tools: behind ($BEHIND)" >> "$GITHUB_STEP_SUMMARY"
+                  else
+                      echo "stale=false" >> "$GITHUB_OUTPUT"
+                      echo "### Pinned cargo tools: current" >> "$GITHUB_STEP_SUMMARY"
+                  fi
+
+            - name: Open or update the tracking issue
+              if: steps.pins.outputs.stale == 'true'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  BEHIND: ${{ steps.pins.outputs.behind }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="Pinned cargo tools are behind their latest release"
+                  BODY="Behind:$BEHIND Bump the version in every workflow that installs it (scripts/verify-rust-toolchain.js fails until they agree). Run: $RUN_URL"
+
+                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$EXISTING" ]; then
+                      gh issue comment "$EXISTING" --body "$BODY"
+                  else
+                      gh issue create --title "$TITLE" --body "$BODY"
+                  fi
+
+            - name: Close the tracking issue once every pin is current
+              if: steps.pins.outputs.stale == 'false'
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="Pinned cargo tools are behind their latest release"
+                  NUMBER=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$NUMBER" ]; then
+                      gh issue close "$NUMBER" --comment "Every pinned cargo tool is current: $RUN_URL"
+                  fi
+
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
     # signal: the header of this file frames the workflow's whole job as "surfacing" a new
     # advisory, and an email alone barely does that. Open (or comment on) a tracking issue so a
@@ -361,7 +457,10 @@ jobs:
     # succeed, and only on the schedule/dispatch this workflow already runs on.
     alert-on-failure:
         name: Open an issue on failure
-        needs: [js-advisories, rust-advisories]
+        # The freshness jobs too. They report being behind through issues of their own and go red
+        # only when they could not answer at all (an API error, a version they could not read),
+        # which used to reach nothing but an email.
+        needs: [js-advisories, rust-advisories, yt-dlp-fixture-freshness, sqlite-freshness, cargo-tool-pins]
         # Not `if: failure()`, which is what this said and which does not do what it reads as. A job
         # killed by its own `timeout-minutes` is marked **cancelled**, not failed, and `failure()`
         # does not match cancelled, so the alert is skipped on exactly the run where the gate
@@ -381,7 +480,10 @@ jobs:
         if: >
             always() &&
             (needs.js-advisories.result == 'failure' || needs.js-advisories.result == 'cancelled' ||
-             needs.rust-advisories.result == 'failure' || needs.rust-advisories.result == 'cancelled')
+             needs.rust-advisories.result == 'failure' || needs.rust-advisories.result == 'cancelled' ||
+             needs.yt-dlp-fixture-freshness.result == 'failure' || needs.yt-dlp-fixture-freshness.result == 'cancelled' ||
+             needs.sqlite-freshness.result == 'failure' || needs.sqlite-freshness.result == 'cancelled' ||
+             needs.cargo-tool-pins.result == 'failure' || needs.cargo-tool-pins.result == 'cancelled')
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
@@ -398,8 +500,12 @@ jobs:
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
               run: |
                   TITLE="Scheduled dependency audit failed"
-                  BODY="The weekly scheduled dependency audit failed against the committed lockfiles: a JS advisory/license or a Rust cargo-audit/cargo-deny gate is red. Review the run and update or pin the affected dependency: $RUN_URL"
-                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+                  BODY="The weekly scheduled dependency audit failed: a JS advisory/license or a Rust cargo-audit/cargo-deny gate is red, or one of the freshness checks could not answer. Review the run: $RUN_URL"
+                  # Matched exactly, like the close job below, so an issue opened by hand about the
+                  # same subject is not commented on.
+                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
                   if [ -n "$EXISTING" ]; then
                       gh issue comment "$EXISTING" --body "$BODY"
                   else
@@ -415,10 +521,13 @@ jobs:
     # same reason the two alert conditions are kept identical: these must not drift again.
     close-on-success:
         name: Close the tracking issue on a green run
-        needs: [js-advisories, rust-advisories]
+        needs: [js-advisories, rust-advisories, yt-dlp-fixture-freshness, sqlite-freshness, cargo-tool-pins]
         if: >
             needs.js-advisories.result == 'success' &&
-            needs.rust-advisories.result == 'success'
+            needs.rust-advisories.result == 'success' &&
+            needs.yt-dlp-fixture-freshness.result == 'success' &&
+            needs.sqlite-freshness.result == 'success' &&
+            needs.cargo-tool-pins.result == 'success'
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
