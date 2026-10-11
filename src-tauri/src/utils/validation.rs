@@ -47,8 +47,7 @@ fn is_valid_youtube_handle(value: &str) -> bool {
     }
 
     if let Some(handle) = normalized.strip_prefix('@') {
-        let handle = handle.trim();
-
+        // Not trimmed after the @, matching the frontend. "@ chan" is not a handle YouTube has.
         return !handle.is_empty()
             && handle
                 .chars()

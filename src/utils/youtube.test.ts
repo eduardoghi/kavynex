@@ -101,9 +101,11 @@ describe("youtube utils", () => {
         expect(isValidNormalizedYoutubeHandle("   ")).toBe(false);
     });
 
-    it("trims the value and the handle before validating", () => {
+    it("trims the value but not the space after the @", () => {
         expect(isValidNormalizedYoutubeHandle("  @abc  ")).toBe(true);
-        expect(isValidNormalizedYoutubeHandle("@ abc")).toBe(true);
+        // A space after the @ is not part of any YouTube handle, and stored that way it builds no
+        // URL the avatar lookup can use.
+        expect(isValidNormalizedYoutubeHandle("@ abc")).toBe(false);
     });
 
     it("requires the whole handle to be valid characters", () => {

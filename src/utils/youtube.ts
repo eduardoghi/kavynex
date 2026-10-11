@@ -78,8 +78,9 @@ export function isValidNormalizedYoutubeHandle(value: string): boolean {
     }
 
     if (normalized.startsWith("@")) {
-        const handle = normalized.slice(1).trim();
-        return /^[A-Za-z0-9._-]+$/.test(handle);
+        // Not trimmed after the @. "@ chan" is not a handle YouTube has, and stored that way it
+        // builds no URL the avatar lookup can use.
+        return /^[A-Za-z0-9._-]+$/.test(normalized.slice(1));
     }
 
     const channelMatch = normalized.match(/^(channel|c|user)\/(.+)$/i);
