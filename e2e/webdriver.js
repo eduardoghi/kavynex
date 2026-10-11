@@ -77,6 +77,11 @@ class Session {
         return this.call("GET", "/title");
     }
 
+    // Runs `script` in the page and returns what it returns.
+    execute(script) {
+        return this.call("POST", "/execute/sync", { script, args: [] });
+    }
+
     end() {
         return this.call("DELETE", "");
     }

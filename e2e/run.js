@@ -35,6 +35,21 @@ async function closeNoticeIfShown(session) {
     }
 }
 
+// What the window held when a flow failed, so a timeout says whether the page was blank, still
+// loading, an error screen or simply different from what the flow expected.
+async function describePage(session) {
+    try {
+        const state = await session.execute(
+            "return { url: location.href, title: document.title, ready: document.readyState, " +
+                "text: (document.body ? document.body.innerText : '').slice(0, 400) };"
+        );
+
+        return JSON.stringify(state);
+    } catch (error) {
+        return `could not be read (${error.message})`;
+    }
+}
+
 const flows = [
     [
         "a first launch opens on the empty library",
@@ -81,6 +96,7 @@ try {
         } catch (error) {
             failed += 1;
             console.error(`FAIL ${name}\n     ${error.message}`);
+            console.error(`     page: ${await describePage(session)}`);
         }
     }
 } finally {
