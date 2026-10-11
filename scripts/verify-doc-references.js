@@ -18,8 +18,9 @@
 // It checks names, not behavior. A doc that still names the right file and describes it wrong
 // passes.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { basename, dirname, join, relative, resolve, sep } from "path";
+import { execFileSync } from "child_process";
+import { readFileSync } from "fs";
+import { basename, dirname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { isMainModule } from "./script-entry.js";
 
@@ -40,7 +41,6 @@ export const RESOLUTION_ROOTS = [
 ];
 
 const SKIPPED_DOCS = ["CHANGELOG.md", "docs/decisions/"];
-const SKIPPED_DIRS = new Set(["node_modules", "target", "dist", ".git", "coverage", "gen"]);
 const TEST_FILE_NAMES = new Set(["mod.rs", "tests.rs", "test_support.rs", "test_ipc.rs"]);
 
 // A backticked or comment token that names a path, cleaned of what commonly trails it. `null` when
@@ -87,7 +87,9 @@ export function markdownReferences(text) {
 export function rustCommentReferences(text) {
     const references = [];
 
-    for (const line of text.split("\n")) {
+    // A checkout with CRLF endings leaves a `\r` that `.` does not match, which would skip every
+    // comment on Windows while CI, with LF, reads them all.
+    for (const line of text.split(/\r?\n/)) {
         const comment = line.match(/^\s*\/\/[/!]?(.*)$/);
 
         if (!comment) {
@@ -140,58 +142,49 @@ export function unlistedModules(modules, architecture) {
     });
 }
 
-function walk(dir, visit) {
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        if (SKIPPED_DIRS.has(entry.name)) {
-            continue;
-        }
-
-        const path = join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-            walk(path, visit);
-        } else {
-            visit(path);
-        }
-    }
+// The files git tracks, relative to the repository root with `/`. The check reads these rather than
+// the disk, so an untracked copy (an editor's worktree, a build output) can neither make a cited
+// path look present nor add a doc to check, and the answer is the same locally and in CI.
+function trackedFiles(repoRoot) {
+    return execFileSync("git", ["ls-files", "-z"], { cwd: repoRoot, encoding: "utf-8" })
+        .split("\0")
+        .filter(Boolean);
 }
 
 function toPosix(path) {
     return path.split(sep).join("/");
 }
 
-function existsFrom(repoRoot) {
+// An `exists` over the tracked tree. A reference written with a trailing `/` names a folder, and a
+// folder is all it can match.
+function existsIn(files, folders) {
     return (path) => {
-        const full = resolve(repoRoot, path);
+        const posix = toPosix(path);
+        const wantsFolder = posix.endsWith("/");
+        const trimmed = posix.replace(/\/+$/, "");
 
-        if (!existsSync(full)) {
-            return false;
-        }
-
-        // A reference written with a trailing `/` names a folder, and a folder is all it can match.
-        return !path.endsWith("/") || statSync(full).isDirectory();
+        return wantsFolder ? folders.has(trimmed) : files.has(trimmed) || folders.has(trimmed);
     };
 }
 
 export function findProblems(repoRoot) {
-    const exists = existsFrom(repoRoot);
+    const files = trackedFiles(repoRoot);
+    const fileSet = new Set(files);
+    const folders = new Set();
+
+    for (const file of files) {
+        for (let folder = posixDirname(file); folder !== "."; folder = posixDirname(folder)) {
+            folders.add(folder);
+        }
+    }
+
+    const exists = existsIn(fileSet, folders);
+    const known = [...files, ...folders];
     const problems = [];
 
-    const docs = [];
-    const knownPaths = new Set();
-    walk(repoRoot, (path) => {
-        const rel = toPosix(relative(repoRoot, path));
-
-        for (let folder = dirname(rel); folder !== "."; folder = dirname(folder)) {
-            knownPaths.add(folder);
-        }
-        knownPaths.add(rel);
-
-        if (rel.endsWith(".md") && !SKIPPED_DOCS.some((skipped) => rel.startsWith(skipped))) {
-            docs.push(rel);
-        }
-    });
-    const known = [...knownPaths];
+    const docs = files.filter(
+        (file) => file.endsWith(".md") && !SKIPPED_DOCS.some((skipped) => file.startsWith(skipped))
+    );
 
     for (const doc of docs) {
         for (const reference of markdownReferences(readFileSync(join(repoRoot, doc), "utf-8"))) {
@@ -201,26 +194,26 @@ export function findProblems(repoRoot) {
         }
     }
 
-    const rustRoot = join(repoRoot, "src-tauri", "src");
+    const rustPrefix = "src-tauri/src/";
     const modules = [];
 
-    walk(rustRoot, (path) => {
-        if (!path.endsWith(".rs")) {
-            return;
+    for (const file of files) {
+        if (!file.startsWith(rustPrefix) || !file.endsWith(".rs")) {
+            continue;
         }
 
-        const rel = toPosix(relative(rustRoot, path));
+        const rel = file.slice(rustPrefix.length);
 
-        for (const reference of rustCommentReferences(readFileSync(path, "utf-8"))) {
+        for (const reference of rustCommentReferences(readFileSync(join(repoRoot, file), "utf-8"))) {
             if (!resolves(reference, exists, known)) {
-                problems.push(`src-tauri/src/${rel} cites \`${reference}\`, which does not exist`);
+                problems.push(`${file} cites \`${reference}\`, which does not exist`);
             }
         }
 
         if (!TEST_FILE_NAMES.has(basename(rel)) && !rel.split("/").includes("tests")) {
             modules.push(rel);
         }
-    });
+    }
 
     const architecture = readFileSync(join(repoRoot, "docs", "ARCHITECTURE.md"), "utf-8");
 
@@ -229,6 +222,11 @@ export function findProblems(repoRoot) {
     }
 
     return problems;
+}
+
+function posixDirname(path) {
+    const index = path.lastIndexOf("/");
+    return index < 0 ? "." : path.slice(0, index);
 }
 
 if (isMainModule(import.meta.url)) {

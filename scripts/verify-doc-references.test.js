@@ -62,6 +62,16 @@ describe("rustCommentReferences", () => {
             "thumbnail/temp.rs",
         ]);
     });
+
+    it("reads a CRLF checkout the same as an LF one", () => {
+        expect(rustCommentReferences("/// see `utils/path.rs`.\r\nfn a() {}\r\n")).toEqual([
+            "utils/path.rs",
+        ]);
+    });
+
+    it("leaves a file named at another version alone", () => {
+        expect(rustCommentReferences("/// copied from `v1.0.0:src/lib/schema.ts`")).toEqual([]);
+    });
 });
 
 describe("resolves", () => {

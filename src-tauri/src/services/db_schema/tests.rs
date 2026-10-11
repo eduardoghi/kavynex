@@ -903,7 +903,7 @@ async fn object_exists(pool: &SqlitePool, kind: &str, name: &str) -> bool {
 /// fixture during a normal test run; regenerate deliberately with:
 ///   cargo test --manifest-path src-tauri/Cargo.toml --lib regenerate_v1_migration_fixture -- --ignored
 ///
-/// The DDL and indexes below are copied verbatim from v1.0.0's `src/lib/schema.ts` (the
+/// The DDL and indexes below are copied verbatim from `v1.0.0:src/lib/schema.ts` (the
 /// sql-plugin schema real v1.0.0 / v1.1.0 users have on disk), stamped `user_version = 5`
 /// and seeded with representative rows, including two `video_live_chat_messages` rows that
 /// the current baseline must drop.
