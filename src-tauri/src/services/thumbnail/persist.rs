@@ -14,7 +14,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// The largest image accepted as a thumbnail or an avatar. YouTube's largest thumbnail is well under
 /// a megabyte, and anything this large was copied into the library and hashed whole before.
-const MAX_PERSISTED_THUMBNAIL_BYTES: u64 = 25 * 1024 * 1024;
+pub(crate) const MAX_PERSISTED_THUMBNAIL_BYTES: u64 = 25 * 1024 * 1024;
 
 pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppResult<String> {
     // Refuse a UNC / network source before the `exists()` below touches it. Two of this

@@ -73,6 +73,18 @@ pub(crate) fn validate_picked_thumbnail_path(path: &str) -> AppResult<PathBuf> {
         ));
     }
 
+    // The same ceiling the persist step applies, here because the staging that follows hashes the
+    // whole file and copies it into the cache. Without it a multi-gigabyte file with an image name
+    // and header was read twice and copied before anything refused it.
+    if source_path.metadata().map_or(true, |metadata| {
+        metadata.len() > crate::services::thumbnail::persist::MAX_PERSISTED_THUMBNAIL_BYTES
+    }) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailFile,
+            "the image is too large to use as a thumbnail (25 MB at most)",
+        ));
+    }
+
     // The bytes too, not only the name. FFmpeg reads this file to scale it for the grid and detects
     // the format by content, so a playlist or anything else renamed `.jpg` would be opened as what it
     // really is. The remote path has always sniffed, this one only checked the extension.
@@ -132,6 +144,23 @@ mod tests {
             "kavynex-picked-thumbnail-test-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn an_image_past_the_size_ceiling_is_refused_before_it_is_staged() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("huge.png");
+        let file = fs::File::create(&source).unwrap();
+        file.set_len(crate::services::thumbnail::persist::MAX_PERSISTED_THUMBNAIL_BYTES + 1)
+            .unwrap();
+        drop(file);
+
+        let error = validate_picked_thumbnail_path(&source.to_string_lossy()).unwrap_err();
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
+        assert!(error.message.contains("too large"), "{}", error.message);
+
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
