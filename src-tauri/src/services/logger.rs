@@ -78,6 +78,109 @@ pub fn redact_path(path: impl AsRef<Path>) -> String {
         .to_string()
 }
 
+/// The ways the user's home directory can be spelled in a log message: as the OS gives it, with
+/// forward slashes, with the backslashes doubled by JSON, and percent-encoded the way the webview
+/// writes a path into an `asset:` or `kvxmedia:` URL. Longest first, so a longer spelling is replaced
+/// before a shorter one inside it could be.
+fn home_dir_spellings(home: &str) -> Vec<String> {
+    let home = home.trim_end_matches(['/', '\\']);
+
+    // A home of `/` or a bare drive would turn every absolute path into `~`, and name nobody.
+    if home
+        .chars()
+        .filter(|ch| !matches!(ch, '/' | '\\' | ':'))
+        .count()
+        < 3
+    {
+        return Vec::new();
+    }
+
+    let forward = home.replace('\\', "/");
+    let mut spellings = vec![
+        home.to_string(),
+        forward.clone(),
+        home.replace('\\', r"\\"),
+        percent_encode_component(home),
+        percent_encode_component(&forward),
+    ];
+
+    spellings.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    spellings.dedup();
+    spellings
+}
+
+/// What `encodeURIComponent` makes of `value`.
+fn percent_encode_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
+            encoded.push(char::from(byte));
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+
+    encoded
+}
+
+/// `line` with every spelling of the home directory replaced by `~`, ignoring ASCII case (Windows
+/// paths are case-insensitive, and on Unix the cost is only redacting a little more). A match that
+/// runs on into a longer name (`/home/ed` inside `/home/eduardo`) is left alone.
+fn redact_home_dir_in(line: &str, spellings: &[String]) -> String {
+    let mut redacted = line.to_string();
+
+    for spelling in spellings {
+        // ASCII lowercasing keeps every byte where it was, so an offset found in the lowered copy
+        // is a char boundary in the original too.
+        let haystack = redacted.to_ascii_lowercase();
+        let needle = spelling.to_ascii_lowercase();
+        let mut out = String::with_capacity(redacted.len());
+        let mut copied = 0;
+        let mut from = 0;
+
+        while let Some(found) = haystack[from..].find(&needle) {
+            let start = from + found;
+            let end = start + needle.len();
+            let ends_a_name = redacted[end..]
+                .chars()
+                .next()
+                .is_none_or(|next| !(next.is_alphanumeric() || matches!(next, '_' | '-' | '.')));
+
+            if ends_a_name {
+                out.push_str(&redacted[copied..start]);
+                out.push('~');
+                copied = end;
+            }
+
+            from = end;
+        }
+
+        out.push_str(&redacted[copied..]);
+        redacted = out;
+    }
+
+    redacted
+}
+
+/// Replaces the user's home directory in `line` with `~`. Every log line goes through it, since a
+/// log is attached to bug reports and the home directory carries the OS user name. Paths the code
+/// logs on purpose already go through [`redact_path`]. This one is for what arrives as text, a
+/// child process's output or a stack trace the webview sent.
+fn redact_home_dir(line: &str) -> String {
+    static SPELLINGS: OnceLock<Vec<String>> = OnceLock::new();
+
+    let spellings = SPELLINGS.get_or_init(|| {
+        let variable = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+
+        std::env::var(variable)
+            .map(|home| home_dir_spellings(&home))
+            .unwrap_or_default()
+    });
+
+    redact_home_dir_in(line, spellings)
+}
+
 fn append_line(path: &Path, line: &str) {
     rotate_if_needed(path, MAX_LOG_BYTES);
 
@@ -129,7 +232,7 @@ fn write(level: &str, scope: &str, message: &str) {
         timestamp_string(),
         level,
         scope,
-        single_line(message)
+        single_line(&redact_home_dir(message))
     );
 
     eprintln!("{line}");
@@ -257,6 +360,44 @@ mod tests {
             line.chars().count(),
             MAX_MESSAGE_CHARS + "... (truncated)".len()
         );
+    }
+
+    #[test]
+    fn the_home_directory_is_redacted_in_every_spelling_a_message_carries() {
+        let spellings = home_dir_spellings(r"C:\Users\Eduardo\");
+
+        let line = concat!(
+            r"failed at C:\Users\Eduardo\Videos\a.mp4, ",
+            r"c:/users/eduardo/AppData/x.js, ",
+            r#"{"path":"C:\\Users\\Eduardo\\b.db"}, "#,
+            "http://asset.localhost/C%3A%5CUsers%5CEduardo%5Cthumb.jpg"
+        );
+
+        assert_eq!(
+            redact_home_dir_in(line, &spellings),
+            concat!(
+                r"failed at ~\Videos\a.mp4, ",
+                r"~/AppData/x.js, ",
+                r#"{"path":"~\\b.db"}, "#,
+                "http://asset.localhost/~%5Cthumb.jpg"
+            )
+        );
+    }
+
+    #[test]
+    fn a_longer_name_that_starts_like_the_home_directory_is_not_cut() {
+        let spellings = home_dir_spellings("/home/ed");
+
+        assert_eq!(
+            redact_home_dir_in("/home/eduardo/a and /home/ed/b and /home/ed", &spellings),
+            "/home/eduardo/a and ~/b and ~"
+        );
+    }
+
+    #[test]
+    fn a_root_or_bare_drive_home_redacts_nothing() {
+        assert!(home_dir_spellings("/").is_empty());
+        assert!(home_dir_spellings(r"C:\").is_empty());
     }
 
     #[test]

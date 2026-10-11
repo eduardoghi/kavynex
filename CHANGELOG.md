@@ -62,6 +62,10 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- The log file writes your home folder as `~`, including in the errors the window reports and in
+  yt-dlp's output, so the OS user name stays out of a log attached to a bug report. Each uncaught
+  window error is logged once, with its stack, and the harmless ResizeObserver notice is no longer
+  logged.
 - The leftover files of an import that died midway are no longer forgotten when Kavynex starts with
   the library drive unplugged. They are moved to the library trash once the drive is back.
 - A library move onto the current folder, reached by another name such as a network path or a

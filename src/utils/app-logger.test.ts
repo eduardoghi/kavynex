@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { APP_ERROR_CODE } from "../constants/error-codes";
-import { logError, logInfo, logWarn } from "./app-logger";
+import { logError, logErrorToConsole, logInfo, logWarn, setLogSink } from "./app-logger";
 
 describe("app-logger", () => {
     beforeEach(() => {
@@ -153,5 +153,21 @@ describe("app-logger", () => {
                 mediaId: 12,
             },
         ]);
+    });
+
+    it("keeps logErrorToConsole off the log file and logError on it", () => {
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const sink = vi.fn();
+        setLogSink(sink);
+
+        try {
+            logErrorToConsole("test-scope", "failure", new Error("boom"));
+            expect(sink).not.toHaveBeenCalled();
+
+            logError("test-scope", "failure", new Error("boom"));
+            expect(sink).toHaveBeenCalledTimes(1);
+        } finally {
+            setLogSink(null);
+        }
     });
 });

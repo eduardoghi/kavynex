@@ -1,6 +1,6 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeVoid } from "../lib/tauri-client";
-import { logError, setLogSink } from "./app-logger";
+import { logErrorToConsole, setLogSink } from "./app-logger";
 
 function describeError(error: unknown): string {
     if (error instanceof Error) {
@@ -19,11 +19,12 @@ function describeError(error: unknown): string {
     return String(error);
 }
 
-// Logs to the console (devtools) and forwards the error to the backend log file, which is
-// the only sink that survives a webview crash and can land in a bug report. Persisting is
-// best-effort. A failure here must never throw, or the handlers below would loop.
+// Logs to the console (devtools) and forwards the error, with its stack, to the backend log file,
+// which is the only sink that survives a webview crash and can land in a bug report. The console
+// half skips the log sink, which would write a second, stackless line for the same error.
+// Persisting is best-effort. A failure here must never throw, or the handlers below would loop.
 export function reportFatalError(scope: string, message: string, error: unknown): void {
-    logError(scope, message, error);
+    logErrorToConsole(scope, message, error);
 
     void invokeVoid(TAURI_COMMANDS.LOG_FRONTEND_ERROR, {
         scope,
@@ -31,6 +32,18 @@ export function reportFatalError(scope: string, message: string, error: unknown)
     }).catch(() => {
         // Already logged to the console above; nothing else can be done.
     });
+}
+
+const BENIGN_RESIZE_OBSERVER_MESSAGES = [
+    "ResizeObserver loop completed with undelivered notifications.",
+    "ResizeObserver loop limit exceeded",
+];
+
+export function isBenignResizeObserverError(message: unknown): boolean {
+    return (
+        typeof message === "string" &&
+        BENIGN_RESIZE_OBSERVER_MESSAGES.some((benign) => message.includes(benign))
+    );
 }
 
 let installed = false;
@@ -60,6 +73,14 @@ export function installGlobalErrorHandlers(): void {
     });
 
     window.addEventListener("error", (event) => {
+        // Chromium reports a ResizeObserver callback that resized what it observes, which Mantine's
+        // ScrollArea and the virtualized grids do while a window is resized, as a window error.
+        // Nothing failed (the notifications arrive on the next frame), and on the file it buried the
+        // errors that matter under one line per resize.
+        if (isBenignResizeObserverError(event.message)) {
+            return;
+        }
+
         reportFatalError(
             "window",
             "Uncaught error reached the window.",

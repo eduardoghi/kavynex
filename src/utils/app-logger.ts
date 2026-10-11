@@ -71,7 +71,8 @@ function writeLog(
     scope: string,
     message: string,
     error?: unknown,
-    meta?: LogMeta
+    meta?: LogMeta,
+    toSink = true
 ): void {
     const prefix = createPrefix(level, scope);
     const normalizedMeta = normalizeMeta(meta);
@@ -79,7 +80,7 @@ function writeLog(
     // Warnings and errors also reach the backend log file. `info` stays console-only on purpose,
     // since a file that carries every routine step stops being the thing a bug report can be read
     // from.
-    if (sink && level !== "info") {
+    if (toSink && sink && level !== "info") {
         sink(level, scope, describeForSink(message, error, meta));
     }
 
@@ -145,4 +146,10 @@ export function logError(
     meta?: LogMeta
 ): void {
     writeLog("error", scope, message, error, meta);
+}
+
+// `logError` without the log file. For a caller that writes its own, fuller line there, so the file
+// does not get the same failure twice.
+export function logErrorToConsole(scope: string, message: string, error?: unknown): void {
+    writeLog("error", scope, message, error, undefined, false);
 }

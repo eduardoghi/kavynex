@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { installGlobalErrorHandlers, reportFatalError } from "./global-error-reporting";
+import {
+    installGlobalErrorHandlers,
+    isBenignResizeObserverError,
+    reportFatalError,
+} from "./global-error-reporting";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 
 vi.mock("../lib/tauri-client", () => ({
@@ -8,11 +12,12 @@ vi.mock("../lib/tauri-client", () => ({
 
 vi.mock("./app-logger", () => ({
     logError: vi.fn(),
+    logErrorToConsole: vi.fn(),
     setLogSink: vi.fn(),
 }));
 
 import { invokeVoid } from "../lib/tauri-client";
-import { logError, setLogSink } from "./app-logger";
+import { logError, logErrorToConsole, setLogSink } from "./app-logger";
 
 describe("reportFatalError", () => {
     beforeEach(() => {
@@ -25,7 +30,9 @@ describe("reportFatalError", () => {
 
         reportFatalError("window", "Uncaught error reached the window.", error);
 
-        expect(logError).toHaveBeenCalledWith(
+        // Console only. The log sink would send a second, stackless line for the same error.
+        expect(logError).not.toHaveBeenCalled();
+        expect(logErrorToConsole).toHaveBeenCalledWith(
             "window",
             "Uncaught error reached the window.",
             error
@@ -108,6 +115,19 @@ describe("reportFatalError", () => {
     });
 });
 
+describe("isBenignResizeObserverError", () => {
+    it("matches only the ResizeObserver loop notices", () => {
+        expect(
+            isBenignResizeObserverError(
+                "ResizeObserver loop completed with undelivered notifications."
+            )
+        ).toBe(true);
+        expect(isBenignResizeObserverError("ResizeObserver loop limit exceeded")).toBe(true);
+        expect(isBenignResizeObserverError("TypeError: x is undefined")).toBe(false);
+        expect(isBenignResizeObserverError(undefined)).toBe(false);
+    });
+});
+
 describe("installGlobalErrorHandlers", () => {
     it("registers window handlers only once and forwards events", () => {
         const addEventListenerSpy = vi.spyOn(window, "addEventListener");
@@ -128,7 +148,7 @@ describe("installGlobalErrorHandlers", () => {
         const errorHandler = errorRegistrations[0]![1] as (event: ErrorEvent) => void;
         errorHandler(new ErrorEvent("error", { error: new Error("uncaught") }));
 
-        expect(logError).toHaveBeenCalledWith(
+        expect(logErrorToConsole).toHaveBeenCalledWith(
             "window",
             "Uncaught error reached the window.",
             expect.objectContaining({ message: "uncaught" })
@@ -139,7 +159,7 @@ describe("installGlobalErrorHandlers", () => {
         }) => void;
         rejectionHandler({ reason: "denied" });
 
-        expect(logError).toHaveBeenCalledWith(
+        expect(logErrorToConsole).toHaveBeenCalledWith(
             "window",
             "Unhandled promise rejection reached the window.",
             "denied"
@@ -176,6 +196,15 @@ describe("installGlobalErrorHandlers", () => {
         vi.mocked(invokeVoid).mockRejectedValue(new Error("ipc refused"));
 
         expect(() => sink("error", "scope", "line")).not.toThrow();
+
+        // The ResizeObserver notice is not an error and does not reach the file.
+        vi.mocked(invokeVoid).mockClear();
+        errorHandler(
+            new ErrorEvent("error", {
+                message: "ResizeObserver loop completed with undelivered notifications.",
+            })
+        );
+        expect(invokeVoid).not.toHaveBeenCalled();
 
         addEventListenerSpy.mockRestore();
     });
