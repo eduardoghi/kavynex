@@ -22,7 +22,8 @@
     ;
     ; The updater runs the uninstaller with /UPDATE and never shows the confirm page, and the
     ; template guards its own deletion on $UpdateMode too. The same guard here means an update can
-    ; never prompt.
+    ; never prompt. A silent uninstall (/S) skips that page as well, and the state is only ever set
+    ; in the template's un.ConfirmLeave, so it stays unset and the MessageBox needs no /SD default.
     ${If} $DeleteAppDataCheckboxState = 1
     ${AndIf} $UpdateMode <> 1
         MessageBox MB_YESNO|MB_ICONEXCLAMATION|MB_DEFBUTTON2 "You ticked Delete the application data.$\r$\n$\r$\nThat removes the Kavynex database, every automatic backup of it, and any download that could not be added to the library. Your channels, titles, watched state and every saved comment go with it, and comments saved for a video that is no longer on YouTube cannot be downloaded again.$\r$\n$\r$\nYour library folder (the media files, thumbnails and live chat replays) is not touched either way, but without the database Kavynex cannot tell which video each file belongs to.$\r$\n$\r$\nDelete the database and its backups?" IDYES +2
