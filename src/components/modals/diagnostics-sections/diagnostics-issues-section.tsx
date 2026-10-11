@@ -8,6 +8,7 @@ import type {
     OrphanRemovalRefusal,
 } from "../../../types/diagnostics";
 import { AppButton } from "../../ui/app-button";
+import { ORPHAN_GRACE_PERIOD_DAYS } from "../../../constants/library-retention";
 
 // Where the removal action is drawn, under the first of these issues present. Which files the
 // removal takes, and whether it may run, is the backend's call (`orphanRemoval`).
@@ -18,7 +19,7 @@ const ORPHAN_ISSUE_CODES: ReadonlySet<string> = new Set([
 
 const ORPHAN_REMOVAL_REFUSAL_TEXT: Record<OrphanRemovalRefusal, string> = {
     recentDatabaseSwap:
-        "Removing these files is not offered for 30 days after a database import or restore, since they may belong to the database it replaced.",
+        `Removing these files is not offered for ${ORPHAN_GRACE_PERIOD_DAYS} days after a database import or restore, since they may belong to the database it replaced.`,
     mostFilesUnreferenced:
         "Removing these files is not offered while most of the library's files are unreferenced. That usually means the database is older than the folder or belongs to another library.",
 };

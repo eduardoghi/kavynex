@@ -14,6 +14,7 @@ import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome"
 import { ConfirmDeleteModal } from "./confirm-delete-modal";
 import { DiagnosticsIssuesSection } from "./diagnostics-sections/diagnostics-issues-section";
 import { DiagnosticsSummarySections } from "./diagnostics-sections/diagnostics-summary-sections";
+import { ORPHAN_GRACE_PERIOD_DAYS } from "../../constants/library-retention";
 
 type DiagnosticsModalProps = {
     opened: boolean;
@@ -214,7 +215,7 @@ export function DiagnosticsModal({
                             ? `Move ${formatCount(orphanRemoval.files, "file")} (${formatBytes(orphanRemoval.bytes)}) that nothing in the library uses to the trash?`
                             : "Move the files that nothing in the library uses to the trash?"
                     }
-                    description="Only media and thumbnails Kavynex named itself are moved, to the .trash folder inside your library folder. They stay there for 30 days, so you can move one back by hand, and are then deleted. Anything you put in the library folder yourself is kept."
+                    description={`Only media and thumbnails Kavynex named itself are moved, to the .trash folder inside your library folder. They stay there for ${ORPHAN_GRACE_PERIOD_DAYS} days, so you can move one back by hand, and are then deleted. Anything you put in the library folder yourself is kept.`}
                     confirmLabel="Move to trash"
                     loading={removingOrphanFiles}
                 />

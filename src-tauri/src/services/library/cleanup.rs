@@ -923,7 +923,8 @@ pub(crate) fn removable_orphans(
 pub(crate) const LIBRARY_TRASH_DIR: &str = ".trash";
 
 /// How long the orphan removal is refused after the database was replaced, and how long a removal's
-/// files wait in [`LIBRARY_TRASH_DIR`] before the startup sweep purges them.
+/// files wait in [`LIBRARY_TRASH_DIR`] before the startup sweep purges them. The Diagnostics dialog
+/// tells the user this number, and `shared/orphan-grace-period.json` keeps the two the same.
 pub(crate) const ORPHAN_GRACE_PERIOD: std::time::Duration =
     std::time::Duration::from_secs(30 * 24 * 60 * 60);
 

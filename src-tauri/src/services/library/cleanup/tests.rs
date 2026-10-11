@@ -1110,3 +1110,15 @@ fn a_recent_import_or_restore_counts_as_a_database_swap() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn the_grace_period_is_the_one_the_frontend_tells_the_user() {
+    let raw = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../shared/orphan-grace-period.json"
+    ));
+    let fixture: serde_json::Value = serde_json::from_str(raw).unwrap();
+    let days = fixture["orphanGracePeriodDays"].as_u64().unwrap();
+
+    assert_eq!(ORPHAN_GRACE_PERIOD.as_secs(), days * 24 * 60 * 60);
+}

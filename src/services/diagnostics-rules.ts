@@ -8,6 +8,7 @@ import type {
 } from "../types/diagnostics";
 import { formatBytes } from "../utils/media-utils";
 import { formatCount } from "../utils/pluralize";
+import { ORPHAN_GRACE_PERIOD_DAYS } from "../constants/library-retention";
 
 // How old a yt-dlp release has to be before the diagnostics mention it. Deliberately generous.
 // yt-dlp ships very often, so a stricter threshold would nag about a version that still works,
@@ -463,7 +464,7 @@ export function buildDiagnosticsIssues(
             code: "LIBRARY_TRASH_HOLDS_FILES",
             severity: "info",
             title: "The library trash holds files",
-            description: `${formatCount(trash.files, "file")} (${formatBytes(trash.bytes)}) moved aside by Remove orphan files or by a media creation that did not finish. Each run is deleted 30 days after it was moved. To keep a file, move it back to the same path inside the library folder.`,
+            description: `${formatCount(trash.files, "file")} (${formatBytes(trash.bytes)}) moved aside by Remove orphan files or by a media creation that did not finish. Each run is deleted ${ORPHAN_GRACE_PERIOD_DAYS} days after it was moved. To keep a file, move it back to the same path inside the library folder.`,
         });
     }
 

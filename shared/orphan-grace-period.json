@@ -1,0 +1,4 @@
+{
+    "_comment": "How long the library keeps what it moved aside, shared so the backend's ORPHAN_GRACE_PERIOD (src-tauri/src/services/library/cleanup.rs) and the number of days the frontend tells the user (ORPHAN_GRACE_PERIOD_DAYS in src/constants/library-retention.ts) cannot drift apart. The one constant drives three things the Diagnostics dialog describes: how long the .trash folder keeps a run, how long a cancelled download's files stay there, and how long orphan removal stays off after a database import or restore. Both sides assert against this file.",
+    "orphanGracePeriodDays": 30
+}
