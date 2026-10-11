@@ -1,0 +1,107 @@
+name: e2e
+
+# Launches the built app and drives it through the WebDriver protocol (`tauri-driver` over
+# WebKitWebDriver), so a flow that compiles, passes every unit test and still does not work in the
+# real window fails somewhere. The flows are in `e2e/run.js`. Linux only for now, since that is the
+# one platform tauri-driver drives without a matching browser driver to install, and weekly plus on
+# demand rather than on every push, because it builds the whole app.
+on:
+    schedule:
+        # Wednesdays 07:00 UTC, between mutation.yml (Monday) and scheduled-audit.yml (Thursday).
+        - cron: "0 7 * * 3"
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: e2e
+    cancel-in-progress: false
+
+jobs:
+    e2e:
+        name: End-to-end flows (Linux)
+        runs-on: ubuntu-26.04
+        timeout-minutes: 60
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            # No version input. The pnpm version comes from package.json's packageManager field.
+            - name: Setup pnpm
+              uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+              with:
+                  node-version: 26.5.0
+                  cache: pnpm
+
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
+              with:
+                  toolchain: 1.99.0
+
+            # The build dependencies release.yml installs, plus the WebKit WebDriver tauri-driver
+            # talks to and a display for the window.
+            - name: Install Linux dependencies
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+                      librsvg2-dev patchelf xdg-utils webkit2gtk-driver xvfb
+
+            - name: Cache Rust build
+              uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+              with:
+                  workspaces: src-tauri
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            # Pinned like every other tool the workflows install, so the driver that runs is the one
+            # last reviewed.
+            - name: Install tauri-driver
+              run: cargo install tauri-driver@2.1.0 --locked
+
+            # A debug build embeds the frontend bundle the same way a release does, and skips the
+            # installers this job has no use for.
+            - name: Build the app
+              run: pnpm tauri build --debug --no-bundle
+
+            # Empty config, data and cache directories, so every run is a first launch with no
+            # library and no database. The same WebKit switches as the release webview check, which
+            # otherwise fails to paint under Xvfb.
+            - name: Run the end-to-end flows
+              env:
+                  WEBKIT_DISABLE_COMPOSITING_MODE: "1"
+                  WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+              run: |
+                  profile=$(mktemp -d)
+                  export XDG_CONFIG_HOME="$profile/config"
+                  export XDG_DATA_HOME="$profile/data"
+                  export XDG_CACHE_HOME="$profile/cache"
+
+                  binary="$PWD/src-tauri/target/debug/kavynex"
+
+                  if [ ! -x "$binary" ]; then
+                      echo "::error::no built kavynex binary was found at $binary" >&2
+                      exit 1
+                  fi
+
+                  # A display for the window, and the driver that opens it, both stopped on exit.
+                  Xvfb :99 -screen 0 1280x800x24 &
+                  display_server=$!
+                  export DISPLAY=:99
+
+                  tauri-driver --port 4444 &
+                  driver=$!
+                  trap 'kill "$driver" "$display_server"' EXIT
+
+                  for _ in $(seq 1 50); do
+                      curl -sf http://127.0.0.1:4444/status >/dev/null && break
+                      sleep 0.2
+                  done
+
+                  node e2e/run.js "$binary"

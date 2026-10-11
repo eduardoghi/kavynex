@@ -137,8 +137,9 @@ export default defineConfig(
         },
     },
     {
-        // Release/build helper scripts. Plain ESM run by Node, not the browser bundle.
-        files: ["scripts/**/*.js"],
+        // Release/build helper scripts and the end-to-end runner. Plain ESM run by Node, not the
+        // browser bundle.
+        files: ["scripts/**/*.js", "e2e/**/*.js"],
         languageOptions: {
             globals: {
                 ...globals.node,

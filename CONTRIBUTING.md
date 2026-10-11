@@ -338,3 +338,10 @@ authoritative version; what follows is what to expect a red run to be about:
 Mutation testing is *not* on this path. It runs weekly (`mutation.yml`), Stryker over the
 frontend and cargo-mutants over the Rust modules in `src-tauri/.cargo/mutants.toml`'s
 `examine_globs`, sharded so no leg runs toward its timeout.
+
+Neither are the end-to-end flows. `e2e.yml` runs weekly and on demand on Linux. It builds the app,
+launches it with empty data directories through `tauri-driver`, and drives it with `e2e/run.js`
+(a first launch, Settings, and the full integrity check in Diagnostics). The runner talks plain
+WebDriver over `fetch` (`e2e/webdriver.js`), so it adds no dependency. A flow finds things by the
+text and accessible names the user reads, so renaming a label in `ui-text.ts` means updating the
+flow that looks for it.
