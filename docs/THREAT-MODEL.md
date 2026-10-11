@@ -690,6 +690,11 @@ public), and the response constraints all apply after the request has been made.
 and is under the mutation gate. The caller still gates the initial URL, since that is a different
 question (may this fetch start at all) about a URI no redirect produced.
 
+A URL that is not a direct image goes to the yt-dlp fallback, which takes YouTube hosts only. That
+allow-list runs before the address guard, because the address guard resolves the name, and a lookup
+of an arbitrary name already reaches whoever serves that domain's DNS. A renderer that sends
+`https://<data>.attacker.example/page` is refused with nothing resolved.
+
 ## External binary resolution (no working-directory hijack)
 
 `services/binaries.rs` resolves `yt-dlp`/`ffmpeg` by walking only the directories listed

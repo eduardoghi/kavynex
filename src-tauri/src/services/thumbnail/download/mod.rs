@@ -298,6 +298,23 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             return persist_thumbnail_from_source_async(direct_file_path, library_dir).await;
         }
 
+        // yt-dlp's generic extractor is handed the URL with access to the user's browser
+        // cookies (indirectly, via the same yt-dlp binary used elsewhere), so (like every
+        // other yt-dlp invocation in this app), it must be restricted to YouTube. Without
+        // this, a non-image URL would fall through to yt-dlp's generic extractor for any
+        // host, which is far broader than this app ever intends to support.
+        //
+        // Checked before anything resolves the host. The address check below looks the name up,
+        // and a lookup of an arbitrary name is itself a request to whoever serves that domain's
+        // DNS, so a URL from a compromised renderer could carry data out in its labels before
+        // being refused.
+        if !is_allowed_youtube_url(&normalized_url) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidUrl,
+                "generic thumbnail extraction is restricted to youtube urls",
+            ));
+        }
+
         // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
         // fallback has none, so validate the host here too. Reject URLs that resolve to
         // loopback/private/link-local/reserved addresses before handing the URL to yt-dlp.
@@ -305,18 +322,6 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
         })?;
         assert_url_host_is_public(&fallback_uri).await?;
-
-        // yt-dlp's generic extractor is handed the URL with access to the user's browser
-        // cookies (indirectly, via the same yt-dlp binary used elsewhere), so (like every
-        // other yt-dlp invocation in this app), it must be restricted to YouTube. Without
-        // this, a non-image URL would fall through to yt-dlp's generic extractor for any
-        // host, which is far broader than this app ever intends to support.
-        if !is_allowed_youtube_url(&normalized_url) {
-            return Err(AppError::from_code(
-                AppErrorCode::InvalidUrl,
-                "generic thumbnail extraction is restricted to youtube urls",
-            ));
-        }
 
         let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
         let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
@@ -828,6 +833,37 @@ mod tests {
                 .count(),
             1
         );
+    }
+
+    #[test]
+    fn a_fallback_url_off_youtube_is_refused_before_its_host_is_looked_up() {
+        // `.invalid` never resolves, so a lookup that ran first would fail with a resolution error.
+        // Getting the allow-list refusal instead is what shows the name was never sent to a DNS
+        // server, which is the whole of what the order protects.
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let library = std::env::temp_dir().join(format!(
+            "kavynex_thumb_fallback_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&library).unwrap();
+
+        let error = tauri::async_runtime::block_on(download_thumbnail_from_url_async(
+            app.handle(),
+            "https://exfil-label.attacker.invalid/page",
+            &library.to_string_lossy(),
+        ))
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+        assert!(
+            error.message.contains("restricted to youtube urls"),
+            "{}",
+            error.message
+        );
+
+        let _ = std::fs::remove_dir_all(&library);
     }
 
     #[test]
