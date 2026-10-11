@@ -8,6 +8,19 @@ const ELEMENT_KEY = "element-6066-11e4-a52e-4f735466cecc";
 
 export class WebDriverError extends Error {}
 
+// The id inside an element reference. W3C names the key `ELEMENT_KEY`, and older drivers used
+// `ELEMENT`. A reference with neither is reported with its shape, rather than read as an element
+// that is not there.
+function elementId(reference) {
+    const id = reference?.[ELEMENT_KEY] ?? reference?.ELEMENT;
+
+    if (typeof id !== "string") {
+        throw new WebDriverError(`unexpected element reference: ${JSON.stringify(reference)}`);
+    }
+
+    return id;
+}
+
 async function request(base, method, path, body) {
     const response = await fetch(`${base}${path}`, {
         method,
@@ -56,7 +69,7 @@ class Session {
             value: `//*[contains(normalize-space(.), ${literal}) and not(*[contains(normalize-space(.), ${literal})])]`,
         });
 
-        return found.map((element) => element[ELEMENT_KEY]);
+        return found.map(elementId);
     }
 
     async findButton(label) {
@@ -66,7 +79,7 @@ class Session {
             value: `//button[normalize-space(.)=${literal} or @aria-label=${literal}]`,
         });
 
-        return found.map((element) => element[ELEMENT_KEY]);
+        return found.map(elementId);
     }
 
     click(element) {
