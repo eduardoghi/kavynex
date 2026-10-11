@@ -524,11 +524,11 @@ fn external_backup_generations_rotate_up() {
     std::fs::write(generation_external_backup_path(&dir, 0), b"gen0").unwrap();
     std::fs::write(generation_external_backup_path(&dir, 1), b"gen1").unwrap();
 
-    rotate_generations(
+    assert!(rotate_generations(
         &dir,
         EXTERNAL_BACKUP_ROTATED_GENERATIONS,
         generation_external_backup_path,
-    );
+    ));
 
     // gen0 -> gen1 and gen1 -> gen2, leaving generation 0 free for a fresh mirror.
     assert!(!generation_external_backup_path(&dir, 0).exists());
@@ -877,7 +877,7 @@ async fn corrupt_snapshot_rotation_drops_only_the_oldest_generation() {
         .unwrap();
     }
 
-    rotate_corrupt_snapshots(&db);
+    assert!(rotate_corrupt_snapshots(&db));
 
     // Generation 0 is now free for the incoming snapshot.
     assert!(!corrupt_path(&db).exists());
@@ -910,7 +910,10 @@ fn rotation_stops_instead_of_overwriting_a_generation_it_could_not_promote() {
     // stand-in for what blocks it in the wild. A locked or read-only file on Windows.
     std::fs::create_dir(generation_corrupt_path(&db, CORRUPT_ROTATED_GENERATIONS)).unwrap();
 
-    rotate_corrupt_snapshots(&db);
+    assert!(
+        !rotate_corrupt_snapshots(&db),
+        "a rotation that stopped short reports that generation 0 is still occupied"
+    );
 
     // Generation 1 could not be promoted, so it has to be left intact rather than overwritten
     // by generation 0 shifting up into a slot that is still occupied.
@@ -924,6 +927,70 @@ fn rotation_stops_instead_of_overwriting_a_generation_it_could_not_promote() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_backup_whose_rotation_stops_short_keeps_the_previous_snapshot() {
+    // A generation another program holds stops the rotation with `.bak` still in its slot.
+    // Promoting the fresh snapshot then overwrote it, every day the hold lasted.
+    let dir = temp_dir("rotate-blocked-backup");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    let previous = std::fs::read(backup_path(&db)).unwrap();
+    let a_day_ago = SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS + 60);
+    filetime_set(&backup_path(&db), a_day_ago);
+
+    // Every generation from 1 up holds a file, and the oldest slot is a directory that neither
+    // `rename` nor `remove_file` can clear, the stand-in for a file held open on Windows.
+    for generation in 1..BACKUP_ROTATED_GENERATIONS {
+        std::fs::write(generation_backup_path(&db, generation), b"older").unwrap();
+    }
+    std::fs::create_dir(generation_backup_path(&db, BACKUP_ROTATED_GENERATIONS)).unwrap();
+
+    assert!(backup_database(&db).await.is_err());
+
+    assert_eq!(std::fs::read(backup_path(&db)).unwrap(), previous);
+    assert!(
+        temp_backup_path(&db).exists(),
+        "the fresh snapshot is kept where a restore still finds it"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_mirror_whose_rotation_stops_short_keeps_the_current_copy() {
+    let dir = temp_dir("rotate-blocked-mirror-src");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+
+    let external = temp_dir("rotate-blocked-mirror-dest");
+    std::fs::write(generation_external_backup_path(&external, 0), b"current").unwrap();
+    std::fs::write(generation_external_backup_path(&external, 1), b"older").unwrap();
+    std::fs::create_dir(generation_external_backup_path(
+        &external,
+        EXTERNAL_BACKUP_ROTATED_GENERATIONS,
+    ))
+    .unwrap();
+    let a_day_ago = SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS + 60);
+    filetime_set(&generation_external_backup_path(&external, 0), a_day_ago);
+
+    assert!(mirror_database_to_external_dir(&db, &external)
+        .await
+        .is_err());
+
+    assert_eq!(
+        std::fs::read(generation_external_backup_path(&external, 0)).unwrap(),
+        b"current"
+    );
+    assert!(external
+        .join(format!("{EXTERNAL_BACKUP_FILE_NAME}.new"))
+        .exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&external);
 }
 
 /// Reproduces the crash window in `restore_database_from_backup`. The process dies between

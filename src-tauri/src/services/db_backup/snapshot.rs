@@ -113,9 +113,10 @@ pub(super) async fn any_holds_library(paths: &[PathBuf]) -> bool {
 }
 
 /// Shifts the rotated backup generations up by one so a fresh snapshot can be promoted into
-/// `.bak`. `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`.
-fn rotate_backups(db_path: &Path) {
-    rotate_generations(db_path, BACKUP_ROTATED_GENERATIONS, generation_backup_path);
+/// `.bak`. `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`. Returns
+/// whether `.bak` is free (see [`rotate_generations`]).
+fn rotate_backups(db_path: &Path) -> bool {
+    rotate_generations(db_path, BACKUP_ROTATED_GENERATIONS, generation_backup_path)
 }
 
 pub(super) fn temp_backup_path(db_path: &Path) -> PathBuf {
@@ -336,8 +337,16 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         // would read as a recent good backup and stop the next one from being taken for a day.
         crate::services::filesystem::fsync_file(&temp)?;
 
-        // Shift the existing generations up, then promote the fresh snapshot into `.bak`.
-        rotate_backups(&db_path);
+        // Shift the existing generations up, then promote the fresh snapshot into `.bak`. A rotation
+        // that stopped short leaves the previous `.bak` in place, and promoting over it would discard
+        // it. The fresh snapshot stays in `.bak.tmp` instead, already flushed and checked, where a
+        // restore still finds it, and the next run tries the rotation again.
+        if !rotate_backups(&db_path) {
+            return Err(backup_error(
+                "failed to rotate the database backups",
+                "a backup generation could not be moved, so the newest snapshot was kept in .bak.tmp",
+            ));
+        }
 
         // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
         // generation 0 absent until the next successful backup. A restore still succeeds (the

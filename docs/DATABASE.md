@@ -466,6 +466,12 @@ renamed into `.bak` after it succeeds. Because `VACUUM INTO` requires the destin
 already exist, and produces a single, fully checkpointed file, `.bak` is always a complete,
 WAL-free snapshot, never combined with a live write-ahead log.
 
+A generation that cannot be moved (a file another program holds open, a read-only one) stops the
+rotation where it is, and `.bak` is then still in its slot. The fresh snapshot is not promoted over
+it. It stays in `.bak.tmp`, already flushed and checked, where a restore still finds it, the run
+reports an error, and the next one tries the rotation again. Promoting anyway would discard the
+previous snapshot every day the file stays held.
+
 A database whose `user_version` is above this build's `SCHEMA_VERSION` (an older version installed
 over a newer one) is not snapshotted at all. This build can neither open it nor restore a copy of
 it, and rotating such copies in would push out, one a day, the older generations that are the only
@@ -511,7 +517,9 @@ having. Fewer generations are kept than for `.bak` (`CORRUPT_ROTATED_GENERATIONS
 one is a full copy of an already-broken database, so the oldest is dropped once the rotation is
 full. The database is moved under a scratch `.corrupt.tmp` *before* the generations are
 rotated, because rotating first would shift them (dropping the oldest, emptying the `.corrupt`
-slot), and a rename that then failed would leave that loss with nothing put in its place.
+slot), and a rename that then failed would leave that loss with nothing put in its place. When the
+rotation itself stops short, `.corrupt` is still occupied, so the database just set aside keeps the
+`.corrupt.tmp` name and the restore goes on.
 
 The chosen backup is copied to a `.restore.tmp` staging file first and only renamed into place
 after the corrupt database has been moved aside, so a failure partway through never leaves the
@@ -548,7 +556,9 @@ up separately.
   `kavynex-backup.db`. Because it goes through `export_database`, a source that fails `quick_check`
   is refused, so a corrupt database never overwrites a good mirror. If the final promotion fails
   (a removable/network target pulled mid-write), the freshly exported `.new` file is kept, not
-  deleted, so the newest good copy is never thrown away.
+  deleted, so the newest good copy is never thrown away. A rotation that stops short (an older copy
+  the target will not let go of) keeps `.new` the same way rather than renaming it over the current
+  copy, and the next run tries again.
 - **Skipped** while the last full integrity check found damage (`.integrity-failed`), and while the
   database is empty and a copy in the folder holds a library. These are the two rules the daily `.bak`
   snapshot keeps, for the same reason. Without them a database recreated empty, or one found damaged,

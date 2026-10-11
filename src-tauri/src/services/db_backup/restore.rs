@@ -80,12 +80,12 @@ pub(super) fn generation_corrupt_path(db_path: &Path, generation: usize) -> Path
 /// evidence from the first. Fewer generations are kept than for `.bak`. Each one is a full copy
 /// of a database that is already known to be broken, so this bounds the disk they can occupy
 /// while still leaving repeated corruption diagnosable.
-pub(super) fn rotate_corrupt_snapshots(db_path: &Path) {
+pub(super) fn rotate_corrupt_snapshots(db_path: &Path) -> bool {
     rotate_generations(
         db_path,
         CORRUPT_ROTATED_GENERATIONS,
         generation_corrupt_path,
-    );
+    )
 }
 
 /// Where `restore_database_from_backup` stages the chosen snapshot before renaming it into place.
@@ -284,11 +284,13 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
             ));
         }
 
-        rotate_corrupt_snapshots(db_path);
-
-        if let Err(error) =
+        // A rotation that stopped short leaves the previous `.corrupt` in its slot, and the database
+        // being set aside keeps the scratch name rather than replacing it.
+        let promoted = rotate_corrupt_snapshots(db_path).then(|| {
             crate::services::filesystem::rename_retrying(&pending, &corrupt_path(db_path))
-        {
+        });
+
+        if let Some(Err(error)) = promoted {
             // The database is already off the live path, so the restore can still proceed; the
             // evidence just keeps the scratch name. Say so rather than lose the thread.
             logger::warn(
@@ -297,6 +299,11 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
                     "the corrupt database was set aside as .corrupt.tmp because it could not be \
                      renamed into the .corrupt slot: {error}"
                 ),
+            );
+        } else if promoted.is_none() {
+            logger::warn(
+                "db_backup",
+                "the corrupt database was set aside as .corrupt.tmp because an earlier .corrupt                  generation could not be rotated",
             );
         }
     }

@@ -354,11 +354,18 @@ pub async fn mirror_database_to_external_dir(
 
     let external_dir = external_dir.to_path_buf();
     run_blocking(move || {
-        rotate_generations(
+        // A rotation that stopped short leaves the current copy in place. The fresh export stays as
+        // the `.new` file rather than overwriting it, and the next run tries again.
+        if !rotate_generations(
             &external_dir,
             EXTERNAL_BACKUP_ROTATED_GENERATIONS,
             generation_external_backup_path,
-        );
+        ) {
+            return Err(backup_error(
+                "failed to rotate the external database backups",
+                "an earlier copy could not be moved, so the fresh copy was kept as kavynex-backup.db.new",
+            ));
+        }
 
         if let Err(error) = crate::services::filesystem::rename_retrying(&staged, &current) {
             // Leave the freshly exported, quick-check-passed staged file in place rather than

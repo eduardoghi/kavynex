@@ -69,12 +69,22 @@ fn remove_stale_sidecars(staging: &Path) {
 
 /// Shifts a rotated snapshot family up by one generation, dropping the oldest, so a fresh file
 /// can be promoted into generation 0 without discarding the previous ones. Generation `N` is
-/// overwritten by `N-1`, and so on down to generation 0 becoming generation 1. Best effort. A
-/// generation that cannot be moved is left where it is rather than failing the caller.
+/// overwritten by `N-1`, and so on down to generation 0 becoming generation 1.
+///
+/// Returns whether generation 0 is free. A generation that cannot be moved (a file another program
+/// holds, a read-only one) stops the rotation where it is, and generation 0 is then still in its
+/// slot. The caller must not promote a fresh file over it in that case, or the previous snapshot is
+/// lost, and with a file that stays held it is lost again every day while the older generations sit
+/// still.
 ///
 /// Shared by the `.bak`, `.corrupt` and external-mirror families, which is why it takes the
 /// per-generation path function rather than knowing any of their names.
-fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, usize) -> PathBuf) {
+#[must_use]
+fn rotate_generations(
+    db_path: &Path,
+    generations: usize,
+    path_for: fn(&Path, usize) -> PathBuf,
+) -> bool {
     for generation in (1..=generations).rev() {
         let source = path_for(db_path, generation - 1);
         let target = path_for(db_path, generation);
@@ -105,9 +115,11 @@ fn rotate_generations(db_path: &Path, generations: usize, path_for: fn(&Path, us
                     "backup rotation stopped at generation {generation}: the snapshot could not be promoted"
                 ),
             );
-            return;
+            return false;
         }
     }
+
+    !path_for(db_path, 0).exists()
 }
 
 fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
@@ -436,7 +448,7 @@ pub use snapshot::{
 #[cfg(test)]
 use snapshot::{
     backup_path, generation_backup_path, pre_migration_versions_to_prune, temp_backup_path,
-    BACKUP_MIN_INTERVAL_SECS, PRE_MIGRATION_SNAPSHOTS_KEPT,
+    BACKUP_MIN_INTERVAL_SECS, BACKUP_ROTATED_GENERATIONS, PRE_MIGRATION_SNAPSHOTS_KEPT,
 };
 
 // Restoring from a snapshot, and finishing a restore a crash interrupted.
