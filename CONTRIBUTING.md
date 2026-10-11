@@ -300,6 +300,13 @@ ci: audit rust dependencies with cargo-audit
 Keep changes focused and include tests for new behavior (Vitest for frontend, `#[test]`/
 `#[tokio::test]` for Rust).
 
+A parser or a check that takes text from outside (a path, a header, a selector, a line of a replay
+file) also gets property tests, which run it over generated input. Rust uses `proptest`, in a
+`mod properties` beside the module's `mod tests` (see `utils/path.rs`). The frontend uses
+`fast-check`, in a `*.property.test.ts` file next to the module. Both run with the rest of the suite.
+A property that fails prints the smallest input it found, and that input becomes a plain case in
+the regular tests along with the fix.
+
 `ci.yml` runs six jobs on every push/PR, and all six gate the change. Read that file for the
 authoritative version; what follows is what to expect a red run to be about:
 

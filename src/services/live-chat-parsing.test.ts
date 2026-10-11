@@ -66,6 +66,10 @@ describe("parseLiveChatLine", () => {
                     actions: [{ addChatItemAction: { item: { liveChatSomethingElse: {} } } }],
                 },
             }),
+            // JSON, just not an object. It used to throw, which read as a corrupt line.
+            "null",
+            "42",
+            "[1, 2]",
         ];
 
         for (const line of empty) {
