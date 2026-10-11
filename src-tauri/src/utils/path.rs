@@ -685,7 +685,11 @@ mod tests {
         // Win32 trims these, so each names the same file as the path without them.
         for raw in ["video /a.mp4", "video./a.mp4", "video/a.mp4./b"] {
             let error = sanitize_relative_path_strict(raw).unwrap_err();
-            assert_eq!(error.code, AppErrorCode::InvalidRelativePath.as_str(), "{raw:?}");
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidRelativePath.as_str(),
+                "{raw:?}"
+            );
         }
     }
 
