@@ -416,7 +416,7 @@ jobs:
                       | grep -v '^$' || true)
 
                   if [ -n "$offenders" ]; then
-                      echo "::error::continue the string with a backslash at the end of the line, not a literal \\n or a run of spaces inside it"
+                      echo "::error::continue the string with a backslash at the end of the line, not an escaped newline or a run of spaces inside it"
                       printf '%s\n' "$offenders"
                       exit 1
                   fi
