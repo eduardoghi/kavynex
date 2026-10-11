@@ -884,6 +884,55 @@ describe("useChannelActions", () => {
         expect(onChannelDeleted).toHaveBeenCalledWith(10);
     });
 
+    it("closes the dialog and drops the channel when only the reload after a delete fails", async () => {
+        vi.mocked(deleteChannelWithThumbnailCleanup).mockResolvedValueOnce(0);
+        vi.mocked(listAllChannels).mockRejectedValueOnce(new Error("database is locked"));
+
+        const channelToDelete = {
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: 10,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        await act(async () => {
+            await result.current.confirmDeleteChannelAction();
+        });
+
+        expect(setConfirmDeleteChannelOpen).toHaveBeenCalledWith(false);
+        expect(onChannelDeleted).toHaveBeenCalledWith(10);
+        expect(onError).toHaveBeenCalledWith(expect.stringContaining("The channel was deleted"));
+
+        // The list drops the deleted channel even without a reload.
+        const calls = vi.mocked(setChannels).mock.calls;
+        const updater = calls[calls.length - 1]?.[0] as (
+            current: (typeof channelToDelete)[]
+        ) => (typeof channelToDelete)[];
+        expect(updater([channelToDelete, { ...channelToDelete, id: 11 }]).map((c) => c.id)).toEqual([
+            11,
+        ]);
+    });
+
     it("tells the user when a deleted channel left files behind", async () => {
         vi.mocked(deleteChannelWithThumbnailCleanup).mockResolvedValueOnce(1);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);

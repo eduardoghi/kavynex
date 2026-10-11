@@ -347,29 +347,44 @@ export function useChannelActions({
         }
 
         await runDeleteChannel(async () => {
+            const deletedId = channelToDelete.id;
+            let leftoverFiles: number;
+
             try {
-                const leftoverFiles = await deleteChannelWithThumbnailCleanup(channelToDelete.id);
-
-                if (selectedChannelId === channelToDelete.id) {
-                    setSelectedChannelId(null);
-                }
-
-                const items = await listAllChannels();
-                setChannels(items);
-
-                setConfirmDeleteChannelOpen(false);
-                setChannelToDelete(null);
-                onChannelDeleted?.(channelToDelete.id);
-
-                if (leftoverFiles > 0) {
-                    onNotice?.(leftoverFilesNotice("channel", leftoverFiles));
-                }
+                leftoverFiles = await deleteChannelWithThumbnailCleanup(deletedId);
             } catch (error) {
                 logError("channels", "Failed to delete channel.", error, {
-                    channelId: channelToDelete.id,
+                    channelId: deletedId,
                     libraryPath,
                 });
                 onError(resolveErrorMessage(error, "Failed to delete channel."));
+                return;
+            }
+
+            // The delete is committed from here on, so the dialog closes and the channel leaves the
+            // list whatever the reload below does. Reported as a failed delete, a failed reload left
+            // the dialog open on a channel that no longer exists, and a retry hit a missing row.
+            if (selectedChannelId === deletedId) {
+                setSelectedChannelId(null);
+            }
+
+            setConfirmDeleteChannelOpen(false);
+            setChannelToDelete(null);
+            onChannelDeleted?.(deletedId);
+
+            if (leftoverFiles > 0) {
+                onNotice?.(leftoverFilesNotice("channel", leftoverFiles));
+            }
+
+            try {
+                setChannels(await listAllChannels());
+            } catch (error) {
+                setChannels((current) => current.filter((channel) => channel.id !== deletedId));
+                logError("channels", "Failed to reload channels after deleting one.", error);
+                onError(
+                    "The channel was deleted, but the channel list could not be reloaded. " +
+                        "Restart the app if the list looks wrong."
+                );
             }
         });
     }, [
