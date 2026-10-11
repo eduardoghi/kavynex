@@ -89,13 +89,22 @@ export default defineConfig(
                     message:
                         "Assigning innerHTML/outerHTML renders raw HTML and reopens the XSS sink the threat model (docs/THREAT-MODEL.md) depends on not existing.",
                 },
+                // no-restricted-imports below sees only static imports. A dynamic one would reach
+                // past the seam, and inside a seam file it is a binding verify-capability-surface.js
+                // cannot read, so it is refused everywhere, the seam files included.
+                {
+                    selector: "ImportExpression[source.value=/^@tauri-apps/]",
+                    message:
+                        "Import Tauri statically, and only in the src/lib seam. A dynamic import of @tauri-apps escapes both the seam rule and the capability gate.",
+                },
             ],
 
             // Keep every Tauri touchpoint inside the src/lib seam (docs/ARCHITECTURE.md).
             // tauri-client.ts wraps the IPC commands/events with consistent error normalization
             // (invokeCommand/invokeVoid/listenTauri), and tauri-platform.ts re-exports the
             // platform capabilities (process, updater, app version, convertFileSrc). The file
-            // pickers and the system opener are backend commands, reached through tauri-client. Banning `@tauri-apps` everywhere else is what keeps "which Tauri
+            // pickers and the system opener are backend commands, reached through tauri-client.
+            // Banning `@tauri-apps` everywhere else is what keeps "which Tauri
             // capabilities does this app actually use?" (the question every review against
             // src-tauri/capabilities/ asks), a two-file read instead of a tree-wide grep a new
             // caller can silently invalidate. This was previously scoped to invoke()/listen()

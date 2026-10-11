@@ -85,11 +85,12 @@ export const DECLARED_CAPABILITY_SURFACE = [
 // a name that never reaches the ACL. A binding renamed on the way out (`open as openFileDialog`) is
 // recorded under its *original* name, which is what the permission is about. The alias is a
 // readability choice at the seam and must not be able to change what this gate matches on.
+const TAURI_STATEMENT = /(?:import|export)\s*\{([\s\S]*?)\}\s*from\s*["'](@tauri-apps\/[^"']+)["']/g;
+
 export function extractTauriBindings(sourceContent) {
     const bindings = [];
-    const statement = /(?:import|export)\s*\{([\s\S]*?)\}\s*from\s*["'](@tauri-apps\/[^"']+)["']/g;
 
-    for (const match of sourceContent.matchAll(statement)) {
+    for (const match of sourceContent.matchAll(TAURI_STATEMENT)) {
         const [, clause, module] = match;
 
         for (const raw of clause.split(",")) {
@@ -108,6 +109,19 @@ export function extractTauriBindings(sourceContent) {
     }
 
     return bindings;
+}
+
+// Every `@tauri-apps` module a file names outside the statements extractTauriBindings reads, such as
+// a namespace or default import, `export *`, or a dynamic `import()`. Each one reaches Tauri APIs
+// this gate never sees, so a surface that passed here would be passing on part of the seam.
+// Comments are dropped first, since the seam files mention the package in prose.
+export function findUnreadTauriModules(sourceContent) {
+    const rest = sourceContent
+        .replace(TAURI_STATEMENT, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/.*$/gm, "");
+
+    return [...rest.matchAll(/["'`](@tauri-apps\/[^"'`]+)["'`]/g)].map((match) => match[1]);
 }
 
 // Every permission identifier granted across the capability files, deduplicated.
@@ -180,6 +194,19 @@ export function verifyCapabilitySurface({ seams, capabilities, aclManifest = nul
     const seamBindings = seams.flatMap(({ name, content }) =>
         extractTauriBindings(content).map((entry) => ({ ...entry, file: name }))
     );
+
+    const unread = seams.flatMap(({ name, content }) =>
+        findUnreadTauriModules(content).map((module) => `${name}: ${module}`)
+    );
+
+    if (unread.length > 0) {
+        return {
+            ok: false,
+            message:
+                "A seam file reaches @tauri-apps in a form this gate cannot read. Import named bindings (`import { x } from` or `export { x } from`) so each one is checked against its permission:\n" +
+                unread.map((entry) => `  - ${entry}`).join("\n"),
+        };
+    }
 
     if (seamBindings.length === 0) {
         return {

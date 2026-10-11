@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     extractTauriBindings,
     extractGrantedPermissions,
+    findUnreadTauriModules,
     permissionExists,
     verifyCapabilitySurface,
     DECLARED_CAPABILITY_SURFACE,
@@ -102,6 +103,35 @@ describe("extractTauriBindings", () => {
         );
 
         expect(bindings.map((entry) => entry.binding)).toEqual(["Channel", "invoke"]);
+    });
+});
+
+describe("findUnreadTauriModules", () => {
+    it("ignores the named statements the gate reads and the package named in comments", () => {
+        const source = [
+            "// Nothing else may import `@tauri-apps/api/event`.",
+            "/* see @tauri-apps/plugin-updater */",
+            'import { listen, type Event } from "@tauri-apps/api/event";',
+            'export { relaunch } from "@tauri-apps/plugin-process";',
+        ].join("\n");
+
+        expect(findUnreadTauriModules(source)).toEqual([]);
+    });
+
+    it("names every other way of reaching a module", () => {
+        const source = [
+            'import * as core from "@tauri-apps/api/core";',
+            'import updater from "@tauri-apps/plugin-updater";',
+            'export * from "@tauri-apps/plugin-process";',
+            'const event = await import("@tauri-apps/api/event");',
+        ].join("\n");
+
+        expect(findUnreadTauriModules(source)).toEqual([
+            "@tauri-apps/api/core",
+            "@tauri-apps/plugin-updater",
+            "@tauri-apps/plugin-process",
+            "@tauri-apps/api/event",
+        ]);
     });
 });
 
@@ -218,6 +248,20 @@ describe("verifyCapabilitySurface", () => {
         expect(result.ok).toBe(false);
         expect(result.message).toContain("writeText");
         expect(result.message).toContain("DECLARED_CAPABILITY_SURFACE");
+    });
+
+    it("fails when a seam reaches a module in a form the gate cannot read", () => {
+        const seams = completeSeams();
+        seams[1].content = 'export const loadClipboard = () => import("@tauri-apps/plugin-clipboard-manager");';
+
+        const result = verifyCapabilitySurface({
+            seams,
+            capabilities: completeCapabilities(),
+            aclManifest: ACL_MANIFEST,
+        });
+
+        expect(result.ok).toBe(false);
+        expect(result.message).toContain("src/lib/tauri-platform.ts: @tauri-apps/plugin-clipboard-manager");
     });
 
     it("fails when a declared entry names an API no seam imports any more", () => {

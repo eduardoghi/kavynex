@@ -839,7 +839,9 @@ What covers them instead is a second gate on a different question.
 capability files and holds the mapping between them. Every `@tauri-apps` binding a seam imports must
 have a declared entry naming the permissions it needs, every permission those entries need must be
 granted, and (the other direction), every granted permission must be needed by something a seam
-actually imports. It also checks each granted identifier against the generated ACL manifest when one
+actually imports. A seam file that names an `@tauri-apps` module in any form other than a named
+import or re-export fails too, since the bindings it reaches would go unread. ESLint refuses a
+dynamic `import()` of the package in every file, the seams included. The gate also checks each granted identifier against the generated ACL manifest when one
 is present, which catches a typo (`dialog:allow-opne`) that the config accepts and the runtime
 refuses.
 

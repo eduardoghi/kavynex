@@ -110,7 +110,9 @@ Repository consistency (plain Node, no install needed. CI runs all eight on ever
 - `node scripts/verify-capability-surface.js`: fails when the Tauri APIs the two seam files import
   and the permissions `src-tauri/capabilities/` grants drift apart in either direction, so a new
   binding cannot ship without its permission being decided and a grant cannot outlive the call that
-  needed it. Run it with `--print` to see the current seam surface.
+  needed it. It reads named imports and re-exports only, so it also fails when a seam file reaches
+  `@tauri-apps` any other way (`import *`, a default import, `export *`, `import()`). Run it with
+  `--print` to see the current seam surface.
 - `node scripts/verify-command-surface-is-used.js`: fails when a command registered in
   `generate_handler!` has no constant, no wrapper, or no caller anywhere in `src/`. A command
   nothing calls is still reachable from the renderer, and two that unlinked files stayed registered
