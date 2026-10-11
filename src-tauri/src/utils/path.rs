@@ -187,6 +187,17 @@ pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
                     ));
                 }
 
+                // Win32 drops trailing spaces and dots from a name, so `video /a.mp4` and
+                // `video/a.mp4` are one file there and two different strings everywhere the app
+                // compares paths (a reference count, a duplicate check). Nothing the app writes
+                // ends a segment that way.
+                if part_str.ends_with([' ', '.']) {
+                    return Err(AppError::from_code(
+                        AppErrorCode::InvalidRelativePath,
+                        "relative path segment ends with a space or a dot",
+                    ));
+                }
+
                 // Reject NTFS alternate-data-stream syntax (`name:stream`) and Windows reserved
                 // device names. `Path::components` only flags a drive prefix at the very start,
                 // so a `:` or a `CON`/`NUL` segment in the middle otherwise slips through as a
