@@ -1,6 +1,10 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SettingsModal, updateInstallBlockedReason } from "./settings-modal";
+import {
+    databaseSwapBlockedReason,
+    SettingsModal,
+    updateInstallBlockedReason,
+} from "./settings-modal";
 import { renderWithMantine } from "../../test/test-utils";
 import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
@@ -380,6 +384,23 @@ describe("SettingsModal", () => {
         const violations = await findAccessibilityViolations(document.body);
 
         expect(describeViolations(violations)).toBe("");
+    });
+});
+
+describe("databaseSwapBlockedReason", () => {
+    it("allows an import when nothing a restart would cut short is running", () => {
+        expect(
+            databaseSwapBlockedReason({ isMigratingLibraryPath: false, isMediaWorkRunning: false })
+        ).toBeNull();
+    });
+
+    it("holds an import while a library move or media work runs", () => {
+        expect(
+            databaseSwapBlockedReason({ isMigratingLibraryPath: true, isMediaWorkRunning: false })
+        ).toMatch(/library folder/);
+        expect(
+            databaseSwapBlockedReason({ isMigratingLibraryPath: false, isMediaWorkRunning: true })
+        ).toMatch(/download, import or comment backup/);
     });
 });
 

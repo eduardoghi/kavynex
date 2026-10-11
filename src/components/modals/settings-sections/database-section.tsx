@@ -65,6 +65,8 @@ type DatabaseSectionProps = Pick<
     | "cancelUndoImport"
     | "confirmUndoImportAction"
 > & {
+    // Why an import or its undo cannot run now (both relaunch the app), or null when they can.
+    swapBlockedReason?: string | null;
     externalBackupDir: string;
     isSavingExternalBackupDir: boolean;
     onChooseExternalBackupDir: () => void;
@@ -72,6 +74,7 @@ type DatabaseSectionProps = Pick<
 };
 
 export function DatabaseSection({
+    swapBlockedReason = null,
     backupStatus,
     externalBackupStatus,
     databaseBusy,
@@ -163,7 +166,7 @@ export function DatabaseSection({
                     onClick={() => {
                         void pickImportFileAction();
                     }}
-                    disabled={databaseBusy !== "idle"}
+                    disabled={databaseBusy !== "idle" || !!swapBlockedReason}
                 >
                     Import database
                 </AppButton>
@@ -173,12 +176,22 @@ export function DatabaseSection({
                         appVariant="ghost"
                         leftSection={<Undo2 size={16} />}
                         onClick={requestUndoImport}
-                        disabled={databaseBusy !== "idle" || Boolean(pendingImportPath)}
+                        disabled={
+                            databaseBusy !== "idle" ||
+                            Boolean(pendingImportPath) ||
+                            !!swapBlockedReason
+                        }
                     >
                         Undo last import
                     </AppButton>
                 )}
             </Group>
+
+            {swapBlockedReason && (
+                <Text size="xs" c="dimmed">
+                    {swapBlockedReason}
+                </Text>
+            )}
 
             {isUndoImportConfirmOpen && (
                 <Alert
@@ -205,6 +218,7 @@ export function DatabaseSection({
                                     void confirmUndoImportAction();
                                 }}
                                 loading={databaseBusy === "undoing"}
+                                disabled={!!swapBlockedReason}
                             >
                                 Undo and restart
                             </AppButton>
@@ -248,6 +262,7 @@ export function DatabaseSection({
                                     void confirmImportAction();
                                 }}
                                 loading={databaseBusy === "importing"}
+                                disabled={!!swapBlockedReason}
                             >
                                 Replace and restart
                             </AppButton>

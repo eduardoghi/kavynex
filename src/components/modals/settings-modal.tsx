@@ -73,6 +73,27 @@ export function updateInstallBlockedReason({
     return null;
 }
 
+// Why a database import or its undo cannot start right now, or null when it can. Both end in a
+// relaunch, the same as an update, which would cut a library move or a download short. The database
+// operation in flight is not a reason here, since it is the one being started.
+export function databaseSwapBlockedReason({
+    isMigratingLibraryPath,
+    isMediaWorkRunning,
+}: {
+    isMigratingLibraryPath: boolean;
+    isMediaWorkRunning: boolean;
+}): string | null {
+    if (isMigratingLibraryPath) {
+        return "Wait for the library folder to finish moving before importing a database.";
+    }
+
+    if (isMediaWorkRunning) {
+        return "Wait for the download, import or comment backup to finish before importing a database.";
+    }
+
+    return null;
+}
+
 export function SettingsModal({
     opened,
     onClose,
@@ -123,6 +144,11 @@ export function SettingsModal({
         controller.databaseBusy !== "idle" || isMigratingLibraryPath || isUpdateInProgress;
 
     const modalLock = useModalLock(isModalLocked, onClose);
+
+    const swapBlockedReason = databaseSwapBlockedReason({
+        isMigratingLibraryPath,
+        isMediaWorkRunning,
+    });
 
     const installBlockedReason = updateInstallBlockedReason({
         isMigratingLibraryPath,
@@ -228,6 +254,7 @@ export function SettingsModal({
                         requestUndoImport={controller.requestUndoImport}
                         cancelUndoImport={controller.cancelUndoImport}
                         confirmUndoImportAction={controller.confirmUndoImportAction}
+                        swapBlockedReason={swapBlockedReason}
                         externalBackupDir={externalBackupDir}
                         externalBackupStatus={controller.externalBackupStatus}
                         isSavingExternalBackupDir={isSavingExternalBackupDir}

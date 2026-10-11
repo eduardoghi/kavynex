@@ -105,6 +105,23 @@ describe("DatabaseSection", () => {
         expect(screen.getByRole("button", { name: /import database/i })).toBeDisabled();
     });
 
+    it("holds the import and its undo while something a restart would cut short is running", () => {
+        renderWithMantine(
+            <DatabaseSection
+                {...baseProps({
+                    canUndoImport: true,
+                    pendingImportPath: "/backups/kavynex.db",
+                    swapBlockedReason: "Wait for the download to finish before importing a database.",
+                })}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /import database/i })).toBeDisabled();
+        expect(screen.getByRole("button", { name: /undo last import/i })).toBeDisabled();
+        expect(screen.getByRole("button", { name: /replace and restart/i })).toBeDisabled();
+        expect(screen.getByText(/wait for the download/i)).toBeInTheDocument();
+    });
+
     it("only offers the undo action when an import can be undone", () => {
         const { rerender } = renderWithMantine(<DatabaseSection {...baseProps()} />);
 
