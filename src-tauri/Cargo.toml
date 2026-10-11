@@ -24,6 +24,7 @@ test = false
 tauri-build = { version = "2", features = [] }
 
 [dev-dependencies]
+proptest = { version = "1.11.0", default-features = false, features = ["std"] }
 tauri = { version = "2", features = ["test"] }
 tokio = { version = "1.50.0", features = ["test-util"] }
 
