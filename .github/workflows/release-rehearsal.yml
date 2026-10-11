@@ -4,11 +4,17 @@ name: release-rehearsal
 # release pipeline changed. A step added to release.yml otherwise ran for the first time after
 # ninety minutes of building on six legs, with assets already on the draft.
 #
-# It builds and checks what release.yml builds and checks, then goes one step further and runs the
-# *installed* artifacts, which release.yml does not: the .deb inside a plain ubuntu:24.04 (the oldest
-# system the declared glibc floor promises), the extracted AppImage, the NSIS installer run silently,
-# and the binary inside the macOS .app. release.yml smoke-tests the binary in target/release, which
-# is not what a user runs.
+# It builds the bundles the way release.yml does (the frontend, a compile without the signing key,
+# then the signed bundle build) and runs the same smoke test and webview check, then goes one step
+# further and runs the *installed* artifacts, which release.yml does not: the .deb inside a plain
+# ubuntu:24.04 (the oldest system the declared glibc floor promises), the extracted AppImage, the NSIS
+# and MSI installers run silently, and the binary inside the macOS .app. release.yml smoke-tests the
+# binary in target/release, which is not what a user runs. It also checks that the signed build
+# compiles nothing, which is what keeps the signing key away from third-party build code, and
+# generates the frontend SBOM with release.yml's command.
+#
+# What it does not rehearse: the arm64 legs, tauri-action and the draft upload, the latest.json
+# rewrite and its gate, the attestations, and the version and tag guards. Those need a real draft.
 #
 # Nothing here can publish. No environment, so the real signing key is never in scope, no release is
 # created, and the only permission is contents read. The updater artifacts are signed with a key
@@ -79,6 +85,13 @@ jobs:
             - name: Build frontend
               run: pnpm build
 
+            # As release.yml does before its signed build. See the next two steps for the check.
+            - name: Compile without the signing key
+              shell: bash
+              env:
+                  KAVYNEX_FRONTEND_PREBUILT: "1"
+              run: pnpm tauri build ${{ matrix.args }} --no-bundle -- --locked
+
             # A key for this run only. `tauri build` refuses to produce the updater artifacts
             # without one, and the real key lives in the `release` environment, which this
             # workflow never enters. The signatures it produces match no published key.
@@ -93,11 +106,19 @@ jobs:
                       echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="
                   } >> "$GITHUB_ENV"
 
-            - name: Build the bundles
+            # The build with the key in its environment must compile nothing, or third-party build
+            # scripts ran beside the key after all. Cargo prints a "Compiling" line for each crate
+            # it builds.
+            - name: Build the bundles, and require that nothing was compiled
               shell: bash
               env:
                   KAVYNEX_FRONTEND_PREBUILT: "1"
-              run: pnpm tauri build ${{ matrix.args }} -- --locked
+              run: |
+                  pnpm tauri build ${{ matrix.args }} -- --locked 2>&1 | tee "$RUNNER_TEMP/bundle.log"
+                  if grep -E '^\s*Compiling ' "$RUNNER_TEMP/bundle.log"; then
+                      echo "::error::the signed build recompiled crates, so the signing key was present while they built" >&2
+                      exit 1
+                  fi
 
             - name: Smoke-test and webview-check the built binary (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
@@ -166,14 +187,42 @@ jobs:
                       Select-Object -First 1
                   if (-not $installed) { throw "the installer left no kavynex.exe under LOCALAPPDATA" }
                   Write-Host "Starting $($installed.FullName)"
-                  & $installed.FullName --smoke-test
-                  if ($LASTEXITCODE -ne 0) { throw "the installed binary failed its smoke test" }
+                  # Start-Process with -Wait, because the app is a GUI-subsystem executable, which
+                  # PowerShell neither waits for nor reports an exit code for when called directly.
+                  $run = Start-Process -FilePath $installed.FullName -ArgumentList '--smoke-test' -Wait -PassThru
+                  if ($run.ExitCode -ne 0) { throw "the installed binary failed its smoke test ($($run.ExitCode))" }
+
+            # The MSI, the other Windows installer a user can pick. Per machine, into Program Files.
+            - name: Install and start the MSI build (Windows)
+              if: startsWith(matrix.platform, 'windows-')
+              shell: pwsh
+              run: |
+                  $msi = Get-ChildItem -Recurse -Path src-tauri/target -Filter '*.msi' |
+                      Where-Object { $_.FullName -match '\\bundle\\msi\\' } | Select-Object -First 1
+                  if (-not $msi) { throw "no MSI was built" }
+                  $install = Start-Process -FilePath msiexec.exe -ArgumentList '/i', "`"$($msi.FullName)`"", '/qn', '/norestart' -Wait -PassThru
+                  if ($install.ExitCode -ne 0) { throw "msiexec failed ($($install.ExitCode))" }
+                  $installed = Get-ChildItem -Recurse -Path $env:ProgramFiles -Filter 'kavynex.exe' -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+                  if (-not $installed) { throw "the MSI left no kavynex.exe under Program Files" }
+                  Write-Host "Starting $($installed.FullName)"
+                  $run = Start-Process -FilePath $installed.FullName -ArgumentList '--smoke-test' -Wait -PassThru
+                  if ($run.ExitCode -ne 0) { throw "the MSI-installed binary failed its smoke test ($($run.ExitCode))" }
 
             - name: Start the binary inside the .app (macOS)
               if: startsWith(matrix.platform, 'macos-')
               run: |
                   app=$(find src-tauri/target -type d -path '*/bundle/macos/*.app' | head -n1)
                   "$app/Contents/MacOS/kavynex" --smoke-test
+
+            # The command release.yml's sbom job runs, which only ever ran there after the build
+            # matrix. A flag pnpm stopped accepting fails here in minutes instead.
+            - name: Generate the frontend SBOM as release.yml does
+              if: startsWith(matrix.platform, 'ubuntu-')
+              run: |
+                  pnpm sbom --sbom-format cyclonedx --prod --lockfile-only --sbom-type application \
+                      --out "$RUNNER_TEMP/frontend_sbom.cdx.json"
+                  test -s "$RUNNER_TEMP/frontend_sbom.cdx.json"
 
             - name: Keep the bundles for inspection
               if: ${{ !cancelled() }}

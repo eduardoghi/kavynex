@@ -499,6 +499,17 @@ jobs:
               shell: bash
               run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
 
+            # Every crate is compiled here, before the step that holds the signing key, so the
+            # build scripts and proc-macros of third-party crates run without it. tauri-action's
+            # build below then finds them fresh and only bundles and signs. release-rehearsal.yml
+            # checks that the second build compiles nothing. If it ever does, the key is again
+            # present while dependencies build (docs/RELEASE-SECURITY.md).
+            - name: Compile without the signing key
+              shell: bash
+              env:
+                  KAVYNEX_FRONTEND_PREBUILT: "1"
+              run: pnpm tauri build ${{ matrix.args }} --no-bundle -- --locked
+
             - name: Build and publish Tauri app
               uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
               env:

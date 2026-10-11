@@ -262,18 +262,23 @@ is not always what has been written. A run green against `origin/main` says noth
 that exist only on a maintainer's machine. That is an argument for pushing often rather than against
 the tool, and it remains the one gate in this document that cannot be run locally before a release.
 
-## Accepted risk: the signing key is present while dependencies build
+## Accepted risk: the signing key is present while the bundles are built
 
 The release workflow's build step (`.github/workflows/release.yml`, `tauri-apps/tauri-action`)
-runs `cargo build` and signs the resulting artifacts in one invocation, so
-`TAURI_SIGNING_PRIVATE_KEY` and a `contents: write` `GITHUB_TOKEN` are in the environment while
-the whole transitive Rust dependency tree compiles, including every crate's `build.rs`. A
-compromised transitive dependency, or a compromised release of the action itself, could read
-both during the compile phase, before any signing happens.
+runs `tauri build` and signs the resulting artifacts in one invocation, so
+`TAURI_SIGNING_PRIVATE_KEY` and a `contents: write` `GITHUB_TOKEN` are in its environment.
+`tauri-action` does not separate building from signing, so the two cannot be split into a job that
+holds the secret and a job that does not.
 
-This is a known, accepted risk rather than an oversight, and it is structural. `tauri-action`
-does not separate building from signing, so the two cannot be split into a job that holds the
-secret and a job that does not. What is done about it:
+What can be separated is the compile. The step before it, "Compile without the signing key", runs
+`tauri build --no-bundle` with no secret in the environment, so every crate, its `build.rs` and
+its proc-macros run there. The signed build then finds the crates fresh and only bundles and signs.
+`release-rehearsal.yml` fails if that second build compiles anything, which is the one way third-party
+build code could run beside the key again (a build script that declares a dependency on an
+environment variable the signed step sets, say). The rehearsal has to pass before this holds for a
+release. What remains with the key is the Tauri CLI, its bundler and `tauri-action` itself.
+
+What else is done about it:
 
 - The JavaScript tree does not run there. `tauri build` would run the `beforeBuildCommand`, and with
   it `pnpm build` (tsc, Vite, Rolldown, the PostCSS plugins), a far larger set of packages than the
@@ -296,11 +301,10 @@ secret and a job that does not. What is done about it:
 - Releases are always created as drafts and published by hand, so a build is inspected before
   the updater endpoint can ever serve it.
 
-The residual exposure is a malicious `build.rs` in a dependency the lockfile already pins,
-reading the environment during a release build. `minimumReleaseAge` and `blockExoticSubdeps`
-(`pnpm-workspace.yaml`) plus `cargo-deny`'s source allow-list are what reduce the chance of such
-a dependency arriving in the first place; nothing in the current workflow removes the exposure
-itself. Rotating the minisign key is the response if a compromise is ever suspected (see "The
+The residual exposure is a compromised Tauri CLI, bundler or `tauri-action`, which run with the key,
+and a crate the signed build compiles after all if the rehearsal's check stops holding.
+`minimumReleaseAge` and `blockExoticSubdeps` (`pnpm-workspace.yaml`) plus `cargo-deny`'s source
+allow-list are what reduce the chance of such a dependency arriving in the first place. Rotating the minisign key is the response if a compromise is ever suspected (see "The
 updater signing key" above).
 
 One asymmetry is worth stating plainly, because the two ecosystems get their publish-age
