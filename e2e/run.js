@@ -20,9 +20,19 @@ async function waitForText(session, text) {
     return waitFor(`"${text}"`, async () => (await session.findByText(text))[0]);
 }
 
+// Retried until the timeout, like a lookup, since a modal that is still opening can refuse a click
+// on a button it already renders.
 async function clickButton(session, label) {
-    const button = await waitFor(`the "${label}" button`, async () => (await session.findButton(label))[0]);
-    await session.click(button);
+    await waitFor(`the "${label}" button to take a click`, async () => {
+        const [button] = await session.findButton(label);
+
+        if (!button) {
+            return false;
+        }
+
+        await session.click(button);
+        return true;
+    });
 }
 
 // The update check runs at startup and can open a notice if the runner sees a newer release. It is

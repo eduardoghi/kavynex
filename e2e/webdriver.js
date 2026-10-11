@@ -30,7 +30,9 @@ async function request(base, method, path, body) {
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-        const detail = payload?.value?.message ?? response.statusText;
+        const detail =
+            [payload?.value?.error, payload?.value?.message].filter(Boolean).join(": ") ||
+            response.statusText;
         throw new WebDriverError(`${method} ${path} failed (${response.status}): ${detail}`);
     }
 
@@ -82,7 +84,14 @@ class Session {
         return found.map(elementId);
     }
 
-    click(element) {
+    // Scrolls the element to the middle of its scroll container first. A button below the fold of a
+    // modal's scroll area is refused as not interactable otherwise.
+    async click(element) {
+        await this.call("POST", "/execute/sync", {
+            script: "arguments[0].scrollIntoView({ block: 'center' });",
+            args: [{ [ELEMENT_KEY]: element }],
+        });
+
         return this.call("POST", `/element/${element}/click`, {});
     }
 
