@@ -276,8 +276,6 @@ export function useSettingsController({
 
         try {
             await undoDatabaseImport();
-            // The revert is applied on the next startup, so relaunch to complete it.
-            await relaunch();
         } catch (error) {
             logError("settings-modal", "Failed to undo the last database import.", error, {
                 parsed: parseAppError(error),
@@ -285,6 +283,22 @@ export function useSettingsController({
             setDatabaseMessage({
                 tone: "error",
                 text: "Could not undo the last database import.",
+            });
+            setDatabaseBusy("idle");
+            setIsUndoImportConfirmOpen(false);
+            return;
+        }
+
+        // The revert is applied on the next startup, so relaunch to complete it. A relaunch that
+        // fails is not a failed undo. The revert is staged and goes in whenever the app next starts,
+        // and reporting it as failed invited a retry that finds nothing left to undo.
+        try {
+            await relaunch();
+        } catch (error) {
+            logError("settings-modal", "Failed to relaunch after staging the undo.", error);
+            setDatabaseMessage({
+                tone: "success",
+                text: "The previous database is ready to restore. Close and reopen Kavynex to finish.",
             });
             setDatabaseBusy("idle");
             setIsUndoImportConfirmOpen(false);

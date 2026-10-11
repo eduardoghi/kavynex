@@ -695,6 +695,35 @@ describe("useSettingsController", () => {
         });
     });
 
+    it("tells the user to reopen when the undo is staged but the relaunch fails", async () => {
+        getLibrarySummaryMock.mockResolvedValueOnce(createSummary());
+        getDatabaseImportUndoStatusMock.mockResolvedValueOnce(true);
+        undoDatabaseImportMock.mockResolvedValueOnce(undefined);
+        relaunchMock.mockRejectedValueOnce(new Error("relaunch refused"));
+
+        const { result } = renderHook(() =>
+            useSettingsController({ opened: true, libraryPath: "/library" })
+        );
+
+        await waitFor(() => {
+            expect(result.current.canUndoImport).toBe(true);
+        });
+
+        act(() => {
+            result.current.requestUndoImport();
+        });
+
+        await act(async () => {
+            await result.current.confirmUndoImportAction();
+        });
+
+        expect(result.current.databaseBusy).toBe("idle");
+        expect(result.current.databaseMessage).toEqual({
+            tone: "success",
+            text: "The previous database is ready to restore. Close and reopen Kavynex to finish.",
+        });
+    });
+
     it("exposes the app update state and actions from useAppUpdate", () => {
         const { result } = renderHook(() =>
             useSettingsController({ opened: false, libraryPath: "" })
