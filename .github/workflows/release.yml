@@ -982,30 +982,9 @@ jobs:
               with:
                   persist-credentials: false
 
-            # Point every latest.json entry at the tagged download URL the updater will actually be
-            # served from, rather than the api.github.com asset URL tauri-action writes.
-            #
-            # The reason it writes that one is real. While the release is a draft the tag is not
-            # attached to it yet, so an asset's download URL carries an `untagged-<hash>` path
-            # segment instead of `v<version>`. Baking that in would produce a manifest that breaks
-            # the moment the release is published, so tauri-action uses the asset API URL, which is
-            # stable across the transition. (tauri-action v0, which built v1.1.1, constructed the
-            # tag URL instead, hence the difference from that release's manifest.)
-            #
-            # For this project the tag URL is the correct one regardless. The updater endpoint is
-            # `releases/latest/download/latest.json`, which only ever resolves to a *published*
-            # release, so no user reaches this manifest while it is still a draft. The api.github.com
-            # form would also work on a public repo, but it moves the download onto a host with a
-            # 60-request/hour unauthenticated rate limit and away from the one URL shape
-            # verify-latest-json.js is written to accept (a gate that stays untouched here and
-            # remains the authority): if this rewrite ever fails or targets the wrong repo, that
-            # check fails the release.
-            #
-            # Runs before the checksums below so SHA256SUMS.txt covers the corrected file, and
-            # before the verify step so it reads the corrected copy.
             # tauri-action reuses a draft on a retry without touching its target commit, which stays
             # the first dispatch's. Publishing creates the tag there, while the binaries and their
-            # attestations come from this run's commit. Moved here, once per dispatch and after
+            # attestations come from this run's commit. Done here, once per dispatch and after
             # every leg, so the tag lands on the commit that was built. The tag name is sent along,
             # since an update of a draft without it can detach the draft from its tag.
             - name: Point the draft at the commit this run built
@@ -1032,6 +1011,27 @@ jobs:
                   gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
                       -f tag_name="v$VERSION" -f target_commitish="$GITHUB_SHA" > /dev/null
 
+            # Point every latest.json entry at the tagged download URL the updater will actually be
+            # served from, rather than the api.github.com asset URL tauri-action writes.
+            #
+            # The reason it writes that one is real. While the release is a draft the tag is not
+            # attached to it yet, so an asset's download URL carries an `untagged-<hash>` path
+            # segment instead of `v<version>`. Baking that in would produce a manifest that breaks
+            # the moment the release is published, so tauri-action uses the asset API URL, which is
+            # stable across the transition. (tauri-action v0, which built v1.1.1, constructed the
+            # tag URL instead, hence the difference from that release's manifest.)
+            #
+            # For this project the tag URL is the correct one regardless. The updater endpoint is
+            # `releases/latest/download/latest.json`, which only ever resolves to a *published*
+            # release, so no user reaches this manifest while it is still a draft. The api.github.com
+            # form would also work on a public repo, but it moves the download onto a host with a
+            # 60-request/hour unauthenticated rate limit and away from the one URL shape
+            # verify-latest-json.js is written to accept (a gate that stays untouched here and
+            # remains the authority): if this rewrite ever fails or targets the wrong repo, that
+            # check fails the release.
+            #
+            # Runs before the checksums below so SHA256SUMS.txt covers the corrected file, and
+            # before the verify step so it reads the corrected copy.
             - name: Rewrite latest.json to the tagged download URLs
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
