@@ -135,6 +135,13 @@ jobs:
             - name: Verify every registered command is actually called
               run: node scripts/verify-command-surface-is-used.js
 
+            # The docs cite files by path and the architecture guide lists every module, and both
+            # drifted between audits with nothing failing. A path a doc or a comment named stopped
+            # existing, and modules were added without a line in ARCHITECTURE.md. This catches the
+            # names. What a doc says about a file still has to be kept right by hand.
+            - name: Verify the docs cite paths that exist
+              run: node scripts/verify-doc-references.js
+
             # This project writes a plain `-` and never a unicode dash, in code and in comments
             # alike. That is a house style rather than a correctness rule, which is exactly why it
             # needs enforcing rather than remembering. A convention with no gate behind it drifts
@@ -155,7 +162,7 @@ jobs:
             # failure here should prompt.
             #
             # Grep-only and reads both trees as text, so it needs no toolchain and runs before the
-            # install, like the three checks above.
+            # install, like the checks above.
             #
             # grep answers 1 for "nothing found" and 2 for "could not search" (a folder renamed away,
             # a pattern this grep cannot read). Only the first is a pass. A gate that read both the
@@ -502,14 +509,14 @@ jobs:
             # RUSTSEC advisories are not covered by the JS advisory check above, and this closes
             # that gap for the Rust dependency tree.
             #
-            # `--deny unsound` because without it cargo audit exits 0 on one. The tree carries 18
-            # warnings today, so a new unsound advisory would land in that pile and ship silently.
-            # An unsound crate is a real defect (UB reachable from safe code), unlike the bulk of
-            # those warnings, which are unmaintained notices.
+            # `--deny unsound` because without it cargo audit exits 0 on one. The tree always carries
+            # some allowed warnings, so a new unsound advisory would land among them and ship
+            # silently. An unsound crate is a real defect (UB reachable from safe code), unlike an
+            # unmaintained notice.
             #
-            # Not `--deny warnings`. It fails today on the GTK3 and unic-* crates, which are
-            # unmaintained upstream and arrive transitively through tauri itself. Gating on
-            # something this project cannot act on only trains everyone to ignore a red run.
+            # Not `--deny warnings`. It fails on proc-macro-error, which is unmaintained upstream and
+            # arrives transitively through tauri itself. Gating on something this project cannot
+            # act on only trains everyone to ignore a red run.
             #
             # Not `--deny yanked` either, for the same reason and no other. `spin 0.9.8` is yanked
             # and comes in via sqlx-sqlite -> flume, so it is equally out of reach. Unlike an

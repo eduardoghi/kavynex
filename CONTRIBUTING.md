@@ -72,7 +72,7 @@ unless you `cd src-tauri` first):
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all`: format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
 
-Repository consistency (plain Node, no install needed. CI runs all seven on every push):
+Repository consistency (plain Node, no install needed. CI runs all eight on every push):
 
 - `node scripts/verify-release-version.js`: fails when `package.json`,
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
@@ -115,6 +115,10 @@ Repository consistency (plain Node, no install needed. CI runs all seven on ever
   `generate_handler!` has no constant, no wrapper, or no caller anywhere in `src/`. A command
   nothing calls is still reachable from the renderer, and two that unlinked files stayed registered
   for weeks that way. Run it with `--print` to see each command's wrapper and how many files call it.
+- `node scripts/verify-doc-references.js`: fails when a path written in backticks in a Markdown doc,
+  or in a Rust `//` comment, names nothing in the tree, and when a module under `src-tauri/src` is
+  not named in `docs/ARCHITECTURE.md`. It checks names, not what the docs say about them, so a
+  behavior change still needs its doc updated by hand in the same commit.
 
 Another consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
 on every push:
@@ -302,7 +306,7 @@ authoritative version; what follows is what to expect a red run to be about:
 - **Frontend**: lint, the Vitest suite *with coverage* (`pnpm test:coverage`; the floors in
   `vitest.config.ts` are only enforced when coverage is collected, so this is where a coverage
   regression fails), build, the production JS advisory and license gates (the dev-tree advisory
-  scan runs too but is non-blocking), the six repository-consistency scripts above, and a grep
+  scan runs too but is non-blocking), the repository-consistency scripts above, and a grep
   refusing a unicode dash where a plain `-` belongs, if a test needs one of those characters as
   data, spell it as a `\uXXXX` escape rather than pasting it.
 - **Frontend tests (Windows, macOS)**: the same suite on the other two platforms. It is jsdom
