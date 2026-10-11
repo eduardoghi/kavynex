@@ -388,6 +388,34 @@ jobs:
 
                   echo "Every temporary path is built from the shared unique suffix."
 
+            # A Rust string continued across lines ends the line with a backslash and picks up at the
+            # next one's first non-blank character. A scripted edit that writes the backslash and the
+            # newline back as text leaves either a literal \n followed by the old indentation, or the
+            # indentation run into the middle of the string. Both compile, and both read as a log
+            # line or a SQL statement with a hole of spaces in it, which no test asserts on.
+            - name: Verify string continuations are intact
+              if: matrix.platform == 'ubuntu-26.04'
+              run: |
+                  status=0
+                  matches=$(grep -rnP '\\n {4,}\S|"[^"]*\S {8,}\S[^"]*"' src-tauri/src \
+                      --include='*.rs') || status=$?
+
+                  if [ "$status" -gt 1 ]; then
+                      echo "::error::grep could not search src-tauri/src (exit $status)"
+                      exit 1
+                  fi
+
+                  offenders=$(printf '%s\n' "$matches" | grep -vP '^\S+:\d+:\s*//' \
+                      | grep -v '^$' || true)
+
+                  if [ -n "$offenders" ]; then
+                      echo "::error::continue the string with a backslash at the end of the line, not a literal \\n or a run of spaces inside it"
+                      printf '%s\n' "$offenders"
+                      exit 1
+                  fi
+
+                  echo "Every multi-line string continues with a backslash."
+
             # A log line is something the README asks users to attach to a bug report, and an
             # absolute Windows path embeds `C:\Users\<name>\...`. `services::logger::redact_path`
             # exists for that and is applied at roughly twenty sites, including every `AppError`
@@ -408,6 +436,11 @@ jobs:
             # spelled through `ImportMode::as_str`). The gap was closed while it was still theoretical
             # rather than after a path had reached someone's public issue, which is the point. A
             # future `{:?}` on something harmless is a false positive worth paying. Name the value.
+            #
+            # `to_string_lossy()` is a third spelling of the same thing. `to_str()` is left out, since
+            # near a logger call it is almost always on a `file_name()`, which is already what
+            # redact_path returns. The logger also writes the home folder as `~` in every line, so
+            # this is the second line of defense, not the only one.
             - name: Verify log lines redact absolute paths
               if: matrix.platform == 'ubuntu-26.04'
               run: |
@@ -420,10 +453,10 @@ jobs:
                       exit 1
                   fi
 
-                  offenders=$(printf '%s\n' "$calls" | grep -E 'display\(\)|\{:\?\}' || true)
+                  offenders=$(printf '%s\n' "$calls" | grep -E 'display\(\)|\{:\?\}|to_string_lossy\(\)' || true)
 
                   if [ -n "$offenders" ]; then
-                      echo "::error::log a path through services::logger::redact_path: not Path::display, and not {:?}, which prints the whole path too"
+                      echo "::error::log a path through services::logger::redact_path: not Path::display, {:?} or to_string_lossy, which print the whole path too"
                       printf '%s\n' "$offenders"
                       exit 1
                   fi

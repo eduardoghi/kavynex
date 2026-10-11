@@ -303,7 +303,8 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         } else if promoted.is_none() {
             logger::warn(
                 "db_backup",
-                "the corrupt database was set aside as .corrupt.tmp because an earlier .corrupt                  generation could not be rotated",
+                "the corrupt database was set aside as .corrupt.tmp because an earlier .corrupt \
+                 generation could not be rotated",
             );
         }
     }

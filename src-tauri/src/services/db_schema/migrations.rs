@@ -250,7 +250,8 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
     // shape of guard v13 applies before it reads `title_normalized`.
     if table_has_column(&mut *tx, "videos", "comments_count").await? {
         sqlx::query(
-            "UPDATE videos SET comments_state = 'available'              WHERE comments_state = 'unknown' AND comments_count > 0",
+            "UPDATE videos SET comments_state = 'available' \
+             WHERE comments_state = 'unknown' AND comments_count > 0",
         )
         .execute(&mut *tx)
         .await

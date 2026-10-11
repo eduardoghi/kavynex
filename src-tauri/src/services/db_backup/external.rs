@@ -361,7 +361,8 @@ pub async fn mirror_database_to_external_dir(
         crate::services::logger::warn(
             "db_backup",
             format!(
-                "set aside {moved} external backup(s) made from an earlier database as                  kavynex-backup-previous-*.db"
+                "set aside {moved} external backup(s) made from an earlier database as \
+                 kavynex-backup-previous-*.db"
             ),
         );
     } else {

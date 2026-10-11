@@ -51,7 +51,8 @@ pub(super) fn compaction_refusal(
 ) -> Option<&'static str> {
     if integrity_failed {
         return Some(
-            "the last full integrity check found damage, so the database is left as it is until it \n             is restored or checks clean",
+            "the last full integrity check found damage, so the database is left as it is until it \
+             is restored or checks clean",
         );
     }
 
@@ -59,7 +60,8 @@ pub(super) fn compaction_refusal(
 
     if !crate::services::library::migration::has_room_for(needed, available_bytes) {
         return Some(
-            "the disk holding the database does not have room for the rewritten copy, which needs \n             about twice its size free",
+            "the disk holding the database does not have room for the rewritten copy, which needs \
+             about twice its size free",
         );
     }
 

@@ -308,12 +308,13 @@ authoritative version; what follows is what to expect a red run to be about:
 - **Frontend tests (Windows, macOS)**: the same suite on the other two platforms. It is jsdom
   but not fully platform-independent, since date formatting varies with the runner's ICU.
 - **Rust (Linux, Windows, macOS)**: `fmt --check`, `clippy -D warnings` and `cargo test` on
-  each platform. Three further steps are Ubuntu-only, since they read the tree as text and are
-  platform-independent. They are the TS-bindings-freshness check and two greps that are easy to trip
-  without knowing they exist. A temporary path must come from
-  `utils::naming::unique_temp_suffix` rather than a raw `as_nanos()`, and a path logged near a
-  `logger::` call must go through `services::logger::redact_path` rather than `Path::display()`
-  or `{:?}` (which prints the whole path too).
+  each platform. Four further steps are Ubuntu-only, since they read the tree as text and are
+  platform-independent. They are the TS-bindings-freshness check and three greps that are easy to
+  trip without knowing they exist. A temporary path must come from
+  `utils::naming::unique_temp_suffix` rather than a raw `as_nanos()`. A string continued across
+  lines must end each line with `\` rather than carry a literal `\n` or a run of spaces inside it.
+  A path logged near a `logger::` call must go through `services::logger::redact_path` rather than
+  `Path::display()`, `{:?}` or `to_string_lossy()` (which print the whole path too).
 - **Cargo audit and deny**: RUSTSEC advisories (not covered by the JS advisory check, hence a
   separate job), plus licenses, sources, bans and advisories via `cargo-deny`. Its advisories
   check is what fails on a newly unmaintained direct dependency or a newly yanked crate, with the
