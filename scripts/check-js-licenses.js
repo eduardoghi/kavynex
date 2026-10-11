@@ -16,6 +16,7 @@
 
 import { execFileSync } from "node:child_process";
 import { isMainModule } from "./script-entry.js";
+import { pnpmInvocation } from "./pnpm-invocation.js";
 
 // The licenses the production tree is allowed to carry. All permissive, and the script prints the
 // package count and the distinct licenses it found on every run, so the current state lives in
@@ -63,18 +64,12 @@ export function isAllowed(expression) {
 }
 
 function readProductionLicenses() {
-    // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
-    // `.bat`/`.cmd` without one (CVE-2024-27980). CI runs on Linux and takes the shell-free path.
-    //
-    // Note what the argv array does and does not buy on that Windows path. With `shell: true` Node
-    // concatenates the array into a command line rather than passing it through, which is what
-    // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
-    // safe is that every argument below is a literal written in this file, not derived from a
-    // package name, a lockfile entry, or anything else outside it. Keep it that way. An argument
-    // built from external data would need the shim resolved and invoked directly instead.
-    const raw = execFileSync("pnpm", ["licenses", "list", "--prod", "--json"], {
+    // Started through `pnpmInvocation`, which needs no shell outside Windows and refuses any
+    // argument that would need quoting on it. Every argument here is a literal from this file.
+    const pnpm = pnpmInvocation(["licenses", "list", "--prod", "--json"]);
+    const raw = execFileSync(pnpm.file, pnpm.args, {
         encoding: "utf-8",
-        shell: process.platform === "win32",
+        shell: pnpm.shell,
         maxBuffer: 32 * 1024 * 1024,
     });
 

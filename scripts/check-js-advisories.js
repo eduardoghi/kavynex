@@ -21,6 +21,7 @@
 
 import { execFileSync } from "node:child_process";
 import { isMainModule } from "./script-entry.js";
+import { pnpmInvocation } from "./pnpm-invocation.js";
 
 const OSV_QUERY_BATCH_URL = "https://api.osv.dev/v1/querybatch";
 const OSV_VULN_URL = "https://api.osv.dev/v1/vulns";
@@ -41,22 +42,16 @@ const QUERY_BATCH_SIZE = 100;
 const OSV_REQUEST_TIMEOUT_MS = 15_000;
 
 function readInstalledPackages(scope) {
-    // `shell` is needed only on Windows, where pnpm is a `.cmd` shim and Node refuses to spawn
-    // `.bat`/`.cmd` without one (CVE-2024-27980). CI runs on Linux and takes the shell-free path.
-    //
-    // Note what the argv array does and does not buy on that Windows path. With `shell: true` Node
-    // concatenates the array into a command line rather than passing it through, which is what
-    // DEP0190 warns about. The array is not an escaping mechanism there. What actually makes this
-    // safe is that every argument below is a literal written in this file, not derived from a
-    // package name, a lockfile entry, or anything else outside it. Keep it that way. An argument
-    // built from external data would need the shim resolved and invoked directly instead.
+    // Started through `pnpmInvocation`, which needs no shell outside Windows and refuses any
+    // argument that would need quoting on it. Every argument here is a literal from this file.
     //
     // `licenses list` is what enumerates the tree, as in check-js-licenses.js. It returns a flat,
     // fully-resolved inventory of name+versions straight from the lockfile. `pnpm list` returns a
     // nested tree whose repeated subtrees are elided as `deduped`, which a scanner must not miss.
-    const raw = execFileSync("pnpm", ["licenses", "list", scope, "--json"], {
+    const pnpm = pnpmInvocation(["licenses", "list", scope, "--json"]);
+    const raw = execFileSync(pnpm.file, pnpm.args, {
         encoding: "utf-8",
-        shell: process.platform === "win32",
+        shell: pnpm.shell,
         maxBuffer: 32 * 1024 * 1024,
     });
 

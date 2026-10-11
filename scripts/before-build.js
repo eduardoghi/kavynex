@@ -12,6 +12,7 @@ import { spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { isMainModule } from "./script-entry.js";
+import { pnpmInvocation } from "./pnpm-invocation.js";
 
 // What to do, given the environment and whether `dist/index.html` exists. Pure, so the two ways it
 // can go wrong (skipping a build nobody did, building with the key in the environment) are tested.
@@ -46,11 +47,12 @@ if (isMainModule(import.meta.url)) {
         process.exit(0);
     }
 
-    const result = spawnSync("pnpm", ["build"], {
+    // pnpm is a .cmd shim on Windows, which only a shell can start (see pnpm-invocation.js).
+    const pnpm = pnpmInvocation(["build"]);
+    const result = spawnSync(pnpm.file, pnpm.args, {
         cwd: root,
         stdio: "inherit",
-        // pnpm is a .cmd shim on Windows, which only a shell can start.
-        shell: process.platform === "win32",
+        shell: pnpm.shell,
     });
 
     process.exit(result.status ?? 1);
