@@ -203,11 +203,20 @@ jobs:
                   $msi = Get-ChildItem -Recurse -Path src-tauri/target -Filter '*.msi' |
                       Where-Object { $_.FullName -match '\\bundle\\msi\\' } | Select-Object -First 1
                   if (-not $msi) { throw "no MSI was built" }
-                  $install = Start-Process -FilePath msiexec.exe -ArgumentList '/i', "`"$($msi.FullName)`"", '/qn', '/norestart' -Wait -PassThru
-                  if ($install.ExitCode -ne 0) { throw "msiexec failed ($($install.ExitCode))" }
+                  # The installer log and where the exe landed are printed on a failure, since the
+                  # exception alone does not reach the job log.
+                  $log = Join-Path $env:RUNNER_TEMP 'msi-install.log'
+                  $install = Start-Process -FilePath msiexec.exe -ArgumentList '/i', "`"$($msi.FullName)`"", '/qn', '/norestart', '/l*v', "`"$log`"" -Wait -PassThru
                   $installed = Get-ChildItem -Recurse -Path $env:ProgramFiles -Filter 'kavynex.exe' -ErrorAction SilentlyContinue |
                       Select-Object -First 1
-                  if (-not $installed) { throw "the MSI left no kavynex.exe under Program Files" }
+                  if ($install.ExitCode -ne 0 -or -not $installed) {
+                      Write-Host "msiexec exit code: $($install.ExitCode)"
+                      Get-ChildItem -Recurse -Path $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA -Filter 'kavynex.exe' -ErrorAction SilentlyContinue |
+                          ForEach-Object { Write-Host "found: $($_.FullName)" }
+                      if (Test-Path $log) { Get-Content $log -Tail 60 | Write-Host }
+                      Write-Host "::error::the MSI install failed or left no kavynex.exe under Program Files"
+                      exit 1
+                  }
                   Write-Host "Starting $($installed.FullName)"
                   $run = Start-Process -FilePath $installed.FullName -ArgumentList '--smoke-test' -Wait -PassThru
                   if ($run.ExitCode -ne 0) { throw "the MSI-installed binary failed its smoke test ($($run.ExitCode))" }
