@@ -272,6 +272,7 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
         integrity::integrity_check_marker_path(db_path),
         integrity::integrity_failed_marker_path(db_path),
         swap_marker_path(db_path),
+        lineage::lineage_marker_path(db_path),
     ]);
 
     // What an import recovery set aside (`import::displace_database`), named by a unique suffix, so
@@ -426,8 +427,9 @@ pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
 // The automatic `.bak` snapshot family and the status report over it.
 mod snapshot;
 pub use snapshot::{
-    backup_database, database_backup_status, has_backup_candidates, snapshot_before_migration,
-    DatabaseBackupStatus,
+    backup_database, database_backup_status, has_backup_candidates,
+    set_aside_backups_for_empty_start, snapshot_before_migration, DatabaseBackupStatus,
+    SET_ASIDE_BACKUPS_DIR,
 };
 // The parent module's snapshot tests assert against these internals; test-only so a non-test build
 // does not flag them unused.
@@ -456,6 +458,10 @@ pub use integrity::{
 // pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with
 // them, which is the point of the move. An internal a submodule's own tests reach no longer has
 // to be visible to its parent.
+
+// Which database a backup was made from, so the mirror can tell an earlier database's copies.
+mod lineage;
+pub use lineage::record_new_lineage;
 
 // The user-triggered `VACUUM`, which takes the backup lock above.
 mod compaction;
@@ -490,7 +496,7 @@ pub(super) fn swap_marker_path(db_path: &Path) -> PathBuf {
 /// Records that the database at `db_path` was just replaced. Best effort. A marker that cannot be
 /// written leaves [`database_swapped_within`] reading the modification time of the set-aside
 /// database, as it did before the marker existed.
-pub(super) fn record_database_swap(db_path: &Path) {
+pub(crate) fn record_database_swap(db_path: &Path) {
     // A failed full check described the database that was just replaced.
     integrity::clear_integrity_failure(db_path);
 

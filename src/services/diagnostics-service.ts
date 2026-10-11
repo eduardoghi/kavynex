@@ -84,6 +84,7 @@ function defaultKeptFilesSummary(): KeptFilesSummary {
     return {
         libraryTrash: null,
         recoveredDownloads: { files: 0, bytes: 0 },
+        setAsideBackups: { files: 0, bytes: 0 },
     };
 }
 

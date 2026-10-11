@@ -467,6 +467,16 @@ export function buildDiagnosticsIssues(
         });
     }
 
+    const setAside = input.keptFiles.setAsideBackups;
+    if (setAside.files > 0) {
+        issues.push({
+            code: "SET_ASIDE_BACKUPS_PRESENT",
+            severity: "info",
+            title: "Backups of an earlier database are kept",
+            description: `${formatCount(setAside.files, "database backup")} (${formatBytes(setAside.bytes)}) from before you started with an empty library. Nothing deletes them. To bring one back, use Settings > Database > Import and pick it from this folder. Delete the folder once you no longer need them.`,
+        });
+    }
+
     const channelsSharingAHandle = input.mediaRepositoryStats.channels_sharing_a_handle;
     if (channelsSharingAHandle > 0) {
         issues.push({

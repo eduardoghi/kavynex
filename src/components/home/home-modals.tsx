@@ -228,39 +228,59 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 </Suspense>
             ) : null}
 
-            <ConfirmDeleteModal
-                opened={databaseRecovery.open}
-                onClose={
-                    databaseRecovery.reason === "missing"
-                        ? () => void databaseRecovery.startEmpty()
-                        : databaseRecovery.dismiss
-                }
-                onConfirm={() => void databaseRecovery.restoreFromBackup()}
-                loading={databaseRecovery.isRestoring}
-                title={<Text fw={900}>Restore database</Text>}
-                message={
-                    databaseRecovery.reason === "missing"
-                        ? "The database file is missing, but backups of it are still there."
-                        : "The database could not be opened and may be corrupted."
-                }
-                description={
-                    databaseRecovery.reason === "missing"
-                        ? `Restore from ${formatBackupTimestamp(
-                              databaseRecovery.backedUpAtMs
-                          )}? Starting with an empty library instead keeps the backups where they are, and the app will reload either way.`
-                        : `Restore from ${formatBackupTimestamp(
-                              databaseRecovery.backedUpAtMs
-                          )}? The current database is kept aside as a .corrupt file, and the app will reload.`
-                }
-                cancelLabel={
-                    databaseRecovery.reason === "missing" ? "Start empty" : undefined
-                }
-                confirmLabel="Restore"
-                confirmColor="blue"
-                confirmIcon={<RotateCcw size={18} />}
-                // Dismissed, it does not come back until the next launch.
-                requireExplicitChoice
-            />
+            {databaseRecovery.confirmingStartEmpty ? (
+                // The second question. Cancel goes back to the restore, and is where focus lands.
+                <ConfirmDeleteModal
+                    opened={databaseRecovery.open}
+                    onClose={databaseRecovery.cancelStartEmpty}
+                    onConfirm={() => void databaseRecovery.startEmpty()}
+                    loading={databaseRecovery.isRestoring}
+                    title={<Text fw={900}>Start with an empty library</Text>}
+                    message="Start with an empty library instead of restoring?"
+                    description="The backups are moved to a folder of their own and kept. Diagnostics shows where, and Settings > Database > Import can bring one back later. The app will reload."
+                    cancelLabel="Back"
+                    confirmLabel="Start empty"
+                    confirmColor="red"
+                    confirmIcon={null}
+                    requireExplicitChoice
+                />
+            ) : (
+                <ConfirmDeleteModal
+                    opened={databaseRecovery.open}
+                    onClose={
+                        databaseRecovery.reason === "missing"
+                            ? databaseRecovery.askToStartEmpty
+                            : databaseRecovery.dismiss
+                    }
+                    onConfirm={() => void databaseRecovery.restoreFromBackup()}
+                    loading={databaseRecovery.isRestoring}
+                    title={<Text fw={900}>Restore database</Text>}
+                    message={
+                        databaseRecovery.reason === "missing"
+                            ? "The database file is missing, but backups of it are still there."
+                            : "The database could not be opened and may be corrupted."
+                    }
+                    description={
+                        databaseRecovery.reason === "missing"
+                            ? `Restore from ${formatBackupTimestamp(
+                                  databaseRecovery.backedUpAtMs
+                              )}? The app will reload.`
+                            : `Restore from ${formatBackupTimestamp(
+                                  databaseRecovery.backedUpAtMs
+                              )}? The current database is kept aside as a .corrupt file, and the app will reload.`
+                    }
+                    cancelLabel={
+                        databaseRecovery.reason === "missing" ? "Start empty…" : undefined
+                    }
+                    confirmLabel="Restore"
+                    confirmColor="blue"
+                    confirmIcon={<RotateCcw size={18} />}
+                    // For a missing database the cancel slot starts over, so Restore takes focus.
+                    autoFocus={databaseRecovery.reason === "missing" ? "confirm" : "cancel"}
+                    // Dismissed, it does not come back until the next launch.
+                    requireExplicitChoice
+                />
+            )}
 
             <ErrorModal
                 opened={error.errorOpen}

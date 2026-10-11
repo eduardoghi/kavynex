@@ -85,7 +85,11 @@ function baseDiagnostics(): AppDiagnostics {
             orphan_live_chat_examples: [],
         },
         orphanRemoval: null,
-        keptFiles: { libraryTrash: null, recoveredDownloads: { files: 0, bytes: 0 } },
+        keptFiles: {
+            libraryTrash: null,
+            recoveredDownloads: { files: 0, bytes: 0 },
+            setAsideBackups: { files: 0, bytes: 0 },
+        },
     };
 }
 
@@ -806,7 +810,11 @@ describe("kept files", () => {
     it("reports downloads that could not be added to the library", () => {
         const issues = buildDiagnosticsIssues({
             ...baseDiagnostics(),
-            keptFiles: { libraryTrash: null, recoveredDownloads: { files: 2, bytes: 2048 } },
+            keptFiles: {
+                libraryTrash: null,
+                recoveredDownloads: { files: 2, bytes: 2048 },
+                setAsideBackups: { files: 0, bytes: 0 },
+            },
         });
 
         const issue = issues.find((item) => item.code === "RECOVERED_DOWNLOADS_PRESENT");
@@ -820,6 +828,7 @@ describe("kept files", () => {
             keptFiles: {
                 libraryTrash: { files: 1, bytes: 10 },
                 recoveredDownloads: { files: 0, bytes: 0 },
+                setAsideBackups: { files: 0, bytes: 0 },
             },
         });
         const empty = buildDiagnosticsIssues({
@@ -827,11 +836,28 @@ describe("kept files", () => {
             keptFiles: {
                 libraryTrash: { files: 0, bytes: 0 },
                 recoveredDownloads: { files: 0, bytes: 0 },
+                setAsideBackups: { files: 0, bytes: 0 },
             },
         });
 
         expect(holding.map((item) => item.code)).toContain("LIBRARY_TRASH_HOLDS_FILES");
         expect(empty.map((item) => item.code)).not.toContain("LIBRARY_TRASH_HOLDS_FILES");
         expect(empty.map((item) => item.code)).not.toContain("RECOVERED_DOWNLOADS_PRESENT");
+    });
+
+    it("points at the backups an empty start set aside, and how to bring one back", () => {
+        const issues = buildDiagnosticsIssues({
+            ...baseDiagnostics(),
+            keptFiles: {
+                libraryTrash: null,
+                recoveredDownloads: { files: 0, bytes: 0 },
+                setAsideBackups: { files: 7, bytes: 7 * 1024 },
+            },
+        });
+
+        const issue = issues.find((item) => item.code === "SET_ASIDE_BACKUPS_PRESENT");
+        expect(issue?.description).toContain("7 database backups");
+        expect(issue?.description).toContain("Settings > Database > Import");
+        expect(issues.map((item) => item.code)).not.toContain("RECOVERED_DOWNLOADS_PRESENT");
     });
 });

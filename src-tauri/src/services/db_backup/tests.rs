@@ -285,6 +285,144 @@ async fn the_external_backup_status_says_whether_the_folder_is_there_and_when_it
     let _ = std::fs::remove_dir_all(&external);
 }
 
+/// Ages every file in `dir` past the mirror's 24h throttle.
+fn age_external_copies(dir: &Path) {
+    let two_days_ago = SystemTime::now() - Duration::from_secs(2 * 24 * 60 * 60);
+
+    for entry in std::fs::read_dir(dir).unwrap().flatten() {
+        filetime_set(&entry.path(), two_days_ago);
+    }
+}
+
+async fn empty_kavynex_db(path: &Path) {
+    seed_kavynex_db(path, "placeholder").await;
+    let pool = open(path).await.unwrap();
+    sqlx::query("DELETE FROM videos")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn mirror_does_not_rotate_an_empty_database_over_copies_of_a_library() {
+    let dir = temp_dir("ext-empty-src");
+    let db = dir.join("kavynex.db");
+    let external = temp_dir("ext-empty-dest");
+    seed_kavynex_db(&db, "the library").await;
+    assert!(mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+    age_external_copies(&external);
+
+    std::fs::remove_file(&db).unwrap();
+    empty_kavynex_db(&db).await;
+
+    assert!(!mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+    assert_eq!(
+        read_title(&external_backup_path(&external)).await,
+        "the library"
+    );
+    assert!(!generation_external_backup_path(&external, 1).exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&external);
+}
+
+#[tokio::test]
+async fn mirror_keeps_the_copies_taken_before_a_failed_full_check() {
+    let dir = temp_dir("ext-damaged-src");
+    let db = dir.join("kavynex.db");
+    let external = temp_dir("ext-damaged-dest");
+    seed_kavynex_db(&db, "before the damage").await;
+    assert!(mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+    age_external_copies(&external);
+
+    mark_integrity_check_failed(&db);
+
+    assert!(!mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+    assert!(!generation_external_backup_path(&external, 1).exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&external);
+}
+
+#[tokio::test]
+async fn mirror_sets_aside_copies_an_earlier_database_left_in_the_folder() {
+    // A reinstall pointed at the folder holding the only copy of the old library. The new database
+    // has a lineage of its own, and the copies there carry none.
+    let dir = temp_dir("ext-foreign-src");
+    let db = dir.join("kavynex.db");
+    let external = temp_dir("ext-foreign-dest");
+    seed_kavynex_db(&external_backup_path(&external), "the old library").await;
+    seed_kavynex_db(&generation_external_backup_path(&external, 1), "older").await;
+    age_external_copies(&external);
+
+    seed_kavynex_db(&db, "the new library").await;
+    record_new_lineage(&db);
+
+    assert!(mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+
+    assert_eq!(
+        read_title(&external_backup_path(&external)).await,
+        "the new library"
+    );
+    let set_aside: Vec<String> = std::fs::read_dir(&external)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("kavynex-backup-previous-") && name.ends_with(".db"))
+        .collect();
+    assert_eq!(set_aside.len(), 2, "both copies were kept: {set_aside:?}");
+
+    // The fresh copy is labelled, so the next run rotates it like any other.
+    age_external_copies(&external);
+    assert!(mirror_database_to_external_dir(&db, &external)
+        .await
+        .unwrap());
+    assert!(generation_external_backup_path(&external, 1).exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&external);
+}
+
+#[tokio::test]
+async fn an_empty_start_moves_the_snapshots_where_import_can_read_them() {
+    let dir = temp_dir("empty-start");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "the old library").await;
+    assert!(backup_database(&db).await.unwrap());
+    std::fs::copy(backup_path(&db), generation_backup_path(&db, 2)).unwrap();
+    std::fs::remove_file(&db).unwrap();
+
+    let folder = set_aside_backups_for_empty_start(&db)
+        .unwrap()
+        .expect("there were snapshots to move");
+
+    assert!(!has_backup_candidates(&db));
+    assert_eq!(
+        read_title(&folder.join("kavynex-bak.db")).await,
+        "the old library"
+    );
+    assert!(folder.join("kavynex-bak-2.db").exists());
+    assert!(folder.starts_with(dir.join(SET_ASIDE_BACKUPS_DIR)));
+
+    assert!(
+        set_aside_backups_for_empty_start(&db).unwrap().is_none(),
+        "nothing left to move"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn mirror_is_throttled_when_recent() {
     let dir = temp_dir("ext-throttle-src");
@@ -462,6 +600,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.integrity-checked",
             "kavynex.db.integrity-failed",
             "kavynex.db.swapped-at",
+            "kavynex.db.lineage",
         ]
         .iter()
         .map(|name| name.to_string()),
@@ -1034,7 +1173,10 @@ async fn a_log_left_without_its_database_is_not_paired_with_the_stranded_snapsho
 
     assert!(!apply_pending_database_import(&db).unwrap());
 
-    assert!(!sibling(&db, "-wal").exists(), "the orphaned log was moved away");
+    assert!(
+        !sibling(&db, "-wal").exists(),
+        "the orphaned log was moved away"
+    );
     assert!(
         std::fs::read_dir(&dir).unwrap().any(|entry| {
             let name = entry.unwrap().file_name().to_string_lossy().into_owned();

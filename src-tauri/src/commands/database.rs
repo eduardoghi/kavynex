@@ -46,13 +46,24 @@ pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
 }
 
 /// Opens a new, empty database in place of a missing one whose backups are still on disk, because
-/// the user chose to start over rather than restore. The backups stay where they are, and the
-/// daily snapshot leaves them alone while the new database holds nothing (see
-/// `db_backup::backup_database`).
+/// the user chose to start over rather than restore.
+///
+/// The backups are moved into `set-aside-backups/` first (see
+/// `db_backup::set_aside_backups_for_empty_start`). Left in place, the new database's own daily
+/// snapshot would rotate them out once it holds anything, and the restore cannot reach them once the
+/// pool is open. The swap is recorded too, so the orphan removal does not read every file of the old
+/// library as unreferenced by the new database for the next 30 days.
 #[tauri::command]
 pub async fn start_with_empty_database(db: State<'_, Db>) -> AppResult<()> {
+    let db_path = db.path().to_path_buf();
+    run_blocking(move || {
+        crate::services::db_backup::set_aside_backups_for_empty_start(&db_path).map(|_| ())
+    })
+    .await?;
+
     db.allow_creating_missing_database();
     db.pool().await?;
+    crate::services::db_backup::record_database_swap(db.path());
     Ok(())
 }
 

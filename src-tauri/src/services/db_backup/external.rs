@@ -158,6 +158,63 @@ pub(super) fn external_backup_path(dir: &Path) -> PathBuf {
     dir.join(EXTERNAL_BACKUP_FILE_NAME)
 }
 
+/// The file beside the mirror's copies naming the database they were made from (see `lineage`).
+pub(super) fn external_lineage_path(dir: &Path) -> PathBuf {
+    dir.join("kavynex-backup.lineage")
+}
+
+/// The existing mirror generations in `dir`, newest first.
+fn existing_external_generations(dir: &Path) -> Vec<PathBuf> {
+    (0..=EXTERNAL_BACKUP_ROTATED_GENERATIONS)
+        .map(|generation| generation_external_backup_path(dir, generation))
+        .filter(|path| path.exists())
+        .collect()
+}
+
+/// Renames every mirror generation in `dir` to `kavynex-backup-previous-<UTC time>[-N].db`, and its
+/// lineage file with them, so the mirror of a new database starts beside them instead of rotating
+/// them out. The `.db` extension is what lets Settings > Database > Import read one directly.
+/// Returns how many copies were set aside.
+fn set_aside_external_generations(dir: &Path) -> AppResult<usize> {
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let mut moved = 0;
+
+    for (generation, path) in (0..=EXTERNAL_BACKUP_ROTATED_GENERATIONS)
+        .map(|generation| (generation, generation_external_backup_path(dir, generation)))
+    {
+        if !path.exists() {
+            continue;
+        }
+
+        let name = if generation == 0 {
+            format!("kavynex-backup-previous-{stamp}.db")
+        } else {
+            format!("kavynex-backup-previous-{stamp}-{generation}.db")
+        };
+
+        crate::services::filesystem::rename_retrying(&path, &dir.join(name)).map_err(|error| {
+            backup_error(
+                "failed to set aside the external copies of an earlier database",
+                error,
+            )
+        })?;
+        moved += 1;
+    }
+
+    let lineage = external_lineage_path(dir);
+
+    if lineage.exists() {
+        let _ = crate::services::filesystem::rename_retrying(
+            &lineage,
+            &dir.join(format!("kavynex-backup-previous-{stamp}.lineage")),
+        );
+    }
+
+    crate::services::filesystem::fsync_parent_dir(&external_backup_path(dir));
+
+    Ok(moved)
+}
+
 /// The current external mirror is generation 0 (`kavynex-backup.db`); older ones are
 /// `kavynex-backup.db.1`..`kavynex-backup.db.{EXTERNAL_BACKUP_ROTATED_GENERATIONS}`. `pub(super)`
 /// so the parent module's rotation test can reach it.
@@ -231,6 +288,63 @@ pub async fn mirror_database_to_external_dir(
         }
     }
 
+    // The same two rules the daily snapshot keeps (see `snapshot::backup_database`). A database whose
+    // last full check found damage is not copied over the copies taken before it, and an empty
+    // database is not rotated over copies that hold a library. The second is what a database
+    // recreated empty does in the three days the mirror keeps.
+    if super::integrity::integrity_check_failed(db_path) {
+        crate::services::logger::warn(
+            "db_backup",
+            "external backup skipped: the last full integrity check found damage, so the copies              taken before it are kept",
+        );
+        return Ok(false);
+    }
+
+    let database_lineage = super::lineage::database_lineage(db_path);
+    let (copies_lineage, generations) = {
+        let external_dir = external_dir.to_path_buf();
+        run_blocking(move || {
+            Ok::<_, AppError>((
+                super::lineage::read_id(&external_lineage_path(&external_dir)),
+                existing_external_generations(&external_dir),
+            ))
+        })
+        .await?
+    };
+
+    // Copies a database before this one left there, because the app was reinstalled or started over
+    // and pointed at the same folder. They may be the only copy of that library left, so they are set
+    // aside rather than rotated out under this database's copies.
+    if !generations.is_empty()
+        && super::lineage::copies_are_from_another_database(
+            database_lineage.as_deref(),
+            copies_lineage.as_deref(),
+        )
+        && super::snapshot::any_holds_library(&generations).await
+    {
+        let external_dir = external_dir.to_path_buf();
+        let moved = run_blocking(move || set_aside_external_generations(&external_dir)).await?;
+
+        crate::services::logger::warn(
+            "db_backup",
+            format!(
+                "set aside {moved} external backup(s) made from an earlier database as                  kavynex-backup-previous-*.db"
+            ),
+        );
+    } else {
+        let pool = open(db_path).await?;
+        let holds = super::snapshot::holds_library(&pool).await;
+        pool.close().await;
+
+        if !holds && super::snapshot::any_holds_library(&generations).await {
+            crate::services::logger::warn(
+                "db_backup",
+                "external backup skipped: the database is empty and the external copies are not",
+            );
+            return Ok(false);
+        }
+    }
+
     // Export to a fresh staging file inside the external directory first, so a failed export (a
     // drive pulled mid-write) never disturbs the mirror generations already there. Only once the
     // fresh copy is complete are the older generations rotated up and it is promoted into
@@ -258,6 +372,21 @@ pub async fn mirror_database_to_external_dir(
                 "failed to promote the external database backup (the fresh copy was kept)",
                 error,
             ));
+        }
+
+        // Labels the copies with the database they came from, so a later database can tell them
+        // from its own. Best effort. Copies left unlabelled by a failure here read as another
+        // database's and are set aside the next day, which keeps them rather than losing them.
+        if let Some(lineage) = database_lineage.as_deref() {
+            if let Err(error) = crate::services::filesystem::write_file_durably(
+                &external_lineage_path(&external_dir),
+                lineage.as_bytes(),
+            ) {
+                crate::services::logger::warn(
+                    "db_backup",
+                    format!("could not label the external backup with its database: {error}"),
+                );
+            }
         }
 
         // Flush the external directory entry so a crash (or a drive pulled) right after the rename

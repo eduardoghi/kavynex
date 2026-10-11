@@ -385,7 +385,8 @@ pub async fn verify_library_content(
         })
 }
 
-/// How many files the library trash and the recovered downloads folder hold, for Diagnostics.
+/// How many files the library trash, the recovered downloads and the set-aside backups folders hold,
+/// for Diagnostics.
 #[tauri::command]
 pub async fn get_kept_files_summary<R: Runtime>(
     app: AppHandle<R>,
@@ -394,6 +395,9 @@ pub async fn get_kept_files_summary<R: Runtime>(
         .await
         .ok();
     let recovered = crate::services::kept_files::recovered_downloads_dir(&app)?;
+    let set_aside = crate::services::database::database_path(&app)
+        .ok()
+        .and_then(|db_path| crate::services::kept_files::set_aside_backups_dir(&db_path));
 
     run_blocking(move || {
         Ok(crate::services::kept_files::KeptFilesSummary {
@@ -403,12 +407,15 @@ pub async fn get_kept_files_summary<R: Runtime>(
                     .unwrap_or_default()
             }),
             recovered_downloads: crate::services::kept_files::folder_summary(&recovered),
+            set_aside_backups: set_aside
+                .map(|dir| crate::services::kept_files::folder_summary(&dir))
+                .unwrap_or_default(),
         })
     })
     .await
 }
 
-/// Opens the library trash or the recovered downloads folder in the file manager. Takes which one,
+/// Opens one of the kept folders (see services::kept_files) in the file manager. Takes which one,
 /// never a path, so the folder is always the one the settings and Tauri name.
 #[tauri::command]
 pub async fn open_kept_folder<R: Runtime>(
@@ -423,6 +430,9 @@ pub async fn open_kept_folder<R: Runtime>(
             kept_files::library_trash_dir(&library_dir)
         }
         KeptFolder::RecoveredDownloads => Some(kept_files::recovered_downloads_dir(&app)?),
+        KeptFolder::SetAsideBackups => crate::services::database::database_path(&app)
+            .ok()
+            .and_then(|db_path| kept_files::set_aside_backups_dir(&db_path)),
     };
 
     run_blocking(move || kept_files::reveal_kept_folder(dir)).await

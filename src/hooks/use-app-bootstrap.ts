@@ -33,7 +33,12 @@ export type DatabaseRecoveryController = {
     reason: DatabaseRecoveryReason;
     backedUpAtMs: number | null;
     isRestoring: boolean;
+    // Starting empty is asked a second time. The dialog opens at launch, when a key pressed for
+    // something else can land on it, and the backups stop being restorable from here once it runs.
+    confirmingStartEmpty: boolean;
     restoreFromBackup: () => Promise<void>;
+    askToStartEmpty: () => void;
+    cancelStartEmpty: () => void;
     startEmpty: () => Promise<void>;
     dismiss: () => void;
 };
@@ -49,6 +54,7 @@ export function useAppBootstrap({
     const [reason, setReason] = useState<DatabaseRecoveryReason>("damaged");
     const [backedUpAtMs, setBackedUpAtMs] = useState<number | null>(null);
     const [isRestoring, setIsRestoring] = useState(false);
+    const [confirmingStartEmpty, setConfirmingStartEmpty] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -138,10 +144,19 @@ export function useAppBootstrap({
             onError(
                 resolveErrorMessage(error, "Failed to restore the database from backup.")
             );
+            // The dialog stays, so the restore can be tried again (a snapshot another program held
+            // is refused rather than passed over) without restarting the app.
             setIsRestoring(false);
-            setOpen(false);
         }
     }, [onError]);
+
+    const askToStartEmpty = useCallback((): void => {
+        setConfirmingStartEmpty(true);
+    }, []);
+
+    const cancelStartEmpty = useCallback((): void => {
+        setConfirmingStartEmpty(false);
+    }, []);
 
     const startEmpty = useCallback(async (): Promise<void> => {
         setIsRestoring(true);
@@ -153,7 +168,7 @@ export function useAppBootstrap({
             logError("bootstrap", "Failed to start with an empty database.", error);
             onError(resolveErrorMessage(error, "Failed to create an empty database."));
             setIsRestoring(false);
-            setOpen(false);
+            setConfirmingStartEmpty(false);
         }
     }, [onError]);
 
@@ -167,7 +182,10 @@ export function useAppBootstrap({
         reason,
         backedUpAtMs,
         isRestoring,
+        confirmingStartEmpty,
         restoreFromBackup,
+        askToStartEmpty,
+        cancelStartEmpty,
         startEmpty,
         dismiss,
     });

@@ -2,10 +2,10 @@
 import type { FolderSummary } from "./FolderSummary";
 
 /**
- * Both kept folders, for Diagnostics.
+ * The kept folders, for Diagnostics.
  */
 export type KeptFilesSummary = { 
 /**
  * `None` when no library is configured or its folder is not there.
  */
-libraryTrash: FolderSummary | null, recoveredDownloads: FolderSummary, };
+libraryTrash: FolderSummary | null, recoveredDownloads: FolderSummary, setAsideBackups: FolderSummary, };

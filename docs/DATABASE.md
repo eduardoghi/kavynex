@@ -538,6 +538,18 @@ up separately.
   is refused, so a corrupt database never overwrites a good mirror. If the final promotion fails
   (a removable/network target pulled mid-write), the freshly exported `.new` file is kept, not
   deleted, so the newest good copy is never thrown away.
+- **Skipped** while the last full integrity check found damage (`.integrity-failed`), and while the
+  database is empty and a copy in the folder holds a library. These are the two rules the daily `.bak`
+  snapshot keeps, for the same reason. Without them a database recreated empty, or one found damaged,
+  replaced all three copies in three days.
+- **Copies of an earlier database are set aside, not rotated out.** A database created from nothing
+  (a first run, a reinstall, Start empty) gets a lineage id in `kavynex.db.lineage`, and the mirror
+  writes the same id to `kavynex-backup.lineage` next to its copies. When the database has an id and
+  the folder holds copies with another id or none, and any of them holds a library, they are renamed
+  to `kavynex-backup-previous-<UTC time>[-N].db` and kept. That is a reinstall pointed at the folder
+  holding the only copy of the old library. Nothing removes those files, and Settings > Database >
+  Import reads them directly. A database from before lineage ids existed never gets one, so its mirror
+  works as it always did.
 - **Skipped** when the chosen directory does not exist (external drive unplugged, share offline)
   rather than recreated, because a recreated folder at a path that now resolves to a different device
   would silently write the backup to the wrong place. The skip is logged, and Settings > Database

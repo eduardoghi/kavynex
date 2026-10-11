@@ -32,7 +32,11 @@ vi.mock("../repositories/media-repository", () => ({
 // list are not joined by a check that cannot reach a backend here.
 vi.mock("./diagnostics-kept-files", () => ({
     getKeptFilesSummary: vi.fn(() =>
-        Promise.resolve({ libraryTrash: null, recoveredDownloads: { files: 0, bytes: 0 } })
+        Promise.resolve({
+            libraryTrash: null,
+            recoveredDownloads: { files: 0, bytes: 0 },
+            setAsideBackups: { files: 0, bytes: 0 },
+        })
     ),
 }));
 

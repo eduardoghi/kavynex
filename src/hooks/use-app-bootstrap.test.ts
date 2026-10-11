@@ -229,6 +229,17 @@ describe("useAppBootstrap", () => {
         });
 
         expect(result.current.reason).toBe("missing");
+        expect(result.current.confirmingStartEmpty).toBe(false);
+
+        act(() => {
+            result.current.askToStartEmpty();
+        });
+        expect(result.current.confirmingStartEmpty).toBe(true);
+
+        act(() => {
+            result.current.cancelStartEmpty();
+        });
+        expect(result.current.confirmingStartEmpty).toBe(false);
 
         await act(async () => {
             await result.current.startEmpty();
@@ -320,7 +331,8 @@ describe("useAppBootstrap", () => {
         expect(onError).toHaveBeenCalledWith(
             "Failed to restore the database from backup."
         );
-        expect(result.current.open).toBe(false);
+        // Kept open so the restore can be tried again without restarting.
+        expect(result.current.open).toBe(true);
         expect(result.current.isRestoring).toBe(false);
     });
 

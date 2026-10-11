@@ -310,10 +310,15 @@ by mistake) while its automatic backups are still next to where it was. Kavynex 
 new empty database in that case, because the daily backup of an empty database would replace one
 good snapshot a day until none were left. It offers to restore the newest healthy backup instead.
 
-**Start empty** is for when the database was removed on purpose to start over. It opens a new, empty
-library and leaves the backups where they are. The daily backup skips an empty database while any
-snapshot still holds a library, so nothing is pushed out until the new library has content of its
-own.
+**Start empty** is for when the database was removed on purpose to start over. It asks once more, then
+moves the backups into a `set-aside-backups/<UTC time>/` folder next to where the database was
+(`docs/DIRECTORIES.md` lists it per OS) and opens a new, empty library. Left where they were, the
+new library's own daily backup would replace them one a day. Diagnostics lists the folder and opens
+it. To go back to one of them, pick it in **Settings > Database > Import**. The files there are named
+`kavynex-bak.db`, `kavynex-bak-1.db` and so on, newest first, and keep their original dates.
+
+If an external backup folder is set, the copies of the old library there are not replaced either.
+The new database's first copy renames them to `kavynex-backup-previous-<time>.db` and keeps them.
 
 ## After a restore or an import, Diagnostics lists many orphan files
 

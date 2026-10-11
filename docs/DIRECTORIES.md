@@ -47,7 +47,16 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   path to catch subtler damage a `quick_check` would pass.
 - `kavynex.db.swapped-at`: when an import, its undo or a restore last replaced the database, in
   seconds since the epoch. The orphan removal refuses for 30 days after it. The set-aside database's
-  own modification time cannot answer that, since a rename keeps the time of its last write.
+  own modification time is consulted alongside it, since it is never newer than the swap that set it
+  aside, and either one answering recent is enough. Start empty records a swap too.
+- `kavynex.db.lineage`: an id given to a database created from nothing (a first run, a reinstall,
+  Start empty). The external mirror labels its copies with it, so a later database can tell the copies
+  an earlier one left in the folder and set them aside instead of rotating them out
+  (`db_backup/lineage.rs`). A database older than this file has none.
+- `set-aside-backups/<UTC time>/`: the snapshots that were here when Start empty was chosen, renamed
+  to `kavynex-bak.db`, `kavynex-bak-1.db`, `kavynex-pre-migration-v15.db` and so on so Settings >
+  Database > Import reads them directly. Nothing deletes this folder. Diagnostics reports it and opens
+  it.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
   (the snapshot being vacuumed, before it is promoted to `.bak`), `.import-staged` /
   `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
@@ -119,7 +128,10 @@ in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir` wri
 `kavynex-backup.db` there once a day, rotated as `kavynex-backup.db.1` / `kavynex-backup.db.2`
 (`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the same atomic `export_database`. Only the
 database is mirrored (the media files are not), and the folder is left untouched when it is
-unreachable (an unplugged drive) rather than recreated.
+unreachable (an unplugged drive) rather than recreated. Next to the copies sits
+`kavynex-backup.lineage`, naming the database they were made from, and copies an earlier database
+left there are renamed to `kavynex-backup-previous-<UTC time>[-N].db` and kept rather than rotated
+out (see `docs/DATABASE.md`).
 
 What is at stake if it is left off is the metadata rather than the media. The comments, the live
 chat, the titles, the publication dates and the channel/watched state all live only in the database,

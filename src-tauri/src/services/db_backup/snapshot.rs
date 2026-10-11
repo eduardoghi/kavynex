@@ -53,7 +53,7 @@ pub(super) fn generation_backup_path(db_path: &Path, generation: usize) -> PathB
 
 /// Whether the database behind `pool` has any channel or media. A query that fails answers yes, so a
 /// database the check cannot read is backed up as before rather than skipped.
-async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
+pub(super) async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
     sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM channels) OR EXISTS(SELECT 1 FROM videos)",
     )
@@ -62,30 +62,50 @@ async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
     .unwrap_or(true)
 }
 
-/// Whether any of the daily generations holds a library. A snapshot that cannot be opened counts
-/// as not holding one, since it is not a copy worth keeping the rotation still for.
+/// Whether any of the daily generations holds a library.
 async fn any_generation_holds_library(db_path: &Path) -> bool {
-    for generation in 0..=BACKUP_ROTATED_GENERATIONS {
-        let path = generation_backup_path(db_path, generation);
+    let generations: Vec<PathBuf> = (0..=BACKUP_ROTATED_GENERATIONS)
+        .map(|generation| generation_backup_path(db_path, generation))
+        .collect();
 
+    any_holds_library(&generations).await
+}
+
+/// Whether any of the snapshot files `paths` holds a channel or a media.
+///
+/// A file SQLite reports as damaged, or as not a database, counts as not holding one, since it is
+/// not a copy worth keeping the rotation still for. A file that could not be read at all (another
+/// program holding it) counts as holding one. Nothing is known about its contents, and the cost of
+/// guessing wrong the other way is rotating out the snapshot that held the library.
+pub(super) async fn any_holds_library(paths: &[PathBuf]) -> bool {
+    for path in paths {
         if !path.exists() {
             continue;
         }
 
-        let Ok(pool) = open(&path).await else {
-            continue;
+        let pool = match super::connect(path).await {
+            Ok(pool) => pool,
+            Err(error) => {
+                if crate::services::database::sqlite_error_means_damage(&error) {
+                    continue;
+                }
+
+                return true;
+            }
         };
 
-        let holds = sqlx::query_scalar::<_, bool>(
+        let answer = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM channels) OR EXISTS(SELECT 1 FROM videos)",
         )
         .fetch_one(&pool)
-        .await
-        .unwrap_or(false);
+        .await;
         pool.close().await;
 
-        if holds {
-            return true;
+        match answer {
+            Ok(true) => return true,
+            Ok(false) => {}
+            Err(error) if crate::services::database::sqlite_error_means_damage(&error) => {}
+            Err(_) => return true,
         }
     }
 
@@ -346,6 +366,71 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         Ok(true)
     })
     .await
+}
+
+/// The folder, beside the database, that holds snapshots set aside when the user started over with an
+/// empty database (see [`set_aside_backups_for_empty_start`]).
+pub const SET_ASIDE_BACKUPS_DIR: &str = "set-aside-backups";
+
+/// Moves every snapshot a restore could pick into `set-aside-backups/<UTC time>/` beside the database,
+/// for a user who chose to start with an empty library rather than restore. Returns the folder, or
+/// `None` when there was nothing to move.
+///
+/// Left where they were, the snapshots would be rotated out by the new database's own daily backup
+/// one a day, once it holds anything, and nothing in the app could restore them after the new
+/// database opened. Here they are kept for good, under names ending in `.db` so Settings > Database >
+/// Import can read one directly.
+pub fn set_aside_backups_for_empty_start(db_path: &Path) -> AppResult<Option<PathBuf>> {
+    let candidates = backup_candidates(db_path);
+
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(parent) = db_path.parent() else {
+        return Ok(None);
+    };
+
+    let folder = parent
+        .join(SET_ASIDE_BACKUPS_DIR)
+        .join(chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string());
+    std::fs::create_dir_all(&folder)
+        .map_err(|error| backup_error("failed to create the folder for the old backups", error))?;
+
+    let prefix = db_path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "kavynex.db".to_string());
+
+    for candidate in candidates {
+        let suffix = candidate
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .and_then(|name| name.strip_prefix(&prefix).map(str::to_string))
+            .unwrap_or_default();
+
+        // `.bak` -> `kavynex-bak.db`, `.bak.3` -> `kavynex-bak-3.db`, `.pre-migration-v15` ->
+        // `kavynex-pre-migration-v15.db`.
+        let label = suffix.trim_start_matches('.').replace('.', "-");
+        let target = folder.join(format!("kavynex-{label}.db"));
+
+        crate::services::filesystem::rename_retrying(&candidate, &target)
+            .map_err(|error| backup_error("failed to set aside an old backup", error))?;
+        // Both directories changed. The one the file left and the one it arrived in.
+        crate::services::filesystem::fsync_parent_dir(&target);
+    }
+
+    crate::services::filesystem::fsync_parent_dir(db_path);
+
+    logger::warn(
+        "db_backup",
+        format!(
+            "started with an empty database and kept the old backups in {}",
+            logger::redact_path(&folder)
+        ),
+    );
+
+    Ok(Some(folder))
 }
 
 /// Whether any snapshot a restore could pick is on disk next to `db_path`.

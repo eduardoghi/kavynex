@@ -253,6 +253,7 @@ const folderSummarySchema = z.object({
 const keptFilesSummarySchema = z.object({
     libraryTrash: folderSummarySchema.nullable(),
     recoveredDownloads: folderSummarySchema,
+    setAsideBackups: folderSummarySchema,
 });
 
 const externalBackupStatusSchema = z.object({

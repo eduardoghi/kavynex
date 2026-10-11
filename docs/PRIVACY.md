@@ -100,6 +100,8 @@ do not, and without the database Kavynex cannot tell which video each file belon
 the external backup above turned on, its `kavynex-backup.db` can be brought back through Settings >
 Database > Import. Import does not read from a `\\server\share` path, so a mirror kept on a network
 share has to be copied to a local folder first (a share mounted as a drive letter works as it is).
+Pointing the new install at the same folder first is safe too. Its first copy renames the old ones
+to `kavynex-backup-previous-<time>.db` instead of replacing them, and those import the same way.
 
 To remove everything, delete the library folder plus the three app directories (config, cache and
 logs). The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the

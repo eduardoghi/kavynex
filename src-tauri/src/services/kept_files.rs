@@ -1,6 +1,9 @@
-//! The two folders where the app keeps a file it could not put where it belonged, so the user can
-//! see that they hold something and open them.
+//! The folders where the app keeps a file it could not put where it belonged, or one it set aside
+//! rather than delete, so the user can see that they hold something and open them.
 //!
+//! The set-aside backups folder (`<app config>/set-aside-backups`) holds the database snapshots that
+//! were there when the user started over with an empty database (see
+//! `db_backup::set_aside_backups_for_empty_start`). Nothing empties it either.
 //! The library trash (`<library>/.trash`) holds what Remove orphan files moved aside, for
 //! [`ORPHAN_GRACE_PERIOD`](crate::services::library::cleanup::ORPHAN_GRACE_PERIOD). The recovered
 //! downloads folder (`<app local data>/recovered-downloads`) holds a finished download that could
@@ -30,7 +33,7 @@ pub struct FolderSummary {
     pub bytes: u64,
 }
 
-/// Both kept folders, for Diagnostics.
+/// The kept folders, for Diagnostics.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/types/generated/")]
@@ -38,6 +41,7 @@ pub struct KeptFilesSummary {
     /// `None` when no library is configured or its folder is not there.
     pub library_trash: Option<FolderSummary>,
     pub recovered_downloads: FolderSummary,
+    pub set_aside_backups: FolderSummary,
 }
 
 /// Which kept folder to open.
@@ -47,6 +51,7 @@ pub struct KeptFilesSummary {
 pub enum KeptFolder {
     LibraryTrash,
     RecoveredDownloads,
+    SetAsideBackups,
 }
 
 /// Counts the regular files under `dir` and their sizes. Links are not followed, so the count is
@@ -106,6 +111,13 @@ pub fn recovered_downloads_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<Path
     })?;
 
     Ok(dir)
+}
+
+/// Where the snapshots set aside by an empty start are kept, beside the database at `db_path`.
+pub fn set_aside_backups_dir(db_path: &Path) -> Option<PathBuf> {
+    db_path
+        .parent()
+        .map(|dir| dir.join(crate::services::db_backup::SET_ASIDE_BACKUPS_DIR))
 }
 
 /// The library trash under `library_dir`, when it is a real folder there.

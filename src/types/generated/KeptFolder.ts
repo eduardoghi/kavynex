@@ -3,4 +3,4 @@
 /**
  * Which kept folder to open.
  */
-export type KeptFolder = "libraryTrash" | "recoveredDownloads";
+export type KeptFolder = "libraryTrash" | "recoveredDownloads" | "setAsideBackups";

@@ -147,6 +147,27 @@ describe("ConfirmDeleteModal", () => {
         await waitFor(() => expect(cancelButton).toHaveFocus());
     });
 
+    it("sends initial focus to confirm when asked, for a prompt whose cancel slot is the risky one", async () => {
+        renderWithMantine(
+            <ConfirmDeleteModal
+                opened
+                onClose={vi.fn()}
+                onConfirm={vi.fn()}
+                message="Restore?"
+                confirmLabel="Restore"
+                cancelLabel="Start empty"
+                autoFocus="confirm"
+            />
+        );
+
+        const confirmButton = screen.getByRole("button", { name: "Restore" });
+
+        expect(screen.getByRole("button", { name: "Start empty" })).not.toHaveAttribute(
+            "data-autofocus"
+        );
+        await waitFor(() => expect(confirmButton).toHaveFocus());
+    });
+
     it("has no detectable accessibility violations", async () => {
         // Scanned from document.body, not the render container. Mantine mounts the dialog in a
         // portal beside the container, so a scan rooted there covers an empty wrapper and passes

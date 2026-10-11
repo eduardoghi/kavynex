@@ -254,7 +254,10 @@ function createDatabaseRecovery(): DatabaseRecoveryController {
         reason: "damaged",
         backedUpAtMs: null,
         isRestoring: false,
+        confirmingStartEmpty: false,
         restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+        askToStartEmpty: vi.fn(),
+        cancelStartEmpty: vi.fn(),
         startEmpty: vi.fn().mockResolvedValue(undefined),
         dismiss: vi.fn(),
     };
@@ -310,6 +313,48 @@ describe("HomeModals", () => {
         // Suspense fallback is `null`, so nothing else in the tree would say so.
         expect(await screen.findByText("Settings")).toBeInTheDocument();
         expect((await screen.findAllByText("Diagnostics")).length).toBeGreaterThan(0);
+    });
+
+    it("puts focus on Restore when the database is missing, and asks before starting empty", async () => {
+        const props = createProps();
+        props.databaseRecovery = {
+            ...props.databaseRecovery,
+            open: true,
+            reason: "missing",
+        };
+
+        renderWithMantine(<HomeModals {...props} />);
+
+        // Other modals in this tree can hold focus here, so the attribute Mantine focuses is asserted.
+        expect(await screen.findByRole("button", { name: "Restore" })).toHaveAttribute(
+            "data-autofocus"
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Start empty…" }));
+
+        expect(props.databaseRecovery.askToStartEmpty).toHaveBeenCalledTimes(1);
+        expect(props.databaseRecovery.startEmpty).not.toHaveBeenCalled();
+    });
+
+    it("starts empty only from the second question, where Back has focus", async () => {
+        const props = createProps();
+        props.databaseRecovery = {
+            ...props.databaseRecovery,
+            open: true,
+            reason: "missing",
+            confirmingStartEmpty: true,
+        };
+
+        renderWithMantine(<HomeModals {...props} />);
+
+        const back = await screen.findByRole("button", { name: "Back" });
+        expect(back).toHaveAttribute("data-autofocus");
+
+        fireEvent.click(back);
+        expect(props.databaseRecovery.cancelStartEmpty).toHaveBeenCalledTimes(1);
+
+        fireEvent.click(screen.getByRole("button", { name: "Start empty" }));
+        expect(props.databaseRecovery.startEmpty).toHaveBeenCalledTimes(1);
     });
 
     it("warns that deleting media permanently removes the file from disk", () => {

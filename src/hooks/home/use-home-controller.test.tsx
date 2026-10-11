@@ -393,7 +393,10 @@ describe("useHomeController", () => {
             reason: "damaged",
             backedUpAtMs: null,
             isRestoring: false,
+            confirmingStartEmpty: false,
             restoreFromBackup: vi.fn().mockResolvedValue(undefined),
+            askToStartEmpty: vi.fn(),
+            cancelStartEmpty: vi.fn(),
             startEmpty: vi.fn().mockResolvedValue(undefined),
             dismiss: vi.fn(),
         });

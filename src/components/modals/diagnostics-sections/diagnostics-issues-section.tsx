@@ -27,6 +27,7 @@ const ORPHAN_REMOVAL_REFUSAL_TEXT: Record<OrphanRemovalRefusal, string> = {
 const KEPT_FOLDER_BY_ISSUE_CODE: Readonly<Record<string, KeptFolder>> = {
     RECOVERED_DOWNLOADS_PRESENT: "recoveredDownloads",
     LIBRARY_TRASH_HOLDS_FILES: "libraryTrash",
+    SET_ASIDE_BACKUPS_PRESENT: "setAsideBackups",
 };
 
 type DiagnosticsIssuesSectionProps = {

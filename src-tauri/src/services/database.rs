@@ -399,6 +399,10 @@ async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool>
         return Err(error);
     }
 
+    // Read before the open, which creates the file. A database made from nothing gets a new lineage
+    // id once its schema is in place (see db_backup::lineage).
+    let created_from_nothing = !database_file_holds_data(path);
+
     // The pre-migration snapshot only matters when a migration will actually run (so a bad
     // migration or corruption can be rolled back). When one is pending, snapshot
     // synchronously before opening the pool. Otherwise, defer the daily snapshot to a
@@ -499,6 +503,10 @@ async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool>
                 error.to_string(),
             )
         })?;
+
+    if created_from_nothing {
+        crate::services::db_backup::record_new_lineage(path);
+    }
 
     if !migration_pending {
         // No migration ran, so the snapshot was skipped above. Take the (throttled) daily
@@ -1109,6 +1117,11 @@ mod tests {
             .expect("the v5 fixture must open and migrate");
         pool.close().await;
 
+        assert!(
+            !dir.join("kavynex.db.lineage").exists(),
+            "a database that already existed keeps mirroring without a lineage id"
+        );
+
         let snapshot = dir.join("kavynex.db.pre-migration-v5");
         assert!(
             snapshot.is_file(),
@@ -1205,6 +1218,10 @@ mod tests {
         pool.close().await;
 
         assert!(path.is_file());
+        assert!(
+            dir.join("kavynex.db.lineage").is_file(),
+            "a database made from nothing gets a lineage id for its external copies"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

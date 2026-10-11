@@ -21,6 +21,9 @@ type ConfirmDeleteModalProps = {
     // Only the Cancel button dismisses it: no Esc, no click outside, no close button. For a prompt
     // that does not come back once dismissed, so a stray key cannot be the decision.
     requireExplicitChoice?: boolean;
+    // Which button takes focus when the modal opens. Cancel by default, so Enter on a destructive
+    // prompt does nothing destructive. "confirm" is for a prompt whose cancel slot is the risky one.
+    autoFocus?: "cancel" | "confirm";
 };
 
 export function ConfirmDeleteModal({
@@ -36,6 +39,7 @@ export function ConfirmDeleteModal({
     confirmIcon = <Trash2 size={18} />,
     loading = false,
     requireExplicitChoice = false,
+    autoFocus = "cancel",
 }: ConfirmDeleteModalProps): JSX.Element {
     const modalLock = useModalLock(loading || requireExplicitChoice, onClose);
 
@@ -78,7 +82,7 @@ export function ConfirmDeleteModal({
                             variant="subtle"
                             onClick={onClose}
                             disabled={loading}
-                            data-autofocus
+                            data-autofocus={autoFocus === "cancel" || undefined}
                         >
                             {cancelLabel}
                         </Button>
@@ -88,6 +92,7 @@ export function ConfirmDeleteModal({
                             color={confirmColor}
                             leftSection={confirmIcon}
                             loading={loading}
+                            data-autofocus={autoFocus === "confirm" || undefined}
                         >
                             {confirmLabel}
                         </Button>
