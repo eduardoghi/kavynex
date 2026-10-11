@@ -329,14 +329,19 @@ export type FlatCommentRow = {
 // still be indented to show the reply hierarchy.
 export function flattenCommentTree(nodes: CommentTreeNode[], level = 0): FlatCommentRow[] {
     const rows: FlatCommentRow[] = [];
+    appendFlattened(nodes, level, rows);
+    return rows;
+}
 
+// Into one shared array rather than spreading each subtree's array into its parent's. A spread
+// passes every element as an argument, and a thread with more replies than the engine accepts as
+// arguments (around a hundred thousand) threw a RangeError while searching its comments.
+function appendFlattened(nodes: CommentTreeNode[], level: number, rows: FlatCommentRow[]): void {
     for (const node of nodes) {
         rows.push({ node, level });
 
         if (node.replies.length > 0) {
-            rows.push(...flattenCommentTree(node.replies, level + 1));
+            appendFlattened(node.replies, level + 1, rows);
         }
     }
-
-    return rows;
 }

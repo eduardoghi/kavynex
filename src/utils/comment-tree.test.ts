@@ -253,6 +253,22 @@ describe("filterCommentTree", () => {
 });
 
 describe("flattenCommentTree", () => {
+    it("flattens a thread with more replies than a call accepts as arguments", () => {
+        // A spread of each subtree into its parent threw a RangeError past roughly a hundred
+        // thousand rows in one thread.
+        const replies = Array.from({ length: 200_000 }, (_, index) =>
+            comment({ id: index + 2, comment_id: `r${index}`, parent_comment_id: "root" })
+        );
+        const tree = [
+            {
+                ...comment({ id: 1, comment_id: "root" }),
+                replies: replies.map((reply) => ({ ...reply, replies: [] })),
+            },
+        ];
+
+        expect(flattenCommentTree(tree)).toHaveLength(200_001);
+    });
+
     it("flattens a tree into a pre-order list tagging each node with its depth", () => {
         const tree = buildCommentTree(
             [
