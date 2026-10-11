@@ -12,7 +12,7 @@ vi.mock("../utils/app-logger", () => ({
 import { resolveDisplayThumbnails } from "../services/thumbnail-service";
 import type { DisplayThumbnailResolution } from "../services/thumbnail-service";
 import { logError } from "../utils/app-logger";
-import { useDisplayThumbnails } from "./use-display-thumbnails";
+import { keepWithinCeiling, useDisplayThumbnails } from "./use-display-thumbnails";
 
 /**
  * A resolution where every listed path resolved to a derivative. The common case, and the one where
@@ -506,5 +506,19 @@ describe("useDisplayThumbnails", () => {
         });
 
         expect(logError).not.toHaveBeenCalled();
+    });
+});
+
+describe("keepWithinCeiling", () => {
+    it("keeps everything under the ceiling and only the current paths past it", () => {
+        const current = new Set(["a", "b"]);
+        const small = new Set(["a", "x"]);
+
+        expect(keepWithinCeiling(small, current)).toBe(small);
+
+        const large = new Set(Array.from({ length: 10_001 }, (_, index) => `p${index}`));
+        large.add("a");
+
+        expect([...keepWithinCeiling(large, current)]).toEqual(["a"]);
     });
 });

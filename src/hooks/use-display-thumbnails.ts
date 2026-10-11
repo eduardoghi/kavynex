@@ -27,6 +27,22 @@ const DISPLAY_RETRY_DELAY_MS = 1500;
 // drawing the stored thumbnail, which is this hook's declared fallback.
 const MAX_DISPLAY_RETRIES = 3;
 
+// How many resolved and settled paths are remembered before the ones the current list does not show
+// are let go. The two only grew within a library, by every thumbnail of every channel visited in the
+// session. A path let go is asked about again if its channel comes back, which costs one call, since
+// the derivative itself stays on disk.
+const MAX_REMEMBERED_PATHS = 10_000;
+
+// `remembered` without the entries outside `current` once it holds more than the ceiling, otherwise
+// unchanged.
+export function keepWithinCeiling<T>(remembered: Set<T>, current: ReadonlySet<T>): Set<T> {
+    if (remembered.size <= MAX_REMEMBERED_PATHS) {
+        return remembered;
+    }
+
+    return new Set([...remembered].filter((entry) => current.has(entry)));
+}
+
 /**
  * Resolves display-sized copies of the thumbnails a list of media points at, so the grid can draw a
  * smaller decode than the stored file.
@@ -114,6 +130,10 @@ export function useDisplayThumbnails(
     // as true as they were. One for a library no longer in use is dropped.
     const currentLibraryRef = useRef(libraryPath);
 
+    // The paths the grid shows right now, which are the ones kept when the remembered sets reach
+    // their ceiling. Read inside a resolution that may land after a newer request began.
+    const currentRequestKeyRef = useRef("");
+
     // A stable identity for "which paths are being asked about", so the effect below re-runs when
     // the set changes and not when the array is merely rebuilt with the same contents, which the
     // grid does on every render of its parent.
@@ -144,6 +164,8 @@ export function useDisplayThumbnails(
         // A different set of paths is a different request, so it starts with a full retry budget.
         // Compared against a ref rather than reset by its own effect, because this runs again for
         // the *same* request on every retry tick and must not clear the count then.
+        currentRequestKeyRef.current = requestKey;
+
         if (retriedRequestRef.current !== requestKey) {
             retriedRequestRef.current = requestKey;
             retriesSpentRef.current = 0;
@@ -181,6 +203,9 @@ export function useDisplayThumbnails(
                 for (const path of settledPaths) {
                     settledPathsRef.current.add(path);
                 }
+
+                const current = new Set(currentRequestKeyRef.current.split(REQUEST_KEY_SEPARATOR));
+                settledPathsRef.current = keepWithinCeiling(settledPathsRef.current, current);
 
                 // Paths of this request the backend left for later. The backend was busy (its one
                 // resolve slot taken by another page) or ran out of its per-call generation budget,
@@ -222,7 +247,13 @@ export function useDisplayThumbnails(
                         merged.set(path, displayPath);
                     }
 
-                    return merged;
+                    const kept = keepWithinCeiling(new Set(merged.keys()), current);
+
+                    if (kept.size === merged.size) {
+                        return merged;
+                    }
+
+                    return new Map([...merged].filter(([path]) => kept.has(path)));
                 });
             } catch (error) {
                 // Purely an optimization. The grid is already rendering the stored thumbnails, so a
