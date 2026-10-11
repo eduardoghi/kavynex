@@ -104,6 +104,7 @@ export type TauriCommandReturns = {
     get_database_import_undo_status: boolean;
     undo_database_import: void;
     check_database_integrity: DatabaseIntegrityReport;
+    rebuild_database_indexes: DatabaseIntegrityReport;
     compact_database: DatabaseCompaction;
     get_app_settings: StoredAppSettingsPayload;
     set_app_settings: void;

@@ -272,18 +272,35 @@ pub async fn undo_database_import<R: Runtime>(app: AppHandle<R>) -> AppResult<()
 pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<DatabaseIntegrityReport> {
     let pool = db.pool().await?;
     let report = db_backup::run_full_integrity_check(&pool).await?;
-
-    // The same bookkeeping as the weekly background check, so a check the user ran stops (or
-    // resumes) the daily backup's rotation the same way. A test database has no path to write to.
-    if !db.path().as_os_str().is_empty() {
-        if report.ok {
-            db_backup::mark_integrity_check_passed(db.path());
-        } else {
-            db_backup::mark_integrity_check_failed(db.path());
-        }
-    }
+    record_integrity_check(&db, &report);
 
     Ok(report)
+}
+
+/// Rebuilds the live database's indexes and checks it again (see `db_backup::rebuild_indexes`).
+/// Offered by the Diagnostics dialog when a check found damage, since damage limited to an index is
+/// fixed this way without restoring a backup.
+#[tauri::command]
+pub async fn rebuild_database_indexes(db: State<'_, Db>) -> AppResult<DatabaseIntegrityReport> {
+    let pool = db.pool().await?;
+    let report = db_backup::rebuild_indexes(&pool).await?;
+    record_integrity_check(&db, &report);
+
+    Ok(report)
+}
+
+/// The same bookkeeping as the weekly background check, so a check the user ran stops (or resumes)
+/// the daily backup's rotation the same way. A test database has no path to write to.
+fn record_integrity_check(db: &Db, report: &DatabaseIntegrityReport) {
+    if db.path().as_os_str().is_empty() {
+        return;
+    }
+
+    if report.ok {
+        db_backup::mark_integrity_check_passed(db.path());
+    } else {
+        db_backup::mark_integrity_check_failed(db.path());
+    }
 }
 
 /// Rewrites the live database without the space deleted rows left behind. User-triggered from the
@@ -306,7 +323,8 @@ mod tests {
         let app = mock_builder()
             .invoke_handler(tauri::generate_handler![
                 ensure_database_ready,
-                check_database_integrity
+                check_database_integrity,
+                rebuild_database_indexes
             ])
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -341,6 +359,21 @@ mod tests {
             report,
             serde_json::json!({ "ok": true, "problems": [], "truncated": false }),
             "a freshly migrated database should pass integrity_check with nothing to report"
+        );
+    }
+
+    #[test]
+    fn rebuild_database_indexes_command_reports_the_check_after_it_over_ipc() {
+        let webview = test_webview(memory_db());
+
+        let report = invoke(&webview, "rebuild_database_indexes", serde_json::json!({}))
+            .unwrap()
+            .deserialize::<serde_json::Value>()
+            .unwrap();
+
+        assert_eq!(
+            report,
+            serde_json::json!({ "ok": true, "problems": [], "truncated": false })
         );
     }
 

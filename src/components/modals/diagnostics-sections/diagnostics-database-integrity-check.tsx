@@ -4,7 +4,8 @@ import { useDatabaseIntegrityCheck } from "../../../hooks/use-database-integrity
 import { AppButton } from "../../ui/app-button";
 
 export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
-    const { loading, result, runCheck } = useDatabaseIntegrityCheck();
+    const { loading, rebuilding, result, runCheck, rebuildIndexes } =
+        useDatabaseIntegrityCheck();
 
     return (
         <Stack gap="xs">
@@ -14,6 +15,7 @@ export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
                     appVariant="secondary"
                     onClick={() => void runCheck()}
                     loading={loading}
+                    disabled={rebuilding}
                 >
                     Run full integrity check
                 </AppButton>
@@ -25,6 +27,13 @@ export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
                         <Group gap={6} c="green">
                             <CheckCircle2 size={16} />
                             <Text size="sm">No problems found</Text>
+                        </Group>
+                    )}
+
+                    {result?.status === "repaired" && (
+                        <Group gap={6} c="green">
+                            <CheckCircle2 size={16} />
+                            <Text size="sm">Indexes rebuilt. No problems found</Text>
                         </Group>
                     )}
 
@@ -44,15 +53,39 @@ export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
                 </Box>
             </Group>
 
-            {/* What SQLite actually reported. A bare "there is a problem" leaves nothing to act on
-                or to put in a bug report, and the app already has the answer to this: restoring
-                from one of the automatic backups, in Settings. */}
+            {/* What SQLite actually reported, and what to do about it. A bare "there is a problem"
+                leaves nothing to act on or to put in a bug report. The rebuild comes first because
+                it keeps everything added since the newest backup, and damage limited to an index
+                is the common case. Restoring a backup is a manual step (see TROUBLESHOOTING.md). */}
             {result?.status === "problem" && (
                 <Stack gap={4}>
-                    <Text size="sm" c="dimmed">
-                        Your data is still on disk. To recover, open Settings and restore the
-                        database from a backup. Kavynex keeps several automatic snapshots.
-                    </Text>
+                    {result.rebuilt ? (
+                        <Text size="sm" c="dimmed">
+                            Rebuilding the indexes did not fix it, so the damage is in the data
+                            itself. Export a copy from Settings &gt; Database, then restore an
+                            automatic backup as described in "Kavynex reports a corrupted database"
+                            in the troubleshooting guide.
+                        </Text>
+                    ) : (
+                        <>
+                            <Text size="sm" c="dimmed">
+                                Your data is still on disk. If only an index is damaged, rebuilding
+                                the indexes fixes it and keeps everything in the database.
+                            </Text>
+
+                            <Group>
+                                <AppButton
+                                    type="button"
+                                    appVariant="secondary"
+                                    onClick={() => void rebuildIndexes()}
+                                    loading={rebuilding}
+                                    disabled={loading}
+                                >
+                                    Rebuild indexes
+                                </AppButton>
+                            </Group>
+                        </>
+                    )}
 
                     {result.problems.length > 0 && (
                         <Box>

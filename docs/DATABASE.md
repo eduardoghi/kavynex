@@ -407,6 +407,17 @@ rewriting a damaged file can drop the rows it cannot read while the daily backup
 it, and when the disk holding the database has less than twice its size free. Diagnostics stays open
 while it runs.
 
+### Rebuilding the indexes
+
+When the full integrity check in Diagnostics finds damage, it offers a "Rebuild indexes" button
+(`rebuild_database_indexes`, in `db_backup/integrity.rs`). It runs `REINDEX` under the backup lock
+and then the full check again, and records that second check the way any other check is recorded.
+Damage limited to an index ("row N missing from index", "wrong # of entries in index") is gone after
+it, with nothing lost, so a pass clears `.integrity-failed` and the daily backups rotate again. Damage
+to a table is not repaired, and a `REINDEX` that SQLite stops with `SQLITE_CORRUPT` is reported
+through the check that follows rather than as an error. Diagnostics then points to restoring a backup
+by hand (`TROUBLESHOOTING.md`).
+
 The app does not run `PRAGMA optimize`. On a database that was never analyzed it runs `ANALYZE`,
 and the statistics that leaves behind change what the query planner picks. Every index choice
 recorded in `ddl.rs` was measured against the planner without statistics, which is the one
@@ -451,9 +462,12 @@ Before snapshotting, the source database must pass `PRAGMA quick_check` (`is_hea
 database that fails it is skipped so a corrupt database is never allowed to overwrite a
 good backup. The fresh snapshot passes the same check before any generation is rotated for it, and
 while the weekly full `integrity_check` has found damage nothing has cleared (`.integrity-failed`),
-no snapshot is taken, so the generations from before the damage stay. A database with no channel and
-no media is skipped too while any daily generation still
-holds a library, since the daily snapshot of a database recreated empty would otherwise push out one
+no generation is rotated, so the generations from before the damage stay. The database is copied to
+`kavynex.db.after-damage` instead, at most once a day and over the previous copy, so what is added
+after the damage still has a copy. `VACUUM INTO` rebuilds the indexes in it, so damage limited to an
+index does not carry over. It is never a restore candidate, since it is a copy of a database known
+to be damaged, and nothing removes it. A database with no channel and no media is skipped too while
+any daily generation still holds a library, since the daily snapshot of a database recreated empty would otherwise push out one
 good generation a day. For the same reason, a database file that is missing while snapshots of it
 are still on disk is not created on open (`DatabaseMissing`). The startup recovery offers the restore,
 or starting with an empty library (`start_with_empty_database`). Rotation keeps several generations. Before the fresh snapshot is written, the
@@ -559,10 +573,12 @@ up separately.
   deleted, so the newest good copy is never thrown away. A rotation that stops short (an older copy
   the target will not let go of) keeps `.new` the same way rather than renaming it over the current
   copy, and the next run tries again.
-- **Skipped** while the last full integrity check found damage (`.integrity-failed`), and while the
-  database is empty and a copy in the folder holds a library. These are the two rules the daily `.bak`
-  snapshot keeps, for the same reason. Without them a database recreated empty, or one found damaged,
-  replaced all three copies in three days.
+- **Not rotated** while the last full integrity check found damage (`.integrity-failed`), and
+  **skipped** while the database is empty and a copy in the folder holds a library. These are the two
+  rules the daily `.bak` snapshot keeps, for the same reason. Without them a database recreated empty,
+  or one found damaged, replaced all three copies in three days. A damaged database is exported to
+  `kavynex-backup.after-damage.db` beside the copies instead, at most once a day, like
+  `kavynex.db.after-damage`.
 - **Copies of an earlier database are set aside, not rotated out.** A database created from nothing
   (a first run, a reinstall, Start empty) gets a lineage id in `kavynex.db.lineage`, and the mirror
   writes the same id to `kavynex-backup.lineage` next to its copies. When the database has an id and

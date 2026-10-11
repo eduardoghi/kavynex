@@ -257,6 +257,10 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
     );
     paths.push(snapshot::temp_backup_path(db_path));
 
+    // The copy a damaged database gets while it holds the rotation still, and its scratch name.
+    paths.push(snapshot::after_damage_path(db_path));
+    paths.push(snapshot::after_damage_temp_path(db_path));
+
     // One snapshot per schema version an upgrade migrated from, and the scratch name it vacuums
     // into. Named for every version up to this build's, since at most two exist at a time but which
     // two depends on the upgrades this machine went through.
@@ -464,7 +468,8 @@ pub use restore::{restore_database_from_backup, resume_interrupted_restore};
 mod integrity;
 pub use integrity::{
     integrity_check_failed, integrity_check_is_due, mark_integrity_check_failed,
-    mark_integrity_check_passed, run_full_integrity_check, DatabaseIntegrityReport,
+    mark_integrity_check_passed, rebuild_indexes, run_full_integrity_check,
+    DatabaseIntegrityReport,
 };
 // The integrity tests now live in `integrity.rs` itself, so the `#[cfg(test)] use` that used to
 // pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with

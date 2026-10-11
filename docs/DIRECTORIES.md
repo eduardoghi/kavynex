@@ -45,6 +45,13 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   full `integrity_check` passed. It throttles that check to once a week (`db_backup/integrity.rs`); the
   automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
   path to catch subtler damage a `quick_check` would pass.
+- `kavynex.db.integrity-failed`: an empty marker a full `integrity_check` that found damage leaves,
+  and a passing check or a database swap removes. While it is there the daily snapshot does not
+  rotate, the external mirror does not rotate either, and compaction is refused.
+- `kavynex.db.after-damage`: the daily copy of the database taken while `.integrity-failed` is there,
+  in place of a new generation. One file, replaced at most once a day, never restored automatically
+  and never removed. It holds what was added after the damage, which the generations from before it
+  do not.
 - `kavynex.db.swapped-at`: when an import, its undo or a restore last replaced the database, in
   seconds since the epoch. The orphan removal refuses for 30 days after it. The set-aside database's
   own modification time is consulted alongside it, since it is never newer than the swap that set it
@@ -58,7 +65,8 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   Database > Import reads them directly. Nothing deletes this folder. Diagnostics reports it and opens
   it.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
-  (the snapshot being vacuumed, before it is promoted to `.bak`), `.import-staged` /
+  (the snapshot being vacuumed, before it is promoted to `.bak`), `.after-damage.tmp` (the same for
+  `.after-damage`), `.import-staged` /
   `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
   below), `.restore.tmp` (a snapshot being restored), `.corrupt.tmp` (a database being moved
   aside), and `.export-staging` next to a chosen *export* destination rather than here.
@@ -131,7 +139,8 @@ database is mirrored (the media files are not), and the folder is left untouched
 unreachable (an unplugged drive) rather than recreated. Next to the copies sits
 `kavynex-backup.lineage`, naming the database they were made from, and copies an earlier database
 left there are renamed to `kavynex-backup-previous-<UTC time>[-N].db` and kept rather than rotated
-out (see `docs/DATABASE.md`).
+out (see `docs/DATABASE.md`). While the database's last full check found damage the copies are not
+rotated, and `kavynex-backup.after-damage.db` gets the day's copy instead.
 
 What is at stake if it is left off is the metadata rather than the media. The comments, the live
 chat, the titles, the publication dates and the channel/watched state all live only in the database,

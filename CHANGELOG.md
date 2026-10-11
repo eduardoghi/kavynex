@@ -21,6 +21,11 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   or to start with an empty library, instead of quietly creating an empty database.
 - Diagnostics has a Compact database button that gives the space left by deleted media and comments
   back to the disk.
+- When the full integrity check finds damage, Diagnostics offers to rebuild the database indexes,
+  which repairs damage limited to an index without restoring a backup.
+- While a database the integrity check found damaged is in use, the daily backup keeps the
+  snapshots from before the damage and writes the day's copy to `kavynex.db.after-damage` (and
+  `kavynex-backup.after-damage.db` in the external folder), so what you add meanwhile is backed up.
 - Settings > Database says when the external backup folder cannot be reached and when the last copy
   was written, and calls out a copy more than three days old.
 - Diagnostics shows the downloads kept after they could not be placed in the library and the files

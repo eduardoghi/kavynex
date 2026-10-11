@@ -178,6 +178,23 @@ async fn a_failed_full_check_keeps_the_rotation_still_until_a_check_passes() {
     assert!(!backup_database(&db).await.unwrap());
     assert!(!backup_path(&db).exists());
 
+    // What is added meanwhile still gets a copy, outside the rotation and once a day.
+    let after_damage = snapshot::after_damage_path(&db);
+    assert!(after_damage.exists());
+    assert!(!snapshot::after_damage_temp_path(&db).exists());
+    let copied_at = std::fs::metadata(&after_damage)
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert!(!backup_database(&db).await.unwrap());
+    assert_eq!(
+        std::fs::metadata(&after_damage)
+            .unwrap()
+            .modified()
+            .unwrap(),
+        copied_at
+    );
+
     mark_integrity_check_passed(&db);
     assert!(!integrity_check_failed(&db));
     assert!(backup_database(&db).await.unwrap());
@@ -348,6 +365,7 @@ async fn mirror_keeps_the_copies_taken_before_a_failed_full_check() {
         .await
         .unwrap());
     assert!(!generation_external_backup_path(&external, 1).exists());
+    assert!(external.join("kavynex-backup.after-damage.db").exists());
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&external);
@@ -580,6 +598,8 @@ fn managed_database_paths_names_every_file_this_module_writes() {
         "kavynex.db.bak.5",
         "kavynex.db.bak.6",
         "kavynex.db.bak.tmp",
+        "kavynex.db.after-damage",
+        "kavynex.db.after-damage.tmp",
     ]
     .iter()
     .map(|name| name.to_string())

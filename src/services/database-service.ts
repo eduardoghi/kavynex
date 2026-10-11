@@ -106,6 +106,15 @@ export async function checkDatabaseIntegrity(): Promise<DatabaseIntegrityReport>
 }
 
 /**
+ * Rebuilds every index of the live database with `REINDEX` and runs the full integrity check again.
+ * Resolves to that second check. Damage limited to an index is gone after it, and damage to a table
+ * is still reported.
+ */
+export async function rebuildDatabaseIndexes(): Promise<DatabaseIntegrityReport> {
+    return invokeCommand(TAURI_COMMANDS.REBUILD_DATABASE_INDEXES);
+}
+
+/**
  * Runs `VACUUM` on the live database, which gives the space deleted rows left behind back to the
  * disk. Resolves to how much smaller the database got.
  */

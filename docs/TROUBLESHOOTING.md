@@ -295,7 +295,12 @@ database against the files on disk.
 The automatic restore runs only when the database cannot be opened. The weekly background check is
 more thorough, and it can find damage in a database that still opens. Kavynex then says so and
 keeps running on it, since the damage may be limited to an index and the newest backup can be up
-to a day old. To restore a backup by hand:
+to a day old. Run the full integrity check in Diagnostics and use Rebuild indexes when it offers
+it. Damage limited to an index is repaired that way with nothing lost. While the damage is there,
+the daily snapshots from before it are left alone and each day's copy goes to
+`kavynex.db.after-damage` (and `kavynex-backup.after-damage.db` in the external folder) instead.
+
+If the check still finds damage after the rebuild, restore a backup by hand:
 
 1. Export the database from Settings > Database, so the current state is kept wherever you choose.
 2. Close Kavynex.

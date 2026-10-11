@@ -123,6 +123,57 @@ pub(super) fn temp_backup_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".bak.tmp")
 }
 
+/// A copy of a database whose last full check found damage, taken while the rotation is held still
+/// for it (see [`backup_database`]). One file, replaced at most once a day.
+pub(super) fn after_damage_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".after-damage")
+}
+
+pub(super) fn after_damage_temp_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".after-damage.tmp")
+}
+
+/// Copies a database the last full check found damaged into [`after_damage_path`], at most once a
+/// day, and returns whether a copy was written.
+///
+/// The rotation stays still for such a database, so the generations from before the damage are not
+/// pushed out by copies of it. Without this copy, whatever the user adds after the damage has no
+/// backup at all until a check passes or the database is replaced. It is not a restore candidate,
+/// since it is a copy of a database known to be damaged. `VACUUM INTO` rebuilds the indexes in it,
+/// so damage limited to an index does not carry over.
+async fn snapshot_after_damage(db_path: &Path, pool: &sqlx::SqlitePool) -> AppResult<bool> {
+    let target = after_damage_path(db_path);
+
+    if is_recent(&target, BACKUP_MIN_INTERVAL_SECS) {
+        return Ok(false);
+    }
+
+    let temp = after_damage_temp_path(db_path);
+    let _ = std::fs::remove_file(&temp);
+
+    let vacuum_sql = format!(
+        "VACUUM INTO '{}'",
+        escape_sql_literal(&temp.to_string_lossy())
+    );
+
+    if let Err(error) = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
+        .execute(pool)
+        .await
+    {
+        let _ = std::fs::remove_file(&temp);
+        return Err(backup_error("failed to copy the damaged database", error));
+    }
+
+    crate::utils::task::run_blocking(move || {
+        crate::services::filesystem::fsync_file(&temp)?;
+        crate::services::filesystem::rename_retrying(&temp, &target)
+            .map_err(|error| backup_error("failed to store the damaged database's copy", error))?;
+        crate::services::filesystem::fsync_parent_dir(&target);
+        Ok(true)
+    })
+    .await
+}
+
 /// How many pre-migration snapshots are kept. Each is a full copy, taken once per upgrade that
 /// changes the schema, so this many cover the upgrade that just ran and the one before it.
 pub(super) const PRE_MIGRATION_SNAPSHOTS_KEPT: usize = 2;
@@ -269,15 +320,27 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         return Ok(false);
     }
 
-    // A database whose last full check found damage is not snapshotted until a check passes or it is
+    // A database whose last full check found damage is not rotated in until a check passes or it is
     // replaced. It passes `quick_check`, so without this each day would rotate out one generation
-    // taken before the damage in favor of a copy of it.
+    // taken before the damage in favor of a copy of it. It still gets a daily copy of its own, outside
+    // the rotation (see `snapshot_after_damage`).
     if super::integrity::integrity_check_failed(db_path) {
+        let copied = snapshot_after_damage(db_path, &pool).await;
         pool.close().await;
-        logger::warn(
-            "db_backup",
-            "skipping backup: the last full integrity check found damage, so the older snapshots are kept",
-        );
+
+        match copied {
+            Ok(true) => logger::warn(
+                "db_backup",
+                "the last full integrity check found damage, so the snapshots from before it are \
+                 kept and today's copy went to kavynex.db.after-damage",
+            ),
+            Ok(false) => {}
+            Err(error) => logger::warn(
+                "db_backup",
+                format!("the damaged database could not be copied outside the rotation: {error}"),
+            ),
+        }
+
         return Ok(false);
     }
 

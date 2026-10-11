@@ -701,6 +701,7 @@ pub fn run() {
             commands::database::get_database_import_undo_status,
             commands::database::undo_database_import,
             commands::database::check_database_integrity,
+            commands::database::rebuild_database_indexes,
             commands::database::compact_database,
             commands::dialog::open_folder_dialog,
             commands::dialog::open_file_dialog,

@@ -154,6 +154,42 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
     .await
 }
 
+/// The copy the mirror keeps beside its generations while the database's last full check found
+/// damage. One file, replaced at most once a day, never rotated and never offered for a restore.
+pub(super) fn external_after_damage_path(dir: &Path) -> PathBuf {
+    dir.join("kavynex-backup.after-damage.db")
+}
+
+/// Copies a database the last full check found damaged into [`external_after_damage_path`], at most
+/// once a day, and leaves the generations from before the damage as they are. Same reasoning as
+/// `snapshot::snapshot_after_damage`. Best effort, logged either way.
+async fn mirror_damaged_database(db_path: &Path, external_dir: &Path) {
+    let target = external_after_damage_path(external_dir);
+
+    let recent = {
+        let target = target.clone();
+        run_blocking(move || Ok::<bool, AppError>(is_recent(&target, BACKUP_MIN_INTERVAL_SECS)))
+            .await
+            .unwrap_or(true)
+    };
+
+    if recent {
+        return;
+    }
+
+    match export_database(db_path, &target).await {
+        Ok(()) => crate::services::logger::warn(
+            "db_backup",
+            "the last full integrity check found damage, so the external copies from before it are \
+             kept and today's copy went to kavynex-backup.after-damage.db",
+        ),
+        Err(error) => crate::services::logger::warn(
+            "db_backup",
+            format!("the damaged database could not be copied to the external folder: {error}"),
+        ),
+    }
+}
+
 pub(super) fn external_backup_path(dir: &Path) -> PathBuf {
     dir.join(EXTERNAL_BACKUP_FILE_NAME)
 }
@@ -293,10 +329,7 @@ pub async fn mirror_database_to_external_dir(
     // database is not rotated over copies that hold a library. The second is what a database
     // recreated empty does in the three days the mirror keeps.
     if super::integrity::integrity_check_failed(db_path) {
-        crate::services::logger::warn(
-            "db_backup",
-            "external backup skipped: the last full integrity check found damage, so the copies              taken before it are kept",
-        );
+        mirror_damaged_database(db_path, external_dir).await;
         return Ok(false);
     }
 

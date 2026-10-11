@@ -358,6 +358,8 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     get_database_backup_status: databaseBackupStatusSchema satisfies z.ZodType<DatabaseBackupStatus>,
     check_database_integrity:
         databaseIntegrityReportSchema satisfies z.ZodType<DatabaseIntegrityReport>,
+    rebuild_database_indexes:
+        databaseIntegrityReportSchema satisfies z.ZodType<DatabaseIntegrityReport>,
     compact_database: databaseCompactionSchema satisfies z.ZodType<DatabaseCompaction>,
     get_app_settings: storedAppSettingsPayloadSchema satisfies z.ZodType<StoredAppSettingsPayload>,
     take_startup_notices: startupNoticesSchema satisfies z.ZodType<StartupNotices>,

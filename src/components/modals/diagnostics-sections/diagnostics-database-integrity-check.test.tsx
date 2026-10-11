@@ -2,10 +2,11 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DiagnosticsDatabaseIntegrityCheck } from "./diagnostics-database-integrity-check";
 import { renderWithMantine } from "../../../test/test-utils";
-import { checkDatabaseIntegrity } from "../../../services/database-service";
+import { checkDatabaseIntegrity, rebuildDatabaseIndexes } from "../../../services/database-service";
 
 vi.mock("../../../services/database-service", () => ({
     checkDatabaseIntegrity: vi.fn(),
+    rebuildDatabaseIndexes: vi.fn(),
 }));
 
 describe("DiagnosticsDatabaseIntegrityCheck", () => {
@@ -51,7 +52,52 @@ describe("DiagnosticsDatabaseIntegrityCheck", () => {
             screen.getByText(/row 3 missing from index idx_videos_channel_id/)
         ).toBeInTheDocument();
         expect(screen.getByText(/page 42 is never used/)).toBeInTheDocument();
-        expect(screen.getByText(/restore the database from a backup/)).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Rebuild indexes" })).toBeInTheDocument();
+    });
+
+    it("rebuilds the indexes and says when that cleared the damage", async () => {
+        vi.mocked(checkDatabaseIntegrity).mockResolvedValueOnce({
+            ok: false,
+            problems: ["row 3 missing from index idx_videos_channel_id"],
+            truncated: false,
+        });
+        vi.mocked(rebuildDatabaseIndexes).mockResolvedValueOnce({
+            ok: true,
+            problems: [],
+            truncated: false,
+        });
+
+        renderWithMantine(<DiagnosticsDatabaseIntegrityCheck />);
+
+        fireEvent.click(screen.getByRole("button", { name: "Run full integrity check" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Rebuild indexes" }));
+
+        await waitFor(() => {
+            expect(screen.getByRole("status")).toHaveTextContent("Indexes rebuilt. No problems found");
+        });
+    });
+
+    it("points to a backup restore when a rebuild leaves damage behind", async () => {
+        vi.mocked(checkDatabaseIntegrity).mockResolvedValueOnce({
+            ok: false,
+            problems: ["page 9: btreeInitPage() returns error code 11"],
+            truncated: false,
+        });
+        vi.mocked(rebuildDatabaseIndexes).mockResolvedValueOnce({
+            ok: false,
+            problems: ["page 9: btreeInitPage() returns error code 11"],
+            truncated: false,
+        });
+
+        renderWithMantine(<DiagnosticsDatabaseIntegrityCheck />);
+
+        fireEvent.click(screen.getByRole("button", { name: "Run full integrity check" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Rebuild indexes" }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/restore an\s+automatic backup/)).toBeInTheDocument();
+        });
+        expect(screen.queryByRole("button", { name: "Rebuild indexes" })).not.toBeInTheDocument();
     });
 
     it("says when the problem list was cut short", async () => {

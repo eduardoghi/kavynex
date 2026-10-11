@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use sqlx::SqlitePool;
 
-use super::{backup_error, is_recent, sibling};
+use super::{backup_error, is_recent, sibling, BACKUP_IN_PROGRESS};
 use crate::services::logger;
 use crate::AppResult;
 
@@ -107,6 +107,45 @@ pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIn
         truncated: rows.len() > problems.len(),
         problems,
     })
+}
+
+/// Rebuilds every index of the database behind `pool` with `REINDEX` and runs the full check again.
+/// User-triggered from the Diagnostics dialog when a check found damage.
+///
+/// Damage limited to an index ("row N missing from index", "wrong # of entries in index") is gone
+/// after this, without restoring a backup and losing what was added since it was taken. Damage to a
+/// table is not, and the check that follows still reports it. A `REINDEX` that SQLite stops with
+/// `SQLITE_CORRUPT` is that second case, so it is not an error here. The check that follows says
+/// what is damaged. Holds the backup lock, so it never overlaps the daily snapshot.
+pub async fn rebuild_indexes(pool: &SqlitePool) -> AppResult<DatabaseIntegrityReport> {
+    let _guard = BACKUP_IN_PROGRESS.lock().await;
+
+    if let Err(error) = sqlx::query("REINDEX").execute(pool).await {
+        if sqlite_error_code(&error).as_deref() != Some(SQLITE_CORRUPT_CODE) {
+            return Err(backup_error(
+                "failed to rebuild the database indexes",
+                error,
+            ));
+        }
+
+        logger::warn(
+            "db_integrity",
+            format!("REINDEX stopped on a damaged table: {error}"),
+        );
+    }
+
+    let report = run_full_integrity_check(pool).await?;
+
+    logger::info(
+        "db_integrity",
+        if report.ok {
+            "rebuilt the database indexes and the full check passed"
+        } else {
+            "rebuilt the database indexes and the full check still found damage"
+        },
+    );
+
+    Ok(report)
 }
 
 // How often the background full integrity check runs at most. The automatic paths (open, backup)
@@ -377,6 +416,54 @@ mod tests {
             report.problems.len() <= MAX_INTEGRITY_PROBLEMS,
             "the problem list is capped so a shredded database cannot report unboundedly"
         );
+
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rebuild_indexes_repairs_an_index_that_disagrees_with_its_table() {
+        // The index is left holding entries for a column other than the one its definition names,
+        // which is what a damaged index page looks like to `integrity_check`. The table is intact.
+        let dir = temp_dir("reindex");
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("kavynex.db");
+
+        let options = SqliteConnectOptions::new()
+            .filename(&db)
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options.clone())
+            .await
+            .unwrap();
+
+        for statement in [
+            "CREATE TABLE t (a TEXT, b TEXT)",
+            "CREATE INDEX t_a ON t (a)",
+            "INSERT INTO t VALUES ('1', 'z'), ('2', 'y'), ('3', 'x')",
+            "PRAGMA writable_schema = ON",
+            "UPDATE sqlite_master SET sql = 'CREATE INDEX t_a ON t (b)' WHERE name = 't_a'",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+        pool.close().await;
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        assert!(!run_full_integrity_check(&pool).await.unwrap().ok);
+
+        let report = rebuild_indexes(&pool).await.unwrap();
+        assert!(report.ok, "{:?}", report.problems);
+
+        let (rows,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 3);
 
         pool.close().await;
         let _ = std::fs::remove_dir_all(&dir);

@@ -7,6 +7,7 @@ import {
     getDatabaseBackupStatus,
     getDatabaseImportUndoStatus,
     importDatabase,
+    rebuildDatabaseIndexes,
     restoreDatabaseFromBackup,
     undoDatabaseImport,
 } from "./database-service";
@@ -94,6 +95,14 @@ describe("database command wrappers", () => {
             [TAURI_COMMANDS.GET_DATABASE_BACKUP_STATUS],
             [TAURI_COMMANDS.GET_DATABASE_IMPORT_UNDO_STATUS],
         ]);
+    });
+
+    it("returns the check that follows an index rebuild", async () => {
+        const report = { ok: true, problems: [], truncated: false };
+        vi.mocked(invokeCommand).mockResolvedValueOnce(report as never);
+
+        await expect(rebuildDatabaseIndexes()).resolves.toBe(report);
+        expect(invokeCommand).toHaveBeenCalledWith(TAURI_COMMANDS.REBUILD_DATABASE_INDEXES);
     });
 
     it("lets a refused import reach the caller", async () => {
