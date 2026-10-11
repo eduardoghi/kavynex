@@ -236,6 +236,11 @@ pub async fn register_library_asset_scope<R: Runtime>(
     // run them off the async runtime's worker threads, consistent with other commands
     // (e.g. commands/library.rs, commands/thumbnail.rs).
     run_blocking(move || {
+        // A grant that fails does not stop the others. Returning at the first one left the folders
+        // after it unserved and skipped the share registration below, so a library could end up
+        // half readable. The first error is still what the command reports.
+        let mut first_error = None;
+
         for managed_dir in managed_asset_scope_dirs(Path::new(&trimmed)) {
             // Create the subdirectory first so its canonical (`\\?\`) form resolves and can be
             // granted alongside the plain form. Best effort. A subdir that cannot be created is
@@ -256,16 +261,20 @@ pub async fn register_library_asset_scope<R: Runtime>(
                 continue;
             }
 
-            grant_path_with_canonical(&managed_dir, "library subdirectory", |dir| {
-                allow_directory_in_asset_scope(&app, dir)
-            })?;
+            if let Err(error) =
+                grant_path_with_canonical(&managed_dir, "library subdirectory", |dir| {
+                    allow_directory_in_asset_scope(&app, dir)
+                })
+            {
+                first_error.get_or_insert(error);
+            }
         }
 
         // The player's protocol refuses network paths before resolving them, except on the share
         // the library is served from (see media_protocol::may_resolve).
         crate::services::media_protocol::set_library_share(&trimmed);
 
-        Ok(())
+        first_error.map_or(Ok(()), Err)
     })
     .await
 }
