@@ -237,8 +237,8 @@ const THUMBNAIL_SCALE_FILTER: &str = "scale='min(640,iw)':-1";
 /// FFmpeg detects a format by content, not by extension, so a `.jpg` or `.mp4` that is really a
 /// playlist (HLS, concat) makes it open whatever the playlist names. Over `http` that tells a server
 /// the file was opened, and a `\\host\share` name on Windows sends it the user's NTLM hash. The
-/// app only ever reads local files, so nothing else is allowed.
-pub(crate) const INPUT_PROTOCOLS: &str = "file,pipe";
+/// app only ever reads local files by path, so nothing else is allowed, not even `pipe`.
+pub(crate) const INPUT_PROTOCOLS: &str = "file";
 
 /// The name a generated preview lands under, content-addressed by the source file's hash and
 /// carrying the container both thumbnail producers share ([`THUMBNAIL_OUTPUT_FORMAT`]).
@@ -271,6 +271,10 @@ fn build_video_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
         "1".to_string(),
         "-vf".to_string(),
         THUMBNAIL_SCALE_FILTER.to_string(),
+        // One image to one file name. Without it the image muxer reads a % in the path (a user
+        // name, a folder) as the start of a frame-number pattern and fails.
+        "-update".to_string(),
+        "1".to_string(),
         out_thumbnail.to_string_lossy().to_string(),
     ]
 }
@@ -292,6 +296,10 @@ fn build_audio_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
         "1".to_string(),
         "-vf".to_string(),
         THUMBNAIL_SCALE_FILTER.to_string(),
+        // One image to one file name. Without it the image muxer reads a % in the path (a user
+        // name, a folder) as the start of a frame-number pattern and fails.
+        "-update".to_string(),
+        "1".to_string(),
         out_thumbnail.to_string_lossy().to_string(),
     ]
 }
@@ -597,13 +605,15 @@ mod tests {
                 "-ss",
                 "0.1",
                 "-protocol_whitelist",
-                "file,pipe",
+                "file",
                 "-i",
                 "/tmp/clip.mp4",
                 "-frames:v",
                 "1",
                 "-vf",
                 THUMBNAIL_SCALE_FILTER,
+                "-update",
+                "1",
                 "/tmp/out.jpg",
             ]
         );
@@ -619,7 +629,7 @@ mod tests {
             vec![
                 "-y",
                 "-protocol_whitelist",
-                "file,pipe",
+                "file",
                 "-i",
                 "/tmp/song.mp3",
                 "-map",
@@ -628,6 +638,8 @@ mod tests {
                 "1",
                 "-vf",
                 THUMBNAIL_SCALE_FILTER,
+                "-update",
+                "1",
                 "/tmp/out.jpg",
             ]
         );

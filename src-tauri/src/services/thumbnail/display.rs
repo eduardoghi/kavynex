@@ -404,6 +404,10 @@ fn build_display_thumbnail_args(source_path: &Path, out_path: &Path) -> Vec<Stri
         "1".to_string(),
         "-vf".to_string(),
         format!("scale='min({DISPLAY_THUMBNAIL_MAX_WIDTH},iw)':-1"),
+        // One image to one file name. Without it the image muxer reads a % in the path (a user
+        // name, a folder) as the start of a frame-number pattern and fails.
+        "-update".to_string(),
+        "1".to_string(),
         out_path.to_string_lossy().to_string(),
     ]
 }

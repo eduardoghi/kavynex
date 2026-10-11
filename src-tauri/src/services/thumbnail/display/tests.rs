@@ -368,13 +368,15 @@ fn display_thumbnail_args_scale_down_without_ever_upscaling() {
         vec![
             "-y",
             "-protocol_whitelist",
-            "file,pipe",
+            "file",
             "-i",
             "/lib/thumb.jpg",
             "-frames:v",
             "1",
             "-vf",
             &format!("scale='min({DISPLAY_THUMBNAIL_MAX_WIDTH},iw)':-1"),
+            "-update",
+            "1",
             "/cache/out.jpg",
         ]
     );
