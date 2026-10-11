@@ -157,12 +157,16 @@ jobs:
                   deb=$(find src-tauri/target -type f -path '*/bundle/deb/*.deb' | head -n1)
                   mkdir -p "$RUNNER_TEMP/deb"
                   cp "$deb" "$RUNNER_TEMP/deb/"
+                  # A bare container has no D-Bus session, which the single-instance plugin talks to
+                  # on Linux, and the first run of this step sat for over an hour without one. The
+                  # session is provided, and the timeout turns any other hang into a failure with a
+                  # log instead of a job that waits for the six-hour limit.
                   docker run --rm -v "$RUNNER_TEMP/deb:/deb:ro" ubuntu:24.04 bash -euo pipefail -c '
                       export DEBIAN_FRONTEND=noninteractive
                       apt-get update
-                      apt-get install -y /deb/*.deb xvfb xauth
+                      apt-get install -y /deb/*.deb xvfb xauth dbus
                       export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
-                      xvfb-run -a kavynex --smoke-test
+                      dbus-run-session -- xvfb-run -a timeout 300 kavynex --smoke-test
                   '
 
             # Extract-and-run, because the runner has no FUSE. What is exercised is the bundle's own
