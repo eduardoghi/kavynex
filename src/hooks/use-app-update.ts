@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { Update } from "../lib/tauri-platform";
 import { useMemoObject } from "./use-memo-object";
 import { useRequestGuard } from "./use-request-guard";
@@ -6,6 +6,7 @@ import {
     checkAppUpdate,
     installAppUpdate,
     lastCheckedUpdate,
+    subscribeToCheckedUpdate,
     toAppUpdateInfo,
     type AppUpdateInfo,
     type AppUpdateProgress
@@ -49,6 +50,19 @@ export function useAppUpdate(): UseAppUpdateReturn {
         return found ? toAppUpdateInfo(found) : null;
     });
     const [progress, setProgress] = useState<AppUpdateProgress | null>(null);
+
+    // A check another instance of this hook ran (the startup one, from the Home controller) can land
+    // after this one was created, as it is when Settings was opened once before. Taken up only while
+    // this one has nothing of its own to show.
+    const checkedElsewhere = useSyncExternalStore(subscribeToCheckedUpdate, lastCheckedUpdate);
+
+    useEffect(() => {
+        if (checkedElsewhere && status === "idle") {
+            setUpdate(checkedElsewhere);
+            setUpdateInfo(toAppUpdateInfo(checkedElsewhere));
+            setStatus("available");
+        }
+    }, [checkedElsewhere, status]);
     const [errorMessage, setErrorMessage] = useState("");
 
     // Latest-wins over the update check, which is a network call with a 30s timeout

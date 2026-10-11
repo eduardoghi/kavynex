@@ -5,6 +5,7 @@ import {
     checkAppUpdate,
     installAppUpdate,
     lastCheckedUpdate,
+    subscribeToCheckedUpdate,
     toAppUpdateInfo,
     type AppUpdateInfo,
 } from "../services/app-update-service";
@@ -15,6 +16,7 @@ vi.mock("../services/app-update-service", () => ({
     installAppUpdate: vi.fn(),
     toAppUpdateInfo: vi.fn(),
     lastCheckedUpdate: vi.fn(() => null),
+    subscribeToCheckedUpdate: vi.fn(() => () => {}),
 }));
 
 vi.mock("../utils/app-logger", () => ({
@@ -51,6 +53,29 @@ function createUpdateInfo(overrides: Partial<AppUpdateInfo> = {}): AppUpdateInfo
 describe("useAppUpdate", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it("takes up an update the startup check found after this instance was created", () => {
+        let notify: () => void = () => {};
+        vi.mocked(subscribeToCheckedUpdate).mockImplementation((listener) => {
+            notify = listener;
+            return () => {};
+        });
+        const { result } = renderHook(() => useAppUpdate());
+        expect(result.current.status).toBe("idle");
+
+        const update = createUpdate();
+        vi.mocked(lastCheckedUpdate).mockReturnValue(update);
+        toAppUpdateInfoMock.mockReturnValue(createUpdateInfo());
+
+        act(() => {
+            notify();
+        });
+
+        expect(result.current.status).toBe("available");
+        expect(result.current.updateInfo?.version).toBe("1.1.0");
+
+        vi.mocked(lastCheckedUpdate).mockReturnValue(null);
     });
 
     it("starts in idle state with no update info, progress or error", () => {

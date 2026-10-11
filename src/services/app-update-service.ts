@@ -19,12 +19,23 @@ export type AppUpdateProgress = {
 // reach the install button.
 let lastFoundUpdate: Update | null = null;
 
+// Told when lastFoundUpdate changes, for a Settings already mounted when the startup check lands.
+const checkedUpdateListeners = new Set<() => void>();
+
+export function subscribeToCheckedUpdate(listener: () => void): () => void {
+    checkedUpdateListeners.add(listener);
+    return () => {
+        checkedUpdateListeners.delete(listener);
+    };
+}
+
 export async function checkAppUpdate(): Promise<Update | null> {
     const update = await checkForAppUpdate({
         timeout: 30000
     });
 
     lastFoundUpdate = update;
+    checkedUpdateListeners.forEach((listener) => listener());
 
     return update;
 }
