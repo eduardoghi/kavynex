@@ -550,7 +550,9 @@ jobs:
                   # number per page and the comparison below would be handed several. Today's run
                   # has eight artifacts against a hundred per page, so that would have worked and
                   # kept working until it silently did not.
-                  UPLOADED=$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100"                       --paginate --jq '.artifacts[].name'                       | grep -c '^cargo-mutants-output-shard-' || true)
+                  UPLOADED=$(gh api "repos/$GH_REPO/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+                      --paginate --jq '.artifacts[].name' \
+                      | grep -c '^cargo-mutants-output-shard-' || true)
 
                   if [ -z "$SHARD_TOTAL" ]; then
                       NO_VERDICT="yes"
@@ -590,7 +592,8 @@ jobs:
                   # run is still in progress when it would ask, and the API refuses. `retry-mutation.yml`
                   # does it on `workflow_run`, once the run has actually completed. All this does is
                   # stay quiet so the retry gets its turn before an issue is opened.
-                  if [ -n "$SILENT_SHARDS" ] && [ "$VERIFY_EXCLUSIONS_RESULT" != "failure" ]                       && [ "$RUN_ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+                  if [ -n "$SILENT_SHARDS" ] && [ "$VERIFY_EXCLUSIONS_RESULT" != "failure" ] \
+                      && [ "$RUN_ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
                       echo "$SILENT_SHARDS did not report. Attempt $RUN_ATTEMPT of $MAX_ATTEMPTS, so retry-mutation.yml will re-run the failed jobs and no issue is opened yet."
                       exit 0
                   fi
