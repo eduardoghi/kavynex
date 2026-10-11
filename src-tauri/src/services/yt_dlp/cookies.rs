@@ -390,6 +390,26 @@ impl RunCookies {
         }
     }
 
+    /// [`Self::prepare`] on the blocking pool, since the user's file can sit on a slow or mapped
+    /// drive.
+    pub async fn prepare_async(
+        cookies_path: Option<&str>,
+        scratch_root: std::path::PathBuf,
+    ) -> RunCookies {
+        let cookies_path = cookies_path.map(str::to_string);
+
+        crate::utils::task::run_blocking(move || {
+            Ok(RunCookies::prepare(cookies_path.as_deref(), &scratch_root))
+        })
+        .await
+        .unwrap_or(RunCookies {
+            copy: None,
+            original: None,
+            scratch: None,
+            snapshot: None,
+        })
+    }
+
     /// The cookies file to pass to yt-dlp for this run, if there is one.
     pub fn path(&self) -> Option<String> {
         self.copy

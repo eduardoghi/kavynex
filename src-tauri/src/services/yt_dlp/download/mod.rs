@@ -609,10 +609,11 @@ pub async fn download_media_from_url_async<R: Runtime>(
     };
 
     // yt-dlp reads and rewrites a copy in the run's own folder (see RunCookies).
-    let run_cookies = crate::services::yt_dlp::cookies::RunCookies::prepare(
+    let run_cookies = crate::services::yt_dlp::cookies::RunCookies::prepare_async(
         normalized_cookies_path.as_deref(),
-        &temp_dir,
-    );
+        temp_dir.clone(),
+    )
+    .await;
     let run_cookies_path = run_cookies.path();
 
     logger::info(

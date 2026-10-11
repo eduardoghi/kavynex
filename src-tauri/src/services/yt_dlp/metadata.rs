@@ -948,10 +948,11 @@ pub async fn fetch_youtube_comments_async<R: Runtime>(
     let url = format!("https://www.youtube.com/watch?v={}", normalized_video_id);
 
     // yt-dlp reads and rewrites a copy (see RunCookies).
-    let run_cookies = super::cookies::RunCookies::prepare(
+    let run_cookies = super::cookies::RunCookies::prepare_async(
         cookies_path,
-        &crate::services::temp_paths::yt_dlp_temp_dir(app)?,
-    );
+        crate::services::temp_paths::yt_dlp_temp_dir(app)?,
+    )
+    .await;
 
     let metadata = fetch_yt_dlp_metadata_with_comments(
         &yt_dlp,
@@ -1031,10 +1032,11 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     ];
 
     // yt-dlp reads and rewrites a copy (see RunCookies).
-    let run_cookies = super::cookies::RunCookies::prepare(
+    let run_cookies = super::cookies::RunCookies::prepare_async(
         cookies_path,
-        &crate::services::temp_paths::yt_dlp_temp_dir(app)?,
-    );
+        crate::services::temp_paths::yt_dlp_temp_dir(app)?,
+    )
+    .await;
 
     append_auth_args(&mut args, cookies_browser, run_cookies.path().as_deref());
     args.push("--".to_string());
