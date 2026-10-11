@@ -40,7 +40,9 @@ where
 ///
 /// Used to validate an imported database. `insert_media`'s `ON CONFLICT(channel_id, file_path)`
 /// upsert needs this unique index to exist, and a namesake database carrying the right columns but
-/// no such index would be accepted and then fail every insert at runtime. The index name is never
+/// no such index would be accepted and then fail every insert at runtime. A partial index
+/// (`CREATE UNIQUE INDEX ... WHERE`) does not count, since `ON CONFLICT` cannot use one either. The
+/// index name is never
 /// interpolated (it flows from `pragma_index_list` into `pragma_index_info` through the join), so
 /// a crafted index name in the untrusted import file cannot inject SQL. `table` is a `&'static str`
 /// constant, safe to interpolate for the same reason as `table_has_column`.
@@ -53,7 +55,7 @@ pub(crate) async fn table_has_unique_index_on(
         "SELECT il.name, ii.seqno, ii.name \
          FROM pragma_index_list('{table}') AS il \
          JOIN pragma_index_info(il.name) AS ii \
-         WHERE il.\"unique\" = 1"
+         WHERE il.\"unique\" = 1 AND il.partial = 0"
     )))
     .fetch_all(pool)
     .await

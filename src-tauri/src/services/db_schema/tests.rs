@@ -150,6 +150,26 @@ async fn video_comments_check_rejects_over_length_text() {
 }
 
 #[tokio::test]
+async fn a_partial_unique_index_does_not_count_as_the_media_key() {
+    // `ON CONFLICT(channel_id, file_path)` matches only a full unique index or constraint. A partial
+    // one passed the import gate and then made every insert fail at runtime.
+    let pool = memory_pool().await;
+
+    for statement in [
+        "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, file_path TEXT)",
+        "CREATE UNIQUE INDEX videos_partial_key ON videos(channel_id, file_path) WHERE id > 0",
+    ] {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+    }
+
+    assert!(
+        !table_has_unique_index_on(&pool, "videos", &["channel_id", "file_path"])
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
 async fn introspection_helpers_see_the_videos_constraints() {
     // Backs the import-validation helpers against the real schema. The (channel_id, file_path)
     // unique key comes from a table-level UNIQUE constraint (an auto-index, not a named
