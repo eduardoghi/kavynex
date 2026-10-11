@@ -174,6 +174,13 @@ attestation's `subject-path`) instead of leaving them to be noticed.
 Dropping a target is the other thing this makes expressible. With `"all"` there was nowhere to
 say that a format is not shipped.
 
+### Scheduled workflows on a quiet repository
+
+GitHub disables a workflow's `schedule:` trigger after 60 days without activity in a public
+repository, and says so only by email. `scheduled-audit.yml` and `mutation.yml` are the two this
+hits, and with them the weekly advisory check. After a long pause, open Actions and re-enable them,
+or push anything, before relying on them again.
+
 ### When a release dispatch fails
 
 The tag is created by `tauri-action` in step 3, i.e. *before* the `sbom`, `sbom-upload` and

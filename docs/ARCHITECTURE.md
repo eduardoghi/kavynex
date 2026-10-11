@@ -26,13 +26,14 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   `library.rs`, `logging.rs`, `dialog.rs`, `external.rs`, `startup.rs`, `webview_check.rs`). A
   command's job is to take the request from IPC, open the
   shared database pool or resolve an app path, and delegate to a service. It holds
-  essentially no logic of its own. Example (`commands/channels.rs`):
+  essentially no logic of its own. A command that only needs the database takes the managed `Db`
+  rather than the whole `AppHandle`. Example (`commands/channels.rs`):
 
     ```rust
     #[tauri::command]
-    pub async fn list_channels(app: AppHandle) -> AppResult<Vec<ChannelRow>> {
-        let pool = shared_pool(&app).await?;
-        repo::list_channels(pool).await
+    pub async fn list_channels(db: State<'_, Db>) -> AppResult<Vec<ChannelRow>> {
+        let pool = db.pool().await?;
+        repo::list_channels(&pool).await
     }
     ```
 
@@ -134,10 +135,13 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
 `src-tauri/src/lib.rs` wires all of this together. It registers the plugins (below), registers
 every command in `invoke_handler(tauri::generate_handler![...])`, and in `setup()` initializes the
-file logger, applies any staged database import before the connection pool opens, authorizes
-the cache directory in the asset-protocol scope, and spawns a background cleanup of stale
-temp files. On `ExitRequested` it cancels any in-flight yt-dlp/FFmpeg downloads so they are
-not left running as orphans.
+file logger, creates the main window, finishes an interrupted restore and applies any staged
+database import before the connection pool opens, authorizes the two cache subdirectories the
+webview renders from in the asset-protocol scope, and starts the background work: the stale temp
+and cookie-copy cleanup, the library leftovers sweep, the pending-media sweep (after 30s), the
+weekly full integrity check (after 120s) and the periodic backup with its external mirror (after
+60s, then every 6 hours). On `ExitRequested`, which a relaunch goes through too, it cancels the
+downloads, kills every tracked yt-dlp and FFmpeg child and checkpoints the write-ahead log.
 
 ### The plugin chain, and why its order matters once
 

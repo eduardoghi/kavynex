@@ -304,14 +304,15 @@ What else is done about it:
 The residual exposure is a compromised Tauri CLI, bundler or `tauri-action`, which run with the key,
 and a crate the signed build compiles after all if the rehearsal's check stops holding.
 `minimumReleaseAge` and `blockExoticSubdeps` (`pnpm-workspace.yaml`) plus `cargo-deny`'s source
-allow-list are what reduce the chance of such a dependency arriving in the first place. Rotating the minisign key is the response if a compromise is ever suspected (see "The
-updater signing key" above).
+allow-list are what reduce the chance of such a dependency arriving in the first place. Rotating
+the minisign key is the response if a compromise is ever suspected (see "The updater signing key"
+above).
 
 One asymmetry is worth stating plainly, because the two ecosystems get their publish-age
 cooling-off from different places and the two places do not cover the same thing:
 
-- **npm** has `minimumReleaseAge` (`pnpm-workspace.yaml`, 7200 minutes, five days), which pnpm enforces on
-  *every install*, including CI's `pnpm install --frozen-lockfile`. It is a property of the
+- **npm** has `minimumReleaseAge` (`pnpm-workspace.yaml`, 7200 minutes, five days), which pnpm
+  enforces on *every install*, including CI's `pnpm install --frozen-lockfile`. It is a property of the
   package manager, so nothing can add a too-new package to the tree, however the bump was
   authored.
 - **Both trees, plus the actions** have Dependabot's `cooldown: default-days: 5`

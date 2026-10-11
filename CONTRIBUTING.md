@@ -245,6 +245,15 @@ permanently, because a directory would imply it serves one area when every area 
   not be recreated when it changes, mirror it into a ref updated in an effect and read the ref inside
   the callback. See the `activeMediaRef` pattern in `media/use-media-actions.ts`.
 
+## Comments
+
+A comment says why the code is the way it is now, the constraint or the failure it avoids, in the
+present tense. The history of how it got there (what it used to do, which audit found what, the
+commit that changed it) belongs in the commit message, where `git log` and `git blame` keep it next
+to the change. A comment that narrates history has to be rewritten every time the code moves on, and
+the ones that were not are the stale comments every review finds. Measurements that justify a value
+(`media_protocol.rs`'s range cap) are the exception, since they are the reason, not the history.
+
 ## Commit conventions
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), with rules
