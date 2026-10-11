@@ -140,9 +140,32 @@ pub struct YtDlpMetadata {
     pub comment_count: Option<i64>,
 }
 
+/// A count or a size from yt-dlp's JSON, as an unsigned integer when it is one.
+///
+/// yt-dlp writes these as integers today, but a single field of another shape (a float such as
+/// `4182345.5`, a negative, a string) failed the whole metadata parse with it, which turns one odd
+/// value in one format into a media that cannot be added at all. A float is rounded, and anything
+/// that is not a non-negative number reads as absent, the way a missing field already does.
+fn lenient_u64<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+
+    Ok(value.and_then(|value| {
+        value.as_u64().or_else(|| {
+            value
+                .as_f64()
+                .filter(|number| number.is_finite() && *number >= 0.0 && *number <= u64::MAX as f64)
+                .map(|number| number.round() as u64)
+        })
+    }))
+}
+
 #[derive(Deserialize, Default, Clone, Debug)]
 pub struct YtDlpThumbnailMetadata {
     pub url: Option<String>,
+    #[serde(default, deserialize_with = "lenient_u64")]
     pub width: Option<u64>,
 }
 
@@ -153,10 +176,13 @@ pub struct YtDlpFormatMetadata {
     pub format: Option<String>,
     pub format_note: Option<String>,
     pub resolution: Option<String>,
+    #[serde(default, deserialize_with = "lenient_u64")]
     pub filesize: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_u64")]
     pub filesize_approx: Option<u64>,
     pub vcodec: Option<String>,
     pub acodec: Option<String>,
+    #[serde(default, deserialize_with = "lenient_u64")]
     pub height: Option<u64>,
     pub fps: Option<f64>,
     pub abr: Option<f64>,
@@ -176,7 +202,9 @@ pub struct YtDlpCommentMetadata {
     pub is_favorited: Option<bool>,
     pub is_pinned: Option<bool>,
     pub text: Option<String>,
+    #[serde(default, deserialize_with = "lenient_u64")]
     pub like_count: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_u64")]
     pub reply_count: Option<u64>,
     pub time_text: Option<String>,
     pub timestamp: Option<i64>,
@@ -280,4 +308,37 @@ pub struct ExternalToolsStatus {
     /// a missing one does not fail the check. yt-dlp still starts without it and downloads less
     /// (some formats go missing, some videos fail), which Diagnostics reports as a warning.
     pub js_runtime: ExternalToolHealth,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_odd_numeric_field_does_not_fail_the_whole_format() {
+        let format: YtDlpFormatMetadata = serde_json::from_value(serde_json::json!({
+            "format_id": "137",
+            "filesize": 1024,
+            "filesize_approx": 4182345.5,
+            "height": "1080",
+        }))
+        .unwrap();
+
+        assert_eq!(format.filesize, Some(1024));
+        assert_eq!(format.filesize_approx, Some(4182346));
+        assert_eq!(format.height, None);
+        assert_eq!(format.format_id.as_deref(), Some("137"));
+    }
+
+    #[test]
+    fn a_missing_or_negative_count_reads_as_absent() {
+        let comment: YtDlpCommentMetadata = serde_json::from_value(serde_json::json!({
+            "id": "c1",
+            "like_count": -3,
+        }))
+        .unwrap();
+
+        assert_eq!(comment.like_count, None);
+        assert_eq!(comment.reply_count, None);
+    }
 }
