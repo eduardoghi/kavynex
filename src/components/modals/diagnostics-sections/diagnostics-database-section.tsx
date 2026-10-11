@@ -11,8 +11,10 @@ import {
 
 export function DiagnosticsDatabaseSection({
     stats,
+    onCompactingChange,
 }: {
     stats: MediaRepositoryStats;
+    onCompactingChange?: (busy: boolean) => void;
 }): JSX.Element {
     return (
         <Stack gap="sm">
@@ -33,7 +35,7 @@ export function DiagnosticsDatabaseSection({
 
             <DiagnosticsDatabaseIntegrityCheck />
 
-            <DiagnosticsDatabaseCompaction />
+            <DiagnosticsDatabaseCompaction onBusyChange={onCompactingChange} />
         </Stack>
     );
 }

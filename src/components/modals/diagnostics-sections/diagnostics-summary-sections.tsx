@@ -10,6 +10,7 @@ import { DiagnosticsToolsAndLibrarySection } from "./diagnostics-tools-and-libra
 
 type DiagnosticsSummarySectionsProps = {
     summary: DiagnosticsSummary;
+    onCompactingChange?: (busy: boolean) => void;
 };
 
 // The report, in reading order. Each section is its own module and takes only the slice of the
@@ -18,6 +19,7 @@ type DiagnosticsSummarySectionsProps = {
 // only the data it reads. This component is the order and the rules between them, nothing else.
 export function DiagnosticsSummarySections({
     summary,
+    onCompactingChange,
 }: DiagnosticsSummarySectionsProps): JSX.Element {
     const diagnostics = summary.diagnostics;
 
@@ -44,7 +46,10 @@ export function DiagnosticsSummarySections({
 
             <Divider />
 
-            <DiagnosticsDatabaseSection stats={diagnostics.mediaRepositoryStats} />
+            <DiagnosticsDatabaseSection
+                stats={diagnostics.mediaRepositoryStats}
+                onCompactingChange={onCompactingChange}
+            />
 
             <Divider />
 

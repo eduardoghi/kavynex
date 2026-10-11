@@ -329,14 +329,14 @@ fn bytes_left_to_copy(old_library_dir: &Path, new_library_dir: &Path) -> AppResu
 
 /// Whether `available` bytes fit `needed`. An unknown free space lets the migration go ahead, as
 /// it did before this check existed, and the copy fails on its own when the disk fills.
-fn has_room_for(needed: u64, available: Option<u64>) -> bool {
+pub(crate) fn has_room_for(needed: u64, available: Option<u64>) -> bool {
     available.is_none_or(|available| available >= needed)
 }
 
 /// The bytes the current user can still write on the volume holding `path`, or `None` when the
 /// platform call fails.
 #[cfg(windows)]
-fn available_space_bytes(path: &Path) -> Option<u64> {
+pub(crate) fn available_space_bytes(path: &Path) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "kernel32")]
@@ -373,7 +373,7 @@ fn available_space_bytes(path: &Path) -> Option<u64> {
 /// Unix counterpart, through `statvfs`. `f_bavail` is the count available to an unprivileged
 /// process, which is what the copy runs as.
 #[cfg(unix)]
-fn available_space_bytes(path: &Path) -> Option<u64> {
+pub(crate) fn available_space_bytes(path: &Path) -> Option<u64> {
     use std::os::unix::ffi::OsStrExt;
 
     let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).ok()?;

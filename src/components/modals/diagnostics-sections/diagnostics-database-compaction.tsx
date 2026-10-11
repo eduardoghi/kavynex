@@ -1,10 +1,24 @@
 import { Box, Group, Stack, Text } from "@mantine/core";
+import { useEffect } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useDatabaseCompaction } from "../../../hooks/use-database-compaction";
 import { AppButton } from "../../ui/app-button";
 
-export function DiagnosticsDatabaseCompaction(): JSX.Element {
+// `onBusyChange` lets the modal hold itself open while the rewrite runs, so its result is not lost
+// to a close and the window cannot be dismissed halfway through a long VACUUM.
+export function DiagnosticsDatabaseCompaction({
+    onBusyChange,
+}: {
+    onBusyChange?: (busy: boolean) => void;
+}): JSX.Element {
     const { loading, result, runCompaction } = useDatabaseCompaction();
+
+    useEffect(() => {
+        onBusyChange?.(loading);
+    }, [loading, onBusyChange]);
+
+    // A section that goes away while busy must not leave the modal locked for good.
+    useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
     return (
         <Stack gap="xs">

@@ -291,7 +291,7 @@ pub async fn check_database_integrity(db: State<'_, Db>) -> AppResult<DatabaseIn
 #[tauri::command]
 pub async fn compact_database(db: State<'_, Db>) -> AppResult<DatabaseCompaction> {
     let pool = db.pool().await?;
-    db_backup::compact_database(&pool).await
+    db_backup::compact_database(&pool, db.path()).await
 }
 
 #[cfg(test)]

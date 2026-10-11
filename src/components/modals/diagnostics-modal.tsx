@@ -1,6 +1,7 @@
 import { Box, Group, Loader, Modal, Paper, ScrollArea, Stack, Text } from "@mantine/core";
 import { FolderOpen, RefreshCcw } from "lucide-react";
 import { useState } from "react";
+import { useModalLock } from "../../hooks/use-modal-lock";
 import type {
     DiagnosticsMediaTarget,
     DiagnosticsSummary,
@@ -52,6 +53,8 @@ export function DiagnosticsModal({
     onOpenKeptFolder,
 }: DiagnosticsModalProps): JSX.Element {
     const [confirmRemoveOrphansOpen, setConfirmRemoveOrphansOpen] = useState(false);
+    const [isCompacting, setIsCompacting] = useState(false);
+    const modalLock = useModalLock(isCompacting, onClose);
     const showInitialLoading = loading && !summary;
     const showRefreshingState = loading && !!summary;
     const orphanRemoval = summary?.diagnostics.orphanRemoval ?? null;
@@ -59,7 +62,6 @@ export function DiagnosticsModal({
     return (
         <Modal
             opened={opened}
-            onClose={onClose}
             title="Diagnostics"
             centered
             size="min(1200px, 96vw)"
@@ -70,6 +72,7 @@ export function DiagnosticsModal({
                 "aria-label": "Close diagnostics",
                 style: MODAL_CLOSE_BUTTON_STYLE,
             }}
+            {...modalLock}
             styles={{
                 content: {
                     height: "min(90vh, 980px)",
@@ -172,7 +175,10 @@ export function DiagnosticsModal({
 
                             {summary && (
                                 <>
-                                    <DiagnosticsSummarySections summary={summary} />
+                                    <DiagnosticsSummarySections
+                                        summary={summary}
+                                        onCompactingChange={setIsCompacting}
+                                    />
                                     <DiagnosticsIssuesSection
                                         issues={summary.issues}
                                         onOpenMedia={onOpenMedia}

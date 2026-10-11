@@ -394,7 +394,10 @@ has a "Compact database" button (`compact_database`, in `db_backup/compaction.rs
 next checkpoint. It holds the backup lock, so it never overlaps the daily snapshot, and a failure
 (most likely running out of disk, since `VACUUM` needs up to twice the database size while it runs)
 leaves the database as it was. It is never run automatically, because it reads and rewrites the
-whole file.
+whole file. It is refused (`DATABASE_COMPACTION_REFUSED`) while `.integrity-failed` is there, since
+rewriting a damaged file can drop the rows it cannot read while the daily backups are held still for
+it, and when the disk holding the database has less than twice its size free. Diagnostics stays open
+while it runs.
 
 The app does not run `PRAGMA optimize`. On a database that was never analyzed it runs `ANALYZE`,
 and the statistics that leaves behind change what the query planner picks. Every index choice

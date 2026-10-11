@@ -148,6 +148,9 @@ pub enum AppErrorCode {
     // nothing to open.
     FolderOpenFailed,
     KeptFolderEmpty,
+    // Compact database refused, because the last full check found damage or the disk lacks the room
+    // the rewrite needs.
+    DatabaseCompactionRefused,
 
     SourceThumbnailNotFound,
     InvalidSourceThumbnail,
@@ -312,6 +315,7 @@ impl AppErrorCode {
             Self::LogDirectoryOpenFailed => "LOG_DIRECTORY_OPEN_FAILED",
             Self::FolderOpenFailed => "FOLDER_OPEN_FAILED",
             Self::KeptFolderEmpty => "KEPT_FOLDER_EMPTY",
+            Self::DatabaseCompactionRefused => "DATABASE_COMPACTION_REFUSED",
             Self::SourceThumbnailNotFound => "SOURCE_THUMBNAIL_NOT_FOUND",
             Self::InvalidSourceThumbnail => "INVALID_SOURCE_THUMBNAIL",
             Self::InvalidThumbnailFile => "INVALID_THUMBNAIL_FILE",
