@@ -328,6 +328,21 @@ pub(crate) fn redact_sensitive_from_line(
     redacted.replace(url, &youtube_ref_for_log(url))
 }
 
+/// [`redact_sensitive_from_line`] for a run handed a copy of the cookies file. Both the user's path
+/// and the copy's are hidden, since the argv echo names the copy and the copy sits under the user's
+/// home folder too.
+pub(crate) fn redact_probe_line(
+    line: &str,
+    cookies_paths: [Option<&str>; 2],
+    cookies_browser: Option<&str>,
+    url: &str,
+) -> String {
+    let [user_path, copy_path] = cookies_paths;
+    let redacted = redact_sensitive_from_line(line, user_path, cookies_browser, url);
+
+    redact_cookies_path_from_line(&redacted, copy_path)
+}
+
 /// Hides the cookies file path and the profile of a `--cookies-from-browser` selector, in every
 /// spelling yt-dlp prints them. Shared by the metadata calls and the download, whose output reaches
 /// the same terminal and log.
@@ -1022,15 +1037,21 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     // The browser selector is redacted as it was *normalized* (the argv carries that form), so
     // the replacement matches the echoed value rather than whatever spacing the caller typed.
     let normalized_cookies_browser = normalize_cookies_browser(cookies_browser);
+    // The argv names the run's copy of the cookies file, not the user's, and the copy sits in the
+    // app's cache under the user's home folder. Both are redacted.
+    let run_cookies_path = run_cookies.path();
 
     for line in stdout_logs.iter_mut().chain(stderr_logs.iter_mut()) {
-        *line = redact_sensitive_from_line(
+        *line = redact_probe_line(
             line,
-            cookies_path,
+            [cookies_path, run_cookies_path.as_deref()],
             normalized_cookies_browser.as_deref(),
             &normalized_url,
         );
     }
+
+    // The probe is a full YouTube request, so the cookies it renewed are kept like a download's.
+    run_cookies.keep_refreshed();
 
     let metadata: YtDlpMetadata = serde_json::from_str(&json_payload).map_err(|e| {
         AppError::from_code_with_details(

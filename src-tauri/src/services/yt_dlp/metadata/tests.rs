@@ -5,9 +5,9 @@
 use super::{
     comments_extraction_looks_incomplete, comments_extractor_args, cookies_browser_from_args,
     cookies_path_from_args, is_valid_youtube_video_id, read_capped_json_stdout,
-    redact_cookies_from_line, redact_cookies_path_from_line, redact_sensitive_from_line,
-    resolve_youtube_video_id, run_yt_dlp_and_capture_json, sanitize_filename_component,
-    sanitize_identifier_component,
+    redact_cookies_from_line, redact_cookies_path_from_line, redact_probe_line,
+    redact_sensitive_from_line, resolve_youtube_video_id, run_yt_dlp_and_capture_json,
+    sanitize_filename_component, sanitize_identifier_component,
 };
 use crate::AppErrorCode;
 
@@ -697,4 +697,24 @@ fn the_cookie_database_yt_dlp_found_by_itself_is_hidden() {
         redact_cookies_from_line(unterminated, None, Some("chromium")),
         r#"[Cookies] Extracting cookies from: "<redacted>"#
     );
+}
+
+#[test]
+fn the_format_probe_hides_the_path_of_its_own_cookies_copy() {
+    // The argv echo names the run's copy, under the app's cache in the user's home folder, rather
+    // than the file the user picked, so redacting only the picked one left the user's name there.
+    let line = r"[debug] Command-line config: ['--cookies', 'C:\\Users\\Alice\\AppData\\Local\\com.kavynex.app\\yt-dlp-temp\\cookies-1\\cookies.txt', '--', 'https://youtu.be/abc']";
+
+    let redacted = redact_probe_line(
+        line,
+        [
+            Some(r"D:\exports\cookies.txt"),
+            Some(r"C:\Users\Alice\AppData\Local\com.kavynex.app\yt-dlp-temp\cookies-1\cookies.txt"),
+        ],
+        None,
+        "https://youtu.be/abc",
+    );
+
+    assert!(!redacted.contains("Alice"), "{redacted}");
+    assert!(redacted.contains("<redacted>"), "{redacted}");
 }

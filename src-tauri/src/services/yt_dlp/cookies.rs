@@ -329,6 +329,10 @@ pub struct RunCookies {
     copy: Option<std::path::PathBuf>,
     original: Option<std::path::PathBuf>,
     scratch: Option<std::path::PathBuf>,
+    // The user's file as it was when the copy was made. The write-back compares against it, so a
+    // file the user exported again during the run is not replaced by the run's older cookies, and a
+    // copy yt-dlp left as it was does not rewrite the user's file for nothing.
+    snapshot: Option<Vec<u8>>,
 }
 
 /// Only one copy goes back over a cookies file at a time.
@@ -344,6 +348,7 @@ impl RunCookies {
                 copy: None,
                 original: None,
                 scratch: None,
+                snapshot: None,
             };
         };
 
@@ -354,27 +359,34 @@ impl RunCookies {
         ));
         let copy = scratch.join("cookies.txt");
 
-        let copied =
-            std::fs::create_dir_all(&scratch).and_then(|_| std::fs::copy(&original, &copy));
+        let copied = std::fs::create_dir_all(&scratch)
+            .and_then(|_| std::fs::read(&original))
+            .and_then(|bytes| std::fs::write(&copy, &bytes).map(|_| bytes));
 
-        if let Err(error) = copied {
-            crate::services::logger::warn(
+        let snapshot =
+            match copied {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    crate::services::logger::warn(
                 "yt_dlp",
                 format!("could not copy the cookies file for this run, using it directly: {error}"),
             );
-            let _ = std::fs::remove_dir_all(&scratch);
+                    let _ = std::fs::remove_dir_all(&scratch);
 
-            return RunCookies {
-                copy: Some(original.clone()),
-                original: Some(original),
-                scratch: None,
+                    return RunCookies {
+                        copy: Some(original.clone()),
+                        original: Some(original),
+                        scratch: None,
+                        snapshot: None,
+                    };
+                }
             };
-        }
 
         RunCookies {
             copy: Some(copy),
             original: Some(original),
             scratch: Some(scratch),
+            snapshot: Some(snapshot),
         }
     }
 
@@ -386,10 +398,13 @@ impl RunCookies {
     }
 
     /// Puts the copy yt-dlp updated back over the user's file. Called after a run that succeeded.
-    /// Skipped when the copy is no longer a cookie jar, and best effort otherwise. The user's file
+    /// Skipped when the copy is no longer a cookie jar, when yt-dlp left it as it was, and when the
+    /// user's file changed since the run started (exported again meanwhile, or written back by
+    /// another run), which is newer than what this run read. Best effort otherwise. The user's file
     /// is then simply not updated, as it was not before yt-dlp ran.
     pub fn keep_refreshed(&self) {
-        let (Some(copy), Some(original), Some(_)) = (&self.copy, &self.original, &self.scratch)
+        let (Some(copy), Some(original), Some(_), Some(snapshot)) =
+            (&self.copy, &self.original, &self.scratch, &self.snapshot)
         else {
             return;
         };
@@ -401,6 +416,18 @@ impl RunCookies {
         let _guard = COOKIES_WRITE_BACK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        if std::fs::read(copy).is_ok_and(|renewed| renewed == *snapshot) {
+            return;
+        }
+
+        if !std::fs::read(original).is_ok_and(|current| current == *snapshot) {
+            crate::services::logger::info(
+                "yt_dlp",
+                "the cookies file changed while yt-dlp ran, so the run's copy was not written back",
+            );
+            return;
+        }
 
         if let Err(error) = crate::services::filesystem::replace_file_safely(copy, original) {
             crate::services::logger::warn(
@@ -663,6 +690,59 @@ mod tests {
         run.keep_refreshed();
 
         assert_eq!(fs::read(&original).unwrap(), before);
+
+        drop(run);
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
+    }
+
+    #[test]
+    fn a_cookies_file_exported_again_during_the_run_is_not_replaced_by_the_runs_copy() {
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        let scratch_root = unique_temp_path("cookie-scratch-newer");
+        fs::create_dir_all(&scratch_root).unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        let mut renewed = fs::read(run.path().unwrap()).unwrap();
+        renewed.extend_from_slice(b".youtube.com\tTRUE\t/\tTRUE\t0\tSID\tfrom-the-run\n");
+        fs::write(run.path().unwrap(), &renewed).unwrap();
+
+        let exported_meanwhile =
+            b"# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tfresh\n";
+        fs::write(&original, exported_meanwhile).unwrap();
+
+        run.keep_refreshed();
+
+        assert_eq!(fs::read(&original).unwrap(), exported_meanwhile);
+
+        drop(run);
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
+    }
+
+    #[test]
+    fn a_copy_yt_dlp_left_as_it_was_does_not_rewrite_the_users_file() {
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        let scratch_root = unique_temp_path("cookie-scratch-same");
+        fs::create_dir_all(&scratch_root).unwrap();
+        let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(3_600);
+        fs::File::options()
+            .write(true)
+            .open(&original)
+            .unwrap()
+            .set_modified(long_ago)
+            .unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        run.keep_refreshed();
+
+        assert_eq!(
+            fs::metadata(&original).unwrap().modified().unwrap(),
+            long_ago,
+            "nothing was written over it"
+        );
 
         drop(run);
         let _ = fs::remove_file(&original);
