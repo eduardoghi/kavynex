@@ -64,10 +64,36 @@ updates:
               # patch. It also carries the entire persistence layer, and the cargo-audit step has a
               # standing note to re-check the yanked `spin` it pulls in whenever sqlx moves, which
               # only works if the move is visible. Excluding it here gives it its own PR.
+              #
+              # The same holds for every other pre-1.0 crate the code names directly. Each one's
+              # minor is its breaking bump, so they leave this group too. Their patches are batched
+              # in the group below, and a minor of theirs arrives in a PR of its own.
               exclude-patterns:
                   - "sqlx"
+                  - "hyper-rustls"
+                  - "hyper-util"
+                  - "http-body-util"
+                  - "rustls"
+                  - "tower-service"
+                  - "libc"
+                  - "chrono"
+                  - "unicode-normalization"
+                  - "sha2"
               update-types:
                   - "minor"
+                  - "patch"
+          cargo-pre-1-0-patch:
+              patterns:
+                  - "hyper-rustls"
+                  - "hyper-util"
+                  - "http-body-util"
+                  - "rustls"
+                  - "tower-service"
+                  - "libc"
+                  - "chrono"
+                  - "unicode-normalization"
+                  - "sha2"
+              update-types:
                   - "patch"
 
     # Bumps the channel in rust-toolchain.toml. The workflows pin the same version in their
