@@ -156,10 +156,20 @@ jobs:
             #
             # Grep-only and reads both trees as text, so it needs no toolchain and runs before the
             # install, like the three checks above.
+            #
+            # grep answers 1 for "nothing found" and 2 for "could not search" (a folder renamed away,
+            # a pattern this grep cannot read). Only the first is a pass. A gate that read both the
+            # same way would go green on a tree it never looked at.
             - name: Verify no unicode dashes are used in place of a hyphen
               run: |
+                  status=0
                   offenders=$(grep -rn -P '[\x{2012}\x{2013}\x{2014}\x{2015}]' src src-tauri/src scripts \
-                      --include='*.ts' --include='*.tsx' --include='*.rs' --include='*.js' || true)
+                      --include='*.ts' --include='*.tsx' --include='*.rs' --include='*.js') || status=$?
+
+                  if [ "$status" -gt 1 ]; then
+                      echo "::error::grep could not search the source trees (exit $status)"
+                      exit 1
+                  fi
 
                   if [ -n "$offenders" ]; then
                       echo "::error::write a plain hyphen (-) instead of a unicode dash. For a test that needs the character as data, spell it as an escape"
@@ -359,8 +369,16 @@ jobs:
             - name: Verify temp paths are built from the shared unique suffix
               if: matrix.platform == 'ubuntu-26.04'
               run: |
-                  offenders=$(grep -rn 'as_nanos()' src-tauri/src --include='*.rs' \
-                      | grep -v '^src-tauri/src/utils/naming.rs:' || true)
+                  status=0
+                  matches=$(grep -rn 'as_nanos()' src-tauri/src --include='*.rs') || status=$?
+
+                  if [ "$status" -gt 1 ]; then
+                      echo "::error::grep could not search src-tauri/src (exit $status)"
+                      exit 1
+                  fi
+
+                  offenders=$(printf '%s\n' "$matches" | grep -v '^src-tauri/src/utils/naming.rs:' \
+                      | grep -v '^$' || true)
 
                   if [ -n "$offenders" ]; then
                       echo "::error::build temporary paths with utils::naming::unique_temp_suffix() instead of a raw timestamp"
@@ -393,8 +411,16 @@ jobs:
             - name: Verify log lines redact absolute paths
               if: matrix.platform == 'ubuntu-26.04'
               run: |
-                  offenders=$(grep -rn -A6 'logger::\(warn\|error\|info\)(' src-tauri/src \
-                      --include='*.rs' | grep -E 'display\(\)|\{:\?\}' || true)
+                  status=0
+                  calls=$(grep -rn -A6 'logger::\(warn\|error\|info\)(' src-tauri/src \
+                      --include='*.rs') || status=$?
+
+                  if [ "$status" -ne 0 ]; then
+                      echo "::error::grep found no logger call to check, or could not search src-tauri/src (exit $status)"
+                      exit 1
+                  fi
+
+                  offenders=$(printf '%s\n' "$calls" | grep -E 'display\(\)|\{:\?\}' || true)
 
                   if [ -n "$offenders" ]; then
                       echo "::error::log a path through services::logger::redact_path: not Path::display, and not {:?}, which prints the whole path too"
