@@ -299,6 +299,15 @@ describe("updateChannelNameHandle", () => {
         expect(updateChannelNameAndHandle).toHaveBeenCalledWith(2, "Foo (second)", "@foo");
     });
 
+    it("reports a channel deleted meanwhile instead of returning as if it were saved", async () => {
+        vi.mocked(getChannelById).mockResolvedValueOnce(null);
+
+        await expect(updateChannelNameHandle(2, "foo", "@foo")).rejects.toMatchObject({
+            code: "CHANNEL_NOT_FOUND",
+        });
+        expect(updateChannelNameAndHandle).not.toHaveBeenCalled();
+    });
+
     it("refuses a new handle another channel holds", async () => {
         vi.mocked(findChannelByYoutubeHandle).mockResolvedValue({
             id: 1,

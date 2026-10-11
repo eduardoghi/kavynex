@@ -13,7 +13,10 @@ import {
     validateCreateChannelInput,
 } from "./channel-input-service";
 import { createAppError } from "../utils/app-error";
-import { CHANNEL_ALREADY_EXISTS_ERROR_CODE } from "../constants/error-codes";
+import {
+    CHANNEL_ALREADY_EXISTS_ERROR_CODE,
+    CHANNEL_NOT_FOUND_ERROR_CODE,
+} from "../constants/error-codes";
 import { logError } from "../utils/app-logger";
 
 export async function listAllChannels(): Promise<Channel[]> {
@@ -86,8 +89,10 @@ export async function updateChannelNameHandle(
 
     const existingChannel = await getChannelById(channelId);
 
+    // Deleted meanwhile (another window, a restore). Returning quietly closed the edit form as if the
+    // change had been saved.
     if (!existingChannel) {
-        return;
+        throw createAppError(CHANNEL_NOT_FOUND_ERROR_CODE, "This channel no longer exists.");
     }
 
     // A handle the channel already holds is never a conflict, even when a database from before the
