@@ -986,7 +986,9 @@ Two consequences follow, and both are accepted:
   emit an `<img>` at one of those hosts and the CSP would allow it, which makes those four hosts a
   low-bandwidth outbound channel (a URL path, no response read back. `connect-src` is `'self' ipc:`,
   so the bytes cannot be fetched). `*.googleusercontent.com` also serves content anyone can upload,
-  so the channel can end at a server an attacker controls. Reaching it requires an injection sink, and there is none. Every
+  so the channel can end at a server an attacker controls. Narrowing the wildcard does not close
+  that. In saved live chat the only subdomain seen is `lh3` (super stickers), and `lh3` is where
+  those uploads are served from. Reaching it requires an injection sink, and there is none. Every
   YouTube-derived string is rendered as a React child, never through `dangerouslySetInnerHTML` or
   `eval`. This is the same property the `style-src` tradeoff above rests on, and it fails in the
   same way if raw-HTML rendering is ever introduced.
