@@ -64,6 +64,25 @@ describe("verifyRustToolchain", () => {
         expect(result.message).toContain("mutation.yml: toolchain 1.98.0");
     });
 
+    it("fails on a cargo install that names no exact version", () => {
+        const result = verifyRustToolchain({
+            toolchainToml: '[toolchain]\nchannel = "1.99.0"\n',
+            workflows: [
+                {
+                    name: "a.yml",
+                    content:
+                        "      - uses: x\n        with:\n          toolchain: 1.99.0\n" +
+                        "      - run: cargo install cargo-audit\n" +
+                        "      - run: cargo install --locked cargo-deny@0.20.2\n",
+                },
+            ],
+        });
+
+        expect(result.ok).toBe(false);
+        expect(result.message).toContain("cargo install cargo-audit names no exact version");
+        expect(result.message).toContain("cargo install --locked names no exact version");
+    });
+
     it("fails on one tool installed at two versions", () => {
         const result = verifyRustToolchain({
             toolchainToml: TOML,

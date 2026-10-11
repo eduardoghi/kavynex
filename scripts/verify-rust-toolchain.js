@@ -48,6 +48,26 @@ export function extractCargoInstalls(workflowContent) {
     return installs;
 }
 
+// Every `cargo install` that names no exact version, as the tool it installs. Such a line takes
+// whatever is newest on the day it runs, which is the one thing the pins exist to prevent, and the
+// version check above cannot see it because it only reads `<tool>@<version>`. Flags and a
+// `--version` given separately count as unpinned too, since this gate does not read them.
+export function extractUnpinnedCargoInstalls(workflowContent) {
+    const unpinned = [];
+
+    for (const line of codeLines(workflowContent)) {
+        // A flag or a crate name, which leaves out text that only mentions the command (a pattern
+        // in a grep, a sentence in a message).
+        for (const match of line.matchAll(/cargo install\s+(--\S+|[A-Za-z0-9_-]+)(@[0-9]\S*)?/g)) {
+            if (match[1].startsWith("--") || !match[2]) {
+                unpinned.push(match[1]);
+            }
+        }
+    }
+
+    return unpinned;
+}
+
 // Decides the gate from raw file contents. `workflows` is an array of `{ name, content }`.
 export function verifyRustToolchain({ toolchainToml, workflows }) {
     const expected = extractToolchainChannel(toolchainToml);
@@ -72,6 +92,12 @@ export function verifyRustToolchain({ toolchainToml, workflows }) {
                     `${name}: toolchain ${version} does not match rust-toolchain.toml (${expected})`
                 );
             }
+        }
+
+        for (const target of extractUnpinnedCargoInstalls(content)) {
+            problems.push(
+                `${name}: cargo install ${target} names no exact version; write <tool>@<version>`
+            );
         }
 
         for (const { tool, version } of extractCargoInstalls(content)) {

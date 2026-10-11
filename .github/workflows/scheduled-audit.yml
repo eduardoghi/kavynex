@@ -379,7 +379,7 @@ jobs:
                       | sed 's/^cargo install //' | sort -u)
 
                   if [ -z "$PINS" ]; then
-                      echo "::error::no pinned cargo install was found in .github/workflows"
+                      echo "::error::no pinned cargo tool was found in .github/workflows"
                       exit 1
                   fi
 
