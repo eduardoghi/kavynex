@@ -168,7 +168,7 @@ fn is_live_marker(name: &str) -> bool {
 /// lazily. The first caller would otherwise be the sweep itself, half a minute into the session, and
 /// every marker this session had written before that point would read as older than "process start"
 /// and become sweepable. Defeating the filter exactly when it is needed.
-fn process_start() -> SystemTime {
+pub(crate) fn process_start() -> SystemTime {
     static START: OnceLock<SystemTime> = OnceLock::new();
     *START.get_or_init(SystemTime::now)
 }

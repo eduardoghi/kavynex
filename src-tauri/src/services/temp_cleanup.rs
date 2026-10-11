@@ -211,6 +211,11 @@ pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResul
     let thumb_display_dir = cache_dir.join(TEMP_DIR_THUMB_DISPLAY);
 
     let mut summary = CleanupSummary::default();
+    // Before the age sweep, which would otherwise keep them for a week.
+    summary.merge(remove_leftover_cookie_copies(
+        &yt_dlp_temp_dir,
+        crate::services::pending_media::process_start(),
+    ));
     summary.merge(cleanup_dir_children(&thumbs_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_temp_dir, max_age)?);
     summary.merge(cleanup_dir_children(&yt_dlp_thumb_temp_dir, max_age)?);
@@ -233,6 +238,74 @@ pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResul
     }
 
     Ok(summary)
+}
+
+/// Removes the cookies copies an earlier process left in `yt_dlp_temp_dir`, whatever their age.
+///
+/// Each yt-dlp run gets its own copy of the user's cookies file in a `cookies-<suffix>` folder,
+/// either directly here (a format probe, a comment fetch) or inside its run folder (a download), and
+/// removes it when the run ends. A run killed with the app leaves it behind, and a cookies file is
+/// a signed-in session, so it is not kept for the week the age sweep gives everything else. Only
+/// the copies are taken. A run folder can still hold a download that could not be kept elsewhere.
+/// A copy written since this process started belongs to a run of this session and is left alone.
+fn remove_leftover_cookie_copies(
+    yt_dlp_temp_dir: &Path,
+    process_start: SystemTime,
+) -> CleanupSummary {
+    let mut summary = CleanupSummary::default();
+
+    let Ok(entries) = fs::read_dir(yt_dlp_temp_dir) else {
+        return summary;
+    };
+
+    let mut candidates = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        if is_cookie_copy_dir(&path) {
+            candidates.push(path);
+            continue;
+        }
+
+        if let Ok(nested) = fs::read_dir(&path) {
+            candidates.extend(
+                nested
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir() && is_cookie_copy_dir(path)),
+            );
+        }
+    }
+
+    for dir in candidates {
+        let written_this_session = fs::metadata(&dir)
+            .and_then(|metadata| metadata.modified())
+            .map_or(true, |modified| modified >= process_start);
+
+        if written_this_session {
+            continue;
+        }
+
+        summary.scanned_entries += 1;
+
+        match fs::remove_dir_all(&dir) {
+            Ok(()) => summary.removed_entries += 1,
+            Err(_) => summary.failed_removals += 1,
+        }
+    }
+
+    summary
+}
+
+fn is_cookie_copy_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.starts_with("cookies-"))
 }
 
 /// Removes the `.<name>.tmp-<suffix>` files older than `max_age` directly inside `dir`, and nothing
@@ -585,6 +658,48 @@ mod tests {
 
         assert!(!removed);
         assert!(!failed);
+    }
+
+    #[test]
+    fn a_cookies_copy_left_by_an_earlier_process_is_removed_whatever_its_age() {
+        let temp = unique_test_dir("cookie-copies");
+        let probe_copy = temp.join("cookies-1");
+        let run_dir = temp.join("run-abc");
+        let run_copy = run_dir.join("cookies-2");
+        fs::create_dir_all(&probe_copy).unwrap();
+        fs::create_dir_all(&run_copy).unwrap();
+        fs::write(probe_copy.join("cookies.txt"), b"session").unwrap();
+        fs::write(run_copy.join("cookies.txt"), b"session").unwrap();
+        fs::write(run_dir.join("video.mp4"), b"a download kept here").unwrap();
+
+        // Everything above was written before a process start an hour from now.
+        let later = SystemTime::now() + Duration::from_secs(3_600);
+        let summary = remove_leftover_cookie_copies(&temp, later);
+
+        assert_eq!(summary.removed_entries, 2);
+        assert!(!probe_copy.exists());
+        assert!(!run_copy.exists());
+        assert!(
+            run_dir.join("video.mp4").exists(),
+            "only the copy goes, never what the run folder holds"
+        );
+
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn a_cookies_copy_this_session_wrote_is_kept() {
+        let temp = unique_test_dir("cookie-copies-live");
+        let live = temp.join("cookies-3");
+        fs::create_dir_all(&live).unwrap();
+
+        let started_earlier = SystemTime::now() - Duration::from_secs(3_600);
+        let summary = remove_leftover_cookie_copies(&temp, started_earlier);
+
+        assert_eq!(summary.removed_entries, 0);
+        assert!(live.exists());
+
+        let _ = fs::remove_dir_all(&temp);
     }
 
     #[test]

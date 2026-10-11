@@ -51,7 +51,10 @@ If you point Kavynex at a cookies *file* instead of a browser, be aware of one t
 yt-dlp's behavior rather than Kavynex's. At the end of a download yt-dlp **rewrites that file**
 with the cookies it acquired during the run. Kavynex hands yt-dlp a copy and puts the updated copy
 back over the file you selected once the run has succeeded, so a run that is cancelled or fails
-leaves your file as it was, and two runs at once cannot write it over each other. Kavynex only
+leaves your file as it was, and two runs at once cannot write it over each other. Nor is it put
+back when you exported the file again while the run was going, or when yt-dlp changed nothing. The
+copy lives in the app's cache folder for the length of the run, and one left there by a run the app
+closed on is removed at the next launch. Kavynex only
 accepts a `.txt` file that already begins with a Netscape cookie-file header, so a note or a
 document cannot be selected by mistake and overwritten.
 
