@@ -186,12 +186,34 @@ describe("findLatestJsonProblems", () => {
         expect(problems[1]).toContain("is not a -setup.exe file");
     });
 
+    it("flags an entry that points at the other arch's build", () => {
+        const manifest = completeManifest();
+        manifest.platforms["windows-aarch64-nsis"].url = `${PREFIX}v1.2.0/kavynex_1.2.0_x64-setup.exe`;
+        manifest.platforms["darwin-x86_64"].url = `${PREFIX}v1.2.0/kavynex_1.2.0_aarch64.app.tar.gz`;
+        manifest.platforms["linux-aarch64-rpm"].url = `${PREFIX}v1.2.0/kavynex-1.2.0-1.x86_64.rpm`;
+
+        expect(findLatestJsonProblems(manifest, "1.2.0", PREFIX)).toEqual([
+            `darwin-x86_64: url "${PREFIX}v1.2.0/kavynex_1.2.0_aarch64.app.tar.gz" is not an x86_64 build`,
+            `linux-aarch64-rpm: url "${PREFIX}v1.2.0/kavynex-1.2.0-1.x86_64.rpm" is not an aarch64 build`,
+            `windows-aarch64-nsis: url "${PREFIX}v1.2.0/kavynex_1.2.0_x64-setup.exe" is not an aarch64 build`,
+        ]);
+    });
+
+    it("does not read an arch out of the middle of another word", () => {
+        const manifest = completeManifest();
+        manifest.platforms["linux-x86_64-deb"].url = `${PREFIX}v1.2.0/kavynex_1.2.0_notamd64.deb`;
+
+        expect(findLatestJsonProblems(manifest, "1.2.0", PREFIX)).toEqual([
+            `linux-x86_64-deb: url "${PREFIX}v1.2.0/kavynex_1.2.0_notamd64.deb" is not an x86_64 build`,
+        ]);
+    });
+
     it("skips the url-prefix check when no prefix is supplied", () => {
         const manifest = completeManifest();
-        manifest.platforms["windows-x86_64"].url = "https://elsewhere.example/x.exe";
+        manifest.platforms["windows-x86_64"].url = "https://elsewhere.example/kavynex_1.2.0_x64_en-US.msi";
 
-        // A non-empty (if wrong) url without an expected prefix is only checked for emptiness, so
-        // the older two-argument call keeps behaving as before.
+        // A url outside this release passes when no expected prefix is supplied, so the older
+        // two-argument call keeps behaving as before.
         expect(findLatestJsonProblems(manifest, "1.2.0")).toEqual([]);
     });
 });

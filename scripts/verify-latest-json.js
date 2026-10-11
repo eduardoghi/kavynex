@@ -44,6 +44,20 @@ const ENTRY_SUFFIXES = {
 
 export const REQUIRED_PLATFORMS = Object.keys(ENTRY_SUFFIXES);
 
+// The arch spellings an asset name may carry, by the arch in the key. The bundlers disagree
+// (`x64` for the Windows and macOS installers, `amd64` for the AppImage and .deb, `x86_64` for the
+// .rpm). The suffix check cannot tell the arches apart, so without this an entry could hand the
+// updater the other arch's build, which either does not run on that machine or runs only under
+// emulation.
+const ARCH_TOKENS = {
+    x86_64: /(^|[_.-])(x64|amd64|x86_64)([_.-]|$)/,
+    aarch64: /(^|[_.-])(arm64|aarch64)([_.-]|$)/,
+};
+
+function archOf(platform) {
+    return platform.split("-")[1];
+}
+
 // Derives the URL prefix every updater artifact must sit under, from the same GitHub release
 // endpoint the client is actually pointed at (tauri.conf.json's updater `endpoints`). That
 // endpoint is `.../releases/latest/download/latest.json`, while the per-asset URLs are
@@ -95,6 +109,12 @@ export function findLatestJsonProblems(manifest, expectedVersion, expectedUrlPre
 
         if (url && suffix && !assetNameFromUrl(url).endsWith(suffix)) {
             problems.push(`${platform}: url ${JSON.stringify(entry.url)} is not a ${suffix} file`);
+        }
+
+        const arch = archOf(platform);
+
+        if (url && !ARCH_TOKENS[arch].test(assetNameFromUrl(url))) {
+            problems.push(`${platform}: url ${JSON.stringify(entry.url)} is not an ${arch} build`);
         }
 
         if (!url) {
