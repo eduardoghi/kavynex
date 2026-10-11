@@ -33,6 +33,11 @@ pub async fn fetch_media_comments<R: Runtime>(
 
     chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
 
+    // The video whose comments are fetched has to be the one the row names. Taken from the renderer
+    // as it was, a stale or wrong id merged another video's comments into this media's backup.
+    let pool = db.pool().await?;
+    ensure_video_belongs_to_media(&pool, media_id, &video_id).await?;
+
     let comments = yt_dlp::fetch_youtube_comments_async(
         &app,
         &video_id,
@@ -42,8 +47,39 @@ pub async fn fetch_media_comments<R: Runtime>(
     )
     .await?;
 
-    let pool = db.pool().await?;
     media_comments::store_fetched_comments(&pool, media_id, comments).await
+}
+
+/// Refuses `video_id` unless it is the YouTube video id stored for `media_id`.
+async fn ensure_video_belongs_to_media(
+    pool: &sqlx::SqlitePool,
+    media_id: i64,
+    video_id: &str,
+) -> AppResult<()> {
+    let stored: Option<Option<String>> =
+        sqlx::query_scalar("SELECT youtube_video_id FROM videos WHERE id = ?")
+            .bind(media_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|error| {
+                crate::services::database::db_error("failed to read the media's video id", error)
+            })?;
+
+    let Some(stored) = stored else {
+        return Err(AppError::from_code(
+            AppErrorCode::MediaNotFound,
+            "the media no longer exists",
+        ));
+    };
+
+    if stored.as_deref().map(str::trim) != Some(video_id.trim()) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidYoutubeVideoId,
+            "the video id does not belong to this media",
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -67,6 +103,43 @@ mod tests {
         tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
             .build()
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_video_id_another_media_owns_is_refused_before_fetching() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type, \
+             youtube_video_id) VALUES (7, 1, 'T', 't', 'video/a.mp4', 'video', 'dQw4w9WgXcQ')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert!(ensure_video_belongs_to_media(&pool, 7, "dQw4w9WgXcQ")
+            .await
+            .is_ok());
+
+        let wrong = ensure_video_belongs_to_media(&pool, 7, "jNQXAC9IVRw")
+            .await
+            .unwrap_err();
+        assert_eq!(wrong.code, AppErrorCode::InvalidYoutubeVideoId.as_str());
+
+        let gone = ensure_video_belongs_to_media(&pool, 8, "dQw4w9WgXcQ")
+            .await
+            .unwrap_err();
+        assert_eq!(gone.code, AppErrorCode::MediaNotFound.as_str());
     }
 
     #[test]
