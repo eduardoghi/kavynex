@@ -1010,9 +1010,10 @@ CSS variables, positioning for overlays/popovers) and injects `<style>` elements
 styles, both of which a strict `style-src` blocks. Removing the token does not harden the app, it
 renders it unusable.
 
-What keeps the cost low is that it is `style-src` and not `script-src`. `script-src` is not relaxed,
-since it inherits `default-src 'self'`, so no inline script runs, and `object-src 'none'`, `base-uri
-'self'` and `frame-ancestors 'none'` close the usual ways around that. Injected CSS alone cannot
+What keeps the cost low is that it is `style-src` and not `script-src`. `script-src` is `'self'`
+(plus the nonces and hashes Tauri adds for the bundle's own inline scripts), so no injected inline
+script runs, and `object-src 'none'`, `frame-src 'none'`, `base-uri 'self'` and `frame-ancestors
+'none'` close the usual ways around that. Injected CSS alone cannot
 execute code; the realistic worst case is a styling/exfiltration trick, and that needs an injection
 sink to begin with. There is none: YouTube-derived text (titles, comments, chat, author names) is
 rendered as React children, never through `dangerouslySetInnerHTML` or `eval`, which is the same

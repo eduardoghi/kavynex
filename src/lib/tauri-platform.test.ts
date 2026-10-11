@@ -30,13 +30,21 @@ const ASSET_DIRECTIVES = ["img-src", "media-src"];
 // an external origin with data attached. The app has no form that submits (every input is a React
 // handler that goes over IPC), so 'none' costs nothing.
 //
-// The other two are pinned here rather than only in tauri.conf.json for the same reason the asset
+// `script-src`, `frame-src` and `worker-src` do fall back to `default-src`, and that is the reason
+// to spell them out. `default-src` carries the IPC origin, which is a source of responses, not of
+// code or frames. In a packaged build Tauri appends the nonces and hashes of the bundle's inline
+// scripts to `script-src`, so `'self'` here is the whole of what the config grants.
+//
+// The rest are pinned here rather than only in tauri.conf.json for the same reason the asset
 // tokens are. A packaged build is the first thing that exercises the real CSP, so a directive
 // dropped in an edit would not surface until a release.
 const LOCKED_DOWN_DIRECTIVES: ReadonlyArray<readonly [string, string]> = [
     ["form-action", "'none'"],
     ["object-src", "'none'"],
     ["frame-ancestors", "'none'"],
+    ["script-src", "'self'"],
+    ["frame-src", "'none'"],
+    ["worker-src", "'self'"],
 ];
 
 type TauriConfig = {
