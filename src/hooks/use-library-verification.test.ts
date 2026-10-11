@@ -134,6 +134,29 @@ describe("useLibraryVerification", () => {
         expect(result.current.running).toBe(false);
     });
 
+    it("stops a run that is still going when the dialog closes, and not one that is not", async () => {
+        // Closing Diagnostics unmounts this hook and its Stop button. Left running, the sweep reads
+        // the whole library for nobody, and the next open is refused as already in progress.
+        verifyMock.mockImplementation(() => new Promise<ContentVerificationReport>(() => {}));
+        cancelMock.mockResolvedValue(undefined);
+
+        const idle = renderHook(() => useLibraryVerification());
+        idle.unmount();
+        expect(cancelMock).not.toHaveBeenCalled();
+
+        const { result, unmount } = renderHook(() => useLibraryVerification());
+
+        act(() => {
+            void result.current.verify("/library");
+        });
+
+        await waitFor(() => expect(result.current.running).toBe(true));
+
+        unmount();
+
+        expect(cancelMock).toHaveBeenCalledTimes(1);
+    });
+
     it("asks the backend to stop and swallows a failed cancel", async () => {
         // A failed cancel is worth a log line and not an error dialog stacked on top of a check that
         // is still working. The run either stops or finishes, and either way the report is what the

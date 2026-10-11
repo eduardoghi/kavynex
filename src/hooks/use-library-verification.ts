@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     cancelLibraryVerification,
     verifyLibraryContent,
@@ -69,6 +69,24 @@ export function useLibraryVerification(): UseLibraryVerificationReturn {
             setRunning(false);
             setProgress(null);
         }
+    }, []);
+
+    // Diagnostics can be closed mid-run (Esc, a click outside, the X), and that unmounts this hook
+    // along with its Stop button. The sweep would then keep reading the whole library with nobody
+    // listening, and a reopened Diagnostics would get LIBRARY_VERIFICATION_IN_PROGRESS with no way to
+    // stop it. Closing is read as stopping.
+    useEffect(() => {
+        return () => {
+            if (inFlightRef.current) {
+                cancelLibraryVerification().catch((error: unknown) => {
+                    logError(
+                        "diagnostics",
+                        "Failed to cancel the library verification on close.",
+                        error
+                    );
+                });
+            }
+        };
     }, []);
 
     const cancel = useCallback(async (): Promise<void> => {
