@@ -497,12 +497,20 @@ async fn supervise_download_child<R: Runtime>(
         }
     };
 
-    if let Err(e) = stdout_task.await {
-        logger::warn("yt_dlp", format!("yt-dlp stdout task failed: {e}"));
-    }
+    // Bounded, since a grandchild that inherited the pipes can keep them open after yt-dlp exited
+    // (see utils::task::PIPE_DRAIN_AFTER_EXIT). The output is only progress and evidence for a
+    // failure, so a reader still waiting is let go.
+    let drain = crate::utils::task::PIPE_DRAIN_AFTER_EXIT;
 
-    if let Err(e) = stderr_task.await {
-        logger::warn("yt_dlp", format!("yt-dlp stderr task failed: {e}"));
+    for (stream, task) in [("stdout", stdout_task), ("stderr", stderr_task)] {
+        match crate::utils::task::join_within(task, drain).await {
+            Some(Ok(())) => {}
+            Some(Err(e)) => logger::warn("yt_dlp", format!("yt-dlp {stream} task failed: {e}")),
+            None => logger::warn(
+                "yt_dlp",
+                format!("yt-dlp exited but its {stream} stayed open, so the reader was stopped"),
+            ),
+        }
     }
 
     // Read the captured stderr only on the path that uses it (a non-zero exit that was neither

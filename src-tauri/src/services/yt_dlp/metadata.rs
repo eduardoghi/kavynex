@@ -644,19 +644,35 @@ async fn run_yt_dlp_and_capture_json(
         }
     };
 
-    let (json_payload, stdout_logs, stdout_overflowed) = stdout_task.await.map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::YtDlpStdoutCaptureFailed,
-            format!("failed to read yt-dlp stdout: {e}"),
-        )
-    })?;
+    // Bounded, since a grandchild that inherited the pipes can keep them open after yt-dlp exited
+    // (see utils::task::PIPE_DRAIN_AFTER_EXIT).
+    let drain = crate::utils::task::PIPE_DRAIN_AFTER_EXIT;
 
-    let stderr_logs = stderr_task.await.map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::YtDlpStderrCaptureFailed,
-            format!("failed to read yt-dlp stderr: {e}"),
-        )
-    })?;
+    let (json_payload, stdout_logs, stdout_overflowed) =
+        match crate::utils::task::join_within(stdout_task, drain).await {
+            Some(joined) => joined.map_err(|e| {
+                AppError::from_code(
+                    AppErrorCode::YtDlpStdoutCaptureFailed,
+                    format!("failed to read yt-dlp stdout: {e}"),
+                )
+            })?,
+            None => {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpStdoutCaptureFailed,
+                    "yt-dlp exited but its output stayed open, held by a program it started",
+                ));
+            }
+        };
+
+    let stderr_logs = match crate::utils::task::join_within(stderr_task, drain).await {
+        Some(joined) => joined.map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpStderrCaptureFailed,
+                format!("failed to read yt-dlp stderr: {e}"),
+            )
+        })?,
+        None => Vec::new(),
+    };
 
     if !status.success() {
         let detail = select_best_error_detail(&stdout_logs, &stderr_logs, failed_message);
