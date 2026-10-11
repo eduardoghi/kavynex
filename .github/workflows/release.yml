@@ -802,7 +802,10 @@ jobs:
         # automated check between it and a manual "Publish". That is the whole failure these gates
         # exist to catch. A missing SBOM/asset then fails the checksums job loudly instead of being
         # skipped.
-        if: ${{ !cancelled() }}
+        #
+        # Not when publish-tauri was skipped, though, which is what a failed audit does. Nothing of
+        # this run's reached the draft then, and the one these jobs would find is an older dispatch's.
+        if: ${{ !cancelled() && needs.publish-tauri.result != 'skipped' }}
         # Pinned like the build matrix. `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 30
@@ -874,12 +877,13 @@ jobs:
 
     sbom-upload:
         name: Publish SBOM
-        needs: sbom
+        needs: [publish-tauri, sbom]
         # Same `!cancelled()` as the jobs around it, so a failed generation fails here, loudly, and
         # the checksums job still runs its completeness gate on what reached the draft. The ref check
         # is there because `!cancelled()` also runs this after publish-tauri refused a non-main
-        # dispatch, and this job's write token must not reach a draft from such a run.
-        if: ${{ github.ref == 'refs/heads/main' && !cancelled() }}
+        # dispatch, and this job's write token must not reach a draft from such a run. Skipped with
+        # the sbom job, and for the same reason, when publish-tauri was.
+        if: ${{ github.ref == 'refs/heads/main' && !cancelled() && needs.publish-tauri.result != 'skipped' && needs.sbom.result == 'success' }}
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:
@@ -927,8 +931,9 @@ jobs:
         # Run on a partial draft too (see the SBOM job). A failed build leg must not skip the
         # asset-completeness and latest.json checks below. Those are exactly what should turn a
         # partial release red with a list of what is missing, rather than being silently skipped.
-        # Limited to main for the same reason as sbom-upload.
-        if: ${{ github.ref == 'refs/heads/main' && !cancelled() }}
+        # Limited to main for the same reason as sbom-upload, and skipped with it when publish-tauri
+        # was, since the draft is then an older dispatch's.
+        if: ${{ github.ref == 'refs/heads/main' && !cancelled() && needs.publish-tauri.result != 'skipped' }}
         # Pinned like the build matrix. `-latest` can silently jump an OS major mid-release.
         runs-on: ubuntu-26.04
         timeout-minutes: 60
@@ -985,6 +990,35 @@ jobs:
                   node scripts/rewrite-latest-json-urls.js assets/latest.json asset-ids.json
 
                   gh release upload "v$VERSION" assets/latest.json --clobber
+
+            # The installers on the draft are the files SHA256SUMS.txt is about to vouch for, and the
+            # attestation of each comes from attest-installers, which read the legs' artifacts rather
+            # than the draft. Nothing tied the two. publish-tauri holds a write token and keeps running
+            # steps after tauri-action uploads, so a draft asset could differ from what was attested
+            # and still be hashed and attested here. Each installer a leg handed over has to be on the
+            # draft byte for byte. A leg that failed handed over nothing, and the completeness gate
+            # below is what reports it.
+            - name: Download the installers the legs built
+              uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+              with:
+                  pattern: installers-*
+                  path: attested
+
+            - name: Require the draft to hold the bytes the legs built
+              # Matched by content rather than by name. tauri-action renames the macOS .app.tar.gz
+              # on upload (adding the version and the architecture), and both macOS legs build one
+              # under the same name.
+              run: |
+                  (cd assets && sha256sum -- * | cut -d' ' -f1 | sort -u) > draft-digests.txt
+                  status=0
+                  while IFS= read -r -d '' built; do
+                      digest=$(sha256sum < "$built" | cut -d' ' -f1)
+                      if ! grep -qx "$digest" draft-digests.txt; then
+                          echo "::error::$(basename "$built") as the leg built it is not on the draft"
+                          status=1
+                      fi
+                  done < <(find attested -type f -print0)
+                  exit "$status"
 
             # The updater artifacts are signed, but the installers downloaded manually
             # from the release page have no integrity reference without this file.
@@ -1130,7 +1164,12 @@ jobs:
             # above, so only a draft that passed them carries a statement. `assets/` is the copy
             # downloaded from the draft (post-rewrite for latest.json, which is what was uploaded
             # back), and SHA256SUMS.txt is the file generated here and uploaded above.
+            #
+            # And only when every leg succeeded. The gates above run on a partial draft to say what
+            # is missing, but a leg that failed its smoke test can still have uploaded its installers
+            # before failing, and a statement over that draft would vouch for them.
             - name: Attest the checksums, the updater manifest and the SBOM
+              if: needs.publish-tauri.result == 'success'
               uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
               with:
                   subject-path: |
