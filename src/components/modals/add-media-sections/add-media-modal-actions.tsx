@@ -47,11 +47,13 @@ export function AddMediaModalActions({
     // the same kind of run and are stopped by the same command. Only the wording differs, since
     // "Cancel download" in front of a file copy would describe the wrong thing.
     //
-    // A download is cancellable for the whole of it, not only while yt-dlp runs. After the process
-    // exits the backend still places the file and fetches the thumbnail and the replay under the same
-    // run, and the footer used to show "Importing..." there with no way out at all. A cancel that
-    // arrives once the run is over is a no-op the frontend already treats as benign.
-    const cancellable = isUrlMode ? isImporting || isFetchingComments : isImportingLocalFile;
+    // A download is cancellable while its run is registered, which covers placing the file and
+    // fetching the thumbnail and the replay, since the backend does those inside the run before it
+    // reports the download finished. After that it only writes the row, which is short and has no run
+    // to cancel, so the button goes away until the comment backup starts its own run. Offered there,
+    // it had nothing to send and did nothing. A click that races the end of a run gets
+    // `INVALID_RUN_ID`, which the workflow treats as the run having ended.
+    const cancellable = isUrlMode ? isYtDlpRunning || isFetchingComments : isImportingLocalFile;
 
     let statusText = "Importing...";
     let cancelText = isUrlMode ? "Cancel download" : "Cancel import";

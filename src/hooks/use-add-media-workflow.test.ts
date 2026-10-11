@@ -378,6 +378,53 @@ describe("useAddMediaWorkflow", () => {
         expect(cancelMediaDownload).not.toHaveBeenCalled();
     });
 
+    it("treats a cancel that reaches a run already over as nothing to do", async () => {
+        // The click and the end of the run can cross. The backend then answers INVALID_RUN_ID, which
+        // means only that the run is gone, so no error modal opens for it.
+        mockYtDlpEvents.isYtDlpRunning = false;
+
+        let finishImport: (() => void) | undefined;
+        vi.mocked(createMedia).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    finishImport = () => resolve({ id: 1 });
+                })
+        );
+        vi.mocked(cancelMediaDownload).mockRejectedValue({
+            code: "INVALID_RUN_ID",
+            message: "run_id is not active",
+        });
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        let addMediaPromise: Promise<void> | undefined;
+        await act(async () => {
+            addMediaPromise = result.current.addMedia();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            await result.current.cancelYtDlpDownload();
+        });
+
+        expect(cancelMediaDownload).toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+
+        await act(async () => {
+            finishImport?.();
+            await addMediaPromise;
+        });
+    });
+
     it("cancels the comment backup with the run id it registered, not the download's", async () => {
         // Once the media is registered the download's run is released and the yt-dlp flag is off,
         // so the comment fetch that follows (up to a few minutes) had no Cancel at all.

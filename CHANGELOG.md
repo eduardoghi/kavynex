@@ -64,6 +64,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 - Changing the sort, filter or search while the library was loading more media could leave a run of
   media missing from the list until the next reload.
+- Add media no longer shows a Cancel download button that did nothing while a finished download is
+  saved to the library, and cancelling the format listing no longer opens an error dialog.
 - The log file writes your home folder as `~`, including in the errors the window reports and in
   yt-dlp's output, so the OS user name stays out of a log attached to a bug report. Each uncaught
   window error is logged once, with its stack, and the harmless ResizeObserver notice is no longer

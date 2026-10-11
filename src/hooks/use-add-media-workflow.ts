@@ -9,6 +9,7 @@ import type { YtDlpTerminalStore } from "./yt-dlp-terminal-store";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
 import {
+    INVALID_RUN_ID_ERROR_CODE,
     MEDIA_IMPORT_CANCELLED_ERROR_CODE,
     YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
 } from "../constants/error-codes";
@@ -338,6 +339,11 @@ export function useAddMediaWorkflow({
             try {
                 await cancelMediaDownload(runId);
             } catch (error) {
+                // The run ended between the click and the command, so there is nothing left to stop.
+                if (parseAppError(error).code === INVALID_RUN_ID_ERROR_CODE) {
+                    return;
+                }
+
                 logError("add-media", "Failed to cancel media download.", error, {
                     runId,
                 });

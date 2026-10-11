@@ -100,7 +100,9 @@ describe("AddMediaModalActions", () => {
         expect(screen.getByRole("button", { name: /cancel download/i })).toBeInTheDocument();
     });
 
-    it("keeps the download cancellable after yt-dlp exits, while the file is saved", () => {
+    it("offers no cancel once the download reported finished and only the row is being saved", () => {
+        // The backend releases the run when it reports the download finished. A button here had no
+        // run to send and did nothing.
         renderWithMantine(
             <form>
                 <AddMediaModalActions
@@ -120,7 +122,7 @@ describe("AddMediaModalActions", () => {
         );
 
         expect(screen.getByText("Saving to the library...")).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: /cancel download/i })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /cancel download/i })).not.toBeInTheDocument();
     });
 
     it("shows a cancel import button while a local file is being imported", () => {

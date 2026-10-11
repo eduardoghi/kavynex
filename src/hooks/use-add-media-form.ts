@@ -11,7 +11,8 @@ import {
 } from "../utils/media-utils";
 import { resolveErrorMessage } from "../utils/error-message";
 import { logError } from "../utils/app-logger";
-import { ClientError } from "../utils/app-error";
+import { ClientError, parseAppError } from "../utils/app-error";
+import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
 import { stageManualThumbnail } from "../services/thumbnail-service";
 import { useAddMediaFormState } from "./use-add-media-form-state";
 import { useTempThumbnail } from "./use-temp-thumbnail";
@@ -455,6 +456,12 @@ export function useAddMediaForm({
 
             await loadYtDlpFormatsFromLoader();
         } catch (error) {
+            // The user pressed Cancel. That is the outcome they asked for, not a failure to report,
+            // which is how `addMedia` treats the same code for a download.
+            if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
+                return;
+            }
+
             // The profile is deliberately not in the details. It is often a path under the
             // user's home directory, and this context reaches the file log.
             reportError("add-media-form", "Failed to load yt-dlp formats.", error, {

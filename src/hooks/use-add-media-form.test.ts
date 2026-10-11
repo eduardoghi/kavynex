@@ -768,6 +768,23 @@ describe("useAddMediaForm", () => {
         expect(onError).toHaveBeenCalledWith("Failed to load yt-dlp formats.");
     });
 
+    it("treats a cancelled format listing as the outcome asked for, not an error", async () => {
+        const onError = vi.fn();
+        mockLoadYtDlpFormats.mockRejectedValueOnce({
+            code: "YT_DLP_DOWNLOAD_CANCELLED",
+            message: "yt-dlp format listing cancelled",
+        });
+
+        const { result } = renderHook(() => useAddMediaForm({ onError }));
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+
+        expect(onError).not.toHaveBeenCalled();
+        expect(logError).not.toHaveBeenCalled();
+    });
+
     it("reports yt-dlp format loading error with contextual details", async () => {
         mockLoadYtDlpFormats.mockRejectedValueOnce(new Error("boom"));
 
