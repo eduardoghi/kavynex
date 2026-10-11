@@ -438,6 +438,19 @@ describe("streamLibraryVerification", () => {
         spy.mockRestore();
     });
 
+    it("rejects when the command returned and no report ever arrived", async () => {
+        vi.useFakeTimers();
+        invokeMock.mockResolvedValue(null);
+
+        const verifying = streamLibraryVerification(vi.fn());
+        const outcome = expect(verifying).rejects.toThrow("without reporting a result");
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        await outcome;
+
+        vi.useRealTimers();
+    });
+
     it("rejects with a normalized error when the command is refused", async () => {
         invokeMock.mockRejectedValue({
             code: "LIBRARY_VERIFICATION_IN_PROGRESS",

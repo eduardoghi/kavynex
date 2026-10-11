@@ -197,6 +197,10 @@ export async function streamLibraryVerification(
         fail = reject;
     });
 
+    // Observed here so a message that fails the run while the invoke is still pending is not
+    // reported as an unhandled rejection before the await below attaches.
+    done.catch(() => {});
+
     channel.onmessage = (rawEvent) => {
         const event = parseEventPayload(
             contentVerificationEventSchema,
@@ -227,8 +231,26 @@ export async function streamLibraryVerification(
 
     // Awaited after the invoke, not instead of it. Channel messages and the invoke response travel
     // independently, so resolving on the return could race the `done` that carries the report.
-    return await done;
+    // Bounded, since a command that returned without sending one would otherwise leave this await,
+    // and the dialog behind it, waiting for good.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const missing = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+            () => reject(new Error("The verification ended without reporting a result.")),
+            VERIFICATION_RESULT_GRACE_MS
+        );
+    });
+
+    try {
+        return await Promise.race([done, missing]);
+    } finally {
+        clearTimeout(timer);
+    }
 }
+
+// How long the report may trail the return of the command. Both travel the same IPC, so this is a
+// margin for scheduling rather than for work.
+const VERIFICATION_RESULT_GRACE_MS = 10_000;
 
 // Runs a library migration, passing each progress message to `onProgress`.
 //
