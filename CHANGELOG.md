@@ -75,6 +75,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   focused control outside it.
 - Channel handles that differ only in letter case are treated as the same channel.
 - Refreshing comments merges them with the stored ones instead of replacing them.
+- Refreshing comments keeps the text a comment had when it was first saved, after its author edits
+  or removes it on YouTube.
 - A playlist or channel link is refused where a single video is expected.
 - The library list stops requesting more media after a page fails to load.
 - Importing a database keeps this machine's library and backup folders.

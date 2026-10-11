@@ -297,6 +297,39 @@ pub(super) async fn apply_migration_16(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// v17. Adds `video_comments.original_text`, the text a comment had when it was first stored.
+///
+/// A comment merge updates the stored text to the one the latest fetch brings, so an edit picks up
+/// on refresh. Without a second column that also discarded the text the archive held, which is the
+/// version an author's later edit or a moderation removed from YouTube. The merge fills this column
+/// once, the first time the text changes, and leaves it alone after that. Additive, with the stamp
+/// in the same transaction.
+pub(super) async fn apply_migration_17(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    for (column, definition) in VIDEO_COMMENTS_ADDITIVE_COLUMNS {
+        if !table_has_column(&mut *tx, "video_comments", column).await? {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "ALTER TABLE video_comments ADD COLUMN {column} {definition}"
+            )))
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to add video_comments column", error))?;
+        }
+    }
+
+    set_user_version(&mut tx, 17).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
 /// v10. Creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
 /// (video_id, comment_id)" invariant out of application code (media_comments::
 /// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot

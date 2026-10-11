@@ -679,7 +679,7 @@ async fn lists_comments_in_id_order_within_the_load_cap() {
         "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER, \
          comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', \
          author_handle TEXT, author_channel_id TEXT, author_thumbnail TEXT, \
-         text TEXT NOT NULL DEFAULT '', like_count INTEGER NOT NULL DEFAULT 0, \
+         text TEXT NOT NULL DEFAULT '', original_text TEXT, like_count INTEGER NOT NULL DEFAULT 0, \
          reply_count INTEGER NOT NULL DEFAULT 0, is_author_uploader INTEGER NOT NULL DEFAULT 0, \
          is_favorited INTEGER NOT NULL DEFAULT 0, is_pinned INTEGER NOT NULL DEFAULT 0, \
          is_edited INTEGER NOT NULL DEFAULT 0, time_text TEXT, published_at TEXT, \
@@ -718,7 +718,7 @@ async fn seed_comments(count: usize, text_chars: usize) -> SqlitePool {
         "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER, \
          comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', \
          author_handle TEXT, author_channel_id TEXT, author_thumbnail TEXT, \
-         text TEXT NOT NULL DEFAULT '', like_count INTEGER NOT NULL DEFAULT 0, \
+         text TEXT NOT NULL DEFAULT '', original_text TEXT, like_count INTEGER NOT NULL DEFAULT 0, \
          reply_count INTEGER NOT NULL DEFAULT 0, is_author_uploader INTEGER NOT NULL DEFAULT 0, \
          is_favorited INTEGER NOT NULL DEFAULT 0, is_pinned INTEGER NOT NULL DEFAULT 0, \
          is_edited INTEGER NOT NULL DEFAULT 0, time_text TEXT, published_at TEXT, \

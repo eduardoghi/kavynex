@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 16;
+pub(crate) const SCHEMA_VERSION: i64 = 17;
 
 /// The version from which a database holds every trigger in `TRIGGER_DDLS` without a migration
 /// still to create it. v13 creates them and v14 re-runs the whole list, so a database below 14 gets
@@ -89,7 +89,7 @@ mod migrations;
 use migrations::{
     apply_baseline_schema, apply_migration_10, apply_migration_11, apply_migration_12,
     apply_migration_13, apply_migration_14, apply_migration_15, apply_migration_16,
-    apply_migration_8, apply_migration_9,
+    apply_migration_17, apply_migration_8, apply_migration_9,
 };
 
 // SQLite's table-rebuild procedure, for a change `ALTER TABLE ADD COLUMN` or a trigger cannot
@@ -226,6 +226,12 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
     // v16. Drops the two video_comments indexes no query reads. See apply_migration_16.
     if needs_migration(current_version, 16) {
         apply_migration_16(pool).await?;
+    }
+
+    // v17. Adds `video_comments.original_text`, which keeps a comment's first stored text once a
+    // later fetch brings a different one. See apply_migration_17.
+    if needs_migration(current_version, 17) {
+        apply_migration_17(pool).await?;
     }
 
     // Each migration is guarded by version and transactional (it stamps the new

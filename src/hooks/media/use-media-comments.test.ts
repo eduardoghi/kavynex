@@ -27,6 +27,7 @@ function commentRow(overrides: Partial<MediaCommentRow> = {}): MediaCommentRow {
         is_author_uploader: 0,
         is_favorited: 0,
         is_pinned: 0,
+        original_text: null,
         is_edited: 0,
         time_text: null,
         published_at: null,

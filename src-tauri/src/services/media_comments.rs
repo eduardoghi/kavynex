@@ -236,7 +236,8 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
 /// this used to, made a refresh of an old video quietly destroy that part of the archive.
 ///
 /// A comment with an id is matched on `(video_id, comment_id)`, the partial unique index v10
-/// created, and updated in place, so a refresh still picks up edits and new like counts. One
+/// created, and updated in place, so a refresh still picks up edits and new like counts, with the
+/// text it first stored kept in `original_text` (see `COMMENT_UPSERT_CLAUSE`). One
 /// without an id has nothing to match on, so it is inserted only when no stored id-less comment has
 /// the same parent, author and text. That keeps a refresh from duplicating it without ever dropping
 /// one.
@@ -279,6 +280,12 @@ const COMMENT_INSERT_COLUMNS: &str = "INSERT INTO video_comments (\
 // one. yt-dlp derives it from YouTube's relative "2 years ago" text, which only gets coarser as the
 // comment ages, so the first fetch is the most precise it will ever be.
 //
+// The text follows the newest fetch, so an edit is picked up, and the text it replaces goes to
+// `original_text` the first time the two differ. Later changes leave `original_text` as it is, so it
+// always holds what the comment said when it was first archived, which is the version an author's
+// edit or a moderation removes from YouTube. The right-hand sides read the row as it was before the
+// update, so both assignments compare against the stored text.
+//
 // The author fields follow the newest fetch only when it has them. A later fetch can come back
 // without an author (a channel since closed, a response that left the field out), and taking that
 // would turn a stored name into "Unknown author" and drop the handle the archive had. The
@@ -290,7 +297,7 @@ const COMMENT_UPSERT_CLAUSE: &str = " ON CONFLICT(video_id, comment_id) \
      author_handle = COALESCE(excluded.author_handle, video_comments.author_handle), \
      author_channel_id = COALESCE(excluded.author_channel_id, video_comments.author_channel_id), \
      author_thumbnail = COALESCE(excluded.author_thumbnail, video_comments.author_thumbnail), \
-     text = excluded.text, \
+     original_text = COALESCE(video_comments.original_text,          CASE WHEN excluded.text <> video_comments.text THEN video_comments.text END),      text = excluded.text, \
      like_count = excluded.like_count, \
      reply_count = excluded.reply_count, \
      is_author_uploader = excluded.is_author_uploader, \
@@ -552,6 +559,7 @@ mod tests {
                 author_channel_id TEXT,
                 author_thumbnail TEXT,
                 text TEXT NOT NULL CHECK (text <> 'Invalid'),
+                original_text TEXT,
                 like_count INTEGER NOT NULL DEFAULT 0,
                 reply_count INTEGER NOT NULL DEFAULT 0,
                 is_author_uploader INTEGER NOT NULL DEFAULT 0,
@@ -787,6 +795,61 @@ mod tests {
         assert_eq!(author_name, "Alice");
         assert_eq!(author_handle.as_deref(), Some("@alice"));
         assert_eq!(like_count, 9, "what the fetch does carry still updates");
+    }
+
+    async fn stored_texts(pool: &SqlitePool) -> (String, Option<String>) {
+        sqlx::query_as("SELECT text, original_text FROM video_comments WHERE video_id = 1")
+            .fetch_one(pool)
+            .await
+            .expect("read comment")
+    }
+
+    #[tokio::test]
+    async fn an_edited_comment_keeps_the_text_it_was_first_archived_with() {
+        // The archive is for what leaves YouTube, and an edit that removes or censors a comment is
+        // one way it leaves. The refresh shows the new text and keeps the first.
+        let pool = create_test_pool().await;
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("The first version")])
+            .await
+            .expect("first fetch");
+
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("[removed]")])
+            .await
+            .expect("second fetch");
+
+        assert_eq!(
+            stored_texts(&pool).await,
+            (
+                "[removed]".to_string(),
+                Some("The first version".to_string())
+            )
+        );
+
+        // A third version moves the text again and leaves the first one where it is.
+        merge_media_comments_in_pool(&pool, 1, vec![sample_comment("A third version")])
+            .await
+            .expect("third fetch");
+
+        assert_eq!(
+            stored_texts(&pool).await,
+            (
+                "A third version".to_string(),
+                Some("The first version".to_string())
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn a_refresh_with_the_same_text_records_no_original() {
+        let pool = create_test_pool().await;
+
+        for _ in 0..2 {
+            merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Unchanged")])
+                .await
+                .expect("fetch");
+        }
+
+        assert_eq!(stored_texts(&pool).await, ("Unchanged".to_string(), None));
     }
 
     #[tokio::test]

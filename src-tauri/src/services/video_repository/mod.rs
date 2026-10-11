@@ -67,6 +67,8 @@ pub struct MediaCommentRow {
     pub author_channel_id: Option<String>,
     pub author_thumbnail: Option<String>,
     pub text: String,
+    /// What the comment said when it was first stored, when a later fetch brought a different text.
+    pub original_text: Option<String>,
     #[ts(type = "number")]
     pub like_count: i64,
     #[ts(type = "number")]
@@ -191,7 +193,8 @@ const MAX_MEDIA_COMMENTS_LOADED: i64 = 50_000;
 /// Upper bound on the comment text one load carries, in characters, next to the row count above.
 /// Each text is capped at `MAX_COMMENT_TEXT_CHARS` (16 000), so 50 000 rows alone still allowed some
 /// 800 million characters through IPC in the worst case. Real comments average a few hundred
-/// characters, so this is far above any real backup and only stops a pathological one.
+/// characters, so this is far above any real backup and only stops a pathological one. A comment's
+/// `original_text` counts toward it with its current text.
 const MAX_MEDIA_COMMENT_TEXT_LOADED: i64 = 32_000_000;
 
 const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, media_type, \
@@ -464,7 +467,7 @@ async fn list_media_comments_within(
         let page_size = remaining.min(limits.page_rows);
         let page = sqlx::query_as::<_, MediaCommentRow>(
             "SELECT id, video_id, comment_id, parent_comment_id, author_name, author_handle,
-                author_channel_id, author_thumbnail, text, like_count, reply_count,
+                author_channel_id, author_thumbnail, text, original_text, like_count, reply_count,
                 is_author_uploader, is_favorited, is_pinned, is_edited, time_text, published_at,
                 created_at
              FROM video_comments
@@ -482,7 +485,11 @@ async fn list_media_comments_within(
         let page_len = page.len() as i64;
 
         for comment in page {
-            text_loaded += comment.text.chars().count() as i64;
+            text_loaded += comment.text.chars().count() as i64
+                + comment
+                    .original_text
+                    .as_deref()
+                    .map_or(0, |original| original.chars().count() as i64);
 
             if text_loaded > limits.text_chars {
                 return Ok(comments);

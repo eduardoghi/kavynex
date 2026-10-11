@@ -104,6 +104,7 @@ const mediaCommentRowSchema = z.object({
     author_channel_id: z.string().nullable(),
     author_thumbnail: z.string().nullable(),
     text: z.string(),
+    original_text: z.string().nullable(),
     like_count: z.number(),
     reply_count: z.number(),
     is_author_uploader: z.number(),

@@ -434,6 +434,14 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     .await
     .unwrap();
 
+    // v17 added `original_text` to the comments table.
+    if version >= 17 {
+        sqlx::query("ALTER TABLE video_comments ADD COLUMN original_text TEXT")
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
     sqlx::query(
         "CREATE TABLE app_settings ( \
             key TEXT PRIMARY KEY, \

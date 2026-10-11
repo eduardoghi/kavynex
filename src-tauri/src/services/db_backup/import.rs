@@ -216,6 +216,20 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         }
     }
 
+    // A database stamped at v17 or later claims `video_comments.original_text`, which the comment
+    // list selects. `ensure_schema` skips the migration that adds it, so a look-alike without the
+    // column would swap in and then fail every comment read.
+    if user_version >= 17
+        && !crate::services::db_schema::table_has_column(pool, "video_comments", "original_text")
+            .await
+            .map_err(|error| backup_error("failed to inspect the selected database", error))?
+    {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected file is not a kavynex database",
+        ));
+    }
+
     // The same reasoning applies to v13's live-chat row invariant (`has_live_chat` set implies a
     // stored `live_chat_file_path`). It is a CHECK on a fresh table and a pair of triggers on an
     // upgraded one, but an import replaces the whole file, so no write ever fires and neither

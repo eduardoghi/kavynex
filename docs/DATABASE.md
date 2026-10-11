@@ -93,6 +93,7 @@ CREATE TABLE video_comments (
     author_channel_id TEXT,
     author_thumbnail TEXT,
     text TEXT NOT NULL CHECK (LENGTH(text) <= 16000),
+    original_text TEXT CHECK (original_text IS NULL OR LENGTH(original_text) <= 16000),
     like_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
     is_author_uploader INTEGER NOT NULL DEFAULT 0,
@@ -113,7 +114,10 @@ A fetch is merged into what is already stored (`media_comments::merge_media_comm
 comment is ever removed by one. Refreshing an old video returns fewer comments than were saved,
 because some were deleted on YouTube since, and those are the ones nothing else has a copy of. A
 comment with an id is upserted on `(video_id, comment_id)`, so its text, like count and flags follow
-the latest fetch while its `published_at` keeps the first value stored. A comment without an id is
+the latest fetch while its `published_at` keeps the first value stored. The first time a fetch brings
+a different text, the stored one moves to `original_text`, and later changes leave that column
+alone, so it always holds what the comment said when it was first archived. That is the version an
+author's edit or a moderation removes from YouTube. A comment without an id is
 inserted only when no id-less comment with the same parent, author and text is already there.
 `comments_count` is recounted from the table after each merge, so it can exceed what any one fetch
 returned. Deleting the media (or its channel) is what removes its comments.
@@ -235,7 +239,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `16`), in `db_schema/mod.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `17`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -328,6 +332,10 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   own temporary index. Every comment merge was maintaining both. The drops and the stamp share one
   transaction. The dropped indexes are kept in `RETIRED_INDEXES` with their old DDL so the test
   fixtures can still build a faithful database of an older version.
+- **v17** adds `video_comments.original_text`, which the comment merge fills the first time a
+  fetch brings a different text for a stored comment (see `video_comments` above). Additive, with a
+  guarded `ALTER TABLE ADD COLUMN` and the stamp in one transaction. An import stamped at v17 or
+  later is refused when the column is missing (see "Import" below).
 - **Additive vs. table-rebuild migrations.** A new column or index is additive, so guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump
@@ -591,6 +599,10 @@ live connection pool is a singleton that cannot be reopened mid-session:
    library. The version gate is the point. Below v11 a NULL is simply what that schema looks like,
    and importing an older library has to keep working, which it does because the swap is followed
    by v11's backfill.
+
+   The same goes for a database stamped at v17 or later without `video_comments.original_text`. The
+   stamp says the migration that adds it already ran, so the column would never appear and every
+   comment read would fail.
 
    The rows are checked as well. `PRAGMA foreign_key_check` must come back empty, and every stored
    file path (`file_path`, `thumbnail_path`, `live_chat_file_path`, `avatar_path`, each where the

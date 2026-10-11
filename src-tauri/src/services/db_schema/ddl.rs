@@ -68,6 +68,9 @@ pub(super) const VIDEO_COMMENTS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS vi
     -- predates it get the equivalent trigger via migration v14 (see db_schema). Keep the literal in
     -- sync with the constant: a db_schema test pins it.
     text TEXT NOT NULL CHECK (LENGTH(text) <= 16000),
+    -- The text a comment had when it was first stored, kept once a later fetch brings a different
+    -- one (an edit, a moderation). NULL while the text never changed. Added by v17.
+    original_text TEXT CHECK (original_text IS NULL OR LENGTH(original_text) <= 16000),
     like_count INTEGER NOT NULL DEFAULT 0,
     reply_count INTEGER NOT NULL DEFAULT 0,
     is_author_uploader INTEGER NOT NULL DEFAULT 0,
@@ -414,6 +417,16 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
         BEGIN \
             SELECT RAISE(ABORT, 'comment text exceeds the maximum length'); \
         END",
+    ),
+];
+
+/// Additive columns for the video_comments table, added to a table that predates them by the
+/// migration named beside each.
+pub(super) const VIDEO_COMMENTS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
+    // v17.
+    (
+        "original_text",
+        "TEXT CHECK (original_text IS NULL OR LENGTH(original_text) <= 16000)",
     ),
 ];
 

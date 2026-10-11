@@ -1602,7 +1602,7 @@ async fn import_accepts_a_normalized_current_schema_database() {
          title_normalized TEXT, file_path TEXT, media_type TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         // A single fully-normalized row, so COUNT(title_normalized IS NULL) is zero.
@@ -1652,7 +1652,7 @@ async fn import_rejects_a_live_chat_flag_with_no_stored_path() {
          live_chat_file_path TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         // Flagged as having a live chat, but with no path behind it. The exact state the
@@ -1710,7 +1710,7 @@ async fn import_accepts_a_live_chat_flag_with_a_stored_path() {
          live_chat_file_path TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         // A flagged row with a real path, and an unflagged row. Both satisfy the invariant, so
@@ -1766,7 +1766,7 @@ async fn import_accepts_a_v13_database_that_lacks_the_live_chat_path_column() {
          title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         "INSERT INTO videos (title, title_normalized, has_live_chat) VALUES ('clip', 'clip', 0)",
@@ -1895,7 +1895,7 @@ async fn seed_kavynex_db(path: &Path, title: &str) {
          file_path TEXT, media_type TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
     ] {
@@ -2460,7 +2460,7 @@ async fn seed_db_with_null_normalized_title(path: &Path, user_version: i64) {
         // The video_comments -> videos cascade has been present since the first released
         // schema (user_version 5), so a realistic older database carries it; import validation
         // requires it regardless of version.
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
     ] {
