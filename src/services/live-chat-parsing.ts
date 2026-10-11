@@ -503,7 +503,15 @@ export function parseLiveChatLine(line: string): LiveChatMessageItem[] {
         return [];
     }
 
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    const value: unknown = JSON.parse(trimmed);
+
+    // JSON that is not an object (`null`, a number, a list) carries no chat item, which is the
+    // ordinary empty case rather than a line that failed to parse.
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return [];
+    }
+
+    const parsed = value as Record<string, unknown>;
     const replayAction = parsed.replayChatItemAction as Record<string, unknown> | undefined;
     const actions = Array.isArray(replayAction?.actions) ? replayAction.actions : [];
     const replayOffsetMs = parseReplayOffsetMs(parsed);
