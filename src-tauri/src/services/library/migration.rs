@@ -75,6 +75,9 @@ fn library_migration_lock() -> &'static Mutex<()> {
 /// Finder/Explorer (macOS `.DS_Store`, Windows `Thumbs.db`/`desktop.ini`). The user never put
 /// these there, so a destination holding only them is still effectively empty and must not be
 /// rejected as "not empty". Matched case-insensitively, since Windows filenames are.
+/// The name `ensure_distinct_directories` writes its probe file under, followed by a unique suffix.
+const MIGRATION_PROBE_PREFIX: &str = ".kavynex-migration-probe-";
+
 fn is_ignorable_os_entry(name: &str) -> bool {
     const IGNORABLE_OS_FILES: [&str; 3] = [".ds_store", "thumbs.db", "desktop.ini"];
 
@@ -108,7 +111,7 @@ fn ensure_distinct_directories(old: &Path, new: &Path) -> AppResult<()> {
     }
 
     let probe_name = format!(
-        ".kavynex-migration-probe-{}",
+        "{MIGRATION_PROBE_PREFIX}{}",
         crate::utils::naming::unique_temp_suffix()
     );
     let probe = new.join(&probe_name);
@@ -123,7 +126,10 @@ fn ensure_distinct_directories(old: &Path, new: &Path) -> AppResult<()> {
     })?;
 
     let seen_from_old = old.join(&probe_name).exists();
-    let _ = fs::remove_file(&probe);
+
+    // Retried like every other removal a scanner can hold. One that still fails leaves a probe that
+    // `ensure_destination_is_migratable` recognizes, so it does not make the folder read as taken.
+    let _ = crate::services::filesystem::retry_while_held(|| fs::remove_file(&probe));
 
     if seen_from_old {
         return Err(same_folder());
@@ -170,6 +176,14 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         })?;
 
         let name = entry.file_name().to_string_lossy().to_string();
+
+        // A probe an earlier attempt could not remove. It is ours, so it goes rather than making the
+        // folder read as holding someone else's file.
+        if name.starts_with(MIGRATION_PROBE_PREFIX) && entry.path().is_file() {
+            let _ = fs::remove_file(entry.path());
+            continue;
+        }
+
         let is_managed_name = MIGRATED_LIBRARY_DIRS.contains(&name.as_str());
 
         // A migration never creates a link, so a managed folder that is one points somewhere else,
@@ -1389,6 +1403,19 @@ mod tests {
                 "{name} should not be ignorable"
             );
         }
+    }
+
+    #[test]
+    fn a_probe_left_by_an_earlier_attempt_does_not_make_the_destination_taken() {
+        let dest = unique_test_dir("dest-probe");
+        fs::create_dir_all(&dest).unwrap();
+        let probe = dest.join(format!("{MIGRATION_PROBE_PREFIX}123"));
+        fs::write(&probe, b"").unwrap();
+
+        ensure_destination_is_migratable(&dest).unwrap();
+        assert!(!probe.exists(), "the leftover probe is cleared");
+
+        let _ = fs::remove_dir_all(&dest);
     }
 
     #[test]
