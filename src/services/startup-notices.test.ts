@@ -33,14 +33,17 @@ describe("startup notices", () => {
         resetStartupNoticesForTests();
     });
 
-    it("keeps what the first of several concurrent takes returned", async () => {
-        // The three alert hooks pull at once on mount. The backend hands everything to whichever
-        // take it answers first and nothing to the others.
+    it("sends one take at a time, so a hook looks only after the answer before it was merged", async () => {
+        // The three alert hooks pull at once on mount, and the backend hands everything to the first
+        // take it answers. Sent together, the answers could come back in any order.
         const pulls = [pullStartupNotices(), pullStartupNotices(), pullStartupNotices()];
+        await vi.waitFor(() => expect(pendingTakes).toHaveLength(1));
 
-        pendingTakes[1]?.({ ...NO_NOTICES, importApplyFailed: true, pendingMediaAbandoned: 2 });
-        await pulls[1];
-        pendingTakes[0]?.({ ...NO_NOTICES });
+        pendingTakes[0]?.({ ...NO_NOTICES, importApplyFailed: true, pendingMediaAbandoned: 2 });
+        await pulls[0];
+        await vi.waitFor(() => expect(pendingTakes).toHaveLength(2));
+        pendingTakes[1]?.({ ...NO_NOTICES });
+        await vi.waitFor(() => expect(pendingTakes).toHaveLength(3));
         pendingTakes[2]?.({ ...NO_NOTICES });
         await Promise.all(pulls);
 
@@ -52,10 +55,12 @@ describe("startup notices", () => {
         const first = pullStartupNotices();
         const second = pullStartupNotices();
 
+        await vi.waitFor(() => expect(pendingTakes).toHaveLength(1));
         pendingTakes[0]?.({ ...NO_NOTICES, databaseIntegrityFailed: true, importedMissingFiles: 3 });
         await first;
         expect(consumeStartupNotice("databaseIntegrityFailed")).toBe(true);
 
+        await vi.waitFor(() => expect(pendingTakes).toHaveLength(2));
         pendingTakes[1]?.({ ...NO_NOTICES });
         await second;
 
@@ -64,6 +69,7 @@ describe("startup notices", () => {
 
     it("hands each notice out once", async () => {
         const pull = pullStartupNotices();
+        await vi.waitFor(() => expect(pendingTakes).toHaveLength(1));
         pendingTakes[0]?.({ ...NO_NOTICES, importApplyFailed: true });
         await pull;
 
