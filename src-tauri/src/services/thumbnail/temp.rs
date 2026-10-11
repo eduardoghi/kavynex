@@ -191,6 +191,14 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
                 std::thread::sleep(FFMPEG_THUMBNAIL_POLL);
             }
             Err(e) => {
+                // The child cannot be polled, so it is not known to have exited. Killed and reaped
+                // like a timeout, so a failed wait does not leave an ffmpeg running and its drain
+                // threads blocked on pipes that never close.
+                kill_process_tree_blocking(child.id());
+                let _ = child.wait();
+                let _ = stdout_handle.join();
+                let _ = stderr_handle.join();
+
                 return Err(AppError::from_code(
                     AppErrorCode::FfmpegExecFailed,
                     format!("failed to wait for ffmpeg: {e}"),
