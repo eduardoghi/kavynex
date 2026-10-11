@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../utils/media-utils", () => ({
-    fileSrcFromStoredPath: vi.fn(() => "asset://localhost/media.mp4"),
+    mediaSrcFromStoredPath: vi.fn(() => "kvxmedia://localhost/media.mp4"),
 }));
 
 import { readMediaDurationInSeconds } from "./media-metadata-service";
-import { fileSrcFromStoredPath } from "../utils/media-utils";
+import { mediaSrcFromStoredPath } from "../utils/media-utils";
 
 // A minimal stand-in for the HTMLMediaElement the service creates. The test drives its metadata /
 // error events by hand (jsdom never fires them for a src that loads nothing) and inspects the
@@ -68,7 +68,7 @@ describe("readMediaDurationInSeconds", () => {
         expect(await readMediaDurationInSeconds("   ", "/lib", "video")).toBeNull();
         expect(await readMediaDurationInSeconds("video/a.mp4", "  ", "video")).toBeNull();
         expect(document.createElement).not.toHaveBeenCalled();
-        expect(fileSrcFromStoredPath).not.toHaveBeenCalled();
+        expect(mediaSrcFromStoredPath).not.toHaveBeenCalled();
     });
 
     it("creates a <video> element for video and an <audio> element for audio", async () => {

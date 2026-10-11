@@ -269,6 +269,11 @@ export function fileSrcFromAbsolutePath(path: string | null): string {
     return convertFileSrc(toAssetPath(normalized));
 }
 
+/** `mediaSrcFromAbsolutePath` for a path as the database stores it (relative to the library). */
+export function mediaSrcFromStoredPath(storedPath: string | null, libraryPath: string): string {
+    return mediaSrcFromAbsolutePath(resolveStoredPath(storedPath, libraryPath));
+}
+
 export function fileSrcFromStoredPath(
     storedPath: string | null,
     libraryPath: string

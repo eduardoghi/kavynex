@@ -1,5 +1,5 @@
 import type { MediaType } from "../types/media";
-import { fileSrcFromStoredPath } from "../utils/media-utils";
+import { mediaSrcFromStoredPath } from "../utils/media-utils";
 
 function createMediaElement(mediaType: MediaType): HTMLMediaElement {
     if (mediaType === "audio") {
@@ -31,7 +31,10 @@ export async function readMediaDurationInSeconds(
         return null;
     }
 
-    const fileSrc = fileSrcFromStoredPath(normalizedFilePath, normalizedLibraryPath);
+    // Through the player's own scheme, not `asset:`. The asset protocol cuts every range response at
+    // 1 MB, and WebKit gives up on a recording whose metadata is larger than that, which on macOS and
+    // Linux left exactly those media without a duration. See `mediaSrcFromAbsolutePath`.
+    const fileSrc = mediaSrcFromStoredPath(normalizedFilePath, normalizedLibraryPath);
 
     return new Promise<number | null>((resolve) => {
         const media = createMediaElement(mediaType);

@@ -18,6 +18,7 @@ import {
     isThumbnailFile,
     joinNormalizedPath,
     mediaSrcFromAbsolutePath,
+    mediaSrcFromStoredPath,
     mediaTypeFromFile,
     resolveStoredPath,
     RESUME_COMPLETION_TOLERANCE_SECONDS,
@@ -342,6 +343,17 @@ describe("media-utils", () => {
                 "asset://localhost/C:/a/b.mp4"
             );
             expect(convertFileSrcMock).toHaveBeenCalledWith("C:/a/b.mp4");
+        });
+    });
+
+    describe("mediaSrcFromStoredPath", () => {
+        it("resolves a library-relative path through the app's own scheme", () => {
+            // The duration probe reads through this, so it gets the scheme the player uses rather
+            // than the asset protocol whose 1 MB range cap WebKit does not recover from.
+            expect(mediaSrcFromStoredPath("video/a.mp4", "/library")).toBe(
+                "kvxmedia://localhost//library/video/a.mp4"
+            );
+            expect(mediaSrcFromStoredPath(null, "/library")).toBe("");
         });
     });
 

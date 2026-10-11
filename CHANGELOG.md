@@ -68,6 +68,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   saved to the library, and cancelling the format listing no longer opens an error dialog.
 - Closing Diagnostics while Verify saved files runs stops the check. It used to keep reading the
   whole library in the background, and Diagnostics refused to start another until it finished.
+- The duration of an added media is read through the same channel the player uses. On macOS and
+  Linux it went through one that cuts reads at 1 MB, which can leave a long recording without a
+  duration.
 - The log file writes your home folder as `~`, including in the errors the window reports and in
   yt-dlp's output, so the OS user name stays out of a log attached to a bug report. Each uncaught
   window error is logged once, with its stack, and the harmless ResizeObserver notice is no longer
