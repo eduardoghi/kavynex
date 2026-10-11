@@ -225,11 +225,29 @@ pub(super) async fn discard_cancelled_placement<R: Runtime>(
     )
     .await;
 
-    if let Err(error) = trashed {
-        logger::warn(
-            "yt_dlp",
-            format!("could not move a cancelled download's files to the trash: {error}"),
-        );
+    // Files that could not be moved (the library not mounted, a file another program holds) are
+    // still on disk, and the marker is the only record of them. It stays for the next launch's
+    // sweep, the same rule the sweep itself follows.
+    if !crate::services::pending_media::cleanup_reconciled(&trashed) {
+        match &trashed {
+            Err(error) => logger::warn(
+                "yt_dlp",
+                format!("could not move a cancelled download's files to the trash: {error}"),
+            ),
+            Ok(report) => logger::warn(
+                "yt_dlp",
+                format!(
+                    "{} file(s) of a cancelled download could not be moved to the trash; the next \
+                     launch tries again",
+                    report.failed_paths.len()
+                ),
+            ),
+        }
+
+        if let Some(marker) = placement_marker {
+            crate::services::pending_media::leave_marker_for_next_sweep(&marker);
+        }
+
         return;
     }
 

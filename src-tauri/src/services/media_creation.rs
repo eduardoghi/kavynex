@@ -698,7 +698,7 @@ pub(crate) fn nothing_to_clean_up(
 /// Shared by both wrappers below rather than written twice. The two differ only in which cleanup
 /// they call (one holds the registration lock, one takes it), and duplicating the reporting would
 /// duplicate a `warn` whose only observable effect is the log line.
-fn report_cleanup_outcome(outcome: AppResult<library::cleanup::ArtifactCleanupReport>) {
+fn report_cleanup_outcome(outcome: &AppResult<library::cleanup::ArtifactCleanupReport>) {
     match outcome {
         Ok(report) if !report.failed_paths.is_empty() => logger::warn(
             "media_creation",
@@ -732,7 +732,7 @@ async fn cleanup_artifacts_best_effort<R: Runtime>(
     }
 
     report_cleanup_outcome(
-        library::cleanup::cleanup_unreferenced_artifacts(
+        &library::cleanup::cleanup_unreferenced_artifacts(
             app,
             file_path,
             thumbnail_path,
@@ -757,11 +757,12 @@ pub(crate) fn deletable_media_file(prepared: &PreparedArtifacts) -> Option<Strin
 }
 
 /// The same cleanup, for a caller that already holds the registration lock. Takes the whole
-/// `PreparedArtifacts` because that caller always has one.
+/// `PreparedArtifacts` because that caller always has one. Returns whether it left nothing behind
+/// (see `pending_media::cleanup_reconciled`), which decides whether the marker can go.
 async fn cleanup_artifacts_best_effort_locked<R: Runtime>(
     app: &AppHandle<R>,
     prepared: &PreparedArtifacts,
-) {
+) -> bool {
     let file_path = deletable_media_file(prepared);
 
     if nothing_to_clean_up(
@@ -769,20 +770,21 @@ async fn cleanup_artifacts_best_effort_locked<R: Runtime>(
         prepared.thumbnail_path.as_deref(),
         prepared.live_chat_file_path.as_deref(),
     ) {
-        return;
+        return true;
     }
 
     // Into the library's trash rather than unlinked. A finished download whose insert failed may be
     // of something no longer on YouTube.
-    report_cleanup_outcome(
-        library::cleanup::trash_unreferenced_artifacts_locked(
-            app,
-            file_path,
-            prepared.thumbnail_path.clone(),
-            prepared.live_chat_file_path.clone(),
-        )
-        .await,
-    );
+    let outcome = library::cleanup::trash_unreferenced_artifacts_locked(
+        app,
+        file_path,
+        prepared.thumbnail_path.clone(),
+        prepared.live_chat_file_path.clone(),
+    )
+    .await;
+    report_cleanup_outcome(&outcome);
+
+    pending_media::cleanup_reconciled(&outcome)
 }
 
 /// Removes a Move import's source now that a row points at the library copy.
@@ -958,9 +960,17 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
             // creation that would have adopted these same paths, and the marker is cleared only
             // afterwards, if the process dies in between, the marker is what reconciles them. A Move
             // source is untouched here, since the source is what the user still has.
-            cleanup_artifacts_best_effort_locked(app, &prepared).await;
-            clear_marker_best_effort(app, marker).await;
-            clear_marker_best_effort(app, interim_marker).await;
+            //
+            // A cleanup that could not move everything keeps the markers instead, since they are
+            // then the only record of files still on disk, and the next launch's sweep retries them.
+            if cleanup_artifacts_best_effort_locked(app, &prepared).await {
+                clear_marker_best_effort(app, marker).await;
+                clear_marker_best_effort(app, interim_marker).await;
+            } else {
+                for kept in [marker, interim_marker].into_iter().flatten() {
+                    pending_media::leave_marker_for_next_sweep(&kept);
+                }
+            }
 
             Err(error)
         }

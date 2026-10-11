@@ -237,8 +237,11 @@ later is a cheaper mistake than deleting a file the user still wants.
 A marker whose reconciliation *fails* is kept for the next launch to retry, since the usual cause is
 transient (the library drive not mounted yet). A failure is either the cleanup returning an error or
 any of the marker's paths that could not be moved to the trash, and a library folder that does not
-exist right now counts as the second for every path, not as files already gone. Nothing there can tell transient from permanent, so
-the marker carries an `attempts` count and is abandoned after `MAX_MARKER_SWEEP_ATTEMPTS` (5). A
+exist right now counts as the second for every path, not as files already gone. The same rule applies
+where a marker is first cleared, after a creation fails or a download is cancelled. A cleanup there
+that leaves a file in place keeps the marker for the next launch instead of clearing it
+(`pending_media::cleanup_reconciled`). Nothing there can tell transient from permanent, so the marker
+carries an `attempts` count and is abandoned after `MAX_MARKER_SWEEP_ATTEMPTS` (5). A
 failure that survives five launches is not a slow drive. Abandoning it means the *record* is given
 up on, never the files. The marker stays on disk and its artifacts stay in the library, where the
 Diagnostics dialog reports them as unreferenced. The difference is that the failure is logged once,

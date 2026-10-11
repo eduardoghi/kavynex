@@ -413,6 +413,23 @@ fn record_marker_attempt<R: Runtime>(
     }
 }
 
+/// Whether a cleanup left nothing the marker still has to account for. An error, or any path that
+/// could not be moved (a library that is not mounted, a file another program holds), means files are
+/// still on disk and unreferenced, and the marker is the only record of them.
+pub(crate) fn cleanup_reconciled(
+    outcome: &AppResult<crate::services::library::cleanup::ArtifactCleanupReport>,
+) -> bool {
+    matches!(outcome, Ok(report) if report.failed_paths.is_empty())
+}
+
+/// Keeps a marker on disk for the next launch's sweep and stops treating its creation as in flight.
+/// For a creation that ended without its cleanup reconciling everything (see
+/// [`cleanup_reconciled`]). The sweep retries it then, under the same attempt ceiling as any other
+/// leftover.
+pub(crate) fn leave_marker_for_next_sweep(marker: &str) {
+    lock_live_markers().remove(marker);
+}
+
 /// Removes a marker once its creation has finished, either the row was inserted, or the failure
 /// path already cleaned the artifacts up. A missing marker is not an error. The sweep may have
 /// consumed it, and the caller has nothing to do about it either way.
@@ -776,6 +793,46 @@ mod tests {
         assert_eq!(decoded.attempts, 0);
 
         clear_pending_media_artifacts(app.handle(), &name).unwrap();
+    }
+
+    #[test]
+    fn only_a_cleanup_that_moved_everything_counts_as_reconciled() {
+        use crate::services::library::cleanup::ArtifactCleanupReport;
+
+        let clean = ArtifactCleanupReport {
+            deleted_paths: vec!["video/media_a.mp4".to_string()],
+            ..ArtifactCleanupReport::default()
+        };
+        let partial = ArtifactCleanupReport {
+            failed_paths: vec!["thumbnails/thumb_a.jpg".to_string()],
+            ..ArtifactCleanupReport::default()
+        };
+
+        assert!(cleanup_reconciled(&Ok(clean)));
+        assert!(!cleanup_reconciled(&Ok(partial)));
+        assert!(!cleanup_reconciled(&Err(AppError::from_code(
+            AppErrorCode::InvalidLibraryPath,
+            "library path does not exist",
+        ))));
+    }
+
+    #[test]
+    fn a_marker_left_for_the_next_sweep_stays_on_disk_and_stops_being_in_flight() {
+        let app = mock_app();
+        let handle = app.handle();
+        let marker = record_pending_media_artifacts(
+            handle,
+            artifacts(Some("video/media_kept.mp4"), None, None),
+        )
+        .unwrap();
+        assert!(is_live_marker(&marker));
+
+        leave_marker_for_next_sweep(&marker);
+
+        assert!(!is_live_marker(&marker));
+        assert!(pending_media_dir(handle).unwrap().join(&marker).exists());
+
+        clear_pending_media_artifacts(handle, &marker).unwrap();
     }
 
     #[test]
