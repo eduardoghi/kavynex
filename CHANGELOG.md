@@ -115,6 +115,30 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 - Files that an antivirus or the search indexer holds for a moment on Windows are retried instead of
   failing the import, download or backup.
 - Media files are served with correct responses for out-of-range and empty requests.
+- Starting with an empty library, when the database file is missing, asks a second time and no
+  longer has the initial focus. The old backups are moved to a `set-aside-backups` folder that
+  Diagnostics opens and Import can read, instead of being rotated out by the new library's backups.
+- The external backup no longer replaces its copies with an empty or damaged database. Copies an
+  earlier install left in the folder are renamed to `kavynex-backup-previous-*.db` and kept.
+- A restore stops at a backup another program is holding instead of taking an older one, and the
+  restore dialog stays open after a failed attempt.
+- A database file emptied to zero bytes is treated like a missing one, with the restore offered.
+- The weekly full database check runs weekly on Windows instead of at every launch.
+- Compact database refuses a database the integrity check found damaged, or a disk without room for
+  the rewrite, and Diagnostics stays open while it runs.
+- A finished download is never lost when moving it into the library fails, and a scanner holding the
+  file for a few seconds no longer makes the move fail.
+- Cancelling after the download was placed no longer adds the media anyway.
+- A live chat replay that was cut short is not saved.
+- Refreshing comments refuses a video id that is not the media's own.
+- A newly created channel opens, instead of the select-a-channel prompt.
+- A channel list or settings that could not be read no longer shows the first-run screen.
+- Importing a database or undoing an import waits for a library move or a download to finish.
+- Settings shows an update the startup check found even when it was opened before the check ended.
+- Focus no longer drops to the page after deleting a media, after Check again finds the tools, or
+  after cancelling a database import.
+- The library count is announced once per search or filter instead of on every page load.
+- Thumbnail previews work in a cache folder whose path contains a percent sign.
 
 ### Security
 
@@ -141,3 +165,6 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   folder, and yt-dlp plugins are disabled.
 - Database files opened from outside (an import, the backup mirror) are opened with SQLite's
   defensive settings, and a thumbnail picked from disk has to be an image under 25 MB.
+- The format probe's output no longer shows the path of its copy of your cookies file, the copy is
+  written back only when it changed and your file did not, and a copy left by a run the app closed
+  on is removed at the next launch.
