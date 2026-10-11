@@ -1772,6 +1772,47 @@ async fn ensure_schema_recovers_a_legacy_database_with_duplicate_comments() {
 }
 
 #[tokio::test]
+async fn a_rebuild_does_not_hand_out_the_ids_of_deleted_rows_again() {
+    let pool = memory_pool_with_foreign_keys().await;
+
+    for statement in [
+        "CREATE TABLE widget (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)",
+        "INSERT INTO widget (name) VALUES ('a'), ('b'), ('c')",
+        "DELETE FROM widget WHERE id = 3",
+    ] {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+    }
+
+    let rebuild = TableRebuild {
+        table: "widget",
+        staging_table: "widget_rebuilt",
+        new_ddl: "CREATE TABLE widget_rebuilt (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL CHECK (TRIM(name) <> '')
+        )",
+        carried_columns: "id, name",
+    };
+
+    apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)
+        .await
+        .unwrap();
+
+    sqlx::query("INSERT INTO widget (name) VALUES ('d')")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (newest,): (i64,) = sqlx::query_as("SELECT MAX(id) FROM widget")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        newest, 4,
+        "id 3 belonged to a deleted row and must not come back"
+    );
+}
+
+#[tokio::test]
 async fn apply_table_rebuilds_restores_foreign_keys_after_a_failed_rebuild() {
     let pool = memory_pool_with_foreign_keys().await;
 

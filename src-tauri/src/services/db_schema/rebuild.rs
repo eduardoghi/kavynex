@@ -54,6 +54,19 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
     .await
     .map_err(|error| db_error("failed to copy rows into the rebuilt table", error))?;
 
+    // The AUTOINCREMENT high-water mark goes with the old table when it is dropped, and the staging
+    // table's starts at the largest id it was given. If the newest rows had been deleted, their ids
+    // would be handed out again, which code relying on ids never coming back (a comment fetch that
+    // outlives a deleted media) does not expect. Read here and carried over after the rename. A
+    // table that is not AUTOINCREMENT has no row, and a database that never had such a table has no
+    // `sqlite_sequence` at all, which reads as nothing to carry.
+    let previous_sequence: Option<i64> =
+        sqlx::query_scalar("SELECT seq FROM sqlite_sequence WHERE name = ?")
+            .bind(spec.table)
+            .fetch_optional(&mut *conn)
+            .await
+            .unwrap_or(None);
+
     sqlx::query(sqlx::AssertSqlSafe(format!("DROP TABLE {}", spec.table)))
         .execute(&mut *conn)
         .await
@@ -66,6 +79,23 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
     .execute(&mut *conn)
     .await
     .map_err(|error| db_error("failed to rename the rebuilt table into place", error))?;
+
+    // The rename moved the staging table's sequence row under the real name. Raised to the old mark,
+    // never lowered, and only when the rebuilt table is AUTOINCREMENT too, since only then is there a
+    // row to update.
+    if let Some(previous) = previous_sequence {
+        sqlx::query("UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = ?")
+            .bind(previous)
+            .bind(spec.table)
+            .execute(&mut *conn)
+            .await
+            .map_err(|error| {
+                db_error(
+                    "failed to carry the id sequence into the rebuilt table",
+                    error,
+                )
+            })?;
+    }
 
     Ok(())
 }

@@ -347,7 +347,9 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   carried columns across, drop the old table, rename the staging table into place), with
   foreign keys disabled for the duration (otherwise `DROP TABLE` on a parent would cascade
   and wipe out its children) and a `PRAGMA foreign_key_check` before committing to catch
-  any dangling reference the rebuild introduced. This path is implemented and tested but
+  any dangling reference the rebuild introduced. An AUTOINCREMENT table keeps its id sequence
+  across the rebuild, so the ids of rows deleted before it are not handed out again. This path is
+  implemented and tested but
   unused so far (no migration has needed it yet), kept ready so the
   first real rebuild is a data change, not new untested plumbing.
 - **Transactional and idempotent.** Every migration function runs inside its own
