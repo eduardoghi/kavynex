@@ -99,9 +99,12 @@ jobs:
               shell: bash
               run: |
                   pnpm tauri signer generate --ci --password "" --write-keys "$RUNNER_TEMP/rehearsal.key" --force
+                  # The key file has no trailing newline. Written with `cat`, the delimiter landed on
+                  # its last line and the runner could not find it. The substitution strips any
+                  # trailing newline and printf adds exactly one.
                   {
                       echo "TAURI_SIGNING_PRIVATE_KEY<<KEY_EOF"
-                      cat "$RUNNER_TEMP/rehearsal.key"
+                      printf '%s\n' "$(cat "$RUNNER_TEMP/rehearsal.key")"
                       echo "KEY_EOF"
                       echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="
                   } >> "$GITHUB_ENV"
