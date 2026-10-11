@@ -427,7 +427,8 @@ pub(super) async fn prepare_staged_database(
                 (EXTERNAL_BACKUP_DIR_KEY, &paths.external_backup_dir),
             ] {
                 sqlx::query(
-                    "INSERT INTO app_settings (key, value) VALUES (?, ?)                  ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    "INSERT INTO app_settings (key, value) VALUES (?, ?) \
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 )
                 .bind(key)
                 .bind(value)
@@ -698,6 +699,22 @@ fn set_aside_orphaned_wal(db_path: &Path) -> AppResult<()> {
     Ok(())
 }
 
+/// Moves the write-ahead log of the database just renamed from `from` to `to` under the name SQLite
+/// looks for beside `to`, so it opens there with every committed transaction, and drops the
+/// shared-memory index, which is rebuilt on open. Nothing to do when there is no log. The previous
+/// database's log is only ever non-empty after a run that did not exit cleanly, since the app
+/// checkpoints it at exit.
+fn move_wal_with(from: &Path, to: &Path) -> std::io::Result<()> {
+    let _ = std::fs::remove_file(sibling(from, "-shm"));
+    let wal = sibling(from, "-wal");
+
+    if !wal.exists() {
+        return Ok(());
+    }
+
+    crate::services::filesystem::rename_retrying(&wal, &sibling(to, "-wal"))
+}
+
 /// Restores a `.pre-import` snapshot that an interrupted import stranded as the only copy of the
 /// database, when its staged file is gone so the normal swap can never consume it. Sets aside the
 /// file the pool may have created at `db_path` on an earlier launch (see [`displace_database`]),
@@ -714,6 +731,18 @@ fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path)
     crate::services::filesystem::rename_retrying(pre_import, db_path).map_err(|error| {
         backup_error("failed to restore the stranded pre-import snapshot", error)
     })?;
+
+    // `displace_database` already moved any log at the live name away, so this one cannot land on
+    // another database's. A failure leaves it beside the `.pre-import` name, where nothing reads it.
+    if let Err(error) = move_wal_with(pre_import, db_path) {
+        logger::error(
+            "db_backup",
+            format!(
+                "the restored pre-import snapshot's write-ahead log stayed at \
+                 kavynex.db.pre-import-wal, so its last transactions are not in the database: {error}"
+            ),
+        );
+    }
 
     crate::services::filesystem::fsync_parent_dir(db_path);
     super::record_database_swap(db_path);
@@ -783,8 +812,35 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         // and the move-aside is a rename rather than a copy, so nothing else would put it back.)
         let _ = std::fs::remove_file(&pre_import);
 
+        // The previous undo copy's log goes with it. Left behind, SQLite would replay it into the
+        // database renamed in next, since it checks frames against the log's own header and not
+        // against the file.
+        let _ = std::fs::remove_file(sibling(&pre_import, "-wal"));
+        let _ = std::fs::remove_file(sibling(&pre_import, "-shm"));
+
         crate::services::filesystem::rename_retrying(db_path, &pre_import)
             .map_err(|error| backup_error("failed to set aside the current database", error))?;
+
+        // The log of a run that did not exit cleanly holds its last transactions, which belong in
+        // the undo copy. One that cannot be moved puts the database back and leaves the import
+        // pending, since the swap below drops whatever is left under the live name.
+        if let Err(error) = move_wal_with(db_path, &pre_import) {
+            if let Err(rollback_error) =
+                crate::services::filesystem::rename_retrying(&pre_import, db_path)
+            {
+                logger::error(
+                    "db_backup",
+                    format!(
+                        "database import rollback failed after its write-ahead log could not be moved; the previous database is preserved at the .pre-import snapshot beside kavynex.db and must be restored by hand: {rollback_error}"
+                    ),
+                );
+            }
+
+            return Err(backup_error(
+                "failed to set aside the current database's write-ahead log",
+                error,
+            ));
+        }
 
         // Durable only once `.pre-import` actually holds the user's database, which is the claim
         // the recovery branch above reads it as. Written *before* the move-aside it would also
@@ -808,6 +864,8 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
                         "database import rollback failed after a marker-write error; the previous database is preserved at the .pre-import snapshot beside kavynex.db and must be restored by hand: {rollback_error}"
                     ),
                 );
+            } else {
+                let _ = move_wal_with(&pre_import, db_path);
             }
 
             return Err(error);
@@ -822,6 +880,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         // succeeds the database is whole again and the marker has to go with it; when it fails,
         // the marker is exactly what tells the next run that `.pre-import` is the only real copy.
         if crate::services::filesystem::rename_retrying(&pre_import, db_path).is_ok() {
+            let _ = move_wal_with(&pre_import, db_path);
             remove_import_applying_marker(&marker);
         }
 

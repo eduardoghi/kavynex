@@ -33,7 +33,9 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   aside after a failed restore, rotated the same way so a repeated restore keeps the earlier
   evidence. Fewer generations than `.bak`, since each is a full copy of an already-broken database.
 - `kavynex.db.pre-import`: the database as it was before the last applied import, kept so the
-  import can be undone. It persists until the next import replaces it.
+  import can be undone. It persists until the next import replaces it. A `kavynex.db.pre-import-wal`
+  beside it is that database's write-ahead log, there when the run before the import did not exit
+  cleanly, and it belongs to the copy (copy both to use it by hand).
 - `kavynex.db.pre-migration-v<N>`: the database as it was right before an upgrade migrated it from
   schema version N. Taken every time a migration is pending, never throttled or rotated by the
   daily snapshot, and the two most recent are kept (`PRE_MIGRATION_SNAPSHOTS_KEPT`). It is the copy

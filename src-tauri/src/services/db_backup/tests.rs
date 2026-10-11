@@ -614,6 +614,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.corrupt-wal",
             "kavynex.db.restore.tmp",
             "kavynex.db.pre-import",
+            "kavynex.db.pre-import-wal",
             "kavynex.db.import-staged",
             "kavynex.db.import-staged.tmp",
             "kavynex.db.import-applying",
@@ -837,7 +838,8 @@ async fn a_restore_keeps_this_machines_folders_rather_than_the_snapshots() {
 async fn set_setting(db: &Path, key: &str, value: &str) {
     let pool = open(db).await.unwrap();
     sqlx::query(
-        "INSERT INTO app_settings (key, value) VALUES (?, ?)          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        "INSERT INTO app_settings (key, value) VALUES (?, ?) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
     .bind(key)
     .bind(value)
@@ -1368,6 +1370,51 @@ async fn a_move_aside_whose_marker_cannot_be_written_is_rolled_back() {
 }
 
 #[tokio::test]
+async fn the_undo_copy_keeps_what_a_crashed_run_left_in_the_write_ahead_log() {
+    // A run that did not exit cleanly leaves its last transactions in `-wal`, not yet folded into
+    // the file. The import moves the file aside as the undo copy, and the log has to go with it.
+    let dir = temp_dir("import-crashed-wal");
+    let db = dir.join("kavynex.db");
+    let live = dir.join("live.db");
+    seed_kavynex_db(&live, "checkpointed").await;
+
+    let options = SqliteConnectOptions::new()
+        .filename(&live)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA wal_autocheckpoint = 0")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE videos SET title = 'only in the log'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Copied while the connection is still open, which is what a crash leaves on disk.
+    std::fs::copy(&live, &db).unwrap();
+    std::fs::copy(sibling(&live, "-wal"), sibling(&db, "-wal")).unwrap();
+    pool.close().await;
+
+    let source = dir.join("imported.db");
+    seed_kavynex_db(&source, "imported").await;
+    stage_database_import(&db, &source, None).await.unwrap();
+    assert!(apply_pending_database_import(&db).unwrap());
+
+    assert_eq!(read_video_title(&db).await, "imported");
+    assert_eq!(
+        read_video_title(&pre_import_path(&db)).await,
+        "only in the log"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn a_normal_second_import_still_replaces_the_previous_undo_snapshot() {
     // The counterpart to the test above, and the reason the marker exists rather than a plain
     // "does `.pre-import` exist?" check. On disk, a second import looks exactly like the
@@ -1694,7 +1741,8 @@ async fn import_accepts_a_normalized_current_schema_database() {
          title_normalized TEXT, file_path TEXT, media_type TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         // A single fully-normalized row, so COUNT(title_normalized IS NULL) is zero.
@@ -1744,7 +1792,8 @@ async fn import_rejects_a_live_chat_flag_with_no_stored_path() {
          live_chat_file_path TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         // Flagged as having a live chat, but with no path behind it. The exact state the
@@ -1802,7 +1851,8 @@ async fn import_accepts_a_live_chat_flag_with_a_stored_path() {
          live_chat_file_path TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         // A flagged row with a real path, and an unflagged row. Both satisfy the invariant, so
@@ -1858,7 +1908,8 @@ async fn import_accepts_a_v13_database_that_lacks_the_live_chat_path_column() {
          title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
         "INSERT INTO videos (title, title_normalized, has_live_chat) VALUES ('clip', 'clip', 0)",
@@ -1987,7 +2038,8 @@ async fn seed_kavynex_db(path: &Path, title: &str) {
          file_path TEXT, media_type TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
     ] {
@@ -2552,7 +2604,8 @@ async fn seed_db_with_null_normalized_title(path: &Path, user_version: i64) {
         // The video_comments -> videos cascade has been present since the first released
         // schema (user_version 5), so a realistic older database carries it; import validation
         // requires it regardless of version.
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \n         original_text TEXT, \
+        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
+         original_text TEXT, \
          FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
         "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)",
     ] {

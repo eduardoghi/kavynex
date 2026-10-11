@@ -658,15 +658,17 @@ live connection pool is a singleton that cannot be reopened mid-session:
    it, which would otherwise authenticate to the host it names. Only `key` and `value` are written,
    so an older schema still imports. The undo goes through the same staging, so it keeps them too.
 
-   Before staging, the command checkpoints the live database's WAL. The swap renames the `.db` into
-   `.pre-import` and drops its `-wal`, so commits still in the log were missing from the snapshot an
-   undo brings back.
+   Before staging, the command checkpoints the live database's WAL, so the `.pre-import` the swap
+   makes holds every commit as a single file.
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls
    `apply_pending_database_import`. If a staged file exists, the current database is
-   moved aside to `.pre-import` (a safety net, not deleted), the previous database's `-wal`/
-   `-shm` sidecars are dropped (the staged copy has none), and the staged file is renamed into place as the new
-   `kavynex.db`. If that rename fails, the previous database is rolled back from
-   `.pre-import` so the app is never left without one to open. A failure here is logged
+   moved aside to `.pre-import` (a safety net, not deleted) and its `-wal` goes with it as
+   `.pre-import-wal`, the name SQLite reads beside `.pre-import`. A log is only there after a run
+   that did not exit cleanly, and it holds that run's last commits. A log that cannot be moved puts
+   the database back and leaves the import pending. The `-shm` index is dropped, and the staged file
+   (which has no log) is renamed into place as the new `kavynex.db`. If that rename fails, the
+   previous database and its log are rolled back from `.pre-import` so the app is never left without
+   one to open. A failure here is logged
    but never blocks startup. The move-aside is a rename, not a copy, so `.pre-import` can be
    the *only* copy of the previous database if a run dies between the two renames; the removal
    of an older `.pre-import` therefore happens only in the branch that immediately replaces it,
