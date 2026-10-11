@@ -162,6 +162,28 @@ fn is_live_marker(name: &str) -> bool {
     lock_live_markers().contains(name)
 }
 
+/// Every library path the markers of this process's creations name, read from their files.
+fn paths_named_by_live_markers<R: Runtime>(app: &AppHandle<R>) -> HashSet<String> {
+    let names: Vec<String> = lock_live_markers().iter().cloned().collect();
+    let Ok(dir) = pending_media_dir(app) else {
+        return HashSet::new();
+    };
+
+    names
+        .iter()
+        .filter_map(|name| fs::read_to_string(dir.join(name)).ok())
+        .filter_map(|contents| parse_marker(&contents).ok().flatten())
+        .flat_map(|artifacts| {
+            [
+                artifacts.file_path,
+                artifacts.thumbnail_path,
+                artifacts.live_chat_file_path,
+            ]
+        })
+        .flatten()
+        .collect()
+}
+
 /// The instant this process started, used as the cutoff by [`marker_is_sweepable`].
 ///
 /// Pinned through [`pin_process_start`] from `lib.rs`'s `setup()` rather than left to initialize
@@ -540,11 +562,19 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
 
     for (name, artifacts) in markers {
         if !artifacts.is_empty() {
+            // Names are content-addressed, so a creation of this session can have placed the very
+            // file an earlier, crashed one named, and its row does not exist yet for the reference
+            // count to see. Read again for each marker, so a creation started during the sweep is
+            // seen too.
+            let in_flight = paths_named_by_live_markers(app);
+            let spare =
+                |path: &Option<String>| path.clone().filter(|path| !in_flight.contains(path));
+
             match crate::services::library::cleanup::trash_unreferenced_artifacts(
                 app,
-                artifacts.file_path.clone(),
-                artifacts.thumbnail_path.clone(),
-                artifacts.live_chat_file_path.clone(),
+                spare(&artifacts.file_path),
+                spare(&artifacts.thumbnail_path),
+                spare(&artifacts.live_chat_file_path),
             )
             .await
             {
@@ -1226,6 +1256,30 @@ mod tests {
         );
         assert!(!marker.exists(), "the marker is cleared either way");
 
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_spares_a_file_a_creation_of_this_session_just_placed() {
+        // The same content-addressed file, named by a crashed run's marker and placed again by a
+        // download of this session whose row has not landed yet.
+        let (app, library) = app_with_library("in-flight").await;
+        let relative = format!("video/media_again_{}.mp4", unique_temp_suffix());
+        fs::write(library.join(&relative), b"placed again").unwrap();
+        let leftover = leftover_marker_naming(&app, &relative);
+        let live =
+            record_pending_media_artifacts(app.handle(), artifacts(Some(&relative), None, None))
+                .unwrap();
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert!(
+            library.join(&relative).exists(),
+            "the in-flight creation's file stays"
+        );
+        assert!(!leftover.exists(), "the leftover marker is reconciled");
+
+        clear_pending_media_artifacts(app.handle(), &live).unwrap();
         let _ = fs::remove_dir_all(&library);
     }
 
