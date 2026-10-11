@@ -109,6 +109,26 @@ describe("SelectedChannelLibrarySection", () => {
         expect(screen.getByText("grid:1")).toBeInTheDocument();
     });
 
+    it("announces the match count rather than the loaded count, which grows with every page", () => {
+        const { rerender } = renderWithMantine(
+            <SelectedChannelLibrarySection
+                {...makeProps({ mediaItems: [createMediaRow()], total: 300 })}
+            />
+        );
+
+        const live = document.querySelector("[aria-live='polite']");
+        expect(live?.textContent).toBe("300 items");
+
+        rerender(
+            <SelectedChannelLibrarySection
+                {...makeProps({ mediaItems: [createMediaRow(), createMediaRow()], total: 300 })}
+            />
+        );
+
+        expect(document.querySelector("[aria-live='polite']")?.textContent).toBe("300 items");
+        expect(screen.getByText(/Showing 2 of 300 items/)).toBeInTheDocument();
+    });
+
     it("requests the first page on mount with the default filters", () => {
         const onApplyQuery = vi.fn();
 

@@ -48,6 +48,10 @@ export const UI_TEXT = {
         sortLabel: "Sort by",
         showing: "Showing",
         of: "of",
+        sortDescending: "Descending",
+        sortAscending: "Ascending",
+        sortDescendingLabel: "Sort descending",
+        sortAscendingLabel: "Sort ascending",
         filters: {
             all: "All",
             video: "Video",

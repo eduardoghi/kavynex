@@ -9,6 +9,7 @@ import {
     TextInput,
     Title,
     Tooltip,
+    VisuallyHidden,
 } from "@mantine/core";
 import { ArrowDownAZ, ArrowLeft, ArrowUpAZ, Search, Video } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
@@ -121,6 +122,10 @@ export function SelectedChannelLibrarySection({
     // "showing <loaded> of <total matching the filters>". With no filter active, total is the
     // whole channel; with a filter, it is the filtered match count.
     const filteredCountLabel = `${UI_TEXT.library.showing} ${mediaItems.length} ${UI_TEXT.library.of} ${formatCount(total, "item")}`;
+    // What a screen reader is told. The match count, which changes with a search or a filter, and
+    // not the loaded count, which grows with every page the grid fetches while scrolling and had the
+    // line read out again each time.
+    const matchCountAnnouncement = formatCount(total, "item");
 
     return (
         <Stack gap="lg">
@@ -289,7 +294,13 @@ export function SelectedChannelLibrarySection({
                         w={210}
                     />
 
-                    <Tooltip label={sortDirection === "desc" ? "Descending" : "Ascending"}>
+                    <Tooltip
+                        label={
+                            sortDirection === "desc"
+                                ? UI_TEXT.library.sortDescending
+                                : UI_TEXT.library.sortAscending
+                        }
+                    >
                         <ActionIcon
                             variant="light"
                             color="violet"
@@ -299,7 +310,9 @@ export function SelectedChannelLibrarySection({
                                 setSortDirection((current) => (current === "desc" ? "asc" : "desc"))
                             }
                             aria-label={
-                                sortDirection === "desc" ? "Sort descending" : "Sort ascending"
+                                sortDirection === "desc"
+                                    ? UI_TEXT.library.sortDescendingLabel
+                                    : UI_TEXT.library.sortAscendingLabel
                             }
                             style={{
                                 border: "1px solid rgba(139,92,246,0.26)",
@@ -315,9 +328,11 @@ export function SelectedChannelLibrarySection({
                     </Tooltip>
                 </Group>
 
-                <Text size="sm" c="dimmed" aria-live="polite">
+                <Text size="sm" c="dimmed">
                     {filteredCountLabel}
                 </Text>
+
+                <VisuallyHidden aria-live="polite">{matchCountAnnouncement}</VisuallyHidden>
             </Stack>
 
             <MediaGrid
