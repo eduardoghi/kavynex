@@ -215,6 +215,61 @@ describe("useChannelMediaList", () => {
         expect(result.current.hasMore).toBe(true);
     });
 
+    it("does not page the new query from the old cursor while its first page is in flight", async () => {
+        // Scrolled to row 2 of 3 of the unfiltered list, then the filter changes. Until the new
+        // first page lands, the cursor still counts the old rows, and an append would request the
+        // new query from offset 2, skipping whatever its rows 1 to 2 are.
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 3)
+        );
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        let resolveFirstPage: (value: MediaPage) => void = () => {};
+        vi.mocked(listChannelMediaPage).mockReturnValueOnce(
+            new Promise<MediaPage>((resolve) => {
+                resolveFirstPage = resolve;
+            })
+        );
+
+        let pending: Promise<void> = Promise.resolve();
+        act(() => {
+            pending = result.current.applyQuery(filteredQuery);
+        });
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenCalledTimes(2);
+
+        await act(async () => {
+            resolveFirstPage(page([createMediaRow({ id: 7 })], 4));
+            await pending;
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([7]);
+        expect(result.current.hasMore).toBe(true);
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow({ id: 8 })], 4));
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        // Paged from the new query's own cursor.
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 1, watched: "watched" })
+        );
+    });
+
     it("appends the next page on loadMore", async () => {
         vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
             page([createMediaRow({ id: 1, title: "Item 1" })], 2)

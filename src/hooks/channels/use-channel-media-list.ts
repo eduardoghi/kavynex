@@ -79,7 +79,11 @@ export function useChannelMediaList({
     const requestGuard = useRequestGuard();
     const filtersRef = useRef<MediaQueryFilters | null>(null);
     const loadedChannelIdRef = useRef<number | null>(null);
+    // The query last begun, and the query whose first page produced the rows on screen. They differ
+    // while a new first page is in flight, or after one failed, and an append is only made while they
+    // agree. The rows, the cursor and `filtersRef` then all describe the same query.
     const lastRequestIdRef = useRef(0);
+    const listRequestIdRef = useRef<number | null>(null);
     const loadingMoreRef = useRef(false);
 
     // How many rows the backend has handed out for the current query. This is the pagination
@@ -149,6 +153,7 @@ export function useChannelMediaList({
     const clearMedia = useCallback((): void => {
         requestGuard.invalidate();
         loadedChannelIdRef.current = null;
+        listRequestIdRef.current = null;
         loadingMoreRef.current = false;
         setIsLoadingMedia(false);
         setIsLoadingMore(false);
@@ -198,6 +203,7 @@ export function useChannelMediaList({
                 }
 
                 loadedChannelIdRef.current = channelId;
+                listRequestIdRef.current = requestId;
                 setMediaItems(page.items);
                 setTotal(page.total);
                 // A first page replaces the list, so the cursor restarts at what this page returned
@@ -239,16 +245,24 @@ export function useChannelMediaList({
             return;
         }
 
+        // Tie this append to the load that produced the current list. While a newer applyQuery is
+        // still fetching its first page, `filtersRef` already holds the new query and the cursor
+        // still counts the old one's rows, so an append now would page the new query from the old
+        // offset, and the rows between its first page and that offset would never load. Refused
+        // until the first page lands. A newer applyQuery that begins during this append makes its id
+        // current, and the append is dropped below.
+        const requestId = listRequestIdRef.current;
+
+        if (requestId === null || requestId !== lastRequestIdRef.current) {
+            return;
+        }
+
         const offset = loadedCountRef.current;
 
         if (offset >= totalRef.current) {
             return;
         }
 
-        // Tie this append to the load that produced the current list. If a newer applyQuery
-        // (a filter change or channel switch) began meanwhile, its id becomes current and this
-        // stale append is dropped instead of corrupting the new list.
-        const requestId = lastRequestIdRef.current;
         loadingMoreRef.current = true;
         setIsLoadingMore(true);
         setLoadMoreFailed(false);
