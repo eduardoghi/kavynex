@@ -710,6 +710,15 @@ fn optional_cancellable_run(
 ) -> AppResult<(Option<Arc<AtomicBool>>, Option<DownloadRunReleaseGuard>)> {
     match run_id.map(str::trim).filter(|value| !value.is_empty()) {
         Some(run_id) => {
+            // The same rule a download's id meets, so a value of any length or shape never becomes
+            // a registry key.
+            if !crate::services::yt_dlp::download::is_valid_run_id(run_id) {
+                return Err(AppError::from_code(
+                    AppErrorCode::InvalidRunId,
+                    "run_id has an invalid format",
+                ));
+            }
+
             let flag = register_download_run(run_id)?;
             Ok((Some(flag), Some(DownloadRunReleaseGuard::new(run_id))))
         }

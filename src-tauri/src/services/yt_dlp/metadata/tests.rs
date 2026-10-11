@@ -4,10 +4,10 @@
 
 use super::{
     comments_extraction_looks_incomplete, comments_extractor_args, cookies_browser_from_args,
-    cookies_path_from_args, is_valid_youtube_video_id, read_capped_json_stdout,
-    redact_cookies_from_line, redact_cookies_path_from_line, redact_probe_line,
-    redact_sensitive_from_line, resolve_youtube_video_id, run_yt_dlp_and_capture_json,
-    sanitize_filename_component, sanitize_identifier_component,
+    cookies_path_from_args, is_valid_youtube_video_id, optional_cancellable_run,
+    read_capped_json_stdout, redact_cookies_from_line, redact_cookies_path_from_line,
+    redact_probe_line, redact_sensitive_from_line, resolve_youtube_video_id,
+    run_yt_dlp_and_capture_json, sanitize_filename_component, sanitize_identifier_component,
 };
 use crate::AppErrorCode;
 
@@ -717,4 +717,21 @@ fn the_format_probe_hides_the_path_of_its_own_cookies_copy() {
 
     assert!(!redacted.contains("Alice"), "{redacted}");
     assert!(redacted.contains("<redacted>"), "{redacted}");
+}
+
+#[test]
+fn a_standalone_fetch_refuses_a_run_id_a_download_would_refuse() {
+    let too_long = "a".repeat(10_000);
+
+    for bad in ["has space", "../escape", too_long.as_str()] {
+        let error = optional_cancellable_run(Some(bad)).err().expect("refused");
+        assert_eq!(error.code, AppErrorCode::InvalidRunId.as_str(), "{bad}");
+    }
+
+    let (flag, guard) = optional_cancellable_run(Some("comments-run-1")).unwrap();
+    assert!(flag.is_some() && guard.is_some());
+    drop(guard);
+
+    let (flag, guard) = optional_cancellable_run(None).unwrap();
+    assert!(flag.is_none() && guard.is_none());
 }
