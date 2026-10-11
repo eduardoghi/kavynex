@@ -341,8 +341,9 @@ Inside the library directory, media services create these subfolders on demand:
 - `video/`: imported/downloaded video files.
 - `audio/`: imported/downloaded audio-only files.
 - `thumbnails/`: persisted thumbnail images.
-- `live_chat/`: gzip-compressed live chat replay JSON (`.json.gz`), one file per video
-  that has live chat backed up.
+- `live_chat/`: live chat replays, one file per video that has live chat backed up. Each keeps
+  yt-dlp's name (`<name>.live_chat.json`) and is gzip-compressed in place, so the name does not say
+  it is compressed.
 - `.trash/`: what Diagnostics' **Remove orphan files** moved aside, one `<UTC time>-<suffix>/`
   folder per run that keeps each file's library-relative path (`video/media_<sha256>.mp4`, say).
   The startup sweep (`temp_cleanup::cleanup_library_leftovers_sync`) deletes a run folder once it

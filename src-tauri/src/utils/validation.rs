@@ -240,7 +240,7 @@ mod tests {
         // backend tightened the rule and the frontend did not, an invalid handle would pass the
         // client check and come back as a raw backend error instead of the catalogued one. This
         // asserts the Rust side against the same shared cases the TypeScript side checks (see
-        // src/utils/youtube.parity.test.ts), so a change on either side that breaks parity fails a
+        // src/utils/youtube.test.ts), so a change on either side that breaks parity fails a
         // test rather than surfacing to a user.
         let raw = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),

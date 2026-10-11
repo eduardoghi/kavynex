@@ -13,7 +13,7 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
 /// The container every thumbnail this app produces is written in.
 ///
 /// Both producers read it. The yt-dlp download normalizes to it with `--convert-thumbnails` and
-/// then looks the written file up by it (`services/thumbnail/download.rs`), and the local-import
+/// then looks the written file up by it (`services/thumbnail/download/process.rs`), and the local-import
 /// FFmpeg preview names its output with it (`services/thumbnail/temp.rs`). It lives here rather
 /// than in either module because it is one decision, and it was made in only one of them. The
 /// download switched to JPEG while the local import kept writing lossless PNG, so a library that

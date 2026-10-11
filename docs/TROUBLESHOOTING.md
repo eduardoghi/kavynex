@@ -284,15 +284,16 @@ directory.
 
 ## Kavynex reports a corrupted database
 
-This is handled automatically and nothing is silently lost. On the next launch Kavynex restores
-the database from the most recent healthy snapshot (it keeps several daily `.bak` generations, and
-an off-volume mirror if you configured one in Settings > Database). The broken file is preserved
-next to the database as `kavynex.db.corrupt` rather than deleted, so it can still be inspected. See
+Nothing is silently lost. When the database cannot be opened, Kavynex says so on startup and
+offers to restore the most recent healthy snapshot (the daily `.bak` generations, then the
+pre-migration snapshots). The external backup folder is not part of that restore. To go back to a
+copy there, use Settings > Database > **Import database**. A restored-over file is preserved next to
+the database as `kavynex.db.corrupt` rather than deleted, so it can still be inspected. See
 `DATABASE.md` for the full backup/restore model and `DIRECTORIES.md` for where these files
 live. If the library ever looks incomplete after a restore, run Diagnostics to reconcile the
 database against the files on disk.
 
-The automatic restore runs only when the database cannot be opened. The weekly background check is
+The restore is offered only when the database cannot be opened. The weekly background check is
 more thorough, and it can find damage in a database that still opens. Kavynex then says so and
 keeps running on it, since the damage may be limited to an index and the newest backup can be up
 to a day old. Run the full integrity check in Diagnostics and use Rebuild indexes when it offers

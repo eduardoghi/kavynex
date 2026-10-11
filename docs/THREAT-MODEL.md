@@ -63,40 +63,32 @@ required to be empty. The asset scope already reasons this way in the other dire
 `commands/security.rs::managed_asset_scope_dirs` refuses to grant the library root for exactly that
 reason.
 
-**The second rule is no longer a call a caller can omit.** Every resolution of a library-relative
-path goes through `utils/path.rs::absolute_path_from_relative`, and that function now takes a
-required `ManagedSubtree` argument (`Media`, `Thumbnails`, `LiveChat`) naming which part of the
-library the path may sit in. There is no spelling of the call that declines to answer, so the
-question is asked by the compiler at each of the six sites rather than by a reviewer noticing its
-absence. Both commands that got this wrong would have failed to build.
+**The second rule is not a call a caller can omit.** Every resolution of a library-relative path
+goes through `utils/path.rs::absolute_path_from_relative`, which takes a required `ManagedSubtree`
+argument (`Media`, `Thumbnails`, `LiveChat`) naming which part of the library the path may sit in.
+There is no spelling of the call that declines to answer, so the compiler asks the question at every
+call site rather than a reviewer noticing its absence.
 
-That is stronger than the rule the separate check expressed, and deliberately so. The subtree is
-the *specific* directory, not "one of the four". A thumbnail delete handed `video/media_abc.mp4` is
-refused, where the generic managed check accepted it. It also composes with, rather than replaces,
-the checks the command layer still runs, which fail fast at the IPC boundary before a settings read,
-and this one is the backstop that a new call site inherits whether or not its author knew about
-them.
+The subtree is the *specific* directory, not "one of the four", so a thumbnail removal handed
+`video/media_abc.mp4` is refused. It composes with the checks the command layer runs, which fail
+fast at the IPC boundary before a settings read, and it is the backstop a new call site inherits
+whether or not its author knew about them.
 
 What it does not do is make containment redundant. The subtree check is lexical, like the rest of
 that function, so a caller that unlinks or reads the result still re-checks with
 `ensure_existing_path_inside_dir`, which canonicalizes and therefore also catches a symlinked
 intermediate component.
 
-Where each applies today, the write side of a creation runs the relative rule on everything it
-produces (`media_creation::ensure_managed_prepared_paths`), and `stream_live_chat_file` runs it on
-the `relative_path` it receives. `delete_thumbnail_file` used to run it on the artifact path it
-received (see its own section below for what its absence cost, and why the command is gone).
-The library itself is the settings' answer, never the caller's, except in the two commands named
-above.
+The write side of a creation runs the relative rule on everything it produces
+(`media_creation::ensure_managed_prepared_paths`), and `stream_live_chat_file` runs it on the
+`relative_path` it receives. The library itself is the settings' answer, never the caller's, except
+in the two commands named above.
 
-**Which rule each path answers to is now declared per parameter**, in
+**Which rule each path answers to is declared per parameter**, in
 `scripts/verify-command-path-surface.js`'s `DECLARED_PATH_SURFACE`, and CI refuses an unclassified
-one. That inventory already listed every command taking a path; what it did not ask was which rule
-the path was owed, and both commands that got this wrong were in it, correctly, the whole time. The
-check still does not verify that a command *implements* the class it declares, which needs the call
-chain (the guards sit at three different depths today). It makes the question unavoidable in the
-diff, which is what neither the prose here nor the previous inventory managed. The class vocabulary
-lives beside that constant; this section is what it means.
+one. The check does not verify that a command *implements* the class it declares, which needs the
+call chain (the guards sit at three different depths). It makes the question unavoidable in the
+diff. The class vocabulary lives beside that constant; this section is what it means.
 
 ### The UNC / network-path refusal
 
@@ -196,10 +188,10 @@ case has limited blast radius:
   caller-supplied (the pre-import preview and import have to reach a file the user picked
   anywhere on disk, before it is in the library), which leaves one residual.
   `generate_temporary_thumbnail` runs FFmpeg on that source and writes a single preview
-  frame into the app cache directory, which is authorized in the asset scope. That used to let
-  a compromised frontend drive it, path by path, to disclose one still frame of any
-  media-extension file on disk. Both commands now accept only a file the user picked (see "Only
-  a file the user picked" below), which closes that. The source is also rejected up front if it
+  frame into the app cache directory, which is authorized in the asset scope. Both commands accept
+  only a file the user picked (see "Only a file the user picked" below), so a compromised frontend
+  cannot drive it, path by path, to disclose one still frame of any media-extension file on disk.
+  The source is also rejected up front if it
   is a UNC/network location (`services/thumbnail/temp.rs::validate_source_media_path`), since a
   picker can return one.
 - `export_database`: the destination is **extension-gated** to `.db`/`.sqlite`/
@@ -288,27 +280,16 @@ pins that the configured library is the one acted on (`commands/library.rs`).
 
 #### `check_library_integrity` reads the stored paths itself
 
-It used to take three `Vec<String>` alongside `library_path`, holding every media, thumbnail and
-live-chat path the database knows about. The renderer assembled them, which meant it first pulled
-every media row over IPC through a `list_media_integrity_references` command that existed for
-nothing else. So a check whose output is capped at five examples per category cost time and memory
-proportional to the whole library, in both directions, to hand the backend rows it could reach with
-two queries on a pool it already holds.
-
-Both halves are gone. The command takes no arguments, and
-`list_media_integrity_references` is no longer registered. Two things follow that belong in this
-document rather than only in the architecture guide.
-
-**It removed this command's unbounded input.** Those three vectors arrived from IPC with no
-ceiling. The only caller-supplied value in the backend without one, against a codebase that caps
-the run id, the comment body and count, the thumbnail download, the live-chat decompression and the reported
-failure lines. A renderer that sent millions of strings would have had them materialized before any
-validation ran. There is now nothing to bound, which is a better answer than a limit.
+The command takes no arguments. It reads the media, thumbnail and live-chat paths with two queries
+on the pool it already holds, so no command hands every media row to the renderer, and the check
+has no caller-supplied input to bound. The rest of the backend caps what it takes from IPC (the run
+id, the comment body and count, the thumbnail download, the live-chat decompression, the reported
+failure lines), and an input that does not exist needs no cap.
 
 **The jump-to-the-media targets are resolved backend-side and stay bounded.** The report's example
 paths are clickable when they name a media whose row still exists, which needs a path-to-row
-mapping. The renderer used to build that from the full row set; `library::integrity::
-media_targets_for_report` builds it from the paths the report actually named, so it holds at most
+mapping. `library::integrity::media_targets_for_report` builds it from the paths the report
+actually named, so it holds at most
 the handful of examples the report caps itself at however large the library is. It resolves only
 the missing and corrupt *media* examples (an orphan has no row by definition, and a thumbnail or
 replay path is not something to navigate to), so the map cannot become a way to ask which rows back
@@ -368,13 +349,13 @@ restart. The check is an exact string comparison made before any filesystem call
 renderer made up is refused without being resolved, which on Windows is what would have
 authenticated to its host.
 
-Before this, these commands accepted whatever the renderer sent, and the gaps it closes are worth
-naming, since they were recorded here as accepted. A compromised renderer could set
+What the record stops is worth naming. Without it, a compromised renderer could set
 `\\host\share\lib` as the library and have an import or `persist_thumbnail_file` copy any media or
-image file on disk there, move the whole library onto it in one call, or have the database mirrored to
-it every day. The two helpers answered for any path on disk whether it existed and was a folder, and
-one of them created folders wherever it was pointed. The content-addressed naming of library writes
-never bounded any of this, because the location of the library itself was the renderer's choice.
+image file on disk there, move the whole library onto it in one call, or have the database mirrored
+to it every day. The two helpers would answer for any path on disk whether it exists and is a
+folder, and one of them would create folders wherever it was pointed. The content-addressed naming
+of library writes bounds none of this, because the location of the library itself would be the
+renderer's choice.
 
 #### Only a file the user picked
 
@@ -422,7 +403,7 @@ is the app's largest path surface.
 |---|---|
 | `library_path` | Not sent. The command fills it from the settings (`configured_library_path`) before any file is written, and a value in the payload is ignored. |
 | `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::stage_media_import_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
-| `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. This row used to credit `picked.rs` with the refusal, and `picked.rs` only ever guarded the staged preview (`stage_manual_thumbnail`), not this branch, so a UNC spelling reached the stat here. Fixed, and the table is what should have caught it: the script that holds it against the code checks that a listed site exists, not that a given parameter flows through it. |
+| `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. `picked.rs` guards only the staged preview (`stage_manual_thumbnail`), not this branch. The script that holds this table against the code checks that a listed site exists, not that a given parameter flows through it, so a row naming the wrong site passes it. |
 | `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |
 
 Every path the creation *produces* is re-checked as a managed library-relative path before it can
@@ -461,87 +442,50 @@ validated on its own. `media_creation` mostly does, with one gap that made the p
 `media_type` a yt-dlp creation stores is the download's own value and never passes through
 `normalize_create_media_request`, so nothing but the table's `CHECK` would stand behind it.
 
-#### The two commands that unlinked a caller-named file were removed, after being fixed
+#### No command unlinks a file the caller names
 
-For most of this app's life `cleanup_unreferenced_media_artifacts` was the one command that unlinked
-a file named by the caller. Its base directory was never caller-supplied
-(`library::cleanup::execute_plan_locked` re-derives it from the persisted settings) and the per-file
-deletes canonicalize before unlinking (`ensure_existing_path_inside_dir`), so nothing could escape
-the library tree. The half that was missing is the other one, containment to the library *root*
-still admitted a name like `contract.docx` or `photos/wedding.jpg`, and the reference count that
-decides an unlink answers "no row points at this" for every file the app never wrote. The library
-folder is one the user picked and is not required to be empty, which the asset scope already
-accounts for (`managed_asset_scope_dirs` refuses to grant the root for exactly that reason), so
-those are the user's own files and the command would have deleted them and reported success.
+Removing a library artifact goes through `library::cleanup`, and none of its entry points is a
+command. A failed creation and the pending-media sweep run `cleanup_unreferenced_artifacts`, and a
+media or channel delete removes its files through the plan `delete_media_row_and_plan_cleanup` or
+`delete_channel_row_and_plan_cleanup` builds. The base directory comes from the persisted settings
+(`library::cleanup::execute_plan_locked`), and each per-file delete canonicalizes before unlinking
+(`ensure_existing_path_inside_dir`), so nothing escapes the library tree.
 
-The fix was to require each of the three paths to name one of `MANAGED_LIBRARY_DIRS` before anything
-was counted or unlinked, the same `utils::path::ensure_managed_library_relative_path` that
-`media_creation::ensure_managed_prepared_paths` already ran on every path a creation *produces*.
-`delete_live_chat_file` had the equivalent check (`ensure_relative_path_in_managed_dir`) all along,
-which is what made the omission visible, two commands taking a caller-supplied library-relative
-path, one applying the rule and one not.
+Containment to the library *root* is not enough for a removal. A name like `contract.docx` or
+`photos/wedding.jpg` stays inside the tree, and the reference count that decides an unlink answers
+"no row points at this" for every file the app never wrote. The library folder is one the user
+picked and is not required to be empty, which is also why `managed_asset_scope_dirs` refuses to
+grant the root. So every path a removal resolves also has to sit in its own subtree
+(`ManagedSubtree`, above).
 
-**Both commands are gone now, and the sequence is the point.** Neither had a caller in `src/`.
-`cleanup_unreferenced_media_artifacts` lost its last one when the creation sequence moved into the
-backend and nothing noticed; `delete_live_chat_file` was never wired to a UI at all. So the work
-above hardened a door nothing walked through, and it was five days between that hardening and the
-deletion of the command. The effect they exposed survives where it is actually used.
-`library::cleanup::cleanup_unreferenced_artifacts` is still what a failed creation and the
-pending-media sweep run, and a media delete still removes its replay through the plan
-`delete_media_row_and_plan_cleanup` builds.
-
-What stops that from recurring is not this paragraph. `scripts/verify-command-surface-is-used.js`
-runs in CI and refuses a registered command that no wrapper in `src/` calls, which is the same
-answer this repository gives every other inventory it keeps. See
+`scripts/verify-command-surface-is-used.js` runs in CI and refuses a registered command that no
+wrapper in `src/` calls, so a command left behind by a caller that moved fails the build instead of
+staying exposed. The commands that rule removed, and how each was found, are in
 [`decisions/2026-08-16-no-command-without-a-caller.md`](decisions/2026-08-16-no-command-without-a-caller.md).
-
-**`delete_thumbnail_file` was the same defect, and it was found only by classifying every path
-argument by the rule it needs rather than by reading each command.** That is worth recording as a
-method, not just as a fix. It had been read past twice, once by the audit that found the cleanup, and
-once while writing the section above, because its `verify_library_path_then_blocking` call makes the
-command *look* guarded. It settles `library_path` and says nothing about `thumbnail_path`, which
-`delete_thumbnail_file_sync` then confined to the library root alone. It was in fact the sharper of
-the two, since the cleanup at least reference-counts each path against the database before unlinking
-and this one unlinks whatever it is handed. The fix required `thumbnails/` specifically
-(`ensure_relative_path_in_managed_dir`), matching what `resolve_display_thumbnails` already applied to
-the same kind of value, so a sibling managed directory was refused too rather than merely a bare name.
-
-**It is gone as well, and for the same reason as the two above.** Nothing in `src/` had called it
-since the avatar and thumbnail cleanup moved into the backend's reference-counted plan in July. It
-survived the gate because `src/services/index.ts` re-exported its wrapper and the gate counted that
-re-export as a caller; the barrel's removal is what finally made the gate red. The third instance of
-a door hardened for nothing, and the longest-lived. The decision record linked above carries the
-detail.
 
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `library::cleanup::cleanup_unreferenced_artifacts` reference-counts each artifact path against the
 database and then unlinks the files nothing points at (`services/library/cleanup.rs`). It runs on a
-failed creation and on the pending-media startup sweep. Folding the count and the unlink into one
-backend call closed the multi-round-trip race the frontend used to have when it drove the sequence,
-but the two steps are still not atomic against a *concurrent* media creation that resolves to the
-same content-addressed path. A wrapping transaction cannot help. The unlink necessarily happens
+failed creation and on the pending-media startup sweep. The count and the unlink run in one backend
+call, but they are not atomic against a *concurrent* media creation that resolves to the same
+content-addressed path. A wrapping transaction cannot help. The unlink necessarily happens
 after any commit, since the filesystem cannot join a SQLite transaction.
 
 What closes it is a lock, `library::cleanup::MEDIA_REGISTRATION_LOCK`, taken by the cleanup around
 its count-and-unlink and by `media_creation::register_prepared_media` around its
-marker/duplicate-check/insert. A creation and a cleanup can therefore no longer interleave, whichever
+marker/duplicate-check/insert. A creation and a cleanup therefore cannot interleave, whichever
 order they arrive in. The lock is a single static rather than a map keyed by artifact path, because
 the section it guards is milliseconds long (the download and the import run outside it), so
 serializing it costs nothing a user waits on, and a keying scheme would only add a way to get the key
 wrong.
 
-**That sentence was true of one caller and not of the other three, which is worth stating rather
-than quietly fixing.** The lock sat on the unreferenced-artifact cleanup alone, and this section read
-as though it covered every unlink. It did not. `delete_media_with_artifacts`,
-`delete_channel_with_artifacts` and `replace_channel_avatar` reach the same removal through
-`library::cleanup::execute_plan`, which took no lock at all and rested entirely on
-`drop_paths_referenced_again`, a recount run immediately before the unlink. A recount is not
-exclusion. It answers "is this path referenced *now*", and a creation that inserts a moment later
-makes that answer stale in exactly the gap the recount was meant to close. The three delete paths
-are also the *common* ones, so the weaker half of the guarantee was carrying the heavier traffic.
-`execute_plan` takes the lock now, and the recount stays as the second line rather than the only
-one.
+**The lock covers every unlink of a library artifact, not only that cleanup.**
+`delete_media_with_artifacts`, `delete_channel_with_artifacts` and `replace_channel_avatar` reach the
+same removal through `library::cleanup::execute_plan`, which takes the lock too. They keep
+`drop_paths_referenced_again`, a recount right before the unlink, as a second line. A recount alone
+is not exclusion. It answers "is this path referenced *now*", and a creation that inserts a moment
+later makes that answer stale.
 
 **What the lock cannot cover, and does not.** A creation's artifacts land *before*
 `register_prepared_media` takes the lock, because what happens in between is a download or a
@@ -550,7 +494,7 @@ user actually waits on. So a delete that unlinks a content-addressed file an in-
 adopting is still possible, in the window between the artifacts landing and the creation reaching
 its critical section. What bounds it is a re-check rather than exclusion, since
 `media_creation::insert_prepared_media` confirms the media file, the thumbnail and the live chat
-replay are still on disk *inside* the critical section, where `execute_plan` can no longer be
+replay are still on disk *inside* the critical section, where `execute_plan` cannot be
 running. So the worst that window produces is a refused creation when the media file went
 (`MEDIA_FILE_NOT_FOUND`, which the frontend already has a message for), or a media registered
 without its thumbnail or replay when one of those went (logged, and the result the frontend gets
@@ -561,11 +505,9 @@ user's original where it was. The one Move that cannot keep its source until the
 volume without hard links (FAT32, exFAT), and that library file is flagged as the only copy, which
 keeps it out of both the failure cleanup and the crash marker the startup sweep reads.
 
-This paragraph used to say that lock was deliberately not built, and that the exclusion rested
-instead on the add-media modal refusing to start a second creation (`isModalLocked`). The one
-guarantee in this document that depended on frontend behavior. That is what the move above removed.
-A queue, a batch import or a background re-download no longer reopens anything, because none of them
-can produce a second creation that is not behind the same lock.
+None of this depends on the add-media modal refusing a second creation. A queue, a batch import or a
+background re-download needs nothing new, since none of them can produce a creation that is not
+behind the same lock.
 
 The **startup sweep** (`services/pending_media.rs`, which hands a crashed creation's artifacts to the
 same cleanup) keeps its own, separate guard on top, because the lock cannot answer its question.
@@ -616,7 +558,7 @@ never calls `utils::validation::ensure_valid_youtube_handle`, so this function i
 value meets before it becomes a yt-dlp argument.
 
 One behavior follows and is worth naming rather than discovering. A handle carrying a character no
-URI may hold (a space, a control character) no longer parses, so it is refused here instead of being
+URI may hold (a space, a control character) does not parse, so it is refused here instead of being
 handed to yt-dlp to fail on. No real `@name`, `c/` or `user/` form contains one, and a refusal up
 front is the clearer of the two failures.
 
@@ -741,15 +683,12 @@ the fetch are the thumbnail URLs in yt-dlp's own metadata (`thumbnail` and the d
 entries, ordered by `media_thumbnail_candidates`), filtered to ones the direct branch accepts before
 any request goes out, so a media's thumbnail never falls through to the yt-dlp branch.
 
-That gate was then per *fetch* rather than per *hop* for a while, which is a narrower version of the
-same gap, recorded separately because the code read as though it were closed. The initial
-URL was checked before the request went out, and only `assert_url_host_is_public` re-ran on each
-redirect, so a `302` out of `i.ytimg.com` to `https://attacker.example/<data>.jpg` was followed. The
-address guard does not cover that (the destination is perfectly public), and neither do the response
-constraints, which all apply after the request has already been made. The check now lives in
-`services::thumbnail::redirect::next_hop`, which decides the whole of a hop and is under the mutation
-gate; the caller still gates the initial URL, since that is a different question (may this fetch
-start at all) about a URI no redirect produced.
+The gate applies per *hop*, not only per fetch. A `302` out of `i.ytimg.com` to
+`https://attacker.example/<data>.jpg` would pass the address guard (the destination is perfectly
+public), and the response constraints all apply after the request has been made. So
+`services::thumbnail::redirect::next_hop` decides the whole of each hop, host allow-list included,
+and is under the mutation gate. The caller still gates the initial URL, since that is a different
+question (may this fetch start at all) about a URI no redirect produced.
 
 ## External binary resolution (no working-directory hijack)
 
@@ -798,19 +737,18 @@ That surface is granted as the exact list the app uses, not a preset:
 The file and folder pickers are not on that list, and that is a security decision rather than a
 smaller list for its own sake. The dialog plugin's renderer-facing `open` and `save` add every path
 the user picks to the asset-protocol scope (below), recursively for a folder, with no way to take it
-back for the session. Picking the library folder granted its root, the one directory
+back for the session. Picking the library folder would grant its root, the one directory
 `managed_asset_scope_dirs` refuses to grant, and every imported file, cookies file and database
-became readable through `asset:`. The pickers are backend commands instead (`commands/dialog.rs`:
+would become readable through `asset:`. The pickers are backend commands instead (`commands/dialog.rs`:
 `open_folder_dialog`, `open_file_dialog`, `save_file_dialog`), which drive the same plugin from Rust,
 where nothing touches the scope. They return the path and grant nothing, so the renderer holds no
 `dialog:` permission at all.
 
-The system opener went the same way. The renderer used to call `openUrl` with a URL it built, under
-`opener:allow-open-url` scoped to the YouTube hosts. On Windows the opener hands that string to the
-shell, so the scope's glob was all that stood between a URL and the shell's own parsing of it. The
-app only ever opens a video's watch page and an author's channel page, so `commands/external.rs`
-now takes the id, checks it is 11 (video) or `UC` plus 22 (channel) characters of `[A-Za-z0-9_-]`,
-and builds the URL itself. The renderer holds no `opener:` permission, and the plugin is built with
+The system opener is a backend command for a similar reason. On Windows the opener plugin hands
+its URL to the shell, so with `opener:allow-open-url` the scope's glob would be all that stands
+between a URL the renderer built and the shell's own parsing of it. The app only ever opens a video's
+watch page and an author's channel page, so `commands/external.rs` takes the id, checks it is 11
+(video) or `UC` plus 22 (channel) characters of `[A-Za-z0-9_-]`, and builds the URL itself. The renderer holds no `opener:` permission, and the plugin is built with
 `open_js_links_on_click(false)`, so it does not inject the script that would send `<a href>` clicks
 to `open_url` either.
 
@@ -861,13 +799,13 @@ immediate (the call rejects with a permission error), unlike the silent over-gra
 
 ### How the grant list is actually verified
 
-"Loud and immediate" is true for whoever hits the refused call, and that used to be the whole
-story, which was the weak point of a hand-picked list. The ACL is evaluated at runtime and only
-in the renderer, so nothing in the pipeline reached it. `cargo test` links the `rlib` and never
+"Loud and immediate" is true for whoever hits the refused call, and on its own that is the weak
+point of a hand-picked list. The ACL is evaluated at runtime and only in the renderer, so nothing
+else in the pipeline reaches it. `cargo test` links the `rlib` and never
 initializes the Tauri runtime or the webview, `pnpm build` only emits the frontend bundle, and
 `--smoke-test` (the release workflow's startup self-check) exits inside `setup()` before the event
-loop starts. A permission missing from the list above would therefore have crossed six green build
-legs and surfaced on the first click a user made.
+loop starts. Without the check below, a permission missing from the list above would cross six
+green build legs and surface on the first click a user made.
 
 `--webview-check` closes that. It is a second startup flag
 (`src-tauri/src/commands/webview_check.rs`) that lets the launch proceed normally and has the
@@ -957,24 +895,22 @@ the grid draws. Those are the only two the webview renders from. `yt-dlp-temp/` 
 `yt-dlp-thumb-temp/` are scratch whose output is moved into the library before any path reaches the
 frontend, and `pending-media/` is read by the startup sweep alone.
 
-The **cache root is deliberately not granted**, and that distinction is not cosmetic. This used to
-be a single recursive `allow_directory` on the root, justified by the root holding nothing but
-app-generated temp files. That justification was wrong on Windows, where `app_cache_dir()` resolves
-to `%LOCALAPPDATA%\com.kavynex.app` and is therefore also the parent of the log directory
-(`app_log_dir()` = `<cache root>\logs`) and of `EBWebView/`, the WebView2 user-data folder. So the
-grant reached a log file `SUPPORT.md` asks users to attach to bug reports, and the browser profile of
-the app's own webview, neither of which has anything to do with rendering a thumbnail.
+The **cache root is deliberately not granted**, and that distinction is not cosmetic. On Windows
+`app_cache_dir()` resolves to `%LOCALAPPDATA%\com.kavynex.app`, which is also the parent of the log
+directory (`app_log_dir()` = `<cache root>\logs`) and of `EBWebView/`, the WebView2 user-data
+folder. A grant on the root would reach a log file `SUPPORT.md` asks users to attach to bug reports,
+and the browser profile of the app's own webview, neither of which has anything to do with rendering
+a thumbnail.
 
-The residual exposure while that grant was in place was small (`connect-src` does not include
-`asset:`, so the renderer could *display* such a file as an `<img>`/`<video>` but never read its
-bytes back through `fetch`/XHR, and there is no injection sink in `src/` to reach it from), but the
-scope is this app's arbitrary-local-file-read boundary, and it should not be wider than the two
-directories it serves. Naming the subdirectories is the same rule
+The exposure such a grant would add is small (`connect-src` does not include `asset:`, so the
+renderer could *display* such a file as an `<img>`/`<video>` but never read its bytes back through
+`fetch`/XHR, and there is no injection sink in `src/` to reach it from), but the scope is this app's
+arbitrary-local-file-read boundary, and it should not be wider than the two directories it serves. Naming the subdirectories is the same rule
 `managed_asset_scope_dirs` already applies to the library, applied to the cache tree
 (`constants::WEBVIEW_READABLE_CACHE_DIRS`).
 
 How a request is matched against the scope is decided by Tauri, not by this codebase, so it is
-stated here from the dependency's source. `Scope::is_allowed` (tauri 2.12.1, `scope/fs.rs`) follows
+stated here from the dependency's source. `Scope::is_allowed` (tauri 2.12.1, `tauri::scope::fs`) follows
 a symlink at the requested path, canonicalizes the result when it exists, and only then matches the
 scope's glob patterns. A symlink planted inside one of the granted library subdirectories and pointing
 outside the library is therefore refused, because its target is what gets matched, the same outcome

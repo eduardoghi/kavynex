@@ -74,8 +74,8 @@ unknown-git = "deny"
 # through tauri and sqlx. So it allows them all, and a crate that turns unmaintained or yanked
 # tomorrow would pass unnoticed next to the known ones. This section is what can tell them apart.
 #
-# Unmaintained notices count only for crates this project depends on directly. The current ones
-# (proc-macro-error and the unic-* family) are transitive through tauri and not actionable here.
+# Unmaintained notices count only for crates this project depends on directly. The current one
+# (proc-macro-error) is transitive through tauri and not actionable here.
 unmaintained = "workspace"
 # The default here is "workspace", which would not see the glib advisory below at all. "all"
 # matches cargo-audit's `--deny unsound`.

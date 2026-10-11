@@ -1,11 +1,7 @@
 # Privacy
 
-What Kavynex stores, where it stores it, and the only three things it ever sends over the network.
-Also how to take your data with you, and how to remove it.
-
-This was part of `README.md` until that file had grown to carry the pitch, the install instructions,
-the troubleshooting guide and this at once. It is a statement about the app's behavior and deserves
-to be findable on its own rather than as a section someone scrolls past.
+What Kavynex stores, where it stores it, and everything it sends over the network. Also how to
+take your data with you, and how to remove it.
 
 [`DIRECTORIES.md`](DIRECTORIES.md) lists the directories named below, per OS.
 [`THREAT-MODEL.md`](THREAT-MODEL.md) covers how the app protects them at runtime.
@@ -18,6 +14,8 @@ activity Kavynex initiates is:
 - yt-dlp/FFmpeg downloading the video, audio, comments, or live chat data you explicitly
   requested, directly from YouTube, and Kavynex itself fetching that video's thumbnail from
   YouTube's image servers (`i.ytimg.com`), at a URL yt-dlp reported. No cookies are sent with it.
+- yt-dlp fetching a channel's page and its avatar image from YouTube, when you ask Kavynex to get
+  a channel's avatar from its handle.
 - A check against the GitHub releases endpoint for a newer version. Kavynex runs one such check
   on startup, and it is the only setting on this page that is **on by default**. The reason is
   that only the latest release receives fixes (see `SECURITY.md`), so this check is how a

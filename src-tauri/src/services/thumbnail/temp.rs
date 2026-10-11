@@ -129,7 +129,7 @@ fn ensure_generated_thumbnail_exists(
 /// Cap on how much stdout/stderr is retained from the local ffmpeg thumbnail run. `wait_with_output`
 /// would buffer its whole output unbounded; this keeps memory bounded while still draining the pipes
 /// fully on separate threads, so neither pipe filling can deadlock the other. Mirrors the async twin
-/// in thumbnail/download.rs.
+/// in thumbnail/download/process.rs.
 const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// How long a single-frame thumbnail extraction may run before ffmpeg is treated as hung and its

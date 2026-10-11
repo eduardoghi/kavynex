@@ -167,8 +167,8 @@ Both outgrew being README sections and now have documents of their own:
   drive that is not connected, why adding a video again downloads nothing or keeps the file you
   already have, a corrupted database, why "Open file location" behaves differently on each
   platform, and where the log file lives.
-- [`docs/PRIVACY.md`](docs/PRIVACY.md): everything Kavynex stores, the only three things it sends
-  over the network, and how to take your data with you or remove it.
+- [`docs/PRIVACY.md`](docs/PRIVACY.md): everything Kavynex stores, everything it sends over the
+  network, and how to take your data with you or remove it.
 
 ## Third-party assets
 

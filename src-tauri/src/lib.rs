@@ -751,8 +751,8 @@ pub fn run() {
             // Terminate any in-flight yt-dlp/ffmpeg work when the app is exiting so it is not
             // left running as orphaned processes after the window closes. The download sweep
             // signals cancellation and kills the main download trees. The process-registry
-            // sweep additionally covers the metadata, thumbnail and standalone (comment/format/
-            // avatar) children, which the download registry never tracked.
+            // sweep additionally covers the metadata, thumbnail and standalone (comment, format
+            // and avatar) children, which the download registry never tracked.
             //
             // Then fold the database's write-ahead log back into the main file, after the kills
             // so nothing is still writing. Best effort and bounded; see checkpoint_wal_blocking.

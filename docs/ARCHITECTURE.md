@@ -48,8 +48,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   - **A file that outgrew itself becomes a directory of the same name**, with the coupled
     core in `mod.rs` and the separable part split off, so `db_schema/` (`ddl.rs`,
     `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
-    `restore.rs`, `integrity.rs`,
-    `external.rs`, `import.rs`), `video_repository/` (`media_page.rs`) and
+    `restore.rs`, `integrity.rs`, `external.rs`, `import.rs`, `gates.rs`, `compaction.rs`,
+    `lineage.rs`), `video_repository/` (`media_page.rs`) and
     `yt_dlp/download/` (`command.rs`, `redaction.rs`, `placement.rs`, `post_download.rs`).
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
@@ -67,19 +67,21 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   call site reads `library::cleanup::delete_media_with_artifacts` rather than a bare
   `cleanup::` that says nothing about which tree it belongs to.
 
-  That rule used to carry a second job, and it is worth recording that it no longer does. The flat
-  sweep of the disposable cache directories was called `services::cleanup`, so a bare `cleanup::`
-  was not merely vague but *ambiguous*. It could have meant either that module or
-  `library::cleanup`, which reference-counts and unlinks the user's media. The import convention
-  was what kept them apart, which made two unrelated concerns distinguishable only by how a call
-  site chose to spell them. It is `services::temp_cleanup` now, so the names carry the distinction
-  and the convention above is back to being about readability alone.
+  Names carry the distinction between concerns, not the import convention. The sweep of the
+  disposable cache directories is `services::temp_cleanup` rather than a second `cleanup`, so a
+  call site cannot confuse it with `library::cleanup`, which reference-counts and unlinks the
+  user's media, whichever way it spells the path.
 
   What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
   `kept_files.rs`, `startup_notices.rs`, `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `filesystem.rs`, `live_chat_storage.rs`,
-  `media_comments.rs`, `media_creation.rs`, `pending_media.rs`, `process_registry.rs`,
-  `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
+  `media_comments.rs`, `media_creation.rs`, `media_protocol.rs`, `pending_media.rs`,
+  `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
+
+  `media_protocol.rs` is the `kvxmedia:` scheme the player streams media through. Tauri's `asset:`
+  handler caps every range response at about 1 MB, which WebKit's media loader reads as the end of
+  the file, so long recordings would not play on macOS or Linux. Thumbnails and avatars still go
+  through `asset:`.
 
   `file_manager.rs` is the one of those that arrived by moving rather than by being written, and the
   move is the rule above read backwards. It lived inside `library/` while the "reveal a media file"
@@ -133,9 +135,15 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   `std::fs` for the filesystem, and `std::process::Command` / `tokio::process::Command` to
   run yt-dlp and FFmpeg (resolved via `services/binaries.rs`).
 
+Beside those layers sit `error.rs` (`AppError` and the `AppErrorCode` union the frontend is
+type-checked against), `constants.rs` (the managed library and cache folder names and the event names),
+`models/yt_dlp.rs` (the IPC shapes of the download flow) and `main.rs`, which only calls
+`kavynex_lib::run()`.
+
 `src-tauri/src/lib.rs` wires all of this together. It registers the plugins (below), registers
 every command in `invoke_handler(tauri::generate_handler![...])`, and in `setup()` initializes the
-file logger, creates the main window, finishes an interrupted restore and applies any staged
+file logger, creates the main window (`main_window.rs`, which builds it in code so it can refuse
+navigation away from the app and `window.open`), finishes an interrupted restore and applies any staged
 database import before the connection pool opens, authorizes the two cache subdirectories the
 webview renders from in the asset-protocol scope, and starts the background work: the stale temp
 and cookie-copy cleanup, the library leftovers sweep, the pending-media sweep (after 30s), the
@@ -353,8 +361,8 @@ Steps 4 and 5 are in that order and not the other way round, because a marker wr
 exist would name files that were never created. And the marker is cleared *after* the row lands or
 the cleanup has run, never before, because until then it is the only record of what is on disk.
 
-**Why one command.** This was seven IPC calls until the transaction moved. Two things came with the
-move, and `THREAT-MODEL.md` covers both. The artifacts-without-a-row window no longer crosses the process
+**Why one command.** Two properties depend on the whole creation running in the backend, and
+`THREAT-MODEL.md` covers both. The artifacts-without-a-row window never crosses the process
 boundary, and the exclusion against a concurrent reference-counted cleanup is a backend lock rather
 than the modal refusing to open twice. The individual steps (`import_media_file`,
 `download_media_from_url`, the two crash-marker commands, ...) were removed from the IPC surface at
@@ -381,18 +389,16 @@ Skipping keeps the media. yt-dlp is asked for at most `MAX_COMMENTS_PER_MEDIA` c
 (`max_comments`), the most one merge accepts.
 
 `fetch_media_comments` fetches and stores in one command and returns only the counts
-(`MediaCommentsFetch`). The comments used to come back to the renderer and go out again to a
-second command, so a window closed between the two lost the fetch, and up to 100,000 comments
-crossed IPC twice. The player still reads them with `list_media_comments_by_media_id`, which pages
+(`MediaCommentsFetch`). The comments never pass through the renderer on the way to the database,
+so a window closed mid-fetch loses nothing that was fetched, and up to 100,000 comments do not
+cross IPC twice. The player still reads them with `list_media_comments_by_media_id`, which pages
 by `id` and stops at its row and text caps.
 
 **The modal lock.** `closeAddMediaModal` refuses while any of `isAddingMedia`,
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
-now UX only, closing the modal mid-run would discard a terminal the user is watching. It used to be
-more than that. `THREAT-MODEL.md` recorded it as the one guarantee in that document resting on frontend
-behavior, because it was what kept two creations from racing the reference-counted cleanup. The lock
-in `library::cleanup` holds that property now, so a queue or a batch import is a UX question rather
-than a correctness one.
+UX only, since closing the modal mid-run would discard a terminal the user is watching. Two creations
+racing the reference-counted cleanup is handled by the lock in `library::cleanup`, not by the modal,
+so a queue or a batch import is a UX question rather than a correctness one.
 
 ### Changing the library folder
 
@@ -521,7 +527,8 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download/` (`mod.rs`, `fetch.rs`, `process.rs`), `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
 | Database schema/migrations | `services/db_schema/` |. |
-| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the export and import gates in `gates.rs`) | `services/database-service.ts` |
+| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the export and import gates in `gates.rs`, compaction in `compaction.rs`, the mirror's lineage ids in `lineage.rs`) | `services/database-service.ts` |
+| Media playback | `services/media_protocol.rs` | `utils/media-utils.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | Deep library check | `commands/library.rs` (`verify_library_content`), `services/library/verification.rs` | `hooks/use-library-verification.ts`, `components/modals/diagnostics-sections/diagnostics-content-verification.tsx` |

@@ -425,13 +425,15 @@ production runs. Turning it on means measuring those choices again with statisti
 
 ## Backup, restore, export, import
 
-All four operations are implemented in the `db_backup/` module, one submodule each. The automatic
-snapshot and the status report over it lives in `snapshot.rs`, the restore in `restore.rs`, the
-startup-deferred import in `import.rs`, the user-triggered export and the external mirror in
-`external.rs`, and the throttled full integrity check in `integrity.rs`. What is left in `mod.rs` is
-the machinery more than one of them needs (the scratch connection pool, the `quick_check` helper,
-the sibling-path builder, the generation rotation), plus `managed_database_paths`, which is the map
-of every file the module owns and therefore belongs to none of the five. The tests for all of them
+All four operations are implemented in the `db_backup/` module. The automatic snapshot and the
+status report over it live in `snapshot.rs`, the restore in `restore.rs`, the startup-deferred
+import in `import.rs`, the user-triggered export and the external mirror in `external.rs`, the
+throttled full integrity check and the index rebuild in `integrity.rs`, the checks an export or an
+import passes first in `gates.rs`, the compaction in `compaction.rs`, and the lineage ids the mirror
+labels its copies with in `lineage.rs`. What is left in `mod.rs` is the machinery more than one of
+them needs (the scratch connection pool, the `quick_check` helper, the sibling-path builder, the
+generation rotation), plus `managed_database_paths`, which is the map of every file the module owns
+and therefore belongs to none of them. The tests for all of them
 are `mod.rs`'s own `mod tests` too (kept in `tests.rs` beside it), because most of them exercise more
 than one machine in the same scenario.
 
@@ -474,7 +476,8 @@ startup recovery offers the restore, or starting with an empty library (`start_w
 refused once the database opened or its file is back).
 
 Rotation keeps several generations. Before the fresh snapshot is written, the existing generations
-are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on), dropping the oldest. `BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
+are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on), dropping the oldest.
+`BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
 current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`). Keeping more
 than one guards against the case where the newest snapshot itself captured an already-degrading
 database before the corruption was caught. A `.bak.tmp` is used during the `VACUUM INTO` and only
