@@ -43,6 +43,57 @@ pub(super) fn find_live_chat_temp_file(temp_dir: &Path, file_prefix: &str) -> Op
     None
 }
 
+/// How much of the end of a replay is read to find its last line.
+const LIVE_CHAT_TAIL_BYTES: u64 = 1024 * 1024;
+
+/// Whether the replay at `path` reads as finished.
+///
+/// The download runs with `--no-part`, so a replay cut short (a dropped connection, which
+/// `--ignore-errors` turns into a warning) is left under its final name. What gives it away is a
+/// `.ytdl` progress file still beside it, or a last line that is not a whole JSON object, since
+/// yt-dlp writes one action per line. A last line longer than the tail read is not judged, and passes.
+pub(super) fn live_chat_file_looks_finished(path: &Path) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut sidecar = path.as_os_str().to_owned();
+    sidecar.push(".ytdl");
+
+    if Path::new(&sidecar).exists() {
+        return false;
+    }
+
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let Ok(len) = file.metadata().map(|metadata| metadata.len()) else {
+        return false;
+    };
+
+    let start = len.saturating_sub(LIVE_CHAT_TAIL_BYTES);
+    let mut tail = Vec::new();
+
+    if file.seek(SeekFrom::Start(start)).is_err() || file.read_to_end(&mut tail).is_err() {
+        return false;
+    }
+
+    let text = String::from_utf8_lossy(&tail);
+    let trimmed = text.trim_end();
+
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    let last_line = match trimmed.rfind('\n') {
+        Some(at) => &trimmed[at + 1..],
+        // No line break in the tail read. The whole file is one line when it was read whole, and
+        // otherwise the line is longer than the tail, which is not judged.
+        None if start == 0 => trimmed,
+        None => return true,
+    };
+
+    serde_json::from_str::<serde_json::Value>(last_line).is_ok()
+}
+
 /// Where the library keeps live chat replays. Not created here (see [`store_live_chat`]).
 pub(super) fn live_chat_dir_in(library_dir: &Path) -> PathBuf {
     library_dir.join("live_chat")
@@ -155,6 +206,23 @@ pub(super) async fn store_live_chat<R: Runtime>(
     let Some(temp_live_chat_file) = find_live_chat_temp_file(temp_dir, file_prefix) else {
         return Ok(None);
     };
+
+    // Not stored, rather than stored broken, because a stored replay is never replaced by a later
+    // download of the same video.
+    {
+        let candidate = temp_live_chat_file.clone();
+        let finished = run_blocking(move || Ok(live_chat_file_looks_finished(&candidate))).await?;
+
+        if !finished {
+            emit_download_log_infallible(
+                app,
+                run_id,
+                "The live chat replay was cut short, so it was not saved.",
+                "system",
+            );
+            return Ok(None);
+        }
+    }
 
     let live_chat_file_name = temp_live_chat_file.file_name().ok_or_else(|| {
         AppError::from_code(

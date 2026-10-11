@@ -2041,6 +2041,45 @@ mod tests {
     }
 
     #[test]
+    fn a_replay_whose_last_line_is_a_whole_action_reads_as_finished() {
+        let dir = unique_temp_dir("live-chat-finished");
+        fs::create_dir_all(&dir).unwrap();
+        let replay = dir.join("youtube_ID_137.live_chat.json");
+        fs::write(
+            &replay,
+            b"{\"replayChatItemAction\":1}\n{\"replayChatItemAction\":2}\n",
+        )
+        .unwrap();
+
+        assert!(live_chat_file_looks_finished(&replay));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_replay_cut_short_under_its_final_name_does_not_read_as_finished() {
+        // With --no-part the fragments go straight to the final name, so a dropped connection
+        // leaves a half-written last line there.
+        let dir = unique_temp_dir("live-chat-cut");
+        fs::create_dir_all(&dir).unwrap();
+        let replay = dir.join("youtube_ID_137.live_chat.json");
+        fs::write(&replay, b"{\"replayChatItemAction\":1}\n{\"replayChatIt").unwrap();
+
+        assert!(!live_chat_file_looks_finished(&replay));
+
+        // A whole last line with yt-dlp's progress file still beside it is not finished either.
+        fs::write(&replay, b"{\"replayChatItemAction\":1}\n").unwrap();
+        fs::write(dir.join("youtube_ID_137.live_chat.json.ytdl"), b"{}").unwrap();
+        assert!(!live_chat_file_looks_finished(&replay));
+
+        let empty = dir.join("empty.live_chat.json");
+        fs::write(&empty, b"").unwrap();
+        assert!(!live_chat_file_looks_finished(&empty));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn find_live_chat_temp_file_returns_none_without_live_chat_file() {
         let dir = unique_temp_dir("no-live-chat");
         fs::create_dir_all(&dir).unwrap();
