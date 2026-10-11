@@ -211,14 +211,18 @@ jobs:
                   # exception alone does not reach the job log.
                   $log = Join-Path $env:RUNNER_TEMP 'msi-install.log'
                   $install = Start-Process -FilePath msiexec.exe -ArgumentList '/i', "`"$($msi.FullName)`"", '/qn', '/norestart', '/l*v', "`"$log`"" -Wait -PassThru
-                  $installed = Get-ChildItem -Recurse -Path $env:ProgramFiles -Filter 'kavynex.exe' -ErrorAction SilentlyContinue |
-                      Select-Object -First 1
+                  # Where the MSI put the app is whatever INSTALLDIR resolved to, which is not always
+                  # Program Files. Tauri's WiX template reuses the folder a previous install recorded
+                  # under HKCU, and the NSIS step above records its own. The verbose log names it.
+                  $installDir = Select-String -Path $log -Pattern 'Property\(S\): INSTALLDIR = (.+)$' -ErrorAction SilentlyContinue |
+                      Select-Object -Last 1 | ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() }
+                  $installed = if ($installDir) { Get-Item (Join-Path $installDir 'kavynex.exe') -ErrorAction SilentlyContinue }
                   if ($install.ExitCode -ne 0 -or -not $installed) {
-                      Write-Host "msiexec exit code: $($install.ExitCode)"
+                      Write-Host "msiexec exit code: $($install.ExitCode), INSTALLDIR: $installDir"
                       Get-ChildItem -Recurse -Path $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA -Filter 'kavynex.exe' -ErrorAction SilentlyContinue |
                           ForEach-Object { Write-Host "found: $($_.FullName)" }
                       if (Test-Path $log) { Get-Content $log -Tail 60 | Write-Host }
-                      Write-Host "::error::the MSI install failed or left no kavynex.exe under Program Files"
+                      Write-Host "::error::the MSI install failed or left no kavynex.exe in its INSTALLDIR"
                       exit 1
                   }
                   Write-Host "Starting $($installed.FullName)"
