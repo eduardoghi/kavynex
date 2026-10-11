@@ -141,6 +141,11 @@ on every push:
   every mutant the exclusions name, so every pattern would read as dead. It also drops `examine_globs`,
   which is why the scope is passed back in from that same list via `--file-args`.
 
+  The check cannot see the opposite mistake, an entry that matches too much. cargo-mutants
+  searches each pattern anywhere in the mutant's description, so a bare function name also
+  excludes every function whose name it prefixes. End such a name with `$` or `( |$)`, as
+  `resolve_from_path( |$)` does to keep `resolve_from_path_var` in scope.
+
 One more needs a real release to check against, so it runs in `release.yml`'s `checksums` job:
 
 - `node scripts/verify-readme-asset-names.js <file with one asset name per line>`: fails when

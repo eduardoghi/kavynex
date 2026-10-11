@@ -122,9 +122,10 @@ exclude_re = [
     # read_pending_markers is deliberately NOT excluded.
     'in sweep_pending_media_artifacts',
     # Boundary: binaries.rs reads PATH, spawns --version health checks, or resolves app directories
-    # from the AppHandle. The no-CWD guarantee stays covered by the resolve_from_path_var tests.
+    # from the AppHandle. resolve_from_path_var, which holds the no-CWD guarantee, stays in scope,
+    # hence the anchor on its prefix.
     'is_executable_file',
-    'resolve_from_path',
+    'resolve_from_path( |$)',
     'resolve_binary_from_candidates',
     'resolve_yt_dlp_binary',
     'resolve_ffmpeg_binary',
@@ -186,11 +187,11 @@ exclude_re = [
     # has_room_for, stays in scope and covered.
     'available_space_bytes',
     # Equivalent: with `&&`, a missing or non-file path still returns Ok(false). Covers both guards.
-    'replace \|\| with && in file_paths_have_same_content',
+    'replace \|\| with && in file_paths_have_same_content_using$',
     # Equivalent: changes only the internal temp filename, which the following rename discards.
     'delete ! in build_temp_destination_path',
     # Boundary: the failed-rename recovery branch, reachable only when the rename itself fails.
-    'replace && with \|\| in copy_file_atomic',
+    'replace && with \|\| in copy_file_atomic_with$',
     # Boundary: the backup-vanished race needs the destination to disappear between the exists check
     # and the rename.
     'error.kind\(\) == ErrorKind::NotFound.* in replace_file_safely',
