@@ -49,6 +49,15 @@ describe("parseExcludePatterns", () => {
         expect(patterns).toEqual(["replace cleanup_artifacts_best_effort(_locked)? with \\(\\)"]);
     });
 
+    it("refuses a line that is not one quoted value instead of skipping it", () => {
+        // TOML takes both of these, and cargo-mutants applies the patterns on them.
+        const withInlineComment = "exclude_re = [\n    'is_executable_file', # boundary\n]\n";
+        const twoOnOneLine = "exclude_re = [\n    'is_executable_file', 'resolve_from_path',\n]\n";
+
+        expect(() => parseExcludePatterns(withInlineComment)).toThrow("'is_executable_file', # boundary");
+        expect(() => parseExcludePatterns(twoOnOneLine)).toThrow("cannot read");
+    });
+
     it("returns null when the array is not there at all", () => {
         // Distinguished from an empty array on purpose. A missing key means the parse (or the file)
         // changed shape, which the gate refuses rather than passing vacuously.
@@ -164,6 +173,16 @@ describe("verifyMutantsExclusions", () => {
 
         expect(result.ok).toBe(false);
         expect(result.message).toContain("empty");
+    });
+
+    it("fails on an exclude_re line it cannot read", () => {
+        const result = verifyMutantsExclusions({
+            tomlContent: "exclude_re = [\n    'resolve_from_path', # boundary\n]\n",
+            mutantList,
+        });
+
+        expect(result.ok).toBe(false);
+        expect(result.message).toContain("'resolve_from_path', # boundary");
     });
 
     it("refuses a file with no exclude_re array rather than passing vacuously", () => {

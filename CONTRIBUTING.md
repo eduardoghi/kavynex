@@ -127,7 +127,9 @@ on every push:
   `exclude_re` entry in `src-tauri/.cargo/mutants.toml` matches no mutant. Such an entry is silent
   in both directions. The mutant it suppressed comes back and reddens the weekly run for a reason
   unrelated to the tests, or the function it named was renamed and its real mutant is now
-  unexcluded and unnoticed among the survivors. Two entries had already died that way before this
+  unexcluded and unnoticed among the survivors. It also fails on a line in either array that is not
+  one quoted value, such as a pattern with a comment after it, since TOML and cargo-mutants accept
+  that line and the check would otherwise skip it. Two entries had already died that way before this
   existed, both after a pure extraction moved the code they named. To run it locally:
 
   ```bash

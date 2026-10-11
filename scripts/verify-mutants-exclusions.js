@@ -55,21 +55,33 @@ function extractQuotedArray(tomlContent, name, quote) {
     }
 
     const values = [];
+    const unreadable = [];
 
     for (const line of tomlContent.slice(from, end).split(/\r?\n/)) {
         const trimmed = line.trim();
 
-        if (trimmed.startsWith("#")) {
+        if (trimmed === "" || trimmed.startsWith("#")) {
             continue;
         }
 
         // One value per line is the shape this file uses throughout. Anything else is not something
-        // to guess at, so it simply yields nothing rather than a half-parsed pattern.
-        const match = new RegExp(`^${quote}(.*)${quote},?$`).exec(trimmed);
+        // to guess at, and skipping it would be worse. TOML accepts `'pattern', # why` or two values
+        // on a line, and cargo-mutants applies them, so a skipped line is a live exclusion this gate
+        // never checks.
+        const match = new RegExp(`^${quote}([^${quote}]*)${quote},?$`).exec(trimmed);
 
         if (match) {
             values.push(match[1]);
+        } else {
+            unreadable.push(trimmed);
         }
+    }
+
+    if (unreadable.length > 0) {
+        throw new Error(
+            `${name} in mutants.toml has lines this check cannot read. Put one ${quote}-quoted value per line, with any comment on its own line above it:\n` +
+                unreadable.map((line) => `  - ${line}`).join("\n")
+        );
     }
 
     return values;
@@ -149,7 +161,13 @@ export function findDeadPatterns(patterns, mutantList) {
 // or exiting itself. The same shape as the other verify-* scripts, so the wording and every refusal
 // branch are unit-testable without a cargo-mutants run.
 export function verifyMutantsExclusions({ tomlContent, mutantList }) {
-    const patterns = parseExcludePatterns(tomlContent);
+    let patterns;
+
+    try {
+        patterns = parseExcludePatterns(tomlContent);
+    } catch (error) {
+        return { ok: false, message: error.message };
+    }
 
     if (patterns === null) {
         return {
@@ -219,7 +237,14 @@ if (isMainModule(import.meta.url)) {
     // cargo-mutants ever saw them, and it rejects the several paths that produces because `--file`
     // takes one value.
     if (process.argv[2] === "--file-args") {
-        const globs = parseExamineGlobs(tomlContent);
+        let globs;
+
+        try {
+            globs = parseExamineGlobs(tomlContent);
+        } catch (error) {
+            console.error(error.message);
+            process.exit(1);
+        }
 
         if (globs === null || globs.length === 0) {
             console.error("No examine_globs array was found in mutants.toml.");
