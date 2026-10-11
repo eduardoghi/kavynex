@@ -79,6 +79,10 @@ const GRID_CHROME_ABOVE = 300;
 // nested scroll container exists to avoid.
 const GRID_HEIGHT = `max(${MEDIA_CARD_HEIGHT + GRID_GAP}px, calc(100vh - ${GRID_CHROME_ABOVE}px))`;
 
+// Longer than a modal's closing transition (Mantine's default is 200 ms), which is when the delete
+// confirmation tries to hand focus back to the card that is gone.
+const FOCUS_AFTER_DELETE_DELAY_MS = 400;
+
 // How long a card stays highlighted after the grid scrolls to it (e.g. from a diagnostics
 // "jump to media" action) before the highlight fades.
 const MEDIA_HIGHLIGHT_DURATION_MS = 2600;
@@ -265,6 +269,37 @@ export function MediaGrid({
             window.requestAnimationFrame(() => focusCardAt(index, attempt + 1));
         }
     }, [scrollParentRef]);
+
+    // A deleted card takes its menu button with it, and that button is where the delete
+    // confirmation hands focus back when it closes, so focus fell to the page. Once the list is
+    // shorter and nothing holds focus after the dialog's closing transition, it goes to the card
+    // that took the deleted one's place.
+    const previousItemCount = useRef(items.length);
+    const rovingIndexRef = useRef(rovingIndex);
+    rovingIndexRef.current = rovingIndex;
+
+    useEffect(() => {
+        const shrank = items.length < previousItemCount.current;
+        previousItemCount.current = items.length;
+
+        if (!shrank || items.length === 0) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            const active = document.activeElement;
+
+            if (active && active !== document.body && document.contains(active)) {
+                return;
+            }
+
+            const index = Math.min(rovingIndexRef.current, items.length - 1);
+            setRovingIndex(index);
+            focusCardAt(index);
+        }, FOCUS_AFTER_DELETE_DELAY_MS);
+
+        return () => window.clearTimeout(timer);
+    }, [items.length, focusCardAt]);
 
     const cardIndexOf = (target: EventTarget): number | null => {
         if (!(target instanceof HTMLElement) || !target.classList.contains("kx-card-button")) {

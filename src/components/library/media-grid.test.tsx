@@ -97,6 +97,34 @@ describe("MediaGrid", () => {
         expect(third).toHaveFocus();
     });
 
+    it("gives focus to the next card when the focused one was deleted", async () => {
+        const props = {
+            libraryPath: "/library",
+            shellBorder: "rgba(255,255,255,0.1)",
+            shellSurface: "rgba(255,255,255,0.03)",
+            loading: false,
+            onOpen: vi.fn(),
+            onRequestDelete: vi.fn(),
+        };
+        const { rerender } = renderWithMantine(
+            <MediaGrid
+                {...props}
+                items={[
+                    createMedia({ id: 1, title: "First" }),
+                    createMedia({ id: 2, title: "Second" }),
+                ]}
+            />
+        );
+
+        (document.activeElement as HTMLElement | null)?.blur();
+
+        rerender(<MediaGrid {...props} items={[createMedia({ id: 2, title: "Second" })]} />);
+
+        await waitFor(() =>
+            expect(screen.getByRole("button", { name: "card Second" })).toHaveFocus()
+        );
+    });
+
     it("shows loading state", () => {
         renderWithMantine(
             <MediaGrid
