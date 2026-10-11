@@ -183,15 +183,16 @@ or push anything, before relying on them again.
 
 ### When a release dispatch fails
 
-The tag is created by `tauri-action` in step 3, i.e. *before* the `sbom`, `sbom-upload` and
-`checksums` jobs run. A dispatch that built and signed everything and then failed one of those later gates
-therefore leaves the tag behind on a release that is still a draft. That is a normal outcome,
-not a corrupted state, and it does **not** cost a version number:
+A draft release has no git tag. GitHub creates the tag when the release is published, at the
+draft's target commit. A dispatch that built and signed everything and then failed a later gate
+therefore leaves a draft and no tag. That is a normal outcome, not a corrupted state, and it does
+**not** cost a version number. On the retry, `tauri-action` finds the draft by its tag name and
+re-uploads its assets, and the `checksums` job points the draft at the commit that retry built,
+so the tag lands where the binaries came from.
 
 - **A later job failed (asset-completeness, `latest.json`, SBOM upload).** Fix the cause and
-  re-dispatch the same version. The tag guard recognizes a tag whose release is still a draft
-  and lets the run through with a warning; `tauri-action` reuses the existing draft and
-  re-uploads its assets. The asset-completeness check is the most likely first failure whenever
+  re-dispatch the same version. The tag guard finds no tag and lets the run through (a tag pushed
+  by hand onto a draft's version is let through too, with a warning). The asset-completeness check is the most likely first failure whenever
   a bundler's naming shifts. The run echoes the actual asset names above the failure, which is
   what to compare the patterns against. Every name in that list was confirmed against the v1.2.0
   dispatch, and the lesson from it was that the list is perishable in both directions. The arm64

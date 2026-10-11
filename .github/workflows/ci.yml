@@ -705,7 +705,7 @@ jobs:
             # Static-check the workflow YAML themselves: actionlint validates syntax, ${{ }}
             # expression types and undefined contexts, matrix/glob shapes and deprecated features,
             # and runs shellcheck over every `run:` script. That is the class of mistake these large,
-            # hand-maintained workflows (release.yml is ~500 lines of bash-in-YAML) would otherwise
+            # hand-maintained workflows (release.yml is mostly bash-in-YAML) would otherwise
             # only surface as a failed run. Unknown-runner-label false positives for the pinned
             # images (ubuntu-26.04/macos-26) are silenced in .github/actionlint.yaml. shellcheck is
             # preinstalled on the runner and auto-detected.

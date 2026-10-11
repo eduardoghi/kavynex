@@ -38,7 +38,7 @@ import { isMainModule } from "./script-entry.js";
 // order. Hand-rolled rather than pulling in a TOML parser. This file is the only consumer, the two
 // arrays it reads are plain lists of quoted strings, and a dependency added to a supply-chain-gated
 // repository to read two arrays is a poor trade. Comment lines inside the array are skipped, which
-// matters because mutants.toml is mostly comment (roughly 400 of its 600 lines), and several of
+// matters because mutants.toml is mostly comment, and several of
 // those comments quote a pattern while explaining why it was removed.
 function extractQuotedArray(tomlContent, name, quote) {
     const start = new RegExp(`^${name}\\s*=\\s*\\[`, "m").exec(tomlContent);

@@ -238,9 +238,9 @@ jobs:
             # `github.ref` goes through `env:` rather than being interpolated into the script.
             # `${{ }}` is substituted before the shell ever parses the line, and a branch name may
             # contain shell metacharacters, so interpolating it directly would let a branch named
-            # `$(...)` run its own code in a job that holds `id-token: write`. It takes push access
-            # to reach, which is not much of an attacker, but this is the one step where a hostile
-            # ref is the expected input.
+            # `$(...)` run its own code in the job that holds the signing key and `contents: write`.
+            # It takes push access to reach, which is not much of an attacker, but this is the one
+            # step where a hostile ref is the expected input.
             - name: Refuse to release from a non-main ref
               if: github.ref != 'refs/heads/main'
               env:
@@ -261,8 +261,8 @@ jobs:
                   #
                   # Nothing left in this job walks history: the tag guard uses `git ls-remote`
                   # (which queries the remote, not the local clone), the bindings check diffs the
-                  # working tree against HEAD, and tauri-action creates the tag through the GitHub
-                  # REST API (`repos.createRelease` with `target_commitish` defaulting to
+                  # working tree against HEAD, and tauri-action creates the release through the
+                  # GitHub REST API (`repos.createRelease` with `target_commitish` defaulting to
                   # `context.sha`, i.e. the GITHUB_SHA string), never a local `git tag`. Verified
                   # by reading tauri-action's source at the SHA this workflow pins for it further
                   # down. Re-check that when the pin moves. The sbom and checksums jobs have always
@@ -333,18 +333,16 @@ jobs:
             - name: Verify version consistency
               run: node scripts/verify-release-version.js
 
-            # Refuse to re-release a version that is already out. The tag is created by
-            # tauri-action further down, i.e. *before* the sbom and checksums jobs run, so a
-            # dispatch that got as far as building and then failed one of those later gates leaves
-            # the tag behind on a release that is still a draft. Treating "the tag exists" as
-            # "already released" would make every such failure cost a version number. The fix for a
-            # wrong asset-name pattern in the checksums job would be a version bump, not a retry.
-            # So the guard asks what the tag actually means. A tag on a *published* release is
-            # final. Bump the version. A tag whose release is still a draft is the residue of an
-            # incomplete dispatch, and re-running over it is the intended recovery. tauri-action
-            # reuses the existing draft and re-uploads its assets. A tag with no release at all
-            # (the release was deleted by hand, or the tag was pushed some other way) is refused
-            # too, since nothing proves what it points at.
+            # Refuse to re-release a version that is already out. A draft has no git tag. GitHub
+            # creates the tag when the release is published, at the draft's target commit, so a
+            # published release is the usual reason the tag exists, and that is final. Bump the
+            # version. A dispatch that built and then failed a later gate leaves a draft and no tag,
+            # the tag reads as free, and tauri-action finds the draft by its tag name and re-uploads
+            # its assets, so that failure costs a retry rather than a version number. The checksums
+            # job then points the draft at the commit the retry built. A tag pushed by hand onto a
+            # draft's version is let through the same way, with a warning. A tag with no release at
+            # all (the release was deleted by hand) is refused, since nothing proves what it points
+            # at.
             - name: Verify the release tag is free or belongs to an unfinished draft
               shell: bash
               env:
@@ -583,12 +581,23 @@ jobs:
             # actually links against to be no newer than that. It is decided by the build image,
             # not by anything in the code, so a newer runner can raise it silently. A binary that
             # needs more than the declared floor fails here instead of on a user's older system.
+            #
+            # pipefail and the two empty checks, because the comparison below passes on an empty
+            # value. `sort -V` puts the empty line first and returns the floor, so an objdump that
+            # failed, or a binary it found no symbol in, read as a binary within the floor.
             - name: Check the glibc the binary needs against the declared floor (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
+              shell: bash
               run: |
+                  set -euo pipefail
                   binary=$(find src-tauri/target -type f -path '*/release/kavynex' | head -n1)
                   floor=$(jq -r '.bundle.linux.deb.depends[] | select(startswith("libc6")) | capture("(?<v>[0-9]+[.][0-9]+)").v' src-tauri/tauri.conf.json)
                   needed=$(objdump -T "$binary" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//' | sort -V | tail -n1)
+
+                  if [ -z "$floor" ] || [ -z "$needed" ]; then
+                      echo "::error::the check read nothing (declared floor '$floor', binary needs '$needed')" >&2
+                      exit 1
+                  fi
 
                   echo "The binary needs glibc $needed, and the packages declare $floor."
 
@@ -685,7 +694,7 @@ jobs:
             # a non-zero exit with a message rather than a hang.
             #
             # What it deliberately does not cover, since none of them can run without a side effect:
-            # the dialog/opener/updater/process plugin grants. Those are checked by hand against the
+            # the updater and process plugin grants. Those are checked by hand against the
             # installed artifact, from the checklist in docs/RELEASING.md step 6, which names the
             # click that exercises each one and what the updater preset does not prove.
             #
@@ -994,6 +1003,35 @@ jobs:
             #
             # Runs before the checksums below so SHA256SUMS.txt covers the corrected file, and
             # before the verify step so it reads the corrected copy.
+            # tauri-action reuses a draft on a retry without touching its target commit, which stays
+            # the first dispatch's. Publishing creates the tag there, while the binaries and their
+            # attestations come from this run's commit. Moved here, once per dispatch and after
+            # every leg, so the tag lands on the commit that was built. The tag name is sent along,
+            # since an update of a draft without it can detach the draft from its tag.
+            - name: Point the draft at the commit this run built
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  release=$(gh release view "v$VERSION" --json databaseId,isDraft,targetCommitish)
+                  id=$(printf '%s' "$release" | jq -r '.databaseId')
+                  is_draft=$(printf '%s' "$release" | jq -r '.isDraft')
+                  target=$(printf '%s' "$release" | jq -r '.targetCommitish')
+
+                  if [ "$is_draft" != "true" ]; then
+                      echo "::error::release v$VERSION is not a draft, so this run has nothing to finish" >&2
+                      exit 1
+                  fi
+
+                  if [ "$target" = "$GITHUB_SHA" ]; then
+                      echo "The draft already targets $GITHUB_SHA."
+                      exit 0
+                  fi
+
+                  echo "Moving the draft from $target to $GITHUB_SHA."
+                  gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" \
+                      -f tag_name="v$VERSION" -f target_commitish="$GITHUB_SHA" > /dev/null
+
             - name: Rewrite latest.json to the tagged download URLs
               env:
                   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
