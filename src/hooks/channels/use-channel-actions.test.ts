@@ -402,7 +402,8 @@ describe("useChannelActions", () => {
         });
 
         expect(created).toBe(true);
-        expect(setSelectedChannelId).toHaveBeenCalledWith(10);
+        // Not selected, since a list that does not hold it would clear the selection at once.
+        expect(setSelectedChannelId).not.toHaveBeenCalled();
         expect(setNewChannelName).toHaveBeenCalledWith("");
         expect(onError).toHaveBeenCalledTimes(1);
         expect(onError).not.toHaveBeenCalledWith("Failed to create channel.");

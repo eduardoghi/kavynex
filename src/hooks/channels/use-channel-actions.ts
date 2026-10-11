@@ -180,7 +180,6 @@ export function useChannelActions({
                 // The channel exists from here on, so nothing below may report the creation as
                 // failed. That used to send the user back to create it again, into
                 // CHANNEL_ALREADY_EXISTS.
-                setSelectedChannelId(result.channelId);
                 setNewChannelName("");
                 setNewYoutubeHandle("");
                 setNewChannelAvatarMode("none");
@@ -199,8 +198,11 @@ export function useChannelActions({
                     );
                 }
 
+                // Selected only once the list holds it. useChannels clears a selection the list
+                // does not contain, so selecting first lost the new channel during the reload.
                 try {
                     setChannels(await listAllChannels());
+                    setSelectedChannelId(result.channelId);
                 } catch (error) {
                     logError("channels", "Failed to reload channels after creating one.", error);
                     onError(
