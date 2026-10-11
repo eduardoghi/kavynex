@@ -680,6 +680,11 @@ mod tests {
     /// A mock app is enough for the record/clear round trip. Those only need `app.path()` and the
     /// filesystem. Only the markers this test wrote are removed. The cache directory is the real
     /// per-OS one, shared with a running app, so the tree is never wiped.
+    /// Held by every test that runs the sweep. The markers live in one directory shared by the
+    /// whole test binary, and a sweep reads all of them, so two sweeps running at once reconcile
+    /// each other's markers and a test finds its own already gone.
+    static SWEEP_TESTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
         mock_builder().build(mock_context(noop_assets())).unwrap()
     }
@@ -966,6 +971,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_database_that_will_not_open_costs_no_marker_an_attempt() {
+        let _sweep = SWEEP_TESTS.lock().await;
         // The failure this branch exists for, and the reason it is a pre-check rather than an error
         // classified inside the loop. A mock app manages no `Db`, so `shared_pool` fails exactly the
         // way it does when the database cannot be opened for real, which is the case the recovery
@@ -1224,6 +1230,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_sweep_removes_what_an_unfinished_creation_left_and_clears_its_marker() {
+        let _sweep = SWEEP_TESTS.lock().await;
         let (app, library) = app_with_library("orphan").await;
         let relative = format!("video/media_orphan_{}.mp4", unique_temp_suffix());
         fs::write(library.join(&relative), b"left behind").unwrap();
@@ -1242,6 +1249,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_sweep_keeps_the_marker_while_the_library_is_not_mounted() {
+        let _sweep = SWEEP_TESTS.lock().await;
         // The library folder is configured and gone (an external drive not plugged in yet). The
         // file it names is still there for the next launch, and so must the record of it be.
         let (app, library) = app_with_library("unmounted").await;
@@ -1267,6 +1275,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_sweep_keeps_a_file_a_registered_media_still_uses() {
+        let _sweep = SWEEP_TESTS.lock().await;
         let (app, library) = app_with_library("referenced").await;
         let relative = format!("video/media_kept_{}.mp4", unique_temp_suffix());
         fs::write(library.join(&relative), b"registered").unwrap();
@@ -1298,6 +1307,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_sweep_spares_a_file_a_creation_of_this_session_just_placed() {
+        let _sweep = SWEEP_TESTS.lock().await;
         // The same content-addressed file, named by a crashed run's marker and placed again by a
         // download of this session whose row has not landed yet.
         let (app, library) = app_with_library("in-flight").await;
