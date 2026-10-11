@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::LIBRARY_DIR_THUMBNAILS;
 use crate::services::filesystem::copy_file_atomic;
+use crate::services::library::lock::LibraryPass;
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::utils::format::{allowed_thumbnail_extensions_label, is_allowed_thumbnail_extension};
 use crate::utils::hash::file_hash;
@@ -17,6 +18,27 @@ use crate::{AppError, AppErrorCode, AppResult};
 pub(crate) const MAX_PERSISTED_THUMBNAIL_BYTES: u64 = 25 * 1024 * 1024;
 
 pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppResult<String> {
+    persist_thumbnail_guarded(source, library_dir, None)
+}
+
+/// [`persist_thumbnail_from_source`] for a caller that resolved `library_dir` at the start of a
+/// longer operation (a download that fetches for up to a minute first). A library migration that
+/// completed in that time leaves `library_dir` naming the old library, and writing there would give
+/// the row a path missing from the new one. Refused instead, through the pass begun when the folder
+/// was resolved (see [`LibraryPass`]).
+pub fn persist_thumbnail_from_source_in_pass(
+    source: &Path,
+    library_dir: &Path,
+    pass: LibraryPass,
+) -> AppResult<String> {
+    persist_thumbnail_guarded(source, library_dir, Some(pass))
+}
+
+fn persist_thumbnail_guarded(
+    source: &Path,
+    library_dir: &Path,
+    pass: Option<LibraryPass>,
+) -> AppResult<String> {
     // Refuse a UNC / network source before the `exists()` below touches it. Two of this
     // function's callers hand it a path that arrived raw over IPC (the `persist_thumbnail_file`
     // command and the local branch of `create_media`'s thumbnail source), and on Windows merely
@@ -35,7 +57,15 @@ pub fn persist_thumbnail_from_source(source: &Path, library_dir: &Path) -> AppRe
     // Serialize this library write against a concurrent migration (see library::lock). Covers
     // both the manual-thumbnail persist and the downloaded-thumbnail/avatar persist, which are
     // this function's only callers.
-    let _library_guard = crate::services::library::lock::library_read_guard();
+    let _library_guard = match pass {
+        None => crate::services::library::lock::library_read_guard(),
+        Some(pass) => pass.file_guard().ok_or_else(|| {
+            AppError::from_code(
+                AppErrorCode::InvalidLibraryPath,
+                "the library was moved while the thumbnail was being fetched; try again",
+            )
+        })?,
+    };
 
     if !source.exists() {
         return Err(AppError::from_code(
@@ -277,6 +307,26 @@ mod tests {
 
         assert_eq!(error.code, AppErrorCode::InvalidThumbnailFile.as_str());
         assert!(!library_dir.join("thumbnails").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_pass_that_saw_a_migration_complete_refuses_to_write_into_the_old_library() {
+        let root = unique_test_dir();
+        let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
+        let source = root.join("thumb.png");
+        fs::write(&source, b"\x89PNG\r\n\x1a\n0000000000").unwrap();
+
+        let pass = LibraryPass::begin();
+        // What a library migration does when it finishes.
+        drop(crate::services::library::lock::library_write_guard());
+
+        let error = persist_thumbnail_from_source_in_pass(&source, &library_dir, pass)
+            .expect_err("the library moved after the pass began");
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(!library_dir.join(LIBRARY_DIR_THUMBNAILS).exists());
 
         let _ = fs::remove_dir_all(root);
     }

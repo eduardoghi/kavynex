@@ -24,9 +24,10 @@ use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
 use crate::services::filesystem::{clean_matching_files_in_dir, find_best_matching_file};
+use crate::services::library::lock::LibraryPass;
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::temp_paths::yt_dlp_thumb_temp_dir;
-use crate::services::thumbnail::persist::persist_thumbnail_from_source;
+use crate::services::thumbnail::persist::persist_thumbnail_from_source_in_pass;
 use crate::services::thumbnail::url::is_allowed_thumbnail_image_host;
 use crate::services::yt_dlp::url::is_allowed_youtube_url;
 use crate::services::yt_dlp::{fetch_yt_dlp_metadata, sanitize_filename_component};
@@ -50,8 +51,9 @@ use crate::utils::format::looks_like_supported_image;
 async fn persist_thumbnail_from_source_async(
     source: PathBuf,
     library_dir: PathBuf,
+    pass: LibraryPass,
 ) -> AppResult<String> {
-    run_blocking(move || persist_thumbnail_from_source(&source, &library_dir)).await
+    run_blocking(move || persist_thumbnail_from_source_in_pass(&source, &library_dir, pass)).await
 }
 
 /// Shared tail for the yt-dlp thumbnail flows (generic fallback, pre-download media thumbnail,
@@ -64,6 +66,7 @@ async fn finalize_thumbnail_download(
     thumb_temp_dir: &Path,
     file_name_prefix: &str,
     library_dir: PathBuf,
+    pass: LibraryPass,
     subject: &str,
 ) -> AppResult<String> {
     if !output.status.success() {
@@ -88,7 +91,7 @@ async fn finalize_thumbnail_download(
         )
     })?;
 
-    persist_thumbnail_from_source_async(downloaded_thumb, library_dir).await
+    persist_thumbnail_from_source_async(downloaded_thumb, library_dir, pass).await
 }
 
 /// Turns a stored/typed channel handle into the URL yt-dlp is asked to extract from.
@@ -192,6 +195,9 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
         ));
     }
 
+    // Begun before the folder is resolved, so a library migration that completes during the fetch
+    // makes the persist refuse rather than write into the old library (see LibraryPass).
+    let pass = LibraryPass::begin();
     let (library_dir, thumb_temp_dir) = {
         let app = app.clone();
         let library_path = library_path.to_string();
@@ -295,7 +301,7 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             })
             .await?;
 
-            return persist_thumbnail_from_source_async(direct_file_path, library_dir).await;
+            return persist_thumbnail_from_source_async(direct_file_path, library_dir, pass).await;
         }
 
         // yt-dlp's generic extractor is handed the URL with access to the user's browser
@@ -380,6 +386,7 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             &thumb_temp_dir,
             &file_name_prefix,
             library_dir,
+            pass,
             "thumbnail",
         )
         .await
@@ -517,6 +524,8 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
+    // See download_thumbnail_from_url_async.
+    let pass = LibraryPass::begin();
     let (library_dir, thumb_temp_dir) = {
         let app = app.clone();
         let library_path = library_path.to_string();
@@ -558,6 +567,7 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
             &thumb_temp_dir,
             file_name_prefix,
             library_dir,
+            pass,
             "channel avatar",
         )
         .await
