@@ -52,7 +52,9 @@ fn set_aside_corrupt_wal(db_path: &Path) -> AppResult<()> {
 
     let live_wal = sibling(db_path, "-wal");
 
-    if !live_wal.exists() || std::fs::rename(&live_wal, &corrupt_wal).is_ok() {
+    if !live_wal.exists()
+        || crate::services::filesystem::rename_retrying(&live_wal, &corrupt_wal).is_ok()
+    {
         return Ok(());
     }
 
@@ -120,7 +122,7 @@ pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
     }
     let _ = std::fs::remove_file(sibling(db_path, "-shm"));
 
-    std::fs::rename(&staged, db_path)
+    crate::services::filesystem::rename_retrying(&staged, db_path)
         .map_err(|error| backup_error("failed to resume an interrupted restore", error))?;
     // Flush the directory entry so the swap survives a crash right after it; otherwise the next
     // launch could find the database missing again and re-run this from a staging file that the
@@ -274,7 +276,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         let pending = sibling(db_path, ".corrupt.tmp");
         let _ = std::fs::remove_file(&pending);
 
-        if let Err(error) = std::fs::rename(db_path, &pending) {
+        if let Err(error) = crate::services::filesystem::rename_retrying(db_path, &pending) {
             let _ = std::fs::remove_file(&staged);
             return Err(backup_error(
                 "failed to move aside the corrupt database",
@@ -284,7 +286,9 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
 
         rotate_corrupt_snapshots(db_path);
 
-        if let Err(error) = std::fs::rename(&pending, corrupt_path(db_path)) {
+        if let Err(error) =
+            crate::services::filesystem::rename_retrying(&pending, &corrupt_path(db_path))
+        {
             // The database is already off the live path, so the restore can still proceed; the
             // evidence just keeps the scratch name. Say so rather than lose the thread.
             logger::warn(
@@ -302,7 +306,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     set_aside_corrupt_wal(db_path)?;
     let _ = std::fs::remove_file(sibling(db_path, "-shm"));
 
-    std::fs::rename(&staged, db_path)
+    crate::services::filesystem::rename_retrying(&staged, db_path)
         .map_err(|error| backup_error("failed to restore database from backup", error))?;
     // Flush the directory entry so the restored database is durably in place, not just staged.
     crate::services::filesystem::fsync_parent_dir(db_path);

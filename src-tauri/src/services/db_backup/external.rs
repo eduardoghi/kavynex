@@ -140,7 +140,7 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
         // export is never pre-deleted. A rename that then fails (a locked file, an AV/indexer hold, a
         // removable/network destination going away) must not leave the user with neither the old
         // export nor the new one. This matches rotate_generations, which relies on the same overwrite.
-        std::fs::rename(&staging_final, &dest).map_err(|error| {
+        crate::services::filesystem::rename_retrying(&staging_final, &dest).map_err(|error| {
             let _ = std::fs::remove_file(&staging_final);
             backup_error("failed to finalize database export", error)
         })?;
@@ -275,7 +275,7 @@ pub async fn mirror_database_to_external_dir(
             // current copy at all. A leftover next to an intact mirror needs no cleanup here.
             // export_database only ever replaces it atomically with a verified fresh export.
             if !current.exists() && staged.exists() {
-                let _ = std::fs::rename(&staged, &current);
+                let _ = crate::services::filesystem::rename_retrying(&staged, &current);
             }
 
             // A fresh mirror was already written (or just adopted) within the throttle window.
@@ -360,7 +360,7 @@ pub async fn mirror_database_to_external_dir(
             generation_external_backup_path,
         );
 
-        if let Err(error) = std::fs::rename(&staged, &current) {
+        if let Err(error) = crate::services::filesystem::rename_retrying(&staged, &current) {
             // Leave the freshly exported, quick-check-passed staged file in place rather than
             // deleting it. rotate_generations above already emptied generation 0, so discarding the
             // replacement here would throw away the newest good copy on a failure of the exact

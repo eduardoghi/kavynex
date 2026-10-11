@@ -1119,3 +1119,41 @@ fn a_written_file_read_back_past_the_cache_hashes_like_a_plain_read() {
 
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[cfg(windows)]
+#[test]
+fn a_media_rename_waits_out_a_hold_longer_than_the_short_retries() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    // A scanner reading a freshly finished download for a second and a half. The short retries give
+    // up after 750 ms, and a placement that gave up lost the download with its run folder.
+    let dir = std::env::temp_dir().join(format!(
+        "kavynex-held-rename-{}",
+        crate::utils::naming::unique_temp_suffix()
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("video.mp4");
+    let destination = dir.join("media_placed.mp4");
+    fs::write(&source, b"finished download").unwrap();
+
+    let held = fs::OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(&source)
+        .unwrap();
+    let releaser = std::thread::spawn(move || {
+        sleep(Duration::from_millis(1_500));
+        drop(held);
+    });
+
+    assert!(
+        rename_retrying(&source, &destination).is_err(),
+        "the short retries give up while the file is still held"
+    );
+    rename_retrying_patiently(&source, &destination).unwrap();
+    releaser.join().unwrap();
+
+    assert_eq!(fs::read(&destination).unwrap(), b"finished download");
+
+    let _ = fs::remove_dir_all(&dir);
+}

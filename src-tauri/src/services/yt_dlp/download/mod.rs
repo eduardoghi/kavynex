@@ -634,6 +634,10 @@ pub async fn download_media_from_url_async<R: Runtime>(
         ),
     );
 
+    // Set when a finished download could be neither placed nor kept elsewhere, so its run folder,
+    // which still holds it, is left for the user instead of removed below.
+    let mut download_left_in_run_dir = false;
+
     let result = async {
         emit_download_log(
             app,
@@ -919,9 +923,10 @@ pub async fn download_media_from_url_async<R: Runtime>(
         let (final_destination, kept_existing) = match placement {
             Ok(placed) => placed,
             Err(error) => {
-                return Err(
-                    keep_unplaced_download(app, &normalized_run_id, downloaded_temp, error).await,
-                );
+                let (error, left_in_run_dir) =
+                    keep_unplaced_download(app, &normalized_run_id, downloaded_temp, error).await;
+                download_left_in_run_dir = left_in_run_dir;
+                return Err(error);
             }
         };
 
@@ -1033,11 +1038,13 @@ pub async fn download_media_from_url_async<R: Runtime>(
     // A download temp dir can hold multi-GB leftovers (a partial video, an ffmpeg merge output),
     // so this recursive removal is offloaded to the blocking pool rather than run directly on the
     // async task.
-    let _ = run_blocking(move || {
-        let _ = fs::remove_dir_all(&temp_dir);
-        Ok::<(), AppError>(())
-    })
-    .await;
+    if !download_left_in_run_dir {
+        let _ = run_blocking(move || {
+            let _ = fs::remove_dir_all(&temp_dir);
+            Ok::<(), AppError>(())
+        })
+        .await;
+    }
     // The registry entry is released by `_run_release_guard` when this function returns.
 
     if let Err(error) = &result {

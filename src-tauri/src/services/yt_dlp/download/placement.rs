@@ -211,6 +211,10 @@ pub(super) async fn record_placement_marker<R: Runtime>(
 
 /// Moves `file` into `dir` under its own name, or under a prefixed one when that name is taken, and
 /// returns where it went.
+///
+/// Through `move_or_copy_file`, which waits out a scanner still reading the file and copies when the
+/// two folders are on different volumes (the cache and the local data directory can be, on Linux).
+/// A plain rename failed in both cases, and the download was then lost with its run folder.
 pub(super) fn move_into_dir_without_overwriting(file: &Path, dir: &Path) -> AppResult<PathBuf> {
     let file_name = file.file_name().ok_or_else(|| {
         AppError::from_code(
@@ -229,14 +233,7 @@ pub(super) fn move_into_dir_without_overwriting(file: &Path, dir: &Path) -> AppR
         ));
     }
 
-    fs::rename(file, &destination).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::FileRenameFailed,
-            "failed to keep the downloaded file",
-            &destination,
-            &e,
-        )
-    })?;
+    crate::services::filesystem::move_or_copy_file(file, &destination)?;
 
     Ok(destination)
 }
@@ -249,12 +246,17 @@ pub(super) fn move_into_dir_without_overwriting(file: &Path, dir: &Path) -> AppR
 /// A disconnected library drive or a full disk is a reason to fail the creation, not to throw the
 /// file away, so it is moved to `recovered-downloads/` in the app's local data directory, which
 /// nothing sweeps and Diagnostics shows (see `services::kept_files`).
+///
+/// The flag says whether the file is still in the run folder, because keeping it failed too. The
+/// caller then leaves that folder in place instead of deleting the download with it.
 pub(super) async fn keep_unplaced_download<R: Runtime>(
     app: &AppHandle<R>,
     run_id: &str,
     downloaded_temp: PathBuf,
     error: AppError,
-) -> AppError {
+) -> (AppError, bool) {
+    let left_at = downloaded_temp.clone();
+
     let kept = match crate::services::kept_files::recovered_downloads_dir(app) {
         Ok(dir) => {
             run_blocking(move || move_into_dir_without_overwriting(&downloaded_temp, &dir)).await
@@ -282,10 +284,13 @@ pub(super) async fn keep_unplaced_download<R: Runtime>(
                 _ => format!("the downloaded file was kept as recovered-downloads/{name}"),
             };
 
-            AppError {
-                details: Some(details),
-                ..error
-            }
+            (
+                AppError {
+                    details: Some(details),
+                    ..error
+                },
+                false,
+            )
         }
         Err(keep_error) => {
             logger::warn(
@@ -293,7 +298,18 @@ pub(super) async fn keep_unplaced_download<R: Runtime>(
                 format!("could not keep a download that failed to reach the library: {keep_error}"),
             );
 
-            error
+            let name = logger::redact_path(&left_at);
+
+            emit_download_log_infallible(
+                app,
+                run_id,
+                format!(
+                    "The download could not be added to the library or moved to the recovered downloads folder. It was left as {name} in the app's temporary folder, which is cleared after 7 days. Copy it somewhere else before then."
+                ),
+                "system",
+            );
+
+            (error, true)
         }
     }
 }

@@ -436,7 +436,7 @@ pub fn migrate_live_chat_files<G>(
         // which is the expected case when app data is on the SSD and the library is on the
         // HDD. `copy_file_atomic` writes to a temp file, fsyncs, then renames into place, so
         // this backup artifact is never left truncated if the process dies mid-copy.
-        if fs::rename(&path, &dest).is_err() {
+        if crate::services::filesystem::rename_retrying(&path, &dest).is_err() {
             crate::services::filesystem::copy_file_atomic(&path, &dest)?;
             let _ = fs::remove_file(&path);
         }

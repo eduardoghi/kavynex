@@ -1091,7 +1091,7 @@ fn move_orphan_to_trash(
         })?;
     }
 
-    std::fs::rename(&source, &target).map_err(|error| {
+    crate::services::filesystem::rename_retrying(&source, &target).map_err(|error| {
         AppError::fs_error(
             AppErrorCode::FileMoveFailed,
             "failed to move an orphan file to the library trash",

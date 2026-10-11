@@ -488,7 +488,10 @@ fn generate_display_thumbnail(ffmpeg: &str, source_path: &Path, out_path: &Path)
     let partial = partial_derivative_path(out_path);
     let finished = run_display_ffmpeg(ffmpeg, source_path, &partial);
 
-    if finished && is_usable_file(&partial) && std::fs::rename(&partial, out_path).is_ok() {
+    if finished
+        && is_usable_file(&partial)
+        && crate::services::filesystem::rename_retrying(&partial, out_path).is_ok()
+    {
         return true;
     }
 

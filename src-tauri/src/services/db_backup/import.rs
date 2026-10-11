@@ -561,7 +561,7 @@ pub async fn stage_database_import(
     }
 
     let _ = std::fs::remove_file(&staged);
-    std::fs::rename(&staging_tmp, &staged)
+    crate::services::filesystem::rename_retrying(&staging_tmp, &staged)
         .map_err(|error| backup_error("failed to stage database import", error))?;
     // Make the staged slot's directory entry durable, so a crash after this cannot lose the rename
     // and leave a `.import-staged.tmp` the next launch would ignore.
@@ -618,7 +618,7 @@ fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
         &format!(".displaced-{}", crate::utils::naming::unique_temp_suffix()),
     );
 
-    std::fs::rename(db_path, &displaced).map_err(|error| {
+    crate::services::filesystem::rename_retrying(db_path, &displaced).map_err(|error| {
         backup_error(
             "failed to set aside the database found at the database path",
             error,
@@ -634,7 +634,7 @@ fn displace_database(db_path: &Path) -> AppResult<Option<PathBuf>> {
     let live_wal = sibling(db_path, "-wal");
 
     if live_wal.exists() {
-        std::fs::rename(&live_wal, sibling(&displaced, "-wal")).map_err(|error| {
+        crate::services::filesystem::rename_retrying(&live_wal, &sibling(&displaced, "-wal")).map_err(|error| {
             backup_error(
                 "failed to set aside the write-ahead log of the database found at the database path",
                 error,
@@ -672,7 +672,7 @@ fn set_aside_orphaned_wal(db_path: &Path) -> AppResult<()> {
             ),
         );
 
-        std::fs::rename(&live_wal, &kept).map_err(|error| {
+        crate::services::filesystem::rename_retrying(&live_wal, &kept).map_err(|error| {
             backup_error(
                 "failed to set aside a write-ahead log left without its database",
                 error,
@@ -697,7 +697,7 @@ fn recover_stranded_pre_import(db_path: &Path, pre_import: &Path, marker: &Path)
 
     displace_database(db_path)?;
 
-    std::fs::rename(pre_import, db_path).map_err(|error| {
+    crate::services::filesystem::rename_retrying(pre_import, db_path).map_err(|error| {
         backup_error("failed to restore the stranded pre-import snapshot", error)
     })?;
 
@@ -769,7 +769,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         // and the move-aside is a rename rather than a copy, so nothing else would put it back.)
         let _ = std::fs::remove_file(&pre_import);
 
-        std::fs::rename(db_path, &pre_import)
+        crate::services::filesystem::rename_retrying(db_path, &pre_import)
             .map_err(|error| backup_error("failed to set aside the current database", error))?;
 
         // Durable only once `.pre-import` actually holds the user's database, which is the claim
@@ -781,7 +781,9 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         if let Err(error) = write_import_applying_marker(&marker) {
             // Nothing is in flight for a marker to describe. Put the database back so the next run
             // sees an ordinary pending import rather than a half-applied one.
-            if let Err(rollback_error) = std::fs::rename(&pre_import, db_path) {
+            if let Err(rollback_error) =
+                crate::services::filesystem::rename_retrying(&pre_import, db_path)
+            {
                 // Both the marker write and the rollback failed, so the database now lives only in
                 // `.pre-import` with nothing pointing there (the marker never got written). Log
                 // prominently so the snapshot can be restored by hand rather than the next launch
@@ -801,11 +803,11 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     let _ = std::fs::remove_file(sibling(db_path, "-wal"));
     let _ = std::fs::remove_file(sibling(db_path, "-shm"));
 
-    if let Err(error) = std::fs::rename(&staged, db_path) {
+    if let Err(error) = crate::services::filesystem::rename_retrying(&staged, db_path) {
         // Roll the previous database back so the app is never left without one. When the rollback
         // succeeds the database is whole again and the marker has to go with it; when it fails,
         // the marker is exactly what tells the next run that `.pre-import` is the only real copy.
-        if std::fs::rename(&pre_import, db_path).is_ok() {
+        if crate::services::filesystem::rename_retrying(&pre_import, db_path).is_ok() {
             remove_import_applying_marker(&marker);
         }
 

@@ -411,7 +411,7 @@ pub fn generate_temporary_thumbnail_cancellable_sync<R: Runtime>(
         return Err(error);
     }
 
-    if let Err(error) = fs::rename(&partial, &out_thumbnail) {
+    if let Err(error) = crate::services::filesystem::rename_retrying(&partial, &out_thumbnail) {
         let _ = fs::remove_file(&partial);
 
         return Err(AppError::fs_error(

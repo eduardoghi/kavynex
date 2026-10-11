@@ -203,7 +203,7 @@ pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> App
     }
 
     crate::services::filesystem::fsync_file(&temp)?;
-    std::fs::rename(&temp, &target)
+    crate::services::filesystem::rename_retrying(&temp, &target)
         .map_err(|error| backup_error("failed to store the pre-migration snapshot", error))?;
     crate::services::filesystem::fsync_parent_dir(&target);
 
@@ -344,7 +344,7 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         // candidate list falls through to `.bak.1` and beyond), but the newest snapshot silently
         // did not land, which is only inferable from backup timestamps. Log it before propagating
         // so the state is observable.
-        if let Err(error) = std::fs::rename(&temp, &backup) {
+        if let Err(error) = crate::services::filesystem::rename_retrying(&temp, &backup) {
             logger::warn(
                 "db_backup",
                 format!(

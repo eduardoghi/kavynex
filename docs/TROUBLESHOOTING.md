@@ -232,6 +232,9 @@ folder (`DIRECTORIES.md` lists it per OS). Diagnostics reports it and has an **O
 Reconnect the drive or free some space, then add the file with **Add media > Local file**. Nothing
 deletes these files, so remove them yourself once they are imported.
 
+If even that move fails, the terminal says so and names the file, which is then left in the app's
+temporary folder. That folder is cleared after 7 days, so copy the file out before then.
+
 ## Adding a video again downloads nothing, or downloads and then keeps the old file
 
 Both are deliberate, and which one you see depends on whether the video is going back into the

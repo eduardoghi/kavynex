@@ -53,12 +53,27 @@ fn is_held_by_another_program(error: &std::io::Error) -> bool {
 /// A scanner opens every new file the moment it appears, so the rename that follows a copy, or
 /// reopening the copy to flush it, failed now and then for a reason that was gone a second later,
 /// and took a whole import, download or marker write with it. Elsewhere `op` runs once.
-pub(crate) fn retry_while_held<T>(
+pub(crate) fn retry_while_held<T>(op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    retry_while_held_with(&[50, 100, 200, 400], op)
+}
+
+/// [`retry_while_held`] with a longer wait, for a file of gigabytes a scanner is still reading when
+/// the rename comes. Under a second of retries is enough for a thumbnail and not for a finished
+/// download, whose failed placement used to leave it only in the run folder that is deleted next.
+pub(crate) fn retry_while_held_patiently<T>(
+    op: impl FnMut() -> std::io::Result<T>,
+) -> std::io::Result<T> {
+    retry_while_held_with(&[100, 250, 500, 1_000, 2_000, 4_000], op)
+}
+
+#[cfg_attr(not(windows), allow(unused_variables))]
+fn retry_while_held_with<T>(
+    delays_ms: &[u64],
     mut op: impl FnMut() -> std::io::Result<T>,
 ) -> std::io::Result<T> {
     #[cfg(windows)]
     {
-        for delay_ms in [50_u64, 100, 200, 400] {
+        for &delay_ms in delays_ms {
             match op() {
                 Err(error) if is_held_by_another_program(&error) => {
                     std::thread::sleep(std::time::Duration::from_millis(delay_ms));
@@ -74,6 +89,11 @@ pub(crate) fn retry_while_held<T>(
 /// `fs::rename` through [`retry_while_held`].
 pub(crate) fn rename_retrying(from: &Path, to: &Path) -> std::io::Result<()> {
     retry_while_held(|| fs::rename(from, to))
+}
+
+/// `fs::rename` through [`retry_while_held_patiently`], for a media file.
+pub(crate) fn rename_retrying_patiently(from: &Path, to: &Path) -> std::io::Result<()> {
+    retry_while_held_patiently(|| fs::rename(from, to))
 }
 
 /// Flushes a freshly written file's data and metadata to disk. Called before the rename in
@@ -857,7 +877,7 @@ fn move_or_copy_file_using(
         ));
     }
 
-    match fs::rename(source, destination) {
+    match rename_retrying_patiently(source, destination) {
         Ok(_) => Ok(()),
         Err(error) if is_cross_device_error(&error) => {
             copy_file_atomic(source, destination)?;
@@ -993,7 +1013,7 @@ fn stage_move_using(
         return Ok(StagedMove::SourceKept);
     }
 
-    match fs::rename(source, destination) {
+    match rename_retrying_patiently(source, destination) {
         Ok(()) => {
             fsync_parent_dir(destination);
             Ok(StagedMove::SourceConsumed)
@@ -1076,7 +1096,7 @@ pub(crate) fn verify_content_addressed_write(
         return Ok(corrected);
     }
 
-    fs::rename(written, &corrected).map_err(|e| {
+    rename_retrying_patiently(written, &corrected).map_err(|e| {
         AppError::fs_error(
             AppErrorCode::FileRenameFailed,
             "failed to rename a content-addressed file to its verified hash",
