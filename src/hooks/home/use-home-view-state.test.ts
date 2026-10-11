@@ -80,6 +80,42 @@ describe("useHomeViewState", () => {
         expect(result.current.showPlayer).toBe(false);
     });
 
+    it("says the list could not be read instead of showing the first-run screen", () => {
+        const { result } = renderHook(() =>
+            useHomeViewState({
+                selectedChannel: null,
+                hasChannels: false,
+                isLoadingChannels: false,
+                channelsLoadFailed: true,
+                isPreparingSettings: false,
+                mediaPlayer: {
+                    viewMode: "library",
+                },
+            })
+        );
+
+        expect(result.current.showEmpty).toBe(false);
+        expect(result.current.showChannelsLoadError).toBe(true);
+    });
+
+    it("does not ask for a library folder when the settings could not be read", () => {
+        const { result } = renderHook(() =>
+            useHomeViewState({
+                selectedChannel: null,
+                hasChannels: true,
+                isLoadingChannels: false,
+                isPreparingSettings: false,
+                hasLoadedSettings: false,
+                mediaPlayer: {
+                    viewMode: "library",
+                },
+                libraryPath: "",
+            })
+        );
+
+        expect(result.current.showLibrarySetup).toBe(false);
+    });
+
     it("shows the select-channel prompt instead of the empty state when channels exist but none is selected", () => {
         const { result } = renderHook(() =>
             useHomeViewState({

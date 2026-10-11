@@ -58,6 +58,25 @@ describe("useAppSettingsActions", () => {
         externalBackupDir: "",
     };
 
+    // The settings as read at startup. changeLibraryPath refuses to run before they are, so every
+    // test of it starts from here.
+    async function renderLoaded(onError = vi.fn(), setSettings = vi.fn()) {
+        vi.mocked(initializeAppSettings).mockResolvedValueOnce({
+            settings: { ...NEW_SETTINGS, libraryPath: "/library" },
+            libraryUnreachable: false,
+        });
+        vi.mocked(persistSettings).mockResolvedValueOnce(undefined);
+
+        const rendered = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+
+        await act(async () => {
+            await rendered.result.current.prepareSettings();
+        });
+        setSettings.mockClear();
+
+        return rendered;
+    }
+
     it("prepares settings successfully", async () => {
         const onError = vi.fn();
         const setSettings = vi.fn();
@@ -321,7 +340,7 @@ describe("useAppSettingsActions", () => {
         });
         vi.mocked(getLibrarySummary).mockResolvedValueOnce(SUMMARY);
 
-        const rendered = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+        const rendered = await renderLoaded(onError, setSettings);
 
         await act(async () => {
             await rendered.result.current.changeLibraryPath("/library");
@@ -354,9 +373,7 @@ describe("useAppSettingsActions", () => {
         });
         vi.mocked(getLibrarySummary).mockRejectedValueOnce(new Error("unreadable"));
 
-        const { result } = renderHook(() =>
-            useAppSettingsActions({ onError: vi.fn(), setSettings: vi.fn() })
-        );
+        const { result } = await renderLoaded();
 
         await act(async () => {
             await result.current.changeLibraryPath("/library");
@@ -547,7 +564,7 @@ describe("useAppSettingsActions", () => {
         });
         vi.mocked(updateStoredLibraryPath).mockResolvedValueOnce(NEW_SETTINGS);
 
-        const { result } = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+        const { result } = await renderLoaded(onError, setSettings);
 
         await act(async () => {
             await result.current.changeLibraryPath("");
@@ -565,7 +582,7 @@ describe("useAppSettingsActions", () => {
 
         vi.mocked(planChangeLibraryPath).mockRejectedValueOnce(error);
 
-        const { result } = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+        const { result } = await renderLoaded(onError, setSettings);
 
         await act(async () => {
             await result.current.changeLibraryPath("/library");
@@ -578,13 +595,31 @@ describe("useAppSettingsActions", () => {
         expect(setSettings).not.toHaveBeenCalled();
     });
 
+    it("refuses to change the library folder before the stored settings were read", async () => {
+        // A failed read leaves the defaults, with an empty library path. A folder picked then would
+        // be stored as a first library over the real one, with nothing moved.
+        const onError = vi.fn();
+
+        const { result } = renderHook(() =>
+            useAppSettingsActions({ onError, setSettings: vi.fn() })
+        );
+
+        await act(async () => {
+            await result.current.changeLibraryPath("");
+        });
+
+        expect(planChangeLibraryPath).not.toHaveBeenCalled();
+        expect(updateStoredLibraryPath).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledWith(expect.stringMatching(/could not read its settings/));
+    });
+
     it("does not update settings when the library path was not changed", async () => {
         const onError = vi.fn();
         const setSettings = vi.fn();
 
         vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({ kind: "unchanged" });
 
-        const { result } = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+        const { result } = await renderLoaded(onError, setSettings);
 
         await act(async () => {
             await result.current.changeLibraryPath("/library");

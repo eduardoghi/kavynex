@@ -129,6 +129,10 @@ function controller(overrides: {
             selectedChannelId: selectedChannel?.id ?? null,
             selectedChannel,
             isLoadingChannels: false,
+
+            channelsLoadFailed: false,
+
+            reloadChannels: vi.fn(),
             channelToDelete: null,
             channelToDeleteMediaCount: null,
             updatingChannelAvatarId: null,
@@ -208,6 +212,8 @@ function controller(overrides: {
             pageBackground: "#eee",
             showLoading: false,
             showEmpty: false,
+
+            showChannelsLoadError: false,
             showSelectChannelPrompt: false,
             showLibrarySetup: false,
             showLibrary: true,
@@ -260,6 +266,23 @@ describe("Home", () => {
         );
         renderWithMantine(<Home />);
         expect(screen.getByText(UI_TEXT.home.selectChannelPrompt)).toBeInTheDocument();
+    });
+
+    it("offers to load the channels again when the list could not be read", () => {
+        const ctrl = controller({
+            viewState: { showChannelsLoadError: true, showLibrary: false },
+            selectedChannel: null,
+        });
+        vi.mocked(useHomeController).mockReturnValue(ctrl);
+        renderWithMantine(<Home />);
+
+        expect(screen.getByText(UI_TEXT.home.channelsLoadErrorTitle)).toBeInTheDocument();
+        expect(screen.queryByText(UI_TEXT.home.emptyTitle)).not.toBeInTheDocument();
+
+        fireEvent.click(
+            screen.getByRole("button", { name: UI_TEXT.home.channelsLoadErrorAction })
+        );
+        expect(ctrl.channels.reloadChannels).toHaveBeenCalledTimes(1);
     });
 
     it("offers both first-run steps in one empty state, with the folder first", () => {

@@ -122,7 +122,9 @@ export function useHomeController(): HomeController {
         selectedChannel: channelsState.selectedChannel,
         hasChannels: channelsState.channels.length > 0,
         isLoadingChannels: channelsState.isLoadingChannels,
+        channelsLoadFailed: channelsState.channelsLoadFailed,
         isPreparingSettings: settingsState.isPreparingSettings,
+        hasLoadedSettings: settingsState.hasLoadedSettings,
         mediaPlayer: mediaLibrary.mediaPlayer,
         libraryPath,
     });

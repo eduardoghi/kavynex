@@ -165,6 +165,15 @@ export function useAppSettingsActions({
     // dialog closed, with no way to back out of a misclick.
     const changeLibraryPath = useCallback(
         async (currentLibraryPath: string): Promise<void> => {
+            // Without the stored settings, an empty current path is not "no library yet", and a
+            // folder picked now would be stored over the real one without moving anything.
+            if (!hasLoadedSettings) {
+                onError(
+                    "Kavynex could not read its settings, so the library folder cannot be changed right now. Restart the app and try again."
+                );
+                return;
+            }
+
             await runLibraryPathChange(async () => {
                 try {
                     const plan = await planChangeLibraryPath({ currentLibraryPath });
@@ -219,7 +228,14 @@ export function useAppSettingsActions({
                 }
             });
         },
-        [isLibraryUnreachable, onError, reloadIfLibraryIsBack, runLibraryPathChange, setSettings]
+        [
+            hasLoadedSettings,
+            isLibraryUnreachable,
+            onError,
+            reloadIfLibraryIsBack,
+            runLibraryPathChange,
+            setSettings,
+        ]
     );
 
     const cancelLibraryMove = useCallback((): void => {

@@ -12,6 +12,10 @@ export const UI_TEXT = {
         emptyAction: "New channel",
         loadingApp: "Loading your library",
         selectChannelPrompt: "Select a channel from the sidebar to see its library.",
+        channelsLoadErrorTitle: "The channels could not be loaded",
+        channelsLoadErrorDescription:
+            "Your channels are still in the database. Kavynex could not read the list just now.",
+        channelsLoadErrorAction: "Try again",
         // A line of state, not an instruction. The description above already says what to do, and
         // this says what the app currently has. What the folder holds, a library on a drive that is
         // not connected, pointing at the same folder again, all belong to Settings > Library folder

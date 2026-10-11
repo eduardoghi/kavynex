@@ -50,6 +50,7 @@ describe("useChannels", () => {
         mockedUseChannelActions.mockImplementation((options) => {
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
@@ -695,6 +696,7 @@ describe("useChannels", () => {
 
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
@@ -751,6 +753,7 @@ describe("useChannels", () => {
 
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
@@ -800,6 +803,7 @@ describe("useChannels", () => {
         mockedUseChannelActions.mockImplementation((options) => {
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: true,
                 isUpdatingChannelAvatar: false,
@@ -904,6 +908,7 @@ describe("useChannels", () => {
 
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
@@ -953,6 +958,7 @@ describe("useChannels", () => {
 
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
@@ -998,6 +1004,7 @@ describe("useChannels", () => {
 
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
@@ -1049,6 +1056,7 @@ describe("useChannels", () => {
 
             return {
                 isLoadingChannels: false,
+                channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,

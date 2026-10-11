@@ -8,6 +8,9 @@ export type HomeViewState = {
     pageBackground: string;
     showLoading: boolean;
     showEmpty: boolean;
+    // The channel list could not be read. Shown instead of the first-run screen, which would tell a
+    // user with channels that they have none.
+    showChannelsLoadError: boolean;
     showSelectChannelPrompt: boolean;
     // No library folder is configured and the page is in a state where telling the user so is
     // useful (settings loaded, library view). True on every fresh install until a folder is picked.
@@ -20,7 +23,11 @@ type UseHomeViewStateOptions = {
     selectedChannel: Channel | null;
     hasChannels: boolean;
     isLoadingChannels: boolean;
+    channelsLoadFailed?: boolean;
     isPreparingSettings: boolean;
+    // False until the settings were read once. An empty library path before that, or after a read
+    // that failed, is not a library that was never set.
+    hasLoadedSettings?: boolean;
     mediaPlayer: Pick<MediaPlayerController, "viewMode">;
     libraryPath?: string;
 };
@@ -29,7 +36,9 @@ export function useHomeViewState({
     selectedChannel,
     hasChannels,
     isLoadingChannels,
+    channelsLoadFailed = false,
     isPreparingSettings,
+    hasLoadedSettings = true,
     mediaPlayer,
     libraryPath = "",
 }: UseHomeViewStateOptions): HomeViewState {
@@ -56,7 +65,8 @@ export function useHomeViewState({
 
     // Only the true "no channels at all" case is onboarding; a selected-channel-less
     // state with channels already created gets the neutral prompt below instead.
-    const showEmpty = !hasChannels && isLibraryReady;
+    const showEmpty = !hasChannels && isLibraryReady && !channelsLoadFailed;
+    const showChannelsLoadError = !hasChannels && isLibraryReady && channelsLoadFailed;
 
     const showSelectChannelPrompt =
         hasChannels && !selectedChannel && isLibraryReady;
@@ -68,7 +78,8 @@ export function useHomeViewState({
     // created before the folder is picked, so the card has to stand next to the empty state as
     // well as above a channel's library. Gated on the settings having loaded, because until then
     // an empty path means "not read yet" rather than "not set".
-    const showLibrarySetup = !isPreparingSettings && showLibrary && libraryPath.trim() === "";
+    const showLibrarySetup =
+        !isPreparingSettings && hasLoadedSettings && showLibrary && libraryPath.trim() === "";
 
     // All fields below are primitive strings/booleans recomputed fresh every render, so
     // useMemoObject's shallow compare still keeps the returned object's identity stable
@@ -79,6 +90,7 @@ export function useHomeViewState({
         pageBackground,
         showLoading,
         showEmpty,
+        showChannelsLoadError,
         showSelectChannelPrompt,
         showLibrarySetup,
         showLibrary,

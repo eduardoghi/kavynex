@@ -38,6 +38,8 @@ type UseChannelActionsOptions = {
 
 type UseChannelActionsReturn = {
     isLoadingChannels: boolean;
+    // The last load of the list failed, so an empty list says nothing about whether channels exist.
+    channelsLoadFailed: boolean;
     isCreatingChannel: boolean;
     isDeletingChannel: boolean;
     isUpdatingChannelAvatar: boolean;
@@ -80,6 +82,7 @@ export function useChannelActions({
     setConfirmDeleteChannelOpen,
 }: UseChannelActionsOptions): UseChannelActionsReturn {
     const [isLoadingChannels, setIsLoadingChannels] = useState(false);
+    const [channelsLoadFailed, setChannelsLoadFailed] = useState(false);
     const loadRequestGuard = useRequestGuard();
 
     const { isRunning: isCreatingChannel, runWithFlag: runCreateChannel } = useAsyncFlag();
@@ -103,11 +106,13 @@ export function useChannelActions({
             }
 
             setChannels(items);
+            setChannelsLoadFailed(false);
         } catch (error) {
             if (!loadRequestGuard.isCurrent(requestId)) {
                 return;
             }
 
+            setChannelsLoadFailed(true);
             logError("channels", "Failed to load channels.", error);
             onError(resolveErrorMessage(error, "Failed to load channels."));
         } finally {
@@ -383,6 +388,7 @@ export function useChannelActions({
 
     return useMemoObject({
         isLoadingChannels,
+        channelsLoadFailed,
         isCreatingChannel,
         isDeletingChannel,
         isUpdatingChannelAvatar,

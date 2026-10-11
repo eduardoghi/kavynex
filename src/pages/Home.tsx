@@ -228,6 +228,34 @@ export default function Home(): JSX.Element {
                                 </Stack>
                             )}
 
+                            {viewState.showChannelsLoadError && (
+                                <Card
+                                    withBorder
+                                    radius="xl"
+                                    p="xl"
+                                    role="alert"
+                                    style={{
+                                        background: viewState.shellSurface,
+                                        borderColor: viewState.shellBorder,
+                                    }}
+                                >
+                                    <Stack gap="sm" align="flex-start">
+                                        <Text fw={700}>{UI_TEXT.home.channelsLoadErrorTitle}</Text>
+                                        <Text c="dimmed" size="sm">
+                                            {UI_TEXT.home.channelsLoadErrorDescription}
+                                        </Text>
+                                        <AppButton
+                                            type="button"
+                                            appVariant="secondary"
+                                            loading={channels.isLoadingChannels}
+                                            onClick={() => void channels.reloadChannels()}
+                                        >
+                                            {UI_TEXT.home.channelsLoadErrorAction}
+                                        </AppButton>
+                                    </Stack>
+                                </Card>
+                            )}
+
                             {showSelectChannelPrompt && (
                                 <Card
                                     withBorder

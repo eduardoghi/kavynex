@@ -68,6 +68,9 @@ export type ChannelsController = {
     channelToDeleteMediaCount: number | null;
 
     isLoadingChannels: boolean;
+    // See useChannelActions. The Home page offers to try again instead of the first-run screen.
+    channelsLoadFailed: boolean;
+    reloadChannels: () => Promise<void>;
     isCreatingChannel: boolean;
     isDeletingChannel: boolean;
     isUpdatingChannelAvatar: boolean;
@@ -372,6 +375,8 @@ export function useChannels({
         channelToDeleteMediaCount,
 
         isLoadingChannels,
+        channelsLoadFailed: channelActions.channelsLoadFailed,
+        reloadChannels: loadChannels,
         isCreatingChannel,
         isDeletingChannel,
         isUpdatingChannelAvatar,

@@ -166,6 +166,10 @@ const mockChannelsState = {
     channelToDeleteMediaCount: null,
 
     isLoadingChannels: false,
+
+    channelsLoadFailed: false,
+
+    reloadChannels: vi.fn(),
     isCreatingChannel: false,
     isDeletingChannel: false,
     isUpdatingChannelAvatar: false,
@@ -359,6 +363,7 @@ const mockViewState = {
     pageBackground: "#000",
     showLoading: false,
     showEmpty: false,
+    showChannelsLoadError: false,
     showSelectChannelPrompt: false,
     showLibrarySetup: false,
     showLibrary: true,

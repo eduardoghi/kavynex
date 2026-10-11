@@ -92,6 +92,10 @@ describe("useHomeActions", () => {
             },
 
             isLoadingChannels: false,
+
+            channelsLoadFailed: false,
+
+            reloadChannels: vi.fn(),
             isCreatingChannel: false,
             isDeletingChannel: false,
             isUpdatingChannelAvatar: false,
