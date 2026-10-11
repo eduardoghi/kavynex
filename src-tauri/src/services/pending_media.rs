@@ -570,7 +570,7 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
             let spare =
                 |path: &Option<String>| path.clone().filter(|path| !in_flight.contains(path));
 
-            match crate::services::library::cleanup::trash_unreferenced_artifacts(
+            let failure = match crate::services::library::cleanup::trash_unreferenced_artifacts(
                 app,
                 spare(&artifacts.file_path),
                 spare(&artifacts.thumbnail_path),
@@ -590,45 +590,57 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
                             ),
                         );
                     }
+
+                    // A path that could not be moved (the library not mounted, a file another
+                    // program holds) is still on disk and still unreferenced. Clearing the marker
+                    // would drop the only record of it.
+                    (!report.failed_paths.is_empty()).then(|| {
+                        format!(
+                            "{} artifact(s) could not be moved to the library trash",
+                            report.failed_paths.len()
+                        )
+                    })
                 }
-                Err(error) => {
-                    // Leave the marker in place so the next launch retries; a transient failure
-                    // (the library drive not mounted yet) must not silently drop the record. What
-                    // the count adds is an end to that. Nothing here can tell transient from
-                    // permanent, so a failure that keeps recurring is reclassified by how often it
-                    // has, and reported once instead of every launch.
-                    let attempts = artifacts.attempts.saturating_add(1);
+                Err(error) => Some(error.to_string()),
+            };
 
-                    // Written back in both branches, and the exhausted one is why. Without it the
-                    // marker stays at one below the ceiling forever, so every later launch re-runs
-                    // the same failing cleanup, logs the same error and re-emits the notice below.
-                    // The count is what `read_pending_markers` reads to stop offering this marker at
-                    // all, so persisting it is the whole of what "giving up" means.
-                    record_marker_attempt(app, &name, &artifacts, attempts);
+            if let Some(error) = failure {
+                // Leave the marker in place so the next launch retries; a transient failure
+                // (the library drive not mounted yet) must not silently drop the record. What
+                // the count adds is an end to that. Nothing here can tell transient from
+                // permanent, so a failure that keeps recurring is reclassified by how often it
+                // has, and reported once instead of every launch.
+                let attempts = artifacts.attempts.saturating_add(1);
 
-                    if marker_retries_are_exhausted(attempts) {
-                        abandoned_markers += 1;
+                // Written back in both branches, and the exhausted one is why. Without it the
+                // marker stays at one below the ceiling forever, so every later launch re-runs
+                // the same failing cleanup, logs the same error and re-emits the notice below.
+                // The count is what `read_pending_markers` reads to stop offering this marker at
+                // all, so persisting it is the whole of what "giving up" means.
+                record_marker_attempt(app, &name, &artifacts, attempts);
 
-                        logger::error(
-                            "pending_media",
-                            format!(
-                                "giving up on a pending media marker after {attempts} failed attempts; \
-                                 its artifacts are left in the library and are reported by \
-                                 Diagnostics as unreferenced files: {error}"
-                            ),
-                        );
-                    } else {
-                        logger::warn(
-                            "pending_media",
-                            format!(
-                                "could not reconcile a pending media marker (attempt {attempts} of \
-                                 {MAX_MARKER_SWEEP_ATTEMPTS}): {error}"
-                            ),
-                        );
-                    }
+                if marker_retries_are_exhausted(attempts) {
+                    abandoned_markers += 1;
 
-                    continue;
+                    logger::error(
+                        "pending_media",
+                        format!(
+                            "giving up on a pending media marker after {attempts} failed attempts; \
+                             its artifacts are left in the library and are reported by \
+                             Diagnostics as unreferenced files: {error}"
+                        ),
+                    );
+                } else {
+                    logger::warn(
+                        "pending_media",
+                        format!(
+                            "could not reconcile a pending media marker (attempt {attempts} of \
+                             {MAX_MARKER_SWEEP_ATTEMPTS}): {error}"
+                        ),
+                    );
                 }
+
+                continue;
             }
         }
 
@@ -1226,6 +1238,25 @@ mod tests {
         assert!(!marker.exists(), "a reconciled marker is cleared");
 
         let _ = fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_keeps_the_marker_while_the_library_is_not_mounted() {
+        // The library folder is configured and gone (an external drive not plugged in yet). The
+        // file it names is still there for the next launch, and so must the record of it be.
+        let (app, library) = app_with_library("unmounted").await;
+        let relative = format!("video/media_unmounted_{}.mp4", unique_temp_suffix());
+        let marker = leftover_marker_naming(&app, &relative);
+        fs::remove_dir_all(&library).unwrap();
+
+        let removed = sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert_eq!(removed, 0);
+        assert!(marker.exists(), "the marker outlives a library that is not there");
+        let kept = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
+        assert_eq!(kept.attempts, 1, "and the failed attempt counts toward the ceiling");
+
+        let _ = fs::remove_file(&marker);
     }
 
     #[tokio::test]

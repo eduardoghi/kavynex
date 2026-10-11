@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- The leftover files of an import that died midway are no longer forgotten when Kavynex starts with
+  the library drive unplugged. They are moved to the library trash once the drive is back.
 - A library move onto the current folder, reached by another name such as a network path or a
   mapped drive, is refused instead of deleting the library.
 - A finished download is kept when it cannot be placed into the library, instead of being deleted

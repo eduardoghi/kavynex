@@ -609,18 +609,22 @@ async fn execute_plan_locked<R: Runtime>(
     .await
 }
 
-/// Whether the configured library folder exists right now, which a deletion needs to remove files.
-async fn library_is_reachable<R: Runtime>(app: &AppHandle<R>) -> bool {
-    let Ok(library_dir) = configured_library_dir(app).await else {
-        return false;
-    };
-    let library_path = library_dir.to_string_lossy().to_string();
+/// The configured library folder, refused when it does not exist right now (a drive not mounted).
+async fn reachable_library_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<std::path::PathBuf> {
+    let library_path = configured_library_dir(app)
+        .await?
+        .to_string_lossy()
+        .to_string();
 
     run_blocking(move || {
         crate::services::library::paths::resolve_existing_library_dir(&library_path)
     })
     .await
-    .is_ok()
+}
+
+/// Whether the configured library folder exists right now, which a deletion needs to remove files.
+async fn library_is_reachable<R: Runtime>(app: &AppHandle<R>) -> bool {
+    reachable_library_dir(app).await.is_ok()
 }
 
 /// Deletes a media row and removes its now-unreferenced files from disk. The row deletion
@@ -817,7 +821,9 @@ pub(crate) async fn trash_unreferenced_artifacts_locked<R: Runtime>(
         return Ok(report_for_nothing_deletable(plan));
     }
 
-    let library_dir = configured_library_dir(app).await;
+    // Reachable, not only configured. A file missing from a folder that is not mounted reads as
+    // already gone, and would be reported as moved to the trash.
+    let library_dir = reachable_library_dir(app).await;
 
     drop_paths_referenced_again(&pool, &mut plan).await;
 
