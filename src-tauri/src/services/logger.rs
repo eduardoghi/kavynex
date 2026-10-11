@@ -1,7 +1,9 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use chrono::{SecondsFormat, Utc};
 
@@ -9,6 +11,13 @@ const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 static LOG_LOCK: Mutex<()> = Mutex::new(());
+
+/// File writes handed to the blocking pool that have not landed yet (see [`write`] and [`flush`]).
+static PENDING_WRITES: AtomicUsize = AtomicUsize::new(0);
+
+/// How long [`flush`] waits for the pending writes. A disk that takes longer than this is one the
+/// exit should not hang on.
+const FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Enables the file sink. Called once at startup with the app log directory; until then
 /// logs only go to stderr. Failures are swallowed so logging never breaks the app.
@@ -251,13 +260,28 @@ fn write(level: &str, scope: &str, message: &str) {
     match tokio::runtime::Handle::try_current() {
         Ok(_) => {
             let path = path.clone();
+            PENDING_WRITES.fetch_add(1, Ordering::SeqCst);
             // Detach the handle. This is fire-and-forget, and dropping a spawn_blocking handle
             // does not cancel the already-running write.
             drop(tauri::async_runtime::spawn_blocking(move || {
-                append_line_locked(&path, &line)
+                append_line_locked(&path, &line);
+                PENDING_WRITES.fetch_sub(1, Ordering::SeqCst);
             }));
         }
         Err(_) => append_line_locked(path, &line),
+    }
+}
+
+/// Waits, up to [`FLUSH_TIMEOUT`], for the log lines handed to the blocking pool to reach the file.
+///
+/// For the code right before a `std::process::exit`, which ends the process without waiting for the
+/// pool. The line that says why the process is exiting is the one most likely to be lost otherwise,
+/// since it is the last one written.
+pub fn flush() {
+    let deadline = Instant::now() + FLUSH_TIMEOUT;
+
+    while PENDING_WRITES.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
     }
 }
 
@@ -360,6 +384,13 @@ mod tests {
             line.chars().count(),
             MAX_MESSAGE_CHARS + "... (truncated)".len()
         );
+    }
+
+    #[test]
+    fn flush_returns_at_once_with_nothing_pending() {
+        let started = Instant::now();
+        flush();
+        assert!(started.elapsed() < FLUSH_TIMEOUT);
     }
 
     #[test]

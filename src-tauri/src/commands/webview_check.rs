@@ -262,6 +262,7 @@ pub async fn report_webview_check<R: Runtime>(
 
     if failures.is_empty() {
         logger::info("webview_check", "webview check passed");
+        logger::flush();
         std::process::exit(0);
     }
 
@@ -274,6 +275,7 @@ pub async fn report_webview_check<R: Runtime>(
         format!("webview check failed with {} problem(s)", failures.len()),
     );
 
+    logger::flush();
     std::process::exit(1);
 }
 

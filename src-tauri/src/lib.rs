@@ -383,6 +383,7 @@ fn spawn_webview_check_watchdog() {
             ),
         );
 
+        services::logger::flush();
         std::process::exit(1);
     });
 }
@@ -447,6 +448,7 @@ fn startup_failure_message(build_error: &str, _webview_available: bool) -> Strin
 fn fail_startup(message: &str) -> ! {
     services::logger::error("app", message);
     show_startup_error_dialog(message);
+    services::logger::flush();
     std::process::exit(1);
 }
 
@@ -643,6 +645,7 @@ pub fn run() {
             // and returns 0, or it does not.
             if is_smoke_test_run(std::env::args()) {
                 services::logger::info("app", "smoke test passed");
+                services::logger::flush();
                 std::process::exit(0);
             }
 
