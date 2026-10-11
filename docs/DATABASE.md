@@ -467,12 +467,14 @@ no generation is rotated, so the generations from before the damage stay. The da
 after the damage still has a copy. `VACUUM INTO` rebuilds the indexes in it, so damage limited to an
 index does not carry over. It is never a restore candidate, since it is a copy of a database known
 to be damaged, and nothing removes it. A database with no channel and no media is skipped too while
-any daily generation still holds a library, since the daily snapshot of a database recreated empty would otherwise push out one
-good generation a day. For the same reason, a database file that is missing while snapshots of it
-are still on disk is not created on open (`DatabaseMissing`). The startup recovery offers the restore,
-or starting with an empty library (`start_with_empty_database`). Rotation keeps several generations. Before the fresh snapshot is written, the
-existing generations are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on),
-dropping the oldest. `BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
+any daily generation still holds a library, since the daily snapshot of a database recreated empty
+would otherwise push out one good generation a day. For the same reason, a database file that is
+missing while snapshots of it are still on disk is not created on open (`DatabaseMissing`). The
+startup recovery offers the restore, or starting with an empty library (`start_with_empty_database`,
+refused once the database opened or its file is back).
+
+Rotation keeps several generations. Before the fresh snapshot is written, the existing generations
+are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on), dropping the oldest. `BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
 current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`). Keeping more
 than one guards against the case where the newest snapshot itself captured an already-degrading
 database before the corruption was caught. A `.bak.tmp` is used during the `VACUUM INTO` and only

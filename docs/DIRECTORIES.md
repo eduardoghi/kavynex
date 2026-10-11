@@ -59,9 +59,10 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   own modification time is consulted alongside it, since it is never newer than the swap that set it
   aside, and either one answering recent is enough. Start empty records a swap too.
 - `kavynex.db.lineage`: an id given to a database created from nothing (a first run, a reinstall,
-  Start empty) or put in place by an import. The external mirror labels its copies with it, so a later database can tell the copies
-  an earlier one left in the folder and set them aside instead of rotating them out
-  (`db_backup/lineage.rs`). A database older than this file has none.
+  Start empty) or put in place by an import. The external mirror labels its copies with it, so a
+  later database can tell the copies an earlier one left in the folder and set them aside instead
+  of rotating them out (`db_backup/lineage.rs`). A database older than this file has none until an
+  import replaces it.
 - `set-aside-backups/<UTC time>/`: the snapshots that were here when Start empty was chosen, renamed
   to `kavynex-bak.db`, `kavynex-bak-1.db`, `kavynex-pre-migration-v15.db` and so on so Settings >
   Database > Import reads them directly. Nothing deletes this folder. Diagnostics reports it and opens

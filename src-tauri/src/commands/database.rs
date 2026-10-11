@@ -36,6 +36,22 @@ fn ensure_closed_before_restore(is_open: bool) -> AppResult<()> {
     Ok(())
 }
 
+/// The guard `start_with_empty_database` applies. Starting over is only for a database file that is
+/// missing and was never opened in this run.
+fn ensure_database_is_missing(is_open: bool, file_exists: bool) -> AppResult<()> {
+    ensure_closed_before_restore(is_open)?;
+
+    if file_exists {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseAlreadyOpen,
+            "the database file is there again, so there is nothing to start over from. Restart \
+             Kavynex to open it",
+        ));
+    }
+
+    Ok(())
+}
+
 /// Initializes the shared database pool (creating and migrating the schema on first
 /// call) and confirms the database is reachable. Called by the frontend on startup so
 /// database initialization errors surface to the user before any feature runs.
@@ -53,15 +69,25 @@ pub async fn ensure_database_ready(db: State<'_, Db>) -> AppResult<()> {
 /// snapshot would rotate them out once it holds anything, and the restore cannot reach them once the
 /// pool is open. The swap is recorded too, so the orphan removal does not read every file of the old
 /// library as unreferenced by the new database for the next 30 days.
+///
+/// Refused once the pool is open or the file is back (a drive that mounted late), since setting the
+/// backups aside then takes them away from a database that is still there.
 #[tauri::command]
 pub async fn start_with_empty_database(db: State<'_, Db>) -> AppResult<()> {
-    let db_path = db.path().to_path_buf();
-    run_blocking(move || {
-        crate::services::db_backup::set_aside_backups_for_empty_start(&db_path).map(|_| ())
-    })
-    .await?;
+    {
+        // Released before the pool opens below, which takes the same lock.
+        let _open_guard = db.restore_guard().await;
+        ensure_database_is_missing(db.is_initialized(), db.path().exists())?;
 
-    db.allow_creating_missing_database();
+        let db_path = db.path().to_path_buf();
+        run_blocking(move || {
+            crate::services::db_backup::set_aside_backups_for_empty_start(&db_path).map(|_| ())
+        })
+        .await?;
+
+        db.allow_creating_missing_database();
+    }
+
     db.pool().await?;
     crate::services::db_backup::record_database_swap(db.path());
     Ok(())
@@ -470,5 +496,15 @@ mod tests {
     #[test]
     fn ensure_closed_before_restore_allows_a_closed_database() {
         assert!(ensure_closed_before_restore(false).is_ok());
+    }
+
+    #[test]
+    fn starting_over_needs_a_database_that_is_missing_and_closed() {
+        assert!(ensure_database_is_missing(false, false).is_ok());
+
+        for (is_open, file_exists) in [(true, false), (false, true), (true, true)] {
+            let error = ensure_database_is_missing(is_open, file_exists).unwrap_err();
+            assert_eq!(error.code, AppErrorCode::DatabaseAlreadyOpen.as_str());
+        }
     }
 }
