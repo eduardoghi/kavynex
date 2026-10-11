@@ -842,6 +842,12 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     crate::services::filesystem::fsync_parent_dir(db_path);
     super::record_database_swap(db_path);
 
+    // An imported database is another library as far as the external copies can tell. Keeping the
+    // id of the one it replaced would let the mirror rotate that library's copies out under the
+    // imported one's. With a new id they are set aside instead. An import of a copy of this same
+    // library sets them aside too, which keeps more than needed and loses nothing.
+    super::lineage::record_new_lineage(db_path);
+
     remove_import_applying_marker(&marker);
     crate::services::filesystem::fsync_parent_dir(&marker);
 

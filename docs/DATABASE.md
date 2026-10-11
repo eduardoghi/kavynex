@@ -580,13 +580,15 @@ up separately.
   `kavynex-backup.after-damage.db` beside the copies instead, at most once a day, like
   `kavynex.db.after-damage`.
 - **Copies of an earlier database are set aside, not rotated out.** A database created from nothing
-  (a first run, a reinstall, Start empty) gets a lineage id in `kavynex.db.lineage`, and the mirror
-  writes the same id to `kavynex-backup.lineage` next to its copies. When the database has an id and
-  the folder holds copies with another id or none, and any of them holds a library, they are renamed
-  to `kavynex-backup-previous-<UTC time>[-N].db` and kept. That is a reinstall pointed at the folder
-  holding the only copy of the old library. Nothing removes those files, and Settings > Database >
-  Import reads them directly. A database from before lineage ids existed never gets one, so its mirror
-  works as it always did.
+  (a first run, a reinstall, Start empty) or put in place by an import gets a new lineage id in
+  `kavynex.db.lineage`, and the mirror writes the same id to `kavynex-backup.lineage` next to its
+  copies. When the database has an id and the folder holds copies with another id or none, and any of
+  them holds a library, they are renamed to `kavynex-backup-previous-<UTC time>[-N].db` and kept. That
+  is a reinstall pointed at the folder holding the only copy of the old library, or an import that
+  replaced the library. An import of a copy of the same library sets the copies aside too, which keeps
+  more than needed. Nothing removes those files, and Settings > Database > Import reads them directly.
+  A database from before lineage ids existed has none until an import replaces it, and until then its
+  mirror works as it always did.
 - **Skipped** when the chosen directory does not exist (external drive unplugged, share offline)
   rather than recreated, because a recreated folder at a path that now resolves to a different device
   would silently write the backup to the wrong place. The skip is logged, and Settings > Database

@@ -1377,6 +1377,8 @@ async fn a_normal_second_import_still_replaces_the_previous_undo_snapshot() {
     let dir = temp_dir("import-second-normal");
     let db = dir.join("kavynex.db");
     seed_kavynex_db(&db, "first").await;
+    record_new_lineage(&db);
+    let first_lineage = lineage::database_lineage(&db).unwrap();
 
     let first_source = dir.join("second.db");
     seed_kavynex_db(&first_source, "second").await;
@@ -1385,6 +1387,9 @@ async fn a_normal_second_import_still_replaces_the_previous_undo_snapshot() {
         .unwrap();
     assert!(apply_pending_database_import(&db).unwrap());
     assert_eq!(read_video_title(&pre_import_path(&db)).await, "first");
+
+    // The imported library is not the one the external copies were made from.
+    assert_ne!(lineage::database_lineage(&db).unwrap(), first_lineage);
 
     let second_source = dir.join("third.db");
     seed_kavynex_db(&second_source, "third").await;

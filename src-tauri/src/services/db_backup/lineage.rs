@@ -1,7 +1,8 @@
 //! Which database a backup belongs to.
 //!
 //! A database file created from nothing (a first run, a reinstall, a start over after the file went
-//! missing) gets a lineage id, kept beside it in `kavynex.db.lineage`. The external mirror writes the
+//! missing) or put in place by an import gets a new lineage id, kept beside it in
+//! `kavynex.db.lineage`. The external mirror writes the
 //! same id next to its copies. A copy in the mirror folder without that id, while the database has
 //! one, was made from a database that came before this one, and the mirror sets it aside instead of
 //! rotating it out (see `external::mirror_database_to_external_dir`).
