@@ -217,6 +217,17 @@ export function blake2b512OfFile(path) {
 // this proves it is the right one, made with the key the shipped app trusts, for the bytes the
 // entry serves. Without it, a leg signing with a rotated or wrong key (or an entry whose signature
 // and url came from different merges) passes every other gate and fails on each user's machine.
+// The public key the signatures are checked against. The one in tauri.conf.json, unless a
+// key rotation's bridging release says otherwise. That release ships the new key in the config while
+// still being signed with the old one (docs/RELEASE-SECURITY.md), so it is verified against the old
+// key, which is the one every installed copy will check it with. Set through the
+// KAVYNEX_UPDATER_SIGNING_PUBKEY environment variable for that one release and unset afterwards.
+export function pubkeyToVerifyWith(configPubkey, overridePubkey) {
+    const override = typeof overridePubkey === "string" ? overridePubkey.trim() : "";
+
+    return override !== "" ? override : configPubkey;
+}
+
 export async function findSignatureProblems(manifest, assetsDir, publicKeyBase64) {
     const problems = [];
     const digests = new Map();
@@ -303,10 +314,21 @@ if (isMainModule(import.meta.url)) {
     }
 
     // The manifest sits in the directory the release was downloaded into.
+    const verifyingPubkey = pubkeyToVerifyWith(
+        updaterConfig?.pubkey,
+        process.env.KAVYNEX_UPDATER_SIGNING_PUBKEY
+    );
+
+    if (verifyingPubkey !== updaterConfig?.pubkey) {
+        console.log(
+            "Verifying the signatures against KAVYNEX_UPDATER_SIGNING_PUBKEY rather than tauri.conf.json (a key rotation's bridging release)."
+        );
+    }
+
     const signatureProblems = await findSignatureProblems(
         manifest,
         dirname(manifestPath),
-        updaterConfig?.pubkey
+        verifyingPubkey
     );
 
     if (signatureProblems.length > 0) {

@@ -1114,7 +1114,13 @@ jobs:
             # installer key sends that install to whichever installer the bare entry names. Each
             # signature is then verified against the downloaded file it points at, with the public
             # key from tauri.conf.json, which is the check the client itself makes.
+            # KAVYNEX_UPDATER_SIGNING_PUBKEY is empty except for the one bridging release of a key
+            # rotation, which ships the new public key while still signed with the old one. The
+            # repository variable is set to the old key for that release only (see
+            # docs/RELEASE-SECURITY.md, "What a rotation costs").
             - name: Verify latest.json offers every platform
+              env:
+                  KAVYNEX_UPDATER_SIGNING_PUBKEY: ${{ vars.UPDATER_SIGNING_PUBKEY_OVERRIDE }}
               run: node scripts/verify-latest-json.js assets/latest.json
 
             # The installers are attested by attest-installers; the files this job and

@@ -195,7 +195,11 @@ order matters:
    up offline next to the old one.
 2. Put the new public key in `tauri.conf.json`, and publish that release still signed with the old
    key (the secrets unchanged). Installed copies accept it, because the old key signed it, and from
-   then on they trust the new key.
+   then on they trust the new key. The `checksums` job verifies every signature against the public
+   key in `tauri.conf.json`, which for this one release is the wrong key, so before dispatching it
+   set the repository variable `UPDATER_SIGNING_PUBKEY_OVERRIDE` to the old public key
+   (`gh variable set UPDATER_SIGNING_PUBKEY_OVERRIDE --body "<old pubkey>"`), and delete it once the
+   release is out.
 3. Replace both secrets with the new key and password. Every later release is signed with it.
 4. Keep the old key until enough users have taken the bridging release, then destroy it.
 
@@ -302,7 +306,7 @@ updater signing key" above).
 One asymmetry is worth stating plainly, because the two ecosystems get their publish-age
 cooling-off from different places and the two places do not cover the same thing:
 
-- **npm** has `minimumReleaseAge` (`pnpm-workspace.yaml`, 2880 minutes), which pnpm enforces on
+- **npm** has `minimumReleaseAge` (`pnpm-workspace.yaml`, 7200 minutes, five days), which pnpm enforces on
   *every install*, including CI's `pnpm install --frozen-lockfile`. It is a property of the
   package manager, so nothing can add a too-new package to the tree, however the bump was
   authored.

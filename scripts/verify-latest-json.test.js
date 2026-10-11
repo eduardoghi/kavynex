@@ -9,6 +9,7 @@ import {
     findLatestJsonProblems,
     findSignatureProblems,
     minisignSignatureProblem,
+    pubkeyToVerifyWith,
     releaseDownloadPrefix,
     REQUIRED_PLATFORMS,
 } from "./verify-latest-json.js";
@@ -309,5 +310,14 @@ describe("findSignatureProblems", () => {
         }
 
         expect(await findSignatureProblems(manifest, tmpdir(), "")).toEqual([]);
+    });
+});
+
+describe("pubkeyToVerifyWith", () => {
+    it("uses the key in tauri.conf.json unless a rotation names the old one", () => {
+        expect(pubkeyToVerifyWith("config-key", undefined)).toBe("config-key");
+        expect(pubkeyToVerifyWith("config-key", "")).toBe("config-key");
+        expect(pubkeyToVerifyWith("config-key", "   ")).toBe("config-key");
+        expect(pubkeyToVerifyWith("config-key", " old-key ")).toBe("old-key");
     });
 });
