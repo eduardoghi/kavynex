@@ -240,10 +240,14 @@ export function MediaGrid({
         items.length - 1,
         ((virtualRows[virtualRows.length - 1]?.index ?? 0) + 1) * columnCount - 1
     );
+    // The fallback is the first row in view, not the first rendered one, which is an overscan row
+    // above the viewport. Tabbing to that one scrolled the grid back up.
+    const firstVisibleIndex =
+        (rowVirtualizer.range?.startIndex ?? virtualRows[0]?.index ?? 0) * columnCount;
     const tabStopIndex =
         rovingIndex >= firstRenderedIndex && rovingIndex <= lastRenderedIndex
             ? rovingIndex
-            : firstRenderedIndex;
+            : Math.min(Math.max(firstVisibleIndex, firstRenderedIndex), lastRenderedIndex);
 
     // The card at `index` may not be in the DOM yet when the arrow moved to a row the virtualizer
     // still has to render, so the focus is retried for a few frames.
@@ -276,7 +280,8 @@ export function MediaGrid({
     const handleCardKeyDown = (event: React.KeyboardEvent<HTMLElement>): void => {
         const current = cardIndexOf(event.target);
 
-        if (current === null) {
+        // Ctrl, Alt and Meta combinations belong to the browser and the system (Alt+Left, Ctrl+End).
+        if (current === null || event.altKey || event.ctrlKey || event.metaKey) {
             return;
         }
 

@@ -88,6 +88,13 @@ describe("MediaGrid", () => {
         // Past the end stays on the last card instead of wrapping.
         fireEvent.keyDown(third, { key: "ArrowRight" });
         expect(third).toHaveFocus();
+
+        // A combination with a modifier is left to the browser and the system.
+        const altLeft = fireEvent.keyDown(third, { key: "ArrowLeft", altKey: true });
+        const ctrlHome = fireEvent.keyDown(third, { key: "Home", ctrlKey: true });
+        expect(altLeft).toBe(true);
+        expect(ctrlHome).toBe(true);
+        expect(third).toHaveFocus();
     });
 
     it("shows loading state", () => {
