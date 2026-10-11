@@ -34,7 +34,7 @@ describe("useErrorModal", () => {
         expect(result.current.errorVariant).toBe("notice");
     });
 
-    it("closes modal and clears message", () => {
+    it("closes the modal and keeps the last message for its closing transition", () => {
         const { result } = renderHook(() => useErrorModal());
 
         act(() => {
@@ -46,7 +46,8 @@ describe("useErrorModal", () => {
         });
 
         expect(result.current.errorOpen).toBe(false);
-        expect(result.current.errorMessage).toBe("");
+        // Still there while the modal fades out, instead of a blank body.
+        expect(result.current.errorMessage).toBe("Something failed");
     });
 
     it("keeps an open error on screen when a notice arrives, and shows the notice next", () => {
@@ -75,7 +76,8 @@ describe("useErrorModal", () => {
         });
 
         expect(result.current.errorOpen).toBe(false);
-        expect(result.current.errorMessage).toBe("");
+        expect(result.current.errorMessage).toBe("No comments were found");
+        expect(result.current.errorVariant).toBe("notice");
     });
 
     it("queues a message that is already waiting only once", () => {

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { ErrorModalVariant } from "../components/modals/error-modal";
 import { useMemoObject } from "./use-memo-object";
 
@@ -61,11 +61,21 @@ export function useErrorModal(): ErrorModalController {
 
     const shown = queue[0];
 
+    // What the modal keeps showing while it fades out after the last message was closed. Cleared
+    // with the queue, the body went blank during the closing transition.
+    const lastShown = useRef<QueuedMessage>({ message: "", variant: "error" });
+
+    if (shown) {
+        lastShown.current = shown;
+    }
+
+    const displayed = shown ?? lastShown.current;
+
     // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
     return useMemoObject({
         errorOpen: shown !== undefined,
-        errorMessage: shown?.message ?? "",
-        errorVariant: shown?.variant ?? "error",
+        errorMessage: displayed.message,
+        errorVariant: displayed.variant,
         pendingMessageCount: Math.max(queue.length - 1, 0),
         showError,
         showNotice,
