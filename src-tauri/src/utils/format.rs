@@ -155,11 +155,11 @@ pub fn normalize_yt_dlp_upload_date(upload_date: Option<String>) -> Option<Strin
         return None;
     }
 
-    let year = &trimmed[0..4];
-    let month = &trimmed[4..6];
-    let day = &trimmed[6..8];
+    // A date that does not exist (`20261399`, `00000000`) is dropped rather than stored. The column
+    // is sorted as text, so a value like `2026-13-99` would sit among real dates in the wrong place.
+    let date = chrono::NaiveDate::parse_from_str(trimmed, "%Y%m%d").ok()?;
 
-    Some(format!("{year}-{month}-{day}"))
+    Some(date.format("%Y-%m-%d").to_string())
 }
 
 #[cfg(test)]
@@ -304,12 +304,28 @@ mod tests {
             None
         );
 
-        // All digits, fewer than eight. The length half is what stops `&trimmed[6..8]` from
-        // indexing past the end, so weakening the guard turns this into a panic rather than a
-        // wrong answer. yt-dlp supplies this field, so the value is not this app's to trust.
+        // All digits, fewer than eight. The guard holds the field to yt-dlp's exact YYYYMMDD before
+        // chrono reads it, since chrono's own parser is more lenient about widths than this field
+        // ever is. yt-dlp supplies the value, so it is not this app's to trust.
         assert_eq!(
             normalize_yt_dlp_upload_date(Some("202601".to_string())),
             None
+        );
+    }
+
+    #[test]
+    fn normalize_yt_dlp_upload_date_drops_a_date_that_does_not_exist() {
+        for impossible in ["20261399", "00000000", "20260230", "20261301"] {
+            assert_eq!(
+                normalize_yt_dlp_upload_date(Some(impossible.to_string())),
+                None,
+                "{impossible}"
+            );
+        }
+
+        assert_eq!(
+            normalize_yt_dlp_upload_date(Some("20240229".to_string())),
+            Some("2024-02-29".to_string())
         );
     }
 
