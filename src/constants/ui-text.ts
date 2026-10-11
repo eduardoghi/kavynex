@@ -111,6 +111,11 @@ export const UI_TEXT = {
         // Shown under a comment whose body the backend cut at its ceiling when it was saved. The
         // ceiling itself is appended by the component from the shared constant.
         truncatedNote: "Truncated when it was saved",
+        // Under a comment a later fetch brought back edited. The first version is kept on the row
+        // (`original_text`) and shown on request.
+        showOriginalText: "Show the first version",
+        hideOriginalText: "Hide the first version",
+        originalTextLabel: "As first saved",
         hideReplies: "Hide replies",
         reply: "reply",
         replies: "replies",

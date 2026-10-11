@@ -7,6 +7,7 @@ import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
 import { openAuthorYoutubeChannel } from "../../services/author-navigation";
 import { activateOnEnterOrSpace } from "../../utils/keyboard";
 import { SafeAvatar } from "./safe-avatar";
+import { CommentOriginalText } from "./comment-original-text";
 import {
     formatCommentPublishedAt,
     isCommentTextTruncated,
@@ -105,6 +106,10 @@ export function CommentContent({
                 <Text size="sm" style={COMMENT_TEXT_STYLE}>
                     {comment.text}
                 </Text>
+
+                {comment.original_text !== null && (
+                    <CommentOriginalText originalText={comment.original_text} />
+                )}
 
                 {isCommentTextTruncated(comment.text) && (
                     <Text size="xs" c="dimmed" fs="italic">
