@@ -1252,9 +1252,15 @@ mod tests {
         let removed = sweep_pending_media_artifacts(app.handle()).await.unwrap();
 
         assert_eq!(removed, 0);
-        assert!(marker.exists(), "the marker outlives a library that is not there");
+        assert!(
+            marker.exists(),
+            "the marker outlives a library that is not there"
+        );
         let kept = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
-        assert_eq!(kept.attempts, 1, "and the failed attempt counts toward the ceiling");
+        assert_eq!(
+            kept.attempts, 1,
+            "and the failed attempt counts toward the ceiling"
+        );
 
         let _ = fs::remove_file(&marker);
     }
