@@ -467,8 +467,8 @@ request against the persisted library path. Persisting second would make a legit
 registration fail.
 
 Two outcomes surface to the user rather than only to the log. `oldDirectoryRetained` means the
-copy succeeded but the old folder could not be removed, so a full duplicate of the media is
-still on the old volume. And moving *back* to a folder released earlier in the same session
+copy succeeded but the old folder, or part of it, could not be removed (the commit marker could
+not be written, or a removal failed on a locked file), so media are still on the old volume. And moving *back* to a folder released earlier in the same session
 fails with `ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE` (the asset scope cannot un-forbid a
 directory), which is the one asset-scope failure worth interrupting the user for, because the
 fix is a restart and nothing would suggest it.

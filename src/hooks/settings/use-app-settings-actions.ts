@@ -264,13 +264,13 @@ export function useAppSettingsActions({
                 setIsLibraryUnreachable(false);
 
                 if (result.oldDirectoryRetained) {
-                        // The migration copied everything but could not remove the old directory, so
-                        // a full duplicate of the media remains on the old location with nothing to
-                        // clean it up automatically. Tell the user so they can delete it by hand.
+                    // The migration copied everything but could not remove the old directory, or
+                    // part of it, so media remain on the old location with nothing to clean them up
+                    // automatically. Tell the user so they can delete them by hand.
                     onError(
                         "Your library was copied to the new folder, but the old folder could not " +
-                            "be removed automatically, so a full copy of your media is still there. " +
-                            "The new library works normally; you can delete the old folder manually " +
+                            "be removed completely, so some or all of your media are still there. " +
+                            "The new library works normally. You can delete the old folder manually " +
                             "once you have confirmed everything is present."
                     );
                 }

@@ -532,7 +532,7 @@ describe("useAppSettingsActions", () => {
         expect(setSettings).toHaveBeenCalled();
         // ...and the user is told a duplicate copy remains in the old folder.
         expect(onError).toHaveBeenCalledWith(
-            expect.stringContaining("old folder could not be removed automatically")
+            expect.stringContaining("old folder could not be removed completely")
         );
     });
 

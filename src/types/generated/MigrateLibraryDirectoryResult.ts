@@ -2,10 +2,11 @@
 
 export type MigrateLibraryDirectoryResult = { final_library_path: string, changed: boolean, 
 /**
- * True when the migration copied the library to the new location but kept the old directory
- * in place instead of removing it, which happens only when the crash-recovery commit marker
- * could not be written (removing the old copy would then leave no recoverable path back). The
- * copy succeeded and the new library is usable, but a full duplicate of the media remains on
- * the old volume with nothing to clean it up automatically, so the frontend surfaces a notice.
+ * True when the migration copied the library to the new location but some or all of the old
+ * managed folders are still there. Either the crash-recovery commit marker could not be written
+ * (removing the old copy would then leave no recoverable path back), or a removal failed (a
+ * locked file, an antivirus hold). The copy succeeded and the new library is usable, but media
+ * remain on the old volume with nothing to clean them up automatically, so the frontend
+ * surfaces a notice.
  */
 old_directory_retained: boolean, };

@@ -30,11 +30,12 @@ use crate::{AppError, AppErrorCode, AppResult};
 pub struct MigrateLibraryDirectoryResult {
     pub final_library_path: String,
     pub changed: bool,
-    /// True when the migration copied the library to the new location but kept the old directory
-    /// in place instead of removing it, which happens only when the crash-recovery commit marker
-    /// could not be written (removing the old copy would then leave no recoverable path back). The
-    /// copy succeeded and the new library is usable, but a full duplicate of the media remains on
-    /// the old volume with nothing to clean it up automatically, so the frontend surfaces a notice.
+    /// True when the migration copied the library to the new location but some or all of the old
+    /// managed folders are still there. Either the crash-recovery commit marker could not be written
+    /// (removing the old copy would then leave no recoverable path back), or a removal failed (a
+    /// locked file, an antivirus hold). The copy succeeded and the new library is usable, but media
+    /// remain on the old volume with nothing to clean them up automatically, so the frontend
+    /// surfaces a notice.
     pub old_directory_retained: bool,
 }
 
@@ -214,7 +215,7 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
 
 pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
     copy_library_contents(old_library_dir, new_library_dir, None, &mut |_| {})?;
-    remove_old_library_contents(old_library_dir);
+    let _ = remove_old_library_contents(old_library_dir);
     Ok(())
 }
 
@@ -543,7 +544,14 @@ fn copy_library_contents_reporting(
 /// Phase 2. All copies confirmed. Remove the old managed directories, then the old library
 /// directory itself if nothing unrelated is left in it. Best effort. A removal failure only
 /// leaves reclaimable disk behind, never lost data (the new location already holds a full copy).
-fn remove_old_library_contents(old_library_dir: &Path) {
+///
+/// Returns whether every managed directory is gone, so the caller can tell the user when media were
+/// left on the old volume. Files the user put in the library folder are kept on purpose and do not
+/// count.
+#[must_use]
+fn remove_old_library_contents(old_library_dir: &Path) -> bool {
+    let mut removed_every_managed_dir = true;
+
     for dir_name in MIGRATED_LIBRARY_DIRS {
         let source_dir = old_library_dir.join(dir_name);
 
@@ -555,6 +563,7 @@ fn remove_old_library_contents(old_library_dir: &Path) {
             // complete copy, not off the old directory looking empty, precisely so a leftover
             // like this cannot strand the good copy.
             if let Err(error) = fs::remove_dir_all(&source_dir) {
+                removed_every_managed_dir = false;
                 logger::warn(
                     "library",
                     format!(
@@ -589,6 +598,8 @@ fn remove_old_library_contents(old_library_dir: &Path) {
     }
 
     let _ = fs::remove_dir(old_library_dir);
+
+    removed_every_managed_dir
 }
 
 /// Runs the copy/remove phases with a durable commit marker written between them, so an
@@ -598,8 +609,9 @@ fn remove_old_library_contents(old_library_dir: &Path) {
 /// is not worth removing the only path back to the library when recovery would be impossible.
 /// `None` (used by tests) keeps the plain copy-then-remove behavior.
 ///
-/// Returns `true` when the old directory was deliberately kept (the marker could not be written),
-/// `false` when it was removed as usual, so the caller can surface the retained-copy state.
+/// Returns `true` when the old directory was kept (the marker could not be written) or a managed
+/// folder in it could not be removed, `false` when it was removed as usual, so the caller can
+/// surface the retained-copy state.
 fn migrate_library_contents_with_marker(
     old_library_dir: &Path,
     new_library_dir: &Path,
@@ -636,8 +648,7 @@ fn migrate_library_contents_with_marker(
         }
     }
 
-    remove_old_library_contents(old_library_dir);
-    Ok(false)
+    Ok(!remove_old_library_contents(old_library_dir))
 }
 
 /// Lists the top-level entries of `old_library_dir` that are not one of the managed library
@@ -1341,6 +1352,31 @@ mod tests {
 
         let _ = fs::remove_dir_all(old_root);
         let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn removing_the_old_library_says_when_a_managed_folder_stayed() {
+        // A managed folder `remove_dir_all` cannot remove. A file in its place is the stand-in for a
+        // folder held by another program, and the result is what tells the user media are left.
+        let old_root = unique_test_dir("remove-partial");
+        fs::create_dir_all(old_root.join("video")).unwrap();
+        fs::write(old_root.join("video").join("a.mp4"), b"video-data").unwrap();
+        fs::write(old_root.join("audio"), b"not a directory").unwrap();
+
+        assert!(!remove_old_library_contents(&old_root));
+        assert!(!old_root.join("video").exists());
+
+        let clean_root = unique_test_dir("remove-clean");
+        fs::create_dir_all(clean_root.join("video")).unwrap();
+        fs::write(clean_root.join("video").join("a.mp4"), b"video-data").unwrap();
+        // A file the user put in the library folder is kept on purpose and is not a failure.
+        fs::write(clean_root.join("notes.txt"), b"mine").unwrap();
+
+        assert!(remove_old_library_contents(&clean_root));
+        assert!(clean_root.join("notes.txt").exists());
+
+        let _ = fs::remove_dir_all(&old_root);
+        let _ = fs::remove_dir_all(&clean_root);
     }
 
     #[test]
