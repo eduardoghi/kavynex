@@ -126,12 +126,23 @@ fn persist_thumbnail_guarded(
     ensure_path_parent_inside_dir(&destination, library_dir)?;
 
     // On a fresh write, re-hash the written file and correct its name if the source changed between
-    // the hash above and the copy (see verify_content_addressed_write). An already-present
-    // destination wrote nothing, so it keeps its (already content-verified) name without a re-hash.
-    let destination = if destination.exists() {
+    // the hash above and the copy (see verify_content_addressed_write). A destination already there
+    // is reused only when its bytes match its name. One that does not (a truncated copy, a bad
+    // sector) is written over, which repairs it for every row naming it, since they all expect the
+    // bytes being persisted now. Reused unchecked, it stayed broken, and fetching the thumbnail
+    // again landed on the same damaged file.
+    let destination_is_intact =
+        destination.is_file() && file_hash(&destination).is_ok_and(|stored| stored == hash);
+
+    let destination = if destination_is_intact {
         destination
     } else {
-        copy_file_atomic(source, &destination)?;
+        if destination.exists() {
+            replace_damaged_thumbnail(source, &destination)?;
+        } else {
+            copy_file_atomic(source, &destination)?;
+        }
+
         crate::services::filesystem::verify_content_addressed_write(
             &destination,
             &hash,
@@ -141,6 +152,26 @@ fn persist_thumbnail_guarded(
     };
 
     relative_path_from_base(library_dir, &destination)
+}
+
+/// Writes `source` over a thumbnail whose bytes no longer match its name. Copied next to it first,
+/// since the replace consumes what it is given and `source` is the user's file or a download still
+/// in use. A copy left by a failure carries the `.tmp-` name the library sweep removes.
+fn replace_damaged_thumbnail(source: &Path, destination: &Path) -> AppResult<()> {
+    let file_name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("thumb");
+    let staging = destination.with_file_name(format!(
+        ".{file_name}.tmp-{}",
+        crate::utils::naming::unique_temp_suffix()
+    ));
+
+    copy_file_atomic(source, &staging)?;
+
+    crate::services::filesystem::replace_file_safely(&staging, destination).inspect_err(|_| {
+        let _ = fs::remove_file(&staging);
+    })
 }
 
 pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<String> {
@@ -290,6 +321,29 @@ mod tests {
 
         let final_path = library_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         assert!(final_path.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_damaged_thumbnail_named_for_the_same_content_is_written_over() {
+        // A truncated `thumb_<hash>` is the state Diagnostics reports as corrupt. Persisting the
+        // same image again has to repair it rather than reuse it, or the card stays blank for good.
+        let root = unique_test_dir();
+        let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
+        let source = root.join("thumb.png");
+        let bytes = b"\x89PNG\r\n\x1a\nthe-whole-image";
+        fs::write(&source, bytes).unwrap();
+
+        let relative = persist_thumbnail_from_source(&source, &library_dir).unwrap();
+        let stored = library_dir.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+        fs::write(&stored, b"\x89PNG").unwrap();
+
+        let again = persist_thumbnail_from_source(&source, &library_dir).unwrap();
+
+        assert_eq!(again, relative);
+        assert_eq!(fs::read(&stored).unwrap(), bytes);
 
         let _ = fs::remove_dir_all(root);
     }
