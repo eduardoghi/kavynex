@@ -641,6 +641,7 @@ fn migrate_library_contents_with_marker(
         if let Err(error) = crate::services::library::recovery::write_commit_marker(
             marker,
             &new_library_dir.to_string_lossy(),
+            Some(&old_library_dir.to_string_lossy()),
         ) {
             logger::warn(
                 "library",
@@ -1411,7 +1412,11 @@ mod tests {
         // ...and only because the durable commit marker recording the new path was written
         // first, so a crash before the frontend persisted the new path stays recoverable.
         let recorded = fs::read_to_string(&marker).unwrap();
-        assert_eq!(recorded.trim(), result.final_library_path);
+        // The first line is the new library, the second the folder the move left.
+        assert_eq!(
+            recorded.lines().next().unwrap().trim(),
+            result.final_library_path
+        );
 
         let _ = fs::remove_dir_all(&old_root);
         let _ = fs::remove_dir_all(&new_root);

@@ -43,25 +43,55 @@ pub fn commit_marker_path(config_dir: &Path) -> PathBuf {
 /// `fsync_parent_dir` on top of that flushes the directory entry itself. On common Linux/Unix
 /// filesystems a crash right after the create can lose the new entry even though the file's own
 /// bytes were fsynced, so the marker would be absent on reboot despite `sync_all` succeeding.
-pub fn write_commit_marker(marker_path: &Path, new_library_path: &str) -> std::io::Result<()> {
-    crate::services::filesystem::write_file_durably(marker_path, new_library_path.trim().as_bytes())
-}
+///
+/// The folder the move left is written on the second line. A marker is acted on only while the
+/// stored library is still that folder, so one that outlived its migration (its removal failed)
+/// cannot point the app back at it after the user chose another library.
+pub fn write_commit_marker(
+    marker_path: &Path,
+    new_library_path: &str,
+    old_library_path: Option<&str>,
+) -> std::io::Result<()> {
+    let mut content = new_library_path.trim().to_string();
 
-/// Removes the commit marker. Best effort. A failure only leaves a stale marker that the next
-/// evaluation will re-examine and drop.
-pub fn clear_commit_marker(marker_path: &Path) {
-    let _ = std::fs::remove_file(marker_path);
-}
-
-fn read_commit_marker(marker_path: &Path) -> Option<String> {
-    let content = std::fs::read_to_string(marker_path).ok()?;
-    let trimmed = content.trim().to_string();
-
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed)
+    if let Some(old) = old_library_path
+        .map(str::trim)
+        .filter(|old| !old.is_empty())
+    {
+        content.push('\n');
+        content.push_str(old);
     }
+
+    crate::services::filesystem::write_file_durably(marker_path, content.as_bytes())
+}
+
+/// Removes the commit marker. Best effort. A failure leaves a marker that the next evaluation
+/// re-examines, and the second line keeps it from acting on a library chosen since. Logged, since
+/// a marker that will not go is a file another program is holding.
+pub fn clear_commit_marker(marker_path: &Path) {
+    match std::fs::remove_file(marker_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => crate::services::logger::warn(
+            "library",
+            format!("could not remove the library migration marker: {error}"),
+        ),
+    }
+}
+
+/// The marker's target and, when it was written with one, the folder the move left. A marker from
+/// before the second line existed reads with no source.
+fn read_commit_marker(marker_path: &Path) -> Option<(String, Option<String>)> {
+    let content = std::fs::read_to_string(marker_path).ok()?;
+    let mut lines = content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty());
+
+    let target = lines.next()?.to_string();
+    let source = lines.next().map(str::to_string);
+
+    Some((target, source))
 }
 
 /// True when `dir` holds actual content in at least one of the app's managed subdirectories.
@@ -123,11 +153,22 @@ pub enum MarkerOutcome {
 /// Decides how to reconcile the stored library path with the commit marker. Pure (only reads
 /// the filesystem), so it can be unit-tested without a database or a Tauri runtime.
 pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> MarkerOutcome {
-    let Some(new_path) = read_commit_marker(marker_path) else {
+    let Some((new_path, old_path)) = read_commit_marker(marker_path) else {
         return MarkerOutcome::None;
     };
 
     let stored = stored_library_path.trim();
+
+    // The library was changed to a third folder since the move. The marker is from a migration
+    // that completed, and acting on it would undo the user's choice.
+    if let Some(old_path) = old_path.as_deref() {
+        if !stored.is_empty()
+            && !paths_refer_to_same_location(stored, old_path)
+            && !paths_refer_to_same_location(stored, &new_path)
+        {
+            return MarkerOutcome::ClearStale;
+        }
+    }
 
     // The app already points at the migration target. The migration completed and its new path
     // was persisted, so the marker is stale.
@@ -226,8 +267,11 @@ mod tests {
 
         assert_eq!(read_commit_marker(&marker), None);
 
-        write_commit_marker(&marker, "  /library/new  ").unwrap();
-        assert_eq!(read_commit_marker(&marker).as_deref(), Some("/library/new"));
+        write_commit_marker(&marker, "  /library/new  ", None).unwrap();
+        assert_eq!(
+            read_commit_marker(&marker),
+            Some(("/library/new".to_string(), None))
+        );
 
         clear_commit_marker(&marker);
         assert_eq!(read_commit_marker(&marker), None);
@@ -260,12 +304,64 @@ mod tests {
         make_populated_library(&new);
 
         let marker = commit_marker_path(&base);
-        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+        write_commit_marker(&marker, &new.to_string_lossy(), None).unwrap();
 
         match evaluate_recovery(&old.to_string_lossy(), &marker) {
             MarkerOutcome::Recover(path) => assert_eq!(path, new.to_string_lossy()),
             other => panic!("expected recovery, got {other:?}"),
         }
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn evaluate_recovery_recovers_from_the_folder_the_move_left() {
+        let base = unique_dir("recover-from-source");
+        let old = base.join("old");
+        let new = base.join("new");
+        fs::create_dir_all(&old).unwrap();
+        make_populated_library(&new);
+
+        let marker = commit_marker_path(&base);
+        write_commit_marker(
+            &marker,
+            &new.to_string_lossy(),
+            Some(&old.to_string_lossy()),
+        )
+        .unwrap();
+
+        match evaluate_recovery(&old.to_string_lossy(), &marker) {
+            MarkerOutcome::Recover(path) => assert_eq!(path, new.to_string_lossy()),
+            other => panic!("expected recovery, got {other:?}"),
+        }
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_marker_that_outlived_its_move_does_not_undo_a_library_chosen_since() {
+        // The move from old to new completed, the marker could not be removed, and the user then
+        // chose a third library. Acting on the marker would point the app back at new.
+        let base = unique_dir("outlived-marker");
+        let old = base.join("old");
+        let new = base.join("new");
+        let chosen = base.join("chosen");
+        fs::create_dir_all(&old).unwrap();
+        fs::create_dir_all(&chosen).unwrap();
+        make_populated_library(&new);
+
+        let marker = commit_marker_path(&base);
+        write_commit_marker(
+            &marker,
+            &new.to_string_lossy(),
+            Some(&old.to_string_lossy()),
+        )
+        .unwrap();
+
+        assert_eq!(
+            evaluate_recovery(&chosen.to_string_lossy(), &marker),
+            MarkerOutcome::ClearStale
+        );
 
         let _ = fs::remove_dir_all(&base);
     }
@@ -279,7 +375,7 @@ mod tests {
         make_populated_library(&new);
 
         let marker = commit_marker_path(&base);
-        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+        write_commit_marker(&marker, &new.to_string_lossy(), None).unwrap();
 
         assert_eq!(
             evaluate_recovery(&new.to_string_lossy(), &marker),
@@ -307,7 +403,7 @@ mod tests {
         make_populated_library(&new);
 
         let marker = commit_marker_path(&base);
-        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+        write_commit_marker(&marker, &new.to_string_lossy(), None).unwrap();
 
         match evaluate_recovery(&old.to_string_lossy(), &marker) {
             MarkerOutcome::Recover(path) => assert_eq!(path, new.to_string_lossy()),
@@ -338,7 +434,7 @@ mod tests {
         fs::create_dir_all(&old).unwrap();
 
         let marker = commit_marker_path(&base);
-        write_commit_marker(&marker, &base.join("never-existed").to_string_lossy()).unwrap();
+        write_commit_marker(&marker, &base.join("never-existed").to_string_lossy(), None).unwrap();
 
         assert_eq!(
             evaluate_recovery(&old.to_string_lossy(), &marker),
@@ -389,7 +485,7 @@ mod tests {
         make_populated_library(&new);
 
         let marker = commit_marker_path(&config_dir);
-        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+        write_commit_marker(&marker, &new.to_string_lossy(), None).unwrap();
 
         let pool = memory_settings_pool(&old.to_string_lossy()).await;
 
@@ -421,7 +517,7 @@ mod tests {
         make_populated_library(&new);
 
         let marker = commit_marker_path(&config_dir);
-        write_commit_marker(&marker, &new.to_string_lossy()).unwrap();
+        write_commit_marker(&marker, &new.to_string_lossy(), None).unwrap();
 
         let pool = memory_settings_pool(&new.to_string_lossy()).await;
 
