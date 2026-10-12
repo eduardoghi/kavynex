@@ -261,18 +261,15 @@ describe("opening paths in the file manager", () => {
 
     it("opens a file location without sending the library", async () => {
         // The backend confines `path` to the library it reads from the settings.
-        await openFileLocation(" video/media_abc.mp4 ", " D:/Library ");
+        await openFileLocation(" video/media_abc.mp4 ");
 
         expect(invokeVoidMock).toHaveBeenCalledWith(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, {
             path: "video/media_abc.mp4",
         });
     });
 
-    it("refuses to open a location without both paths", async () => {
-        await expect(openFileLocation("", "D:/Library")).rejects.toThrow("Path is required.");
-        await expect(openFileLocation("video/a.mp4", " ")).rejects.toThrow(
-            "Library path is required."
-        );
+    it("refuses to open a location without a path", async () => {
+        await expect(openFileLocation("")).rejects.toThrow("Path is required.");
         await expect(openLibraryDirectory(" ")).rejects.toThrow("Library path is required.");
 
         expect(invokeVoidMock).not.toHaveBeenCalled();
@@ -289,15 +286,8 @@ describe("library verification", () => {
         vi.mocked(streamLibraryVerification).mockResolvedValueOnce(report as never);
         const onProgress = vi.fn();
 
-        await expect(verifyLibraryContent(" D:/Library ", onProgress)).resolves.toBe(report);
+        await expect(verifyLibraryContent(onProgress)).resolves.toBe(report);
         expect(streamLibraryVerification).toHaveBeenCalledWith(onProgress);
-    });
-
-    it("refuses to verify without a library", async () => {
-        await expect(verifyLibraryContent("  ", vi.fn())).rejects.toThrow(
-            "A library folder is required."
-        );
-        expect(streamLibraryVerification).not.toHaveBeenCalled();
     });
 
     it("asks a running verification to stop", async () => {

@@ -433,7 +433,7 @@ export function useMediaActions({
     const openMediaFileLocation = useCallback(
         async (media: MediaRow): Promise<void> => {
             try {
-                await openFileLocation(media.file_path, libraryPath);
+                await openFileLocation(media.file_path);
             } catch (error) {
                 logError("media-actions", "Failed to open file location.", error, {
                     mediaId: media.id,

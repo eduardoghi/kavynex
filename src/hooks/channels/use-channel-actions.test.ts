@@ -189,10 +189,7 @@ describe("useChannelActions", () => {
         });
 
         expect(created).toBe(true);
-        expect(persistThumbnailFile).toHaveBeenCalledWith(
-            "C:/temp/avatar.png",
-            "/library"
-        );
+        expect(persistThumbnailFile).toHaveBeenCalledWith("C:/temp/avatar.png");
         expect(createChannel).toHaveBeenCalledWith(
             "Canal A",
             "@canala",
@@ -238,10 +235,7 @@ describe("useChannelActions", () => {
         });
 
         expect(created).toBe(true);
-        expect(downloadChannelAvatarFromHandle).toHaveBeenCalledWith(
-            "@canala",
-            "/library"
-        );
+        expect(downloadChannelAvatarFromHandle).toHaveBeenCalledWith("@canala");
         expect(createChannel).toHaveBeenCalledWith(
             "Canal A",
             "@canala",
@@ -737,10 +731,7 @@ describe("useChannelActions", () => {
         });
 
         expect(setUpdatingChannelAvatarId).toHaveBeenCalledWith(10);
-        expect(persistThumbnailFile).toHaveBeenCalledWith(
-            "C:/temp/avatar.png",
-            "/library"
-        );
+        expect(persistThumbnailFile).toHaveBeenCalledWith("C:/temp/avatar.png");
         expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
             10,
             "thumbnails/new-avatar.png"
@@ -836,10 +827,7 @@ describe("useChannelActions", () => {
             await result.current.updateChannelAvatarAction(channel, "youtube");
         });
 
-        expect(downloadChannelAvatarFromHandle).toHaveBeenCalledWith(
-            "@canala",
-            "/library"
-        );
+        expect(downloadChannelAvatarFromHandle).toHaveBeenCalledWith("@canala");
         expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
             10,
             "thumbnails/youtube-avatar.png"

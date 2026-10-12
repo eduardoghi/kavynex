@@ -44,7 +44,7 @@ describe("DiagnosticsContentVerification", () => {
 
         await userEvent.click(screen.getByRole("button", { name: "Verify saved files" }));
 
-        expect(verify).toHaveBeenCalledWith("/library");
+        expect(verify).toHaveBeenCalledWith();
     });
 
     it("cannot be started without a library folder", () => {

@@ -20,7 +20,7 @@ type UseLibraryVerificationReturn = {
     running: boolean;
     progress: VerificationProgress | null;
     result: VerificationResult | null;
-    verify: (libraryPath: string) => Promise<void>;
+    verify: () => Promise<void>;
     cancel: () => Promise<void>;
 };
 
@@ -42,7 +42,7 @@ export function useLibraryVerification(): UseLibraryVerificationReturn {
     // twice".
     const inFlightRef = useRef(false);
 
-    const verify = useCallback(async (libraryPath: string): Promise<void> => {
+    const verify = useCallback(async (): Promise<void> => {
         if (inFlightRef.current) {
             return;
         }
@@ -53,7 +53,7 @@ export function useLibraryVerification(): UseLibraryVerificationReturn {
         setProgress({ checked: 0, total: 0 });
 
         try {
-            const report = await verifyLibraryContent(libraryPath, (checked, total) => {
+            const report = await verifyLibraryContent((checked, total) => {
                 setProgress({ checked, total });
             });
 

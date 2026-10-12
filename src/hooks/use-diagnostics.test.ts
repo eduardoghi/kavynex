@@ -697,7 +697,7 @@ describe("useDiagnostics", () => {
                 await result.current.revealLibraryPath("video/orphan.mp4");
             });
 
-            expect(openFileLocationMock).toHaveBeenCalledWith("video/orphan.mp4", "/library");
+            expect(openFileLocationMock).toHaveBeenCalledWith("video/orphan.mp4");
         });
 
         it("surfaces a failure instead of a click that appears to do nothing", async () => {

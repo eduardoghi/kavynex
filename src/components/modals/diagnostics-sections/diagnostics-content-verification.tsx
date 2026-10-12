@@ -119,7 +119,7 @@ export function DiagnosticsContentVerification({
                     <AppButton
                         type="button"
                         appVariant="secondary"
-                        onClick={() => void verify(libraryPath)}
+                        onClick={() => void verify()}
                         loading={running}
                         disabled={!libraryPath}
                     >

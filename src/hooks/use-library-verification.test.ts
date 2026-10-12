@@ -46,7 +46,7 @@ describe("useLibraryVerification", () => {
     });
 
     it("reports progress while running and the report when it finishes", async () => {
-        verifyMock.mockImplementation(async (_path, onProgress) => {
+        verifyMock.mockImplementation(async (onProgress) => {
             onProgress(1, 4);
             onProgress(3, 4);
             return report({ checked: 4, verified: 4 });
@@ -55,10 +55,10 @@ describe("useLibraryVerification", () => {
         const { result } = renderHook(() => useLibraryVerification());
 
         await act(async () => {
-            await result.current.verify("/library");
+            await result.current.verify();
         });
 
-        expect(verifyMock).toHaveBeenCalledWith("/library", expect.any(Function));
+        expect(verifyMock).toHaveBeenCalledWith(expect.any(Function));
         expect(result.current.result).toEqual({
             status: "done",
             report: report({ checked: 4, verified: 4 }),
@@ -77,7 +77,7 @@ describe("useLibraryVerification", () => {
         const { result } = renderHook(() => useLibraryVerification());
 
         await act(async () => {
-            await result.current.verify("/library");
+            await result.current.verify();
         });
 
         expect(result.current.result).toEqual({
@@ -92,7 +92,7 @@ describe("useLibraryVerification", () => {
         const { result } = renderHook(() => useLibraryVerification());
 
         await act(async () => {
-            await result.current.verify("/library");
+            await result.current.verify();
         });
 
         expect(result.current.result?.status).toBe("error");
@@ -115,13 +115,13 @@ describe("useLibraryVerification", () => {
 
         let first: Promise<void> = Promise.resolve();
         act(() => {
-            first = result.current.verify("/library");
+            first = result.current.verify();
         });
 
         await waitFor(() => expect(result.current.running).toBe(true));
 
         await act(async () => {
-            await result.current.verify("/library");
+            await result.current.verify();
         });
 
         expect(verifyMock).toHaveBeenCalledTimes(1);
@@ -147,7 +147,7 @@ describe("useLibraryVerification", () => {
         const { result, unmount } = renderHook(() => useLibraryVerification());
 
         act(() => {
-            void result.current.verify("/library");
+            void result.current.verify();
         });
 
         await waitFor(() => expect(result.current.running).toBe(true));

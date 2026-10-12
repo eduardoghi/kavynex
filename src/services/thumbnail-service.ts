@@ -43,19 +43,13 @@ export async function stageManualThumbnail(sourcePath: string): Promise<string> 
     );
 }
 
-export async function persistThumbnailFile(
-    sourcePath: string,
-    libraryPath: string
-): Promise<string> {
+// The library is the one the backend has stored, so none is passed from here. Without one the
+// backend refuses with its own message.
+export async function persistThumbnailFile(sourcePath: string): Promise<string> {
     const normalizedSourcePath = normalizeString(sourcePath);
-    const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedSourcePath) {
         throw new ClientError("Thumbnail source path is required.");
-    }
-
-    if (!normalizedLibraryPath) {
-        throw new ClientError("Library path is required.");
     }
 
     return normalizeString(
@@ -70,19 +64,11 @@ export async function persistThumbnailFile(
 // (`create_media`). The avatar download below stays, because it is its own operation. A user
 // changing a channel's picture, with no artifacts-without-a-row window behind it.
 
-export async function downloadChannelAvatarFromHandle(
-    youtubeHandle: string,
-    libraryPath: string
-): Promise<string> {
+export async function downloadChannelAvatarFromHandle(youtubeHandle: string): Promise<string> {
     const normalizedYoutubeHandle = normalizeString(youtubeHandle);
-    const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedYoutubeHandle) {
         throw new ClientError("YouTube handle is required.");
-    }
-
-    if (!normalizedLibraryPath) {
-        throw new ClientError("Library path is required.");
     }
 
     return normalizeString(

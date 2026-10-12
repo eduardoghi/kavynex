@@ -112,7 +112,6 @@ export function useHomeController(): HomeController {
         refreshComments: mediaLibrary.itemActions.refreshComments,
         cancelRefreshComments: mediaLibrary.itemActions.cancelRefreshComments,
         commentsInFlight: mediaLibrary.itemActions.commentsInFlight,
-        libraryPath,
     });
 
     const playerPanelState = useHomePlayerPanel({

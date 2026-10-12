@@ -681,7 +681,7 @@ describe("useMediaActions", () => {
             await result.current.openMediaFileLocation(mediaPlayer.activeMedia!);
         });
 
-        expect(openFileLocation).toHaveBeenCalledWith("media/1.mp4", "/library");
+        expect(openFileLocation).toHaveBeenCalledWith("media/1.mp4");
     });
 
     it("opens media source on youtube", async () => {

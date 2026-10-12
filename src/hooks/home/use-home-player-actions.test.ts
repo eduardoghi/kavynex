@@ -56,8 +56,7 @@ type MockOptions = {
     onError: (message: string) => void;
     refreshComments: (media: MediaRow) => Promise<void>;
     cancelRefreshComments: (mediaId: number) => Promise<void>;
-    commentsInFlight: ReadonlySet<number>;
-    libraryPath: string;
+    commentsInFlight: ReadonlySet<number>;
 };
 
 function createHomeMediaActions(
@@ -80,8 +79,7 @@ function createDefaultOptions(overrides?: {
     onError?: (message: string) => void;
     refreshComments?: (media: MediaRow) => Promise<void>;
     cancelRefreshComments?: (mediaId: number) => Promise<void>;
-    commentsInFlight?: ReadonlySet<number>;
-    libraryPath?: string;
+    commentsInFlight?: ReadonlySet<number>;
 }): MockOptions {
     const mediaPlayer: MockMediaPlayer = {
         activeMedia: overrides?.activeMedia ?? null,
@@ -101,8 +99,7 @@ function createDefaultOptions(overrides?: {
         cancelRefreshComments:
             overrides?.cancelRefreshComments ??
             vi.fn<(mediaId: number) => Promise<void>>().mockResolvedValue(undefined),
-        commentsInFlight: overrides?.commentsInFlight ?? new Set<number>(),
-        libraryPath: overrides?.libraryPath ?? "/library",
+        commentsInFlight: overrides?.commentsInFlight ?? new Set<number>(),
     };
 }
 
@@ -445,8 +442,7 @@ describe("useHomePlayerActions", () => {
             });
 
             const options = createDefaultOptions({
-                activeMedia,
-                libraryPath: "/library",
+                activeMedia,
             });
 
             vi.mocked(openFileLocation).mockResolvedValueOnce(undefined);
@@ -457,7 +453,7 @@ describe("useHomePlayerActions", () => {
                 await result.current.openFileLocation();
             });
 
-            expect(openFileLocation).toHaveBeenCalledWith("video/a.mp4", "/library");
+            expect(openFileLocation).toHaveBeenCalledWith("video/a.mp4");
             expect(options.onError).not.toHaveBeenCalled();
         });
 
@@ -485,8 +481,7 @@ describe("useHomePlayerActions", () => {
 
         it("uses the file path and library path from the latest render", async () => {
             const options = createDefaultOptions({
-                activeMedia: createMediaRow({ file_path: "first.mp4" }),
-                libraryPath: "/library-first",
+                activeMedia: createMediaRow({ file_path: "first.mp4" }),
             });
 
             vi.mocked(openFileLocation).mockResolvedValue(undefined);
@@ -497,8 +492,7 @@ describe("useHomePlayerActions", () => {
             );
 
             const nextOptions = createDefaultOptions({
-                activeMedia: createMediaRow({ file_path: "second.mp4" }),
-                libraryPath: "/library-second",
+                activeMedia: createMediaRow({ file_path: "second.mp4" }),
                 homeMediaActions: options.homeMediaActions,
                 onError: options.onError,
             });
@@ -509,7 +503,7 @@ describe("useHomePlayerActions", () => {
                 await result.current.openFileLocation();
             });
 
-            expect(openFileLocation).toHaveBeenCalledWith("second.mp4", "/library-second");
+            expect(openFileLocation).toHaveBeenCalledWith("second.mp4");
         });
     });
 

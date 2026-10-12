@@ -6,8 +6,8 @@ import {
 
 export type CreateChannelAvatar =
     | { mode: "none" }
-    | { mode: "manual"; sourcePath: string; libraryPath: string }
-    | { mode: "youtube"; libraryPath: string };
+    | { mode: "manual"; sourcePath: string }
+    | { mode: "youtube" };
 
 export type CreateChannelResult = {
     channelId: number | null;
@@ -33,10 +33,10 @@ export async function executeCreateChannel(
     if (avatar.mode === "manual") {
         // A file the user picked. Failing to copy it is an error, since creating the channel
         // without it would quietly drop what they asked for.
-        avatarPath = await persistThumbnailFile(avatar.sourcePath, avatar.libraryPath);
+        avatarPath = await persistThumbnailFile(avatar.sourcePath);
     } else if (avatar.mode === "youtube") {
         try {
-            avatarPath = await downloadChannelAvatarFromHandle(youtubeHandle, avatar.libraryPath);
+            avatarPath = await downloadChannelAvatarFromHandle(youtubeHandle);
         } catch (error) {
             avatarFailure = error;
         }

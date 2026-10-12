@@ -26,16 +26,10 @@ export type { LibrarySummaryInfo };
  * bar and offers `cancelLibraryVerification` rather than showing a spinner. Only one runs at a time;
  * a second call is refused by the backend rather than queued.
  */
+// Of the library the backend has stored, so none is passed from here.
 export async function verifyLibraryContent(
-    libraryPath: string,
     onProgress: (checked: number, total: number) => void
 ): Promise<ContentVerificationReport> {
-    const normalized = normalizeString(libraryPath);
-
-    if (!normalized) {
-        throw new ClientError("A library folder is required.");
-    }
-
     return streamLibraryVerification(onProgress);
 }
 
@@ -169,16 +163,12 @@ export async function openLibraryDirectory(path: string): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, { path: normalizedPath });
 }
 
-export async function openFileLocation(path: string, libraryPath: string): Promise<void> {
+// `path` is library-relative, resolved against the library the backend has stored.
+export async function openFileLocation(path: string): Promise<void> {
     const normalizedPath = normalizeString(path);
-    const normalizedLibraryPath = normalizeString(libraryPath);
 
     if (!normalizedPath) {
         throw new ClientError("Path is required.");
-    }
-
-    if (!normalizedLibraryPath) {
-        throw new ClientError("Library path is required.");
     }
 
     await invokeVoid(TAURI_COMMANDS.OPEN_PATH_IN_SYSTEM, { path: normalizedPath });

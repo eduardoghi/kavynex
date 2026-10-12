@@ -39,10 +39,9 @@ describe("executeCreateChannel", () => {
         await executeCreateChannel("Canal", "@canal", {
             mode: "manual",
             sourcePath: "C:/pictures/avatar.jpg",
-            libraryPath: "/library",
         });
 
-        expect(persistThumbnailFile).toHaveBeenCalledWith("C:/pictures/avatar.jpg", "/library");
+        expect(persistThumbnailFile).toHaveBeenCalledWith("C:/pictures/avatar.jpg");
         expect(createChannel).toHaveBeenCalledWith("Canal", "@canal", "thumbnails/avatar.jpg");
     });
 
@@ -52,7 +51,7 @@ describe("executeCreateChannel", () => {
         );
 
         await expect(
-            executeCreateChannel("Canal", "@canal", { mode: "youtube", libraryPath: "/library" })
+            executeCreateChannel("Canal", "@canal", { mode: "youtube" })
         ).rejects.toThrow("channel already exists");
 
         expect(downloadChannelAvatarFromHandle).not.toHaveBeenCalled();
@@ -66,7 +65,6 @@ describe("executeCreateChannel", () => {
 
         const result = await executeCreateChannel("Canal", "@canal", {
             mode: "youtube",
-            libraryPath: "/library",
         });
 
         expect(createChannel).toHaveBeenCalledWith("Canal", "@canal", null);
@@ -82,7 +80,6 @@ describe("executeCreateChannel", () => {
             executeCreateChannel("Canal", "@canal", {
                 mode: "manual",
                 sourcePath: "C:/pictures/avatar.jpg",
-                libraryPath: "/library",
             })
         ).rejects.toThrow("disk full");
 

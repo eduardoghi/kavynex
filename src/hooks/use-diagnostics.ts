@@ -167,14 +167,14 @@ export function useDiagnostics({
         async (path: string): Promise<void> => {
             await revealPathFlag.runWithFlag(async () => {
                 try {
-                    await openFileLocation(path, libraryPath);
+                    await openFileLocation(path);
                 } catch (error) {
                     logError("diagnostics", "Failed to reveal a library file.", error, { path });
                     onError(resolveErrorMessage(error, "Failed to open the file location."));
                 }
             });
         },
-        [libraryPath, onError, revealPathFlag]
+        [onError, revealPathFlag]
     );
 
     // Same shape as openLogDirectory. The flag only stops a double click from opening two windows.

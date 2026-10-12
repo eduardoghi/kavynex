@@ -49,7 +49,6 @@ type UseHomePlayerActionsOptions = {
     // from it, and Mantine disables a loading button, so a shared flag would block the refresh of
     // the media actually on screen.
     commentsInFlight: ReadonlySet<number>;
-    libraryPath: string;
 };
 
 export function useHomePlayerActions({
@@ -59,7 +58,6 @@ export function useHomePlayerActions({
     refreshComments,
     cancelRefreshComments,
     commentsInFlight,
-    libraryPath,
 }: UseHomePlayerActionsOptions): HomePlayerActionsController {
     // Destructure the stable fields off the per-render mediaPlayer/homeMediaActions controller
     // objects so the callbacks below can depend on them directly. This keeps the dependency
@@ -90,11 +88,11 @@ export function useHomePlayerActions({
         }
 
         try {
-            await openFileLocation(filePath, libraryPath);
+            await openFileLocation(filePath);
         } catch (error) {
             onError(resolveErrorMessage(error, "Failed to open file location."));
         }
-    }, [libraryPath, activeMedia, onError]);
+    }, [activeMedia, onError]);
 
     const refreshActiveComments = useCallback(async (): Promise<void> => {
         if (!activeMedia) {

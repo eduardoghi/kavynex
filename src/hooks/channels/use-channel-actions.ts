@@ -162,18 +162,14 @@ export function useChannelActions({
                         return false;
                     }
 
-                    avatar = {
-                        mode: "manual",
-                        sourcePath: normalizedAvatarPath,
-                        libraryPath: normalizedLibraryPath,
-                    };
+                    avatar = { mode: "manual", sourcePath: normalizedAvatarPath };
                 } else if (avatarMode === "youtube") {
                     if (!normalizedLibraryPath) {
                         onError("Choose a library folder before importing a YouTube avatar.");
                         return false;
                     }
 
-                    avatar = { mode: "youtube", libraryPath: normalizedLibraryPath };
+                    avatar = { mode: "youtube" };
                 }
 
                 let result;
@@ -315,10 +311,7 @@ export function useChannelActions({
                             return;
                         }
 
-                        nextAvatarPath = await persistThumbnailFile(
-                            normalizedAvatarPath,
-                            normalizedLibraryPath
-                        );
+                        nextAvatarPath = await persistThumbnailFile(normalizedAvatarPath);
                     } else if (avatarMode === "youtube") {
                         if (!normalizedLibraryPath) {
                             onError("Choose a library folder before importing a YouTube avatar.");
@@ -326,8 +319,7 @@ export function useChannelActions({
                         }
 
                         nextAvatarPath = await downloadChannelAvatarFromHandle(
-                            channel.youtube_handle,
-                            normalizedLibraryPath
+                            channel.youtube_handle
                         );
                     }
 
