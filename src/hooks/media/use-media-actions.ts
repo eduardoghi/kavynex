@@ -317,6 +317,12 @@ export function useMediaActions({
                         );
                         return;
                     }
+
+                    // The comment count is the key of the Comments sort, so a new count moves the row
+                    // within it, the same shift a rename causes (see editTitle).
+                    if (result.totalComments !== media.comments_count) {
+                        onItemReordered();
+                    }
                 } catch (error) {
                     logError("media-actions", "Failed to refresh comments.", error, {
                         mediaId: media.id,
@@ -335,6 +341,7 @@ export function useMediaActions({
             setActiveMedia,
             onError,
             onNotice,
+            onItemReordered,
             runRefreshCommentsFor,
             setMediaItems,
         ]

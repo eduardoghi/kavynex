@@ -470,6 +470,8 @@ describe("useMediaActions", () => {
             comments_count: 12,
             comments_state: "available",
         });
+        // 0 to 12 moves the row within the Comments sort, so the pager gives a position back.
+        expect(onItemReordered).toHaveBeenCalledTimes(1);
     });
 
     it("cancels a comment refresh without reporting anything on success", async () => {
