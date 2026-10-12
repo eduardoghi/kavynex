@@ -8,6 +8,7 @@ import {
     rotateChangelog,
     parseCargoVersion,
     replaceCargoVersion,
+    replaceJsonVersion,
 } from "./version-utils.js";
 
 // A representative Cargo.toml. The [package] version comes first, then a dependency declared
@@ -80,6 +81,26 @@ version = "1.1.1"
         expect(updated).toContain('version = "2.0.0"');
         expect(updated).toContain('version = "9.9.9"');
         expect(updated).not.toContain('version = "1.1.1"');
+    });
+});
+
+describe("replaceJsonVersion", () => {
+    it("changes the version and keeps the rest of the text byte for byte", () => {
+        const text = '{\r\n    "version": "1.1.1",\r\n    "depends": ["libc6 (>= 2.39)"]\r\n}\r\n';
+
+        expect(replaceJsonVersion(text, "1.2.0")).toBe(
+            '{\r\n    "version": "1.2.0",\r\n    "depends": ["libc6 (>= 2.39)"]\r\n}\r\n'
+        );
+    });
+
+    it("returns null when the first version in the text is not the top-level one", () => {
+        const text = '{\n  "engines": { "version": "9.9.9" },\n  "version": "1.1.1"\n}\n';
+
+        expect(replaceJsonVersion(text, "1.2.0")).toBeNull();
+    });
+
+    it("returns null when there is no top-level version", () => {
+        expect(replaceJsonVersion('{ "name": "kavynex" }', "1.2.0")).toBeNull();
     });
 });
 

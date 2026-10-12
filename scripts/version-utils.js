@@ -30,6 +30,27 @@ export function replaceCargoVersion(cargoToml, newVersion) {
     return cargoToml.replace(CARGO_PACKAGE_VERSION_REGEX, `$1${newVersion}$3`);
 }
 
+const JSON_VERSION_REGEX = /("version"\s*:\s*")([^"\\]*)(")/;
+
+/**
+ * Returns JSON text with its top-level `version` replaced and every other byte as it was, or null
+ * when the text has no top-level `version` string. Rewriting through `JSON.stringify` would also
+ * reflow what the file's formatting keeps on one line, such as the `depends` arrays in
+ * tauri.conf.json. The first `"version"` in the text is the one replaced, so the result is parsed
+ * back and must differ from the original in that key alone.
+ */
+export function replaceJsonVersion(jsonText, newVersion) {
+    const before = JSON.parse(jsonText);
+    if (typeof before.version !== "string") {
+        return null;
+    }
+
+    const updated = jsonText.replace(JSON_VERSION_REGEX, `$1${newVersion}$3`);
+    const expected = JSON.stringify({ ...before, version: newVersion });
+
+    return JSON.stringify(JSON.parse(updated)) === expected ? updated : null;
+}
+
 /** Whether a string is a strict X.Y.Z semver (no pre-release or build metadata). */
 export function isValidSemver(version) {
     return /^\d+\.\d+\.\d+$/.test(version);

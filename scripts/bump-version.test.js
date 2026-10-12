@@ -59,6 +59,19 @@ describe("bumpVersion", () => {
         expect(files["Cargo.toml"]).toContain('version = "1.2.0"');
     });
 
+    it("keeps the formatting of tauri.conf.json, inline arrays included", () => {
+        const files = baseFiles();
+        files["tauri.conf.json"] =
+            '{\n    "version": "1.1.1",\n    "bundle": { "depends": ["libc6 (>= 2.39)"] }\n}\n';
+
+        const { exitCode, files: after } = run({ newVersion: "1.2.0", files });
+
+        expect(exitCode).toBe(0);
+        expect(after["tauri.conf.json"]).toBe(
+            '{\n    "version": "1.2.0",\n    "bundle": { "depends": ["libc6 (>= 2.39)"] }\n}\n'
+        );
+    });
+
     it("returns 1 without writing when no version is given", () => {
         const { exitCode, files, error } = run({ newVersion: undefined });
 

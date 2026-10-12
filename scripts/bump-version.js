@@ -6,6 +6,7 @@ import {
     isValidSemver,
     nextVersionProblem,
     replaceCargoVersion,
+    replaceJsonVersion,
     rotateChangelog,
 } from "./version-utils.js";
 import { isMainModule } from "./script-entry.js";
@@ -47,9 +48,13 @@ export function bumpVersion({
 
     // package.json
     const pkgPath = join(root, "package.json");
-    const pkg = JSON.parse(readFile(pkgPath));
-    const oldVersion = pkg.version;
-    pkg.version = newVersion;
+    const pkgText = readFile(pkgPath);
+    const oldVersion = JSON.parse(pkgText).version;
+    const updatedPkg = replaceJsonVersion(pkgText, newVersion);
+    if (updatedPkg === null) {
+        error("package.json: top-level version not found. Update manually.");
+        return 1;
+    }
 
     const stepProblem = nextVersionProblem(oldVersion, newVersion);
     if (stepProblem && !force) {
@@ -72,8 +77,11 @@ export function bumpVersion({
 
     // src-tauri/tauri.conf.json
     const tauriConfPath = join(root, "src-tauri", "tauri.conf.json");
-    const tauriConf = JSON.parse(readFile(tauriConfPath));
-    tauriConf.version = newVersion;
+    const updatedTauriConf = replaceJsonVersion(readFile(tauriConfPath), newVersion);
+    if (updatedTauriConf === null) {
+        error("tauri.conf.json: top-level version not found. Update manually.");
+        return 1;
+    }
 
     // src-tauri/Cargo.toml, only the [package] version line (full X.Y.Z semver) is touched.
     const cargoPath = join(root, "src-tauri", "Cargo.toml");
@@ -85,10 +93,10 @@ export function bumpVersion({
     }
 
     // Every target validated above. Now write them all.
-    writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+    writeFile(pkgPath, updatedPkg);
     log(`package.json     ${oldVersion} -> ${newVersion}`);
 
-    writeFile(tauriConfPath, JSON.stringify(tauriConf, null, 4) + "\n");
+    writeFile(tauriConfPath, updatedTauriConf);
     log(`tauri.conf.json  ${oldVersion} -> ${newVersion}`);
 
     writeFile(cargoPath, updatedCargo);
