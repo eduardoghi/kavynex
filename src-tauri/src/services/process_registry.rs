@@ -50,12 +50,23 @@ impl TrackedChildGuard {
     /// drop. A `None` pid (the child failed to report one) still yields a guard so call sites
     /// do not need to special-case it; nothing is tracked in that case.
     pub fn register(pid: Option<u32>) -> Self {
+        let guard = Self::track(pid);
+
+        if let Some(pid) = pid {
+            // For the exits the sweep below never sees (see attach_to_kill_on_close_job).
+            crate::utils::process::attach_to_kill_on_close_job(pid);
+        }
+
+        guard
+    }
+
+    /// The registry half of [`Self::register`], without the job. What the tests call, since a pid
+    /// they make up can name a real process, which the job would then end along with the test run.
+    fn track(pid: Option<u32>) -> Self {
         let token = next_token();
 
         if let Some(pid) = pid {
             lock_registry().insert(token, pid);
-            // For the exits the sweep below never sees (see attach_to_kill_on_close_job).
-            crate::utils::process::attach_to_kill_on_close_job(pid);
         }
 
         Self { token }
@@ -103,7 +114,7 @@ mod tests {
         let _serial = serial_guard();
 
         {
-            let _guard = TrackedChildGuard::register(Some(4321));
+            let _guard = TrackedChildGuard::track(Some(4321));
             assert!(tracked_pids().contains(&4321));
         }
 
@@ -116,7 +127,7 @@ mod tests {
         let _serial = serial_guard();
 
         let before = tracked_pids().len();
-        let _guard = TrackedChildGuard::register(None);
+        let _guard = TrackedChildGuard::track(None);
         assert_eq!(tracked_pids().len(), before);
     }
 
@@ -124,8 +135,8 @@ mod tests {
     fn each_registration_is_independent_even_for_the_same_pid() {
         let _serial = serial_guard();
 
-        let first = TrackedChildGuard::register(Some(999));
-        let second = TrackedChildGuard::register(Some(999));
+        let first = TrackedChildGuard::track(Some(999));
+        let second = TrackedChildGuard::track(Some(999));
 
         // Two children sharing a pid are tracked under distinct tokens...
         assert_eq!(tracked_pids().iter().filter(|pid| **pid == 999).count(), 2);
