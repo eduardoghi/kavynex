@@ -84,6 +84,13 @@ const cssVariablesResolver: CSSVariablesResolver = () => ({
         // on white.
         "--kx-color-link": "#1971C2",
 
+        // Warning, error and success text, for the same reason. The palette shades these used
+        // (yellow, red.4, teal.4) are made for the dark panel and land between 1.7:1 and 3:1 on
+        // white. These clear 4.5:1.
+        "--kx-color-warning-text": "#9A6700",
+        "--kx-color-error-text": "#C92A2A",
+        "--kx-color-success-text": "#087F5B",
+
         "--mantine-shadow-xs": "0 4px 12px rgba(26,24,37,0.06)",
         "--mantine-shadow-sm": "0 6px 18px rgba(26,24,37,0.07)",
         "--mantine-shadow-md": "0 12px 32px rgba(26,24,37,0.09)",
@@ -92,6 +99,9 @@ const cssVariablesResolver: CSSVariablesResolver = () => ({
     },
     dark: {
         "--kx-color-link": "var(--mantine-color-blue-4)",
+        "--kx-color-warning-text": "var(--mantine-color-yellow-4)",
+        "--kx-color-error-text": "var(--mantine-color-red-4)",
+        "--kx-color-success-text": "var(--mantine-color-teal-4)",
     },
 });
 

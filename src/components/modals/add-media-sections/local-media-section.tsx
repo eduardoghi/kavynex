@@ -114,7 +114,7 @@ function LocalMediaSectionView({
                         Settings and this is the moment the user's original is about to leave its
                         folder. */}
                     {hasMedia && mayNotPlayInBuiltInPlayer(mediaPath) && (
-                        <Text size="sm" c="yellow" lineClamp={2}>
+                        <Text size="sm" c="var(--kx-color-warning-text)" lineClamp={2}>
                             Kavynex's built-in player usually can't play this file type. It is
                             still added to the library and opens in another app.
                         </Text>

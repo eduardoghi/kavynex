@@ -35,7 +35,7 @@ export function AsyncStatusRegion({
             )}
 
             {!loading && error && (
-                <Text size="sm" c="red.4">
+                <Text size="sm" c="var(--kx-color-error-text)">
                     {error}
                 </Text>
             )}

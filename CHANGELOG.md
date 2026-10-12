@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- In the light theme, warnings, load errors and member names in the live chat are dark enough to
+  read. They used the shades made for the dark theme.
 - Keyboard and screen reader fixes. The file pickers in Add media show a focus ring, the reply
   toggle says whether the replies are open, like and comment counts are read with their unit, the
   media source and channel avatar choices have a name, and the Diagnostics loading text is announced.

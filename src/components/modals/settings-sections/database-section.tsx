@@ -23,7 +23,7 @@ function ExternalBackupStatusLine({
 }): JSX.Element {
     if (!status.reachable) {
         return (
-            <Text size="sm" c="yellow.7">
+            <Text size="sm" c="var(--kx-color-warning-text)">
                 The folder cannot be reached right now, so no copy is being made. Connect the drive or
                 the network share, or choose another folder.
             </Text>
@@ -41,7 +41,7 @@ function ExternalBackupStatusLine({
     const isStale = Date.now() - status.mirroredAtMs > STALE_MIRROR_MS;
 
     return (
-        <Text size="sm" c={isStale ? "yellow.7" : "dimmed"}>
+        <Text size="sm" c={isStale ? "var(--kx-color-warning-text)" : "dimmed"}>
             Last copy: {formatBackedUpAt(status.mirroredAtMs)}.
             {isStale && " That is more than three days ago."}
         </Text>
