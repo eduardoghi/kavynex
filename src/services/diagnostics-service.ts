@@ -304,9 +304,15 @@ export async function getDiagnosticsSummary(
         keptFiles: settledValue(settled.keptFiles, defaultKeptFilesSummary()),
     };
 
+    const failedChecks = new Set(
+        (Object.keys(checks) as DiagnosticCheckKey[]).filter(
+            (key) => settled[key].status === "rejected"
+        )
+    );
+
     const issues = sortDiagnosticsIssues([
         ...collectCheckFailureIssues(checks, settled),
-        ...buildDiagnosticsIssues(diagnostics, libraryIntegrityResult.mediaByPath),
+        ...buildDiagnosticsIssues(diagnostics, libraryIntegrityResult.mediaByPath, failedChecks),
     ]);
     const overview = buildDiagnosticsOverview(issues);
 

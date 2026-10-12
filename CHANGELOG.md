@@ -62,6 +62,11 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- Diagnostics no longer reports problems worked out from a check that could not run. A missing
+  yt-dlp no longer reads as a missing FFmpeg too, and a library summary that failed no longer reads as
+  an empty library.
+- The Add media form warns when yt-dlp or FFmpeg is missing. The warning never showed, because a
+  missing tool made the whole check fail instead of reporting that tool.
 - A Move import that could not remove the original file says it copied the file instead. It used to
   look moved while the original stayed where it was.
 - Cancel pressed right as an import or download starts now stops it, and one pressed once the media

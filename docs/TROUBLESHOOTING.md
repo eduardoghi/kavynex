@@ -30,8 +30,9 @@ If you see this error:
   started the app, e.g. a desktop shortcut on Windows).
 - Restart the app after installing or updating either tool, since the resolved path is
   looked up fresh on each use but a stale terminal/session PATH will not update itself.
-- Use the in-app Diagnostics dialog, which reports the resolved path and version for both
-  tools (or the exact reason they failed the health check).
+- Use the in-app Diagnostics dialog, which reports the resolved path and version of each tool, or
+  that it could not be found or run. Each tool is reported on its own, and the log names the reason a
+  tool that was found failed its health check. The Add media form says the same when it opens.
 
 ## "Deno is not available", or a video lists few formats and the download fails
 

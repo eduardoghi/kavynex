@@ -586,34 +586,70 @@ fn js_runtime_health<R: Runtime>(app: &AppHandle<R>) -> ExternalToolHealth {
     }
 }
 
+/// A tool's state from its lookup and its `--version` probe. A tool that is missing or fails the
+/// probe reports `healthy: false` (with the path when it was found) rather than an error, so one
+/// missing tool does not hide the state of the others.
+fn tool_health(
+    path: AppResult<String>,
+    probe: impl FnOnce(&str) -> AppResult<String>,
+    age: impl FnOnce(&str) -> Option<u32>,
+) -> ExternalToolHealth {
+    let path = match path {
+        Ok(path) => path,
+        Err(_) => {
+            return ExternalToolHealth {
+                path: String::new(),
+                version: String::new(),
+                healthy: false,
+                release_age_days: None,
+            };
+        }
+    };
+
+    match probe(&path) {
+        Ok(version) => ExternalToolHealth {
+            release_age_days: age(&version),
+            path,
+            version,
+            healthy: true,
+        },
+        Err(error) => {
+            logger::warn(
+                "binaries",
+                format!("a tool failed its health check: {error}"),
+            );
+
+            ExternalToolHealth {
+                path,
+                version: String::new(),
+                healthy: false,
+                release_age_days: None,
+            }
+        }
+    }
+}
+
+/// The state of yt-dlp, ffmpeg and Deno, each on its own. Every one is reported whether or not the
+/// others were found. The import form warns about the tool it needs from this, and Diagnostics shows
+/// all three, so a missing yt-dlp must not read as a missing ffmpeg too.
 pub fn resolve_external_tools_status<R: Runtime>(
     app: &AppHandle<R>,
 ) -> AppResult<ExternalToolsStatus> {
-    let yt_dlp_path = resolve_yt_dlp_binary(app)?;
-    let ffmpeg_path = resolve_ffmpeg_binary(app)?;
-
-    let yt_dlp_version = validate_yt_dlp_binary(&yt_dlp_path)?;
-    let ffmpeg_version = validate_ffmpeg_binary(&ffmpeg_path)?;
-    let js_runtime = js_runtime_health(app);
-
     // Only yt-dlp carries a date in its version, so ffmpeg simply reports no age. The clock is
     // read once, here at the boundary, so the age computation itself stays pure and testable.
     let today = Utc::now().date_naive();
-    let yt_dlp_age = release_age_days(&yt_dlp_version, today);
+
+    let yt_dlp = tool_health(
+        resolve_yt_dlp_binary(app),
+        validate_yt_dlp_binary,
+        |version| release_age_days(version, today),
+    );
+    let ffmpeg = tool_health(resolve_ffmpeg_binary(app), validate_ffmpeg_binary, |_| None);
+    let js_runtime = js_runtime_health(app);
 
     Ok(ExternalToolsStatus {
-        yt_dlp: ExternalToolHealth {
-            path: yt_dlp_path,
-            version: yt_dlp_version,
-            healthy: true,
-            release_age_days: yt_dlp_age,
-        },
-        ffmpeg: ExternalToolHealth {
-            path: ffmpeg_path,
-            version: ffmpeg_version,
-            healthy: true,
-            release_age_days: None,
-        },
+        yt_dlp,
+        ffmpeg,
         js_runtime,
     })
 }
@@ -673,6 +709,44 @@ mod tests {
             "kavynex-binaries-{tag}-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn a_missing_tool_is_reported_unhealthy_rather_than_as_an_error() {
+        // As an error it took the state of every other tool with it, and the import form, which
+        // only reads a status, never warned that the tool it needed was missing.
+        let missing = tool_health(
+            Err(AppError::from_code(
+                AppErrorCode::YtDlpNotFound,
+                "not found",
+            )),
+            |_| panic!("a tool that was not found is not probed"),
+            |_| None,
+        );
+        assert!(!missing.healthy);
+        assert!(missing.path.is_empty());
+
+        let broken = tool_health(
+            Ok("/tools/ffmpeg".to_string()),
+            |_| {
+                Err(AppError::from_code(
+                    AppErrorCode::FfmpegExecFailed,
+                    "crashed",
+                ))
+            },
+            |_| None,
+        );
+        assert!(!broken.healthy);
+        assert_eq!(broken.path, "/tools/ffmpeg");
+
+        let working = tool_health(
+            Ok("/tools/yt-dlp".to_string()),
+            |_| Ok("2026.07.01".to_string()),
+            |_| Some(3),
+        );
+        assert!(working.healthy);
+        assert_eq!(working.version, "2026.07.01");
+        assert_eq!(working.release_age_days, Some(3));
     }
 
     #[test]

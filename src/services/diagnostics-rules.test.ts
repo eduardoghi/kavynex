@@ -226,6 +226,29 @@ describe("buildDiagnosticsIssues", () => {
         expect(codes).not.toContain("YT_DLP_OUTDATED");
     });
 
+    it("claims nothing from a check that failed to run", () => {
+        // A failed check is zeroed so the report renders. Read as data, the zeros said the tools
+        // were missing and the library empty, next to the issue saying the check did not run.
+        const input = baseDiagnostics();
+        input.externalTools.yt_dlp.healthy = false;
+        input.externalTools.ffmpeg.healthy = false;
+        input.librarySummary.total_bytes = 0;
+        input.librarySummary.video_files = 0;
+        input.librarySummary.audio_files = 0;
+        input.mediaRepositoryStats.total_media = 12;
+
+        const codes = buildDiagnosticsIssues(
+            input,
+            {},
+            new Set(["externalTools", "librarySummary"])
+        ).map((issue) => issue.code);
+
+        expect(codes).not.toContain("YT_DLP_NOT_AVAILABLE");
+        expect(codes).not.toContain("FFMPEG_NOT_AVAILABLE");
+        expect(codes).not.toContain("LIBRARY_EMPTY");
+        expect(codes).not.toContain("DATABASE_MEDIA_WITHOUT_LIBRARY_FILES");
+    });
+
     it("flags FFMPEG_NOT_AVAILABLE when ffmpeg is unhealthy", () => {
         const input = baseDiagnostics();
         input.externalTools.ffmpeg.healthy = false;

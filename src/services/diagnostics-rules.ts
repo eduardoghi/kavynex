@@ -75,6 +75,46 @@ const LIBRARY_CONTENT_ISSUE_CODES: ReadonlySet<string> = new Set([
     "ORPHAN_LIVE_CHAT_FILES",
 ]);
 
+// Which of the report's checks each issue is worked out from. A check that failed to run leaves its
+// part of the report zeroed so the rest can render, and an issue computed from those zeros says
+// something false ("ffmpeg is not available", "Library is empty"). The failure already has its own
+// "Could not run the X check" issue, so the issues that read it are dropped instead.
+//
+// Keys are the check names in diagnostics-service.ts.
+const ISSUE_SOURCES: Readonly<Record<string, readonly string[]>> = {
+    YT_DLP_NOT_AVAILABLE: ["externalTools"],
+    YT_DLP_OUTDATED: ["externalTools"],
+    JS_RUNTIME_NOT_AVAILABLE: ["externalTools"],
+    FFMPEG_NOT_AVAILABLE: ["externalTools"],
+    LIBRARY_EMPTY: ["librarySummary"],
+    LIBRARY_FILES_WITHOUT_DATABASE_ROWS: ["librarySummary", "mediaStats"],
+    THUMBNAILS_WITHOUT_DATABASE_ROWS: ["librarySummary", "mediaStats"],
+    DATABASE_MEDIA_WITHOUT_LIBRARY_FILES: ["librarySummary", "mediaStats"],
+    DATABASE_THUMBNAILS_WITHOUT_LIBRARY_FILES: ["librarySummary", "mediaStats"],
+    THUMBNAILS_WITHOUT_MEDIA_FILES: ["librarySummary"],
+    MEDIA_WITHOUT_THUMBNAILS: ["mediaStats"],
+    MISSING_MEDIA_FILES_ON_DISK: ["libraryIntegrity"],
+    MISSING_THUMBNAIL_FILES_ON_DISK: ["libraryIntegrity"],
+    CORRUPT_MEDIA_FILES_ON_DISK: ["libraryIntegrity"],
+    CORRUPT_THUMBNAIL_FILES_ON_DISK: ["libraryIntegrity"],
+    ORPHAN_MEDIA_FILES: ["libraryIntegrity"],
+    ORPHAN_THUMBNAIL_FILES: ["libraryIntegrity"],
+    INVALID_PATH_REFERENCES: ["libraryIntegrity"],
+    MISSING_LIVE_CHAT_FILES: ["libraryIntegrity"],
+    CORRUPT_LIVE_CHAT_FILES: ["libraryIntegrity"],
+    ORPHAN_LIVE_CHAT_FILES: ["libraryIntegrity"],
+    LIVE_CHAT_FLAG_WITHOUT_PATH: ["mediaStats"],
+    LIVE_CHAT_ON_NON_LIVE_MEDIA: ["mediaStats"],
+    RECOVERED_DOWNLOADS_PRESENT: ["keptFiles"],
+    LIBRARY_TRASH_HOLDS_FILES: ["keptFiles"],
+    SET_ASIDE_BACKUPS_PRESENT: ["keptFiles"],
+    CHANNELS_SHARING_A_HANDLE: ["mediaStats"],
+};
+
+function readsAFailedCheck(code: string, failedChecks: ReadonlySet<string>): boolean {
+    return (ISSUE_SOURCES[code] ?? []).some((check) => failedChecks.has(check));
+}
+
 // Attaches concrete example paths to an issue so the user can see and act on the specific files.
 // Blank entries are dropped and the
 // `examples` key is omitted entirely when nothing remains, so an issue with no examples stays a
@@ -108,7 +148,18 @@ function withExamples(
 
 export function buildDiagnosticsIssues(
     input: AppDiagnostics,
-    mediaByPath: Record<string, DiagnosticsMediaTarget> = {}
+    mediaByPath: Record<string, DiagnosticsMediaTarget> = {},
+    // The checks that failed to run (see ISSUE_SOURCES).
+    failedChecks: ReadonlySet<string> = new Set()
+): DiagnosticsIssue[] {
+    return buildIssuesFromChecks(input, mediaByPath).filter(
+        (issue) => !readsAFailedCheck(issue.code, failedChecks)
+    );
+}
+
+function buildIssuesFromChecks(
+    input: AppDiagnostics,
+    mediaByPath: Record<string, DiagnosticsMediaTarget>
 ): DiagnosticsIssue[] {
     const issues: DiagnosticsIssue[] = [];
 

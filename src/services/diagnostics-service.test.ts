@@ -600,6 +600,10 @@ describe("diagnostics-service", () => {
             audio_files: 0,
             thumbnail_files: 0,
         });
-        expect(result.issues.map((item) => item.code)).toContain("LIBRARY_EMPTY");
+        // The summary that failed is zeroed so the report renders, and nothing is claimed from the
+        // zeros. "Library is empty" was said here about a library that could not be read.
+        const codes = result.issues.map((item) => item.code);
+        expect(codes).toContain("DIAGNOSTIC_CHECK_FAILED:LIBRARY_SUMMARY");
+        expect(codes).not.toContain("LIBRARY_EMPTY");
     });
 });
