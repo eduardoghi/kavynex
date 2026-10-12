@@ -1632,6 +1632,38 @@ describe("useAddMediaWorkflow", () => {
         expect(mockResetYtDlpState).toHaveBeenCalledWith(true);
     });
 
+    it("leaves a running download alone when the selected channel changes", async () => {
+        // Reset mid-run, the modal lost the run id its Cancel needs while the backend kept going.
+        mockYtDlpEvents.isYtDlpRunning = true;
+
+        const { result, rerender } = renderHook(
+            (props: { selectedChannelId: number | null }) =>
+                useAddMediaWorkflow({
+                    selectedChannelId: props.selectedChannelId,
+                    importMode: "copy",
+                    libraryPath: "/library",
+                    onError,
+                    onNotice,
+                    onReloadMedia,
+                }),
+            { initialProps: { selectedChannelId: 10 } }
+        );
+
+        act(() => {
+            result.current.setAddMediaOpen(true);
+        });
+        mockResetYtDlpState.mockClear();
+        mockResetForm.mockClear();
+
+        rerender({ selectedChannelId: 20 });
+
+        expect(result.current.addMediaOpen).toBe(true);
+        expect(mockResetForm).not.toHaveBeenCalled();
+        expect(mockResetYtDlpState).not.toHaveBeenCalled();
+
+        mockYtDlpEvents.isYtDlpRunning = false;
+    });
+
     it("resets yt-dlp state on channel change even when the modal is closed", () => {
         const { result: _result, rerender } = renderHook(
             (props: { selectedChannelId: number | null }) =>

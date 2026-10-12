@@ -439,6 +439,14 @@ export function useAddMediaWorkflow({
         if (previousSelectedChannelId !== selectedChannelId) {
             previousSelectedChannelIdRef.current = selectedChannelId;
 
+            // A creation in flight keeps its modal and its terminal. Resetting them dropped the run id
+            // the Cancel button needs while the backend kept going, and deleted the temporary
+            // thumbnail that creation was about to read. The modal's overlay keeps the channel list
+            // out of reach meanwhile, so this only matters to a selection changed from elsewhere.
+            if (isAddingMediaRef.current || ytDlpEvents.isYtDlpRunning) {
+                return;
+            }
+
             if (addMediaOpen) {
                 void resetForm();
 
@@ -454,6 +462,7 @@ export function useAddMediaWorkflow({
         resetCancellingYtDlp,
         selectedChannelId,
         resetYtDlpState,
+        ytDlpEvents.isYtDlpRunning,
     ]);
 
     useEffect(() => {
