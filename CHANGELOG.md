@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A Move import onto a drive without hard links (FAT32, exFAT) that could not be added puts the file
+  back where it was. It used to stay in the library unused, where Diagnostics offered to remove it.
 - A media import that copies to another drive checks the copy before the original is moved away.
   A copy that came out different from the original stops the import and leaves the original where
   it was, instead of being kept in the library under a name that vouched for it.

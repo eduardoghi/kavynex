@@ -990,6 +990,10 @@ fn stage_move_using(
     match rename_retrying_patiently(source, destination) {
         Ok(()) => {
             fsync_parent_dir(destination);
+            // A rename keeps the source's modification time, and the orphan removal spares only a
+            // file written in the last hour. This one is the user's only copy, so it gets the time
+            // it arrived at, like every copied file does.
+            mark_arrived_now(destination);
             Ok(StagedMove::SourceConsumed)
         }
         Err(error) if is_cross_device_error(&error) => {
@@ -1002,6 +1006,14 @@ fn stage_move_using(
             destination,
             &error,
         )),
+    }
+}
+
+/// Sets `path`'s modification time to now. Best effort. A file that cannot be opened for writing
+/// keeps the time it had.
+fn mark_arrived_now(path: &Path) {
+    if let Ok(file) = fs::File::options().write(true).open(path) {
+        let _ = file.set_modified(std::time::SystemTime::now());
     }
 }
 

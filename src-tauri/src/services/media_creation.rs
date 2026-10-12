@@ -136,6 +136,9 @@ pub(crate) struct PreparedArtifacts {
     /// True when `file_path` is the only copy of the user's file, so neither the failure path nor
     /// the startup sweep may delete it.
     pub(crate) media_file_is_only_copy: bool,
+    /// Where a Move renamed the user's file from (see `library::media::StagedMediaImport`). A failed
+    /// registration puts the file back there.
+    pub(crate) renamed_from: Option<PathBuf>,
     /// A crash marker an earlier step already recorded for these artifacts (a download records one
     /// for its file the moment it is placed). Cleared once the registration's own marker is down.
     pub(crate) interim_marker: Option<String>,
@@ -553,6 +556,7 @@ async fn prepare_local_artifacts<R: Runtime>(
         live_chat_file_path: None,
         move_source_to_remove: staged.source_to_remove,
         media_file_is_only_copy: staged.library_holds_only_copy,
+        renamed_from: staged.renamed_from,
         interim_marker: None,
     })
 }
@@ -665,6 +669,7 @@ async fn prepare_yt_dlp_artifacts<R: Runtime>(
         live_chat_file_path: normalized_optional(downloaded.live_chat_file_path),
         move_source_to_remove: None,
         media_file_is_only_copy: false,
+        renamed_from: None,
         interim_marker: downloaded.placement_marker,
     })
 }
@@ -746,8 +751,9 @@ async fn cleanup_artifacts_best_effort<R: Runtime>(
 /// marker. `None` when the library file is the only copy of the user's file.
 ///
 /// Pure, and shared by both, because a wrong answer here deletes the user's file. The cleanup removes
-/// whatever no row references, which after a refused insert includes the only copy. Left behind
-/// instead, the file is reported by Diagnostics as unreferenced and nothing is lost.
+/// whatever no row references, which after a refused insert includes the only copy. A refused
+/// insert puts a renamed file back where the user had it (`put_renamed_file_back`), and one that
+/// cannot go back is named in the error.
 pub(crate) fn deletable_media_file(prepared: &PreparedArtifacts) -> Option<String> {
     if prepared.media_file_is_only_copy {
         return None;
@@ -956,10 +962,12 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
             })
         }
         Err(error) => {
+            let error = put_renamed_file_back(request, &prepared, error).await;
+
             // The cleanup runs while the lock is still held, so the count it takes cannot race a
             // creation that would have adopted these same paths, and the marker is cleared only
-            // afterwards, if the process dies in between, the marker is what reconciles them. A Move
-            // source is untouched here, since the source is what the user still has.
+            // afterwards. If the process dies in between, the marker is what reconciles them. A
+            // Move source is untouched here, since the source is what the user still has.
             //
             // A cleanup that could not move everything keeps the markers instead, since they are
             // then the only record of files still on disk, and the next launch's sweep retries them.
@@ -973,6 +981,75 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
             }
 
             Err(error)
+        }
+    }
+}
+
+/// Undoes a Move that renamed the user's file into the library, once its registration failed.
+///
+/// The library file is then the only copy, and leaving it there as an unreferenced file is what
+/// Diagnostics would offer to move to the trash. Renamed back to where the user had it, the failed
+/// import leaves things as they were. When that is not possible (the name was taken meanwhile, the
+/// rename failed), the error says where the file is, so the user can import it again from there.
+async fn put_renamed_file_back(
+    request: &CreateMediaRequest,
+    prepared: &PreparedArtifacts,
+    error: AppError,
+) -> AppError {
+    let Some(original) = prepared.renamed_from.clone() else {
+        return error;
+    };
+
+    let library_path = request.library_path.clone();
+    let relative = prepared.file_path.clone();
+
+    let restored = crate::utils::task::run_blocking(move || {
+        let in_library = crate::utils::path::absolute_path_from_relative(
+            Path::new(&library_path),
+            &relative,
+            crate::utils::path::ManagedSubtree::Media,
+        )?;
+
+        if original.exists() {
+            return Ok(false);
+        }
+
+        crate::services::filesystem::rename_retrying_patiently(&in_library, &original)
+            .map(|()| true)
+            .map_err(|e| {
+                AppError::fs_error(
+                    AppErrorCode::FileMoveFailed,
+                    "failed to move the file back",
+                    &original,
+                    &e,
+                )
+            })
+    })
+    .await;
+
+    match restored {
+        Ok(true) => {
+            logger::info(
+                "media_creation",
+                "the media could not be registered, so the moved file was put back where it was",
+            );
+            error
+        }
+        _ => {
+            let note = format!(
+                "The file was moved into the library as {} and is not in any channel. Add it again \
+                 as a local file from there, or move it out by hand.",
+                prepared.file_path
+            );
+            let details = match error.details.as_deref() {
+                Some(existing) => format!("{existing}\n{note}"),
+                None => note,
+            };
+
+            AppError {
+                details: Some(details),
+                ..error
+            }
         }
     }
 }

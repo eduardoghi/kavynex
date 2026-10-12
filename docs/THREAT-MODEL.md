@@ -511,7 +511,15 @@ window either. Its source is removed only after the row lands (`media_creation::
 through `library::media::stage_media_import_cancellable_sync`), so a refused creation leaves the
 user's original where it was. The one Move that cannot keep its source until then is a rename on a
 volume without hard links (FAT32, exFAT), and that library file is flagged as the only copy, which
-keeps it out of both the failure cleanup and the crash marker the startup sweep reads.
+keeps it out of both the failure cleanup and the crash marker the startup sweep reads. A refused
+creation renames it back to where the user had it, and when that name has been taken meanwhile the
+error names the library file instead. The rename also gives the file the current time, so the orphan
+removal in Diagnostics, which spares files written in the last hour, does not take it from a creation
+still running.
+
+The residual is a process that dies between that rename and the row. The file then stays in the
+library with nothing pointing at it, Diagnostics reports it as an orphan, and **Remove orphan files**
+moves it to the library's `.trash` like any other, where it stays for 30 days.
 
 None of this depends on the add-media modal refusing a second creation. A queue, a batch import or a
 background re-download needs nothing new, since none of them can produce a creation that is not

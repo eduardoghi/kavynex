@@ -639,6 +639,7 @@ mod registration {
             live_chat_file_path: None,
             move_source_to_remove: None,
             media_file_is_only_copy: false,
+            renamed_from: None,
             interim_marker: None,
         }
     }
@@ -1226,6 +1227,77 @@ mod registration {
         assert_eq!(markers_naming(&app, &file_path), 0);
 
         let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_file_renamed_into_the_library_goes_back_when_the_insert_is_refused() {
+        // Left in the library, the user's only copy would be an unreferenced file that Diagnostics
+        // offers to move to the trash. Put back, the failed import leaves things as they were.
+        let (app, library) = app_with_library("renamed-back").await;
+        let outside = std::env::temp_dir().join(format!(
+            "kavynex_renamed_back_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&outside).unwrap();
+        let original = outside.join("clip.mp4");
+
+        let prepared = PreparedArtifacts {
+            media_file_is_only_copy: true,
+            renamed_from: Some(original.clone()),
+            ..artifacts_on_disk(&library, "media_renamed_back")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let missing_channel = CreateMediaRequest {
+            channel_id: 4242,
+            ..local_request(&library, &original, "renamed-back")
+        };
+
+        register_prepared_media(app.handle(), &missing_channel, prepared)
+            .await
+            .expect_err("an insert against a channel that does not exist must fail");
+
+        assert_eq!(fs_bytes(&original), b"media bytes".to_vec());
+        assert!(!library.join(&file_path).exists());
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[tokio::test]
+    async fn a_file_that_cannot_go_back_is_named_in_the_error() {
+        let (app, library) = app_with_library("renamed-taken").await;
+        let outside = std::env::temp_dir().join(format!(
+            "kavynex_renamed_taken_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&outside).unwrap();
+        let original = outside.join("clip.mp4");
+        // Something took the name since the file was moved, so it is not overwritten.
+        std::fs::write(&original, b"another file").unwrap();
+
+        let prepared = PreparedArtifacts {
+            media_file_is_only_copy: true,
+            renamed_from: Some(original.clone()),
+            ..artifacts_on_disk(&library, "media_renamed_taken")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let missing_channel = CreateMediaRequest {
+            channel_id: 4242,
+            ..local_request(&library, &original, "renamed-taken")
+        };
+
+        let error = register_prepared_media(app.handle(), &missing_channel, prepared)
+            .await
+            .expect_err("an insert against a channel that does not exist must fail");
+
+        assert!(library.join(&file_path).is_file());
+        assert!(error.details.unwrap_or_default().contains(&file_path));
+        assert_eq!(fs_bytes(&original), b"another file".to_vec());
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 
     fn record_interim_marker(app: &MockApp, file_path: &str) -> String {

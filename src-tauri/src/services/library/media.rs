@@ -82,6 +82,9 @@ pub struct StagedMediaImport {
     /// renamed into the library (a volume without hard links), and when the source already was the
     /// library file.
     pub library_holds_only_copy: bool,
+    /// Where the library file was renamed from, when the Move renamed the user's file into the
+    /// library rather than linking or copying it. A failed registration renames it back there.
+    pub renamed_from: Option<PathBuf>,
 }
 
 /// Removes a Move-mode source once the media it became is registered.
@@ -231,7 +234,7 @@ pub fn stage_media_import_cancellable_sync(
         mode
     };
 
-    let (source_to_remove, library_holds_only_copy) = match mode {
+    let (source_to_remove, library_holds_only_copy, renamed_from) = match mode {
         ImportMode::Copy => {
             if destination_existed {
                 // A file under this content's name is already in the library. Its name is a claim
@@ -254,7 +257,7 @@ pub fn stage_media_import_cancellable_sync(
                 copy_file_atomic_cancellable(&source, &destination, cancel)?;
             }
 
-            (None, false)
+            (None, false, None)
         }
         ImportMode::Move => {
             // Always staged, even when the destination already exists, so an identical-by-hash
@@ -271,11 +274,11 @@ pub fn stage_media_import_cancellable_sync(
                 })?;
 
             match staged {
-                StagedMove::SourceKept => (Some(source.clone()), false),
-                StagedMove::SourceConsumed => (None, true),
+                StagedMove::SourceKept => (Some(source.clone()), false, None),
+                StagedMove::SourceConsumed => (None, true, Some(source.clone())),
                 // The user's file is the library file. If no row ends up pointing at it, it is
                 // still theirs and must not be cleaned up.
-                StagedMove::SameFile => (None, true),
+                StagedMove::SameFile => (None, true, None),
             }
         }
     };
@@ -308,6 +311,7 @@ pub fn stage_media_import_cancellable_sync(
         relative_path,
         source_to_remove,
         library_holds_only_copy,
+        renamed_from,
     })
 }
 
