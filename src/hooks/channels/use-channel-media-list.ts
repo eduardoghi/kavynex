@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaRow } from "../../types/media";
 import { listChannelMediaPage } from "../../services/media-service";
 import {
+    DEFAULT_MEDIA_QUERY_FILTERS,
     isUnfilteredMediaQuery,
     type MediaQueryFilters,
 } from "../../utils/media-library-filters";
@@ -324,6 +325,32 @@ export function useChannelMediaList({
         }
 
         await applyQuery(filters);
+
+        // A reload follows a change to the channel (a media added). Under a filter the first page
+        // does not carry the channel's whole count, so the "N items" header would keep the number
+        // from before the change. Asked for separately, one row, and only then.
+        const channelId = selectedChannelIdRef.current;
+
+        if (channelId === null || channelId === undefined || isUnfilteredMediaQuery(filters)) {
+            return;
+        }
+
+        try {
+            const unfiltered = await listChannelMediaPage(channelId, {
+                ...DEFAULT_MEDIA_QUERY_FILTERS,
+                limit: 1,
+                offset: 0,
+            });
+
+            if (selectedChannelIdRef.current === channelId) {
+                setChannelTotal(unfiltered.total);
+            }
+        } catch (error) {
+            // The count stays as it was, which is all a failure here costs.
+            logError("media-list", "Failed to refresh the channel's media count.", error, {
+                channelId,
+            });
+        }
     }, [applyQuery]);
 
     const handleItemsRemoved = useCallback(

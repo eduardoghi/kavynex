@@ -400,15 +400,24 @@ describe("useChannelMediaList", () => {
         });
 
         vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow()], 1));
+        // The unfiltered count asked for after a filtered reload.
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow()], 7));
 
         await act(async () => {
             await result.current.reloadMedia();
         });
 
-        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+        expect(listChannelMediaPage).toHaveBeenCalledWith(
             10,
             expect.objectContaining({ watched: "watched", offset: 0 })
         );
+        // Under a filter the first page does not carry the channel's whole count, so the header's
+        // number is asked for on its own and follows the media just added.
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ watched: "all", limit: 1 })
+        );
+        expect(result.current.channelTotal).toBe(7);
     });
 
     it("clears media explicitly", async () => {
