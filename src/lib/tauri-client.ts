@@ -66,7 +66,7 @@ export async function invokeVoid(
 // command returns. Channel messages and the invoke response travel independently, so resolving on
 // the command return could race the last in-flight batch and drop its lines. It rejects (normalized
 // through invokeCommand's parseAppError) if the read fails, in which case the caller discards any
-// partial batches it already accumulated.
+// partial batches it already accumulated, and also when the command returns and no `done` follows.
 //
 // Each channel message is validated against liveChatStreamEventSchema before it is acted on, so a
 // backend bug that changed the wire shape (a batch line that is not a string) is dropped and logged
@@ -153,7 +153,7 @@ export async function streamLiveChatFile(
         streamed.catch(() => {});
 
         await Promise.race([streamed, done]);
-        await done;
+        await awaitTerminalMessage(done, "The live chat read ended without finishing.");
     } finally {
         signal?.removeEventListener("abort", abort);
     }
@@ -231,14 +231,20 @@ export async function streamLibraryVerification(
 
     // Awaited after the invoke, not instead of it. Channel messages and the invoke response travel
     // independently, so resolving on the return could race the `done` that carries the report.
-    // Bounded, since a command that returned without sending one would otherwise leave this await,
-    // and the dialog behind it, waiting for good.
+    return awaitTerminalMessage(done, "The verification ended without reporting a result.");
+}
+
+// How long a stream's terminal message may trail the return of its command. Both travel the same
+// IPC, so this is a margin for scheduling rather than for work.
+const STREAM_DONE_GRACE_MS = 10_000;
+
+// Waits for a stream's terminal message once its command has returned. Bounded, since a command
+// that returned without sending one would otherwise leave the await, and the panel or dialog behind
+// it, waiting for good. Settles at once when the message already arrived.
+async function awaitTerminalMessage<T>(done: Promise<T>, missingMessage: string): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const missing = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-            () => reject(new Error("The verification ended without reporting a result.")),
-            VERIFICATION_RESULT_GRACE_MS
-        );
+        timer = setTimeout(() => reject(new Error(missingMessage)), STREAM_DONE_GRACE_MS);
     });
 
     try {
@@ -247,10 +253,6 @@ export async function streamLibraryVerification(
         clearTimeout(timer);
     }
 }
-
-// How long the report may trail the return of the command. Both travel the same IPC, so this is a
-// margin for scheduling rather than for work.
-const VERIFICATION_RESULT_GRACE_MS = 10_000;
 
 // Runs a library migration, passing each progress message to `onProgress`.
 //

@@ -253,6 +253,21 @@ describe("streamLiveChatFile", () => {
         expect(settled).toBe(true);
     });
 
+    it("rejects when the command returned and done never followed", async () => {
+        // The wait for `done` is bounded, like the verification's. A backend that returned without
+        // sending it would otherwise leave the live chat panel loading for good.
+        vi.useFakeTimers();
+        invokeMock.mockResolvedValue(null);
+
+        const streaming = streamLiveChatFile("live_chat/a.json.gz", vi.fn());
+        const outcome = expect(streaming).rejects.toThrow("without finishing");
+
+        await vi.advanceTimersByTimeAsync(10_000);
+        await outcome;
+
+        vi.useRealTimers();
+    });
+
     it("rejects at once when aborted, ignores later batches and cancels the backend stream", async () => {
         invokeMock.mockResolvedValue(null);
         const onLines = vi.fn();
