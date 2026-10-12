@@ -51,8 +51,9 @@ actually act on what it says.
    `--smoke-test` runs the whole of `setup()` and exits, proving the process loads, every plugin
    registers and the database path resolves. `--webview-check` goes further, letting the window
    open and has the renderer report whether it could call `getVersion`, subscribe and unsubscribe
-   from an event, and load an image through `convertFileSrc`, i.e. whether the capability grants
-   in `src-tauri/capabilities/` and the packaged CSP actually work. Neither is reachable from
+   from an event, and load an image through `convertFileSrc`, and the backend confirms that a media
+   element pointed at the player's `kvxmedia` protocol reached it, i.e. whether the capability
+   grants in `src-tauri/capabilities/` and the packaged CSP actually work. Neither is reachable from
    `cargo test` (which never initializes the Tauri runtime) or from `pnpm tauri dev` (which serves
    the page from the Vite origin, with no CSP header). Both are skipped on the x86_64 macOS leg
    alone, which is a cross-compile on an arm64 runner and cannot execute its own output. A failure

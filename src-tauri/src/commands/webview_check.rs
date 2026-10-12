@@ -16,8 +16,9 @@
 //!   right thing to have done and also exactly the change where a miss is silent.
 //! - **The packaged CSP.** Tauri injects `tauri.conf.json`'s `csp` only in a bundled app. `pnpm
 //!   tauri dev` serves the page from the Vite origin with no CSP header at all (see `docs/THREAT-MODEL.md`).
-//!   So `img-src`'s `asset:` / `http://asset.localhost` tokens (without which every thumbnail and
-//!   every video silently fails to load) are exercised by a packaged build and nothing else.
+//!   So `img-src`'s `asset:` / `http://asset.localhost` tokens (without which every thumbnail
+//!   silently fails to load) and `media-src`'s `kvxmedia:` / `http://kvxmedia.localhost` ones
+//!   (every video and recording) are exercised by a packaged build and nothing else.
 //!
 //! `--webview-check` covers all three. The window opens normally, the frontend
 //! (`src/lib/webview-check.ts`) drives one call of each family and reports the outcome back
@@ -31,7 +32,9 @@
 //! exercises each one. Worth reading before assuming a grant here is unverified, because
 //! `process:allow-restart` is cheaper to confirm than it looks (the database import reaches it, not
 //! only an update). What is covered here is the renderer booting, the two `core:*` grants,
-//! IPC into this crate's own commands, and the asset protocol end to end.
+//! IPC into this crate's own commands, the asset protocol end to end, and a media element's request
+//! reaching the player's protocol. The sound itself is not required to decode, since that depends on
+//! the codecs the runner has rather than on anything this check is about.
 
 use std::path::{Path, PathBuf};
 
@@ -84,13 +87,15 @@ pub fn is_webview_check_run(args: impl IntoIterator<Item = String>) -> bool {
     args.into_iter().any(|arg| arg == WEBVIEW_CHECK_FLAG)
 }
 
-/// What the frontend needs in order to run the check. The absolute path of a real file inside a
-/// directory the asset-protocol scope has authorized, for the `convertFileSrc` probe.
+/// What the frontend needs in order to run the check. The absolute paths of two real files inside a
+/// directory the asset-protocol scope has authorized, an image for the `convertFileSrc` probe and a
+/// short sound for the media protocol probe.
 #[derive(Debug, Clone, Serialize, ts_rs::TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/types/generated/")]
 pub struct WebviewCheckPlan {
     pub asset_path: String,
+    pub media_path: String,
 }
 
 /// What the frontend observed. Every field is one probe. `failures` carries the frontend's own
@@ -124,7 +129,15 @@ pub struct WebviewCheckReport {
 /// The frontend's own `failures` are appended rather than replacing the derived lines. A probe can
 /// fail without throwing anything worth reporting (an `<img>` that simply never fires `load`), so
 /// the derived line is what guarantees a failure is always named.
-pub(crate) fn webview_check_failures(report: &WebviewCheckReport) -> Vec<String> {
+///
+/// `media_protocol_reached` is answered by the backend rather than reported by the renderer. A media
+/// element that the CSP's `media-src` refuses never sends its request, so the request arriving at
+/// `services::media_protocol` is what proves the tokens and the registration. Whether the sound then
+/// decodes depends on the codecs the machine has, which is not what this check is about.
+pub(crate) fn webview_check_failures(
+    report: &WebviewCheckReport,
+    media_protocol_reached: bool,
+) -> Vec<String> {
     let mut failures = Vec::new();
 
     let version = report
@@ -143,6 +156,14 @@ pub(crate) fn webview_check_failures(report: &WebviewCheckReport) -> Vec<String>
         failures.push(
             "listen()/unlisten() did not both resolve. Check the core:event:allow-listen and \
              core:event:allow-unlisten grants"
+                .to_string(),
+        );
+    }
+
+    if !media_protocol_reached {
+        failures.push(
+            "a media element pointed at the player's protocol never reached it. Check the media-src \
+             kvxmedia:/http://kvxmedia.localhost tokens in the CSP and the protocol registration"
                 .to_string(),
         );
     }
@@ -191,6 +212,52 @@ fn write_probe_asset<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     Ok(path)
 }
 
+/// A tenth of a second of silence as 8 kHz mono 8-bit PCM WAV, for the media protocol probe. Built
+/// rather than embedded since its header is a handful of sizes, and a sound is what the player's
+/// protocol serves.
+fn probe_sound_wav() -> Vec<u8> {
+    const SAMPLE_RATE: u32 = 8_000;
+    const SAMPLES: u32 = SAMPLE_RATE / 10;
+
+    let mut wav = Vec::with_capacity(44 + SAMPLES as usize);
+    wav.extend_from_slice(b"RIFF");
+    wav.extend_from_slice(&(36 + SAMPLES).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+    wav.extend_from_slice(&SAMPLE_RATE.to_le_bytes());
+    wav.extend_from_slice(&SAMPLE_RATE.to_le_bytes()); // byte rate, one byte per sample
+    wav.extend_from_slice(&1u16.to_le_bytes()); // block align
+    wav.extend_from_slice(&8u16.to_le_bytes()); // bits per sample
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&SAMPLES.to_le_bytes());
+    // 8-bit PCM is unsigned, so silence is the midpoint.
+    wav.resize(44 + SAMPLES as usize, 0x80);
+    wav
+}
+
+/// Writes the probe sound beside the probe image, for the same reason, and tells the media
+/// protocol to watch for it.
+fn write_probe_media<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+    let dir = thumbs_temp_dir(app)?;
+    let file_name = format!("webview-check-{}.wav", unique_temp_suffix());
+    let path = dir.join(&file_name);
+
+    std::fs::write(&path, probe_sound_wav()).map_err(|error| {
+        crate::AppError::fs_error(
+            crate::AppErrorCode::FileOpenFailed,
+            "failed to write the webview check probe sound",
+            &path,
+            &error,
+        )
+    })?;
+
+    crate::services::media_protocol::expect_webview_check_probe(&file_name);
+
+    Ok(path)
+}
+
 /// Tells the frontend whether this launch is a webview check and, if it is, hands it the probe
 /// asset to load.
 ///
@@ -206,14 +273,15 @@ pub async fn begin_webview_check<R: Runtime>(
         return Ok(None);
     }
 
-    let asset = crate::utils::task::run_blocking({
+    let (asset, media) = crate::utils::task::run_blocking({
         let app = app.clone();
-        move || write_probe_asset(&app)
+        move || Ok((write_probe_asset(&app)?, write_probe_media(&app)?))
     })
     .await?;
 
     Ok(Some(WebviewCheckPlan {
         asset_path: asset.to_string_lossy().to_string(),
+        media_path: media.to_string_lossy().to_string(),
     }))
 }
 
@@ -248,15 +316,18 @@ pub async fn report_webview_check<R: Runtime>(
         remove_probe_assets(&plan_dir);
     }
 
-    let failures = webview_check_failures(&report);
+    let media_protocol_reached =
+        crate::services::media_protocol::webview_check_probe_was_requested();
+    let failures = webview_check_failures(&report, media_protocol_reached);
 
     logger::info(
         "webview_check",
         format!(
-            "probes: version={}, event_listen={}, asset_load={}",
+            "probes: version={}, event_listen={}, asset_load={}, media_protocol={}",
             report.app_version.as_deref().unwrap_or("<none>"),
             report.event_listen_ok,
-            report.asset_load_ok
+            report.asset_load_ok,
+            media_protocol_reached
         ),
     );
 
@@ -292,7 +363,8 @@ fn remove_probe_assets(dir: &Path) {
             continue;
         };
 
-        if name.starts_with("webview-check-") && name.ends_with(".gif") {
+        if name.starts_with("webview-check-") && (name.ends_with(".gif") || name.ends_with(".wav"))
+        {
             let _ = std::fs::remove_file(entry.path());
         }
     }
@@ -344,7 +416,32 @@ mod tests {
 
     #[test]
     fn a_report_where_every_probe_passed_has_no_failures() {
-        assert!(webview_check_failures(&passing_report()).is_empty());
+        assert!(webview_check_failures(&passing_report(), true).is_empty());
+    }
+
+    #[test]
+    fn a_media_request_that_never_reached_the_protocol_fails_the_check() {
+        // Everything the renderer reported passed, and the player's protocol still never saw the
+        // probe. That is what a media-src token missing from the CSP looks like, and the renderer
+        // cannot tell it apart from a sound it has no codec for.
+        let failures = webview_check_failures(&passing_report(), false);
+
+        assert_eq!(failures.len(), 1);
+        assert!(failures[0].contains("media-src"), "{}", failures[0]);
+    }
+
+    #[test]
+    fn the_probe_sound_is_a_well_formed_wav() {
+        let wav = probe_sound_wav();
+
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[8..16], b"WAVEfmt ");
+        assert_eq!(&wav[36..40], b"data");
+
+        let riff_size = u32::from_le_bytes(wav[4..8].try_into().unwrap()) as usize;
+        let data_size = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
+        assert_eq!(riff_size, wav.len() - 8);
+        assert_eq!(data_size, wav.len() - 44);
     }
 
     #[test]
@@ -358,7 +455,7 @@ mod tests {
                 ..passing_report()
             };
 
-            let failures = webview_check_failures(&report);
+            let failures = webview_check_failures(&report, true);
 
             assert_eq!(failures.len(), 1);
             assert!(
@@ -376,7 +473,7 @@ mod tests {
             ..passing_report()
         };
 
-        let failures = webview_check_failures(&report);
+        let failures = webview_check_failures(&report, true);
 
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("core:event:allow-listen"));
@@ -392,7 +489,7 @@ mod tests {
             ..passing_report()
         };
 
-        let failures = webview_check_failures(&report);
+        let failures = webview_check_failures(&report, true);
 
         assert_eq!(failures.len(), 1);
         assert!(failures[0].contains("asset-protocol scope"));
@@ -410,7 +507,7 @@ mod tests {
             failures: Vec::new(),
         };
 
-        assert_eq!(webview_check_failures(&report).len(), 3);
+        assert_eq!(webview_check_failures(&report, true).len(), 3);
     }
 
     #[test]
@@ -421,7 +518,7 @@ mod tests {
             ..passing_report()
         };
 
-        let failures = webview_check_failures(&report);
+        let failures = webview_check_failures(&report, true);
 
         assert_eq!(failures.len(), 2, "the derived line must not be replaced");
         assert!(failures[1].contains("img onerror"));
@@ -440,7 +537,7 @@ mod tests {
             ..passing_report()
         };
 
-        let failures = webview_check_failures(&report);
+        let failures = webview_check_failures(&report, true);
 
         assert_eq!(failures.len(), 1);
         assert!(!failures[0].contains('\n'));
@@ -457,7 +554,10 @@ mod tests {
         };
 
         // Every probe passed, so the only lines are the frontend's own, capped.
-        assert_eq!(webview_check_failures(&report).len(), MAX_REPORTED_FAILURES);
+        assert_eq!(
+            webview_check_failures(&report, true).len(),
+            MAX_REPORTED_FAILURES
+        );
     }
 
     #[test]
@@ -467,7 +567,7 @@ mod tests {
             ..passing_report()
         };
 
-        let failures = webview_check_failures(&report);
+        let failures = webview_check_failures(&report, true);
 
         assert_eq!(failures, vec!["real".to_string()]);
     }

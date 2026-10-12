@@ -292,6 +292,7 @@ const displayThumbnailSchema = z.discriminatedUnion("kind", [
 
 const webviewCheckPlanSchema = z.object({
     assetPath: z.string(),
+    mediaPath: z.string(),
 });
 
 const createdMediaSchema = z.object({

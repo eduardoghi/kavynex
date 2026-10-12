@@ -818,7 +818,7 @@ green build legs and surface on the first click a user made.
 (`src-tauri/src/commands/webview_check.rs`) that lets the launch proceed normally and has the
 renderer report what it could actually do, then exits 0 or 1. The release workflow runs it on the
 built binary on every leg it can execute one, right after `--smoke-test` and before the build
-provenance is attested, so a binary that fails it is never vouched for. Three probes:
+provenance is attested, so a binary that fails it is never vouched for. Four probes:
 
 - `getVersion()`, for `core:app:allow-version`.
 - `listen()` followed by its unsubscribe, for `core:event:allow-listen` and
@@ -827,6 +827,10 @@ provenance is attested, so a binary that fails it is never vouched for. Three pr
 - an `<img>` pointed at `convertFileSrc` of a real file in the granted cache directory, which is
   the only automated exercise of the asset-protocol scope *and* of the CSP (see below for why a
   packaged build is the only thing that applies one).
+- an `<audio>` pointed at a short sound in the same directory through the player's `kvxmedia`
+  protocol, for `media-src`. The backend records whether the request arrived, since a `media-src`
+  that refuses the scheme stops it in the renderer. Whether the sound decodes is not checked, as it
+  depends on the codecs the machine has.
 
 A renderer that never loads at all reports nothing, which a watchdog turns into a non-zero exit
 naming that outcome rather than a hang. The case that covers a bundle the webview refuses or a

@@ -22,6 +22,7 @@ vi.mock("./tauri-platform", () => ({
 const { runWebviewCheckIfRequested } = await import("./webview-check");
 
 const PROBE_ASSET = "/cache/thumbs-temp/webview-check-abc.gif";
+const PROBE_MEDIA = "/cache/thumbs-temp/webview-check-abc.wav";
 const PROBE_URL = "asset://localhost/cache/thumbs-temp/webview-check-abc.gif";
 
 /** How the stubbed `<img>` should answer the probe. */
@@ -64,6 +65,41 @@ function stubImage(outcome: AssetOutcome): void {
     vi.stubGlobal("Image", ImageStub);
 }
 
+/** The media sources the stub created. */
+let createdMediaSources: string[];
+
+/**
+ * Replaces the global `Audio` with one that settles in a microtask, as the image stub does, since
+ * jsdom never loads media either.
+ */
+function stubAudio(outcome: "loadedmetadata" | "error" | "never"): void {
+    createdMediaSources = [];
+
+    class AudioStub {
+        onloadedmetadata: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        preload = "";
+
+        set src(value: string) {
+            createdMediaSources.push(value);
+
+            if (outcome === "never") {
+                return;
+            }
+
+            queueMicrotask(() => {
+                if (outcome === "loadedmetadata") {
+                    this.onloadedmetadata?.();
+                } else {
+                    this.onerror?.();
+                }
+            });
+        }
+    }
+
+    vi.stubGlobal("Audio", AudioStub);
+}
+
 /**
  * The report the backend was handed, or undefined when the check never reported. Typed as the
  * generated binding so a field renamed on the Rust side breaks these assertions at compile time
@@ -85,13 +121,14 @@ beforeEach(() => {
     convertFileSrcMock.mockReturnValue(PROBE_URL);
     invokeCommandMock.mockImplementation((command: string) => {
         if (command === TAURI_COMMANDS.BEGIN_WEBVIEW_CHECK) {
-            return Promise.resolve({ assetPath: PROBE_ASSET });
+            return Promise.resolve({ assetPath: PROBE_ASSET, mediaPath: PROBE_MEDIA });
         }
 
         return Promise.resolve(undefined);
     });
 
     stubImage("load");
+    stubAudio("error");
 });
 
 afterEach(() => {
@@ -133,6 +170,26 @@ describe("runWebviewCheckIfRequested", () => {
 
         expect(convertFileSrcMock).toHaveBeenCalledWith(PROBE_ASSET);
         expect(createdImageSources).toEqual([PROBE_URL]);
+    });
+
+    it("points a media element at the probe through the player's protocol", async () => {
+        // The backend decides whether that request arrived. The renderer only has to send it the
+        // way the player does, and an error (no codec for the sound) is not a failure here.
+        await runWebviewCheckIfRequested();
+
+        expect(convertFileSrcMock).toHaveBeenCalledWith(PROBE_MEDIA, "kvxmedia");
+        expect(createdMediaSources).toEqual([PROBE_URL]);
+        expect(reportedPayload()?.failures).toEqual([]);
+    });
+
+    it("reports once the media element settles, or once the probe gives up on it", async () => {
+        stubAudio("never");
+
+        const running = runWebviewCheckIfRequested();
+        await vi.advanceTimersByTimeAsync(15_000);
+
+        await expect(running).resolves.toBe(true);
+        expect(reportedPayload()).toBeDefined();
     });
 
     it("unsubscribes the probe listener so both event grants are exercised", async () => {
@@ -242,7 +299,7 @@ describe("runWebviewCheckIfRequested", () => {
         // escapes into the caller.
         invokeCommandMock.mockImplementation((command: string) => {
             if (command === TAURI_COMMANDS.BEGIN_WEBVIEW_CHECK) {
-                return Promise.resolve({ assetPath: PROBE_ASSET });
+                return Promise.resolve({ assetPath: PROBE_ASSET, mediaPath: PROBE_MEDIA });
             }
 
             return Promise.reject(new Error("report rejected"));

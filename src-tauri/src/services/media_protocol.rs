@@ -388,6 +388,45 @@ pub(crate) fn set_library_share(library_path: &str) {
         crate::utils::path::network_share_prefix(library_path);
 }
 
+/// The file name of the `--webview-check` probe sound, while a check run is waiting for the player's
+/// protocol to be asked for it. See `commands::webview_check`.
+fn webview_check_probe() -> &'static std::sync::Mutex<Option<String>> {
+    static PROBE: std::sync::OnceLock<std::sync::Mutex<Option<String>>> =
+        std::sync::OnceLock::new();
+    PROBE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+static WEBVIEW_CHECK_PROBE_REQUESTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Watches for a request naming `file_name`, the probe a webview check just wrote.
+pub(crate) fn expect_webview_check_probe(file_name: &str) {
+    *webview_check_probe()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(file_name.to_string());
+}
+
+/// Whether a request for the expected probe reached this protocol. Only a request the CSP let the
+/// media element send gets here, which is the half of the player's path no other gate exercises.
+pub(crate) fn webview_check_probe_was_requested() -> bool {
+    WEBVIEW_CHECK_PROBE_REQUESTED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Records a request whose decoded path names the expected probe.
+fn note_webview_check_probe(path: &str) {
+    let expected = webview_check_probe()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let Some(expected) = expected.as_deref() else {
+        return;
+    };
+
+    if Path::new(path).file_name().and_then(|name| name.to_str()) == Some(expected) {
+        WEBVIEW_CHECK_PROBE_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// Whether a request for `path` may reach the scope check at all.
 ///
 /// The scope check resolves the path (it follows links and canonicalizes), and on Windows resolving
@@ -423,6 +462,8 @@ pub(crate) fn serve<R: Runtime>(
     if path.is_empty() || climbs_out_of_a_directory(&path) {
         return empty_response(StatusCode::BAD_REQUEST);
     }
+
+    note_webview_check_probe(&path);
 
     let share = library_share()
         .lock()
@@ -527,6 +568,24 @@ pub(crate) fn serve<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_request_naming_the_expected_probe_counts_for_the_webview_check() {
+        // The only test touching this process-wide state, so nothing else can set it first.
+        assert!(!webview_check_probe_was_requested());
+
+        // Nothing is expected outside a check run.
+        note_webview_check_probe("/cache/thumbs-temp/webview-check-1.wav");
+        assert!(!webview_check_probe_was_requested());
+
+        expect_webview_check_probe("webview-check-2.wav");
+
+        note_webview_check_probe("/cache/thumbs-temp/webview-check-1.wav");
+        assert!(!webview_check_probe_was_requested());
+
+        note_webview_check_probe("C:/cache/thumbs-temp/webview-check-2.wav");
+        assert!(webview_check_probe_was_requested());
+    }
 
     #[test]
     fn a_local_path_may_always_reach_the_scope_check() {

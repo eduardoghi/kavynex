@@ -13,6 +13,7 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, listenTauri } from "./tauri-client";
 import { convertFileSrc, getVersion } from "./tauri-platform";
+import { mediaSrcFromAbsolutePath } from "../utils/media-utils";
 import type { WebviewCheckReport } from "../types/generated/WebviewCheckReport";
 
 // How long the asset probe waits for the image to load or fail. An `<img>` whose URL the CSP
@@ -64,9 +65,9 @@ async function probeEventListen(failures: string[]): Promise<boolean> {
 }
 
 // Probes the asset-protocol scope grant on the cache directory and the CSP's img-src tokens, which
-// together are what make every thumbnail and every video in the app load. An `<img>` rather than a
-// `fetch`, because `connect-src` deliberately excludes `asset:`, so a fetch would fail by design
-// and prove nothing. This is exactly how the app really draws a thumbnail.
+// together are what make every thumbnail in the app load. An `<img>` rather than a `fetch`, because
+// `connect-src` deliberately excludes `asset:`, so a fetch would fail by design and prove nothing.
+// This is exactly how the app really draws a thumbnail.
 function probeAssetLoad(assetPath: string, failures: string[]): Promise<boolean> {
     let assetUrl: string;
 
@@ -112,14 +113,58 @@ function probeAssetLoad(assetPath: string, failures: string[]): Promise<boolean>
     });
 }
 
+// How long the media probe waits for its element to settle before reporting anyway.
+const MEDIA_PROBE_TIMEOUT_MS = 15_000;
+
+// Points a media element at the probe sound through the player's own protocol, the way the player
+// loads every video and recording. What passes or fails is decided by the backend, which records
+// whether the request reached the protocol at all (a `media-src` that refuses the scheme stops it in
+// the renderer). Whether the sound then decodes depends on the codecs the machine has, so neither a
+// load nor an error is reported. This only waits for the element to settle, so the report does not
+// overtake the request.
+function probeMediaRequest(mediaPath: string): Promise<void> {
+    let mediaUrl: string;
+
+    try {
+        mediaUrl = mediaSrcFromAbsolutePath(mediaPath);
+    } catch {
+        return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+        const media = new Audio();
+        let settled = false;
+
+        const settle = (): void => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            window.clearTimeout(timeoutId);
+            media.onloadedmetadata = null;
+            media.onerror = null;
+            resolve();
+        };
+
+        const timeoutId = window.setTimeout(settle, MEDIA_PROBE_TIMEOUT_MS);
+
+        media.onloadedmetadata = settle;
+        media.onerror = settle;
+        media.preload = "metadata";
+        media.src = mediaUrl;
+    });
+}
+
 // Runs every probe, so one failure never hides another. A report that names all three problems at
 // once is what makes a badly narrowed capability list fixable in a single pass.
-async function collectReport(assetPath: string): Promise<WebviewCheckReport> {
+async function collectReport(assetPath: string, mediaPath: string): Promise<WebviewCheckReport> {
     const failures: string[] = [];
 
     const appVersion = await probeAppVersion(failures);
     const eventListenOk = await probeEventListen(failures);
     const assetLoadOk = await probeAssetLoad(assetPath, failures);
+    await probeMediaRequest(mediaPath);
 
     return { appVersion, eventListenOk, assetLoadOk, failures };
 }
@@ -141,7 +186,7 @@ export async function runWebviewCheckIfRequested(): Promise<boolean> {
             return false;
         }
 
-        const report = await collectReport(plan.assetPath);
+        const report = await collectReport(plan.assetPath, plan.mediaPath);
 
         await invokeCommand(TAURI_COMMANDS.REPORT_WEBVIEW_CHECK, { report });
 
