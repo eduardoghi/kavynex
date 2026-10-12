@@ -355,9 +355,12 @@ export function buildDiagnosticsIssues(
         );
     }
 
+    // Live chat rows count too. The backend reports them in the same pass, and a replay path pointing
+    // outside the library is the same kind of corruption as a media one.
     const invalidPathCount =
         input.libraryIntegrity.invalid_media_files +
-        input.libraryIntegrity.invalid_thumbnail_files;
+        input.libraryIntegrity.invalid_thumbnail_files +
+        input.libraryIntegrity.invalid_live_chat_files;
 
     if (invalidPathCount > 0) {
         issues.push(
@@ -371,6 +374,7 @@ export function buildDiagnosticsIssues(
                 [
                     ...input.libraryIntegrity.invalid_media_examples,
                     ...input.libraryIntegrity.invalid_thumbnail_examples,
+                    ...input.libraryIntegrity.invalid_live_chat_examples,
                 ]
             )
         );

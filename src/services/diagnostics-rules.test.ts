@@ -660,6 +660,21 @@ describe("buildDiagnosticsIssues", () => {
         expect(issue.examples).toEqual([{ path: "/etc/passwd" }, { path: "../secret.jpg" }]);
     });
 
+    it("reports a live chat row whose path points outside the library", () => {
+        // The backend counts these in the same pass. Left out of the rule, such a row showed up
+        // nowhere in Diagnostics.
+        const input = baseDiagnostics();
+        input.libraryIntegrity.invalid_live_chat_files = 1;
+        input.libraryIntegrity.invalid_live_chat_examples = ["/tmp/chat.json"];
+
+        const issue = buildDiagnosticsIssues(input).find(
+            (candidate) => candidate.code === "INVALID_PATH_REFERENCES"
+        );
+
+        expect(issue?.description).toContain("1 database record(s)");
+        expect(issue?.examples).toEqual([{ path: "/tmp/chat.json" }]);
+    });
+
     it("returns issues sorted by severity (errors, then warnings, then infos)", () => {
         const input = baseDiagnostics();
         input.libraryPath = "";
