@@ -247,7 +247,7 @@ describe("useMediaPlayer", () => {
         expect(openYoutubeVideo).not.toHaveBeenCalled();
     });
 
-    it("swallows youtube open error and logs it", async () => {
+    it("logs a youtube open error and tells the user", async () => {
         vi.mocked(openYoutubeVideo).mockRejectedValueOnce(new Error("boom"));
 
         const media = createMediaRow({
@@ -260,9 +260,11 @@ describe("useMediaPlayer", () => {
             duration_seconds: 210,
         });
 
+        const onError = vi.fn();
         const { result } = renderHook(() =>
             useMediaPlayer({
                 libraryPath: "/library",
+                onError,
             })
         );
 
@@ -280,6 +282,8 @@ describe("useMediaPlayer", () => {
             expect.any(Error),
             { mediaId: media.id, youtubeVideoId: "yt-999" }
         );
+        // A click that opens nothing has to say so, as the card menu's Open on YouTube does.
+        expect(onError).toHaveBeenCalledTimes(1);
     });
 
     it("trims the youtube video id before building the watch url", () => {

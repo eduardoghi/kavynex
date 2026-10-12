@@ -110,6 +110,7 @@ export function useMediaLibrary({
 }: UseMediaLibraryOptions): MediaLibraryController {
     const mediaPlayer = useMediaPlayer({
         libraryPath,
+        onError,
     });
 
     const mediaList = useChannelMediaList({

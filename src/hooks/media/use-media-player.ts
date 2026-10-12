@@ -9,10 +9,12 @@ import {
 import { buildYoutubeWatchUrl } from "../../utils/youtube";
 import { openYoutubeVideo } from "../../services/library-service";
 import { logError } from "../../utils/app-logger";
+import { resolveErrorMessage } from "../../utils/error-message";
 import { useMemoObject } from "../use-memo-object";
 
 type UseMediaPlayerOptions = {
     libraryPath: string;
+    onError?: (message: string) => void;
 };
 
 export type MediaPlayerController = {
@@ -36,6 +38,7 @@ export type MediaPlayerController = {
 
 export function useMediaPlayer({
     libraryPath,
+    onError,
 }: UseMediaPlayerOptions): MediaPlayerController {
     const [viewMode, setViewMode] = useState<"library" | "player">("library");
     const [activeMedia, setActiveMediaState] = useState<MediaRow | null>(null);
@@ -105,8 +108,11 @@ export function useMediaPlayer({
                 mediaId: activeMedia?.id ?? null,
                 youtubeVideoId,
             });
+            // Said, as the card menu's Open on YouTube says it. A click that opened nothing and
+            // showed nothing read as the button not working.
+            onError?.(resolveErrorMessage(error, "Failed to open the media on YouTube."));
         }
-    }, [activeMedia?.id, activeMedia?.youtube_video_id]);
+    }, [activeMedia?.id, activeMedia?.youtube_video_id, onError]);
 
     return useMemoObject({
         viewMode,
