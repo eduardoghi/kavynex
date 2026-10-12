@@ -36,8 +36,13 @@ vi.mock("../utils/global-error-reporting", () => ({
     reportFatalError: vi.fn(),
 }));
 
+const sidebarProps: { deletingChannelId?: number | null } = {};
+
 vi.mock("../components/layout/channel-sidebar", () => ({
-    ChannelSidebar: () => <div data-testid="channel-sidebar" />,
+    ChannelSidebar: (props: { deletingChannelId: number | null }) => {
+        sidebarProps.deletingChannelId = props.deletingChannelId;
+        return <div data-testid="channel-sidebar" />;
+    },
 }));
 
 vi.mock("../components/home/home-modals", () => ({
@@ -112,6 +117,8 @@ function controller(overrides: {
     selectedChannel?: typeof channel | null;
     showSelectedChannelPanel?: boolean;
     playerMedia?: MediaRow | null;
+    channelToDelete?: typeof channel | null;
+    isDeletingChannel?: boolean;
 }): HomeController {
     const markAsWatched = vi.fn().mockResolvedValue(undefined);
     const markAsUnwatched = vi.fn().mockResolvedValue(undefined);
@@ -133,7 +140,8 @@ function controller(overrides: {
             channelsLoadFailed: false,
 
             reloadChannels: vi.fn(),
-            channelToDelete: null,
+            channelToDelete: overrides.channelToDelete ?? null,
+            isDeletingChannel: overrides.isDeletingChannel ?? false,
             channelToDeleteMediaCount: null,
             updatingChannelAvatarId: null,
             setCreateChannelOpen,
@@ -333,6 +341,19 @@ describe("Home", () => {
         expect(
             screen.getByRole("button", { name: UI_TEXT.home.emptyAction })
         ).toBeInTheDocument();
+    });
+
+    it("marks a channel as deleting only once the deletion runs, not while it is asked about", () => {
+        vi.mocked(useHomeController).mockReturnValue(controller({ channelToDelete: channel }));
+        const asking = renderWithMantine(<Home />);
+        expect(sidebarProps.deletingChannelId).toBeNull();
+        asking.unmount();
+
+        vi.mocked(useHomeController).mockReturnValue(
+            controller({ channelToDelete: channel, isDeletingChannel: true })
+        );
+        renderWithMantine(<Home />);
+        expect(sidebarProps.deletingChannelId).toBe(channel.id);
     });
 
     it("renders the library section only when a channel is selected and the panel is on", () => {

@@ -117,7 +117,12 @@ export default function Home(): JSX.Element {
                     viewMode={media.mediaPlayer.viewMode}
                     shellBorder={viewState.shellBorder}
                     loading={channels.isLoadingChannels}
-                    deletingChannelId={channels.channelToDelete?.id ?? null}
+                    // Only while the delete runs. `channelToDelete` is set as soon as the
+                    // confirmation opens, and the busy row replaced its menu (the element holding
+                    // focus) with a spinner for a deletion nobody had confirmed yet.
+                    deletingChannelId={
+                        channels.isDeletingChannel ? (channels.channelToDelete?.id ?? null) : null
+                    }
                     updatingChannelAvatarId={channels.updatingChannelAvatarId}
                     libraryPath={controller.libraryPath}
                     appIconSrc={AppIcon}
