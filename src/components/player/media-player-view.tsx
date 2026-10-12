@@ -199,6 +199,7 @@ export function MediaPlayerView({
             <Stack gap="md">
                 <Group gap="sm" wrap="nowrap">
                     <Box
+                        ref={backButtonRef}
                         component="button"
                         type="button"
                         aria-label="Back to library"

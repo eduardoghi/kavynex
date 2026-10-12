@@ -39,6 +39,9 @@ describe("MediaPlayerView", () => {
         );
 
         expect(screen.getByText("Unable to open media")).toBeInTheDocument();
+        // With nothing to play, the back control is where focus stays. Focus left on the hidden
+        // library grid behind the player is focus on nothing the user can see.
+        expect(screen.getByRole("button", { name: "Back to library" })).toHaveFocus();
     });
 
     it("does not offer Refresh comments for a media without a YouTube source", async () => {
