@@ -462,12 +462,13 @@ export function useAddMediaForm({
                 return;
             }
 
-            // The profile is deliberately not in the details. It is often a path under the
-            // user's home directory, and this context reaches the file log.
+            // Neither the profile nor the cookies file path is in the details. Both are usually
+            // paths under the user's home directory, and this context reaches the file log. Whether a
+            // cookies file was set is what a bug report needs.
             reportError("add-media-form", "Failed to load yt-dlp formats.", error, {
                 mediaUrl: mediaUrl.trim(),
                 cookiesBrowser,
-                cookiesPath,
+                cookiesFileSet: cookiesPath.trim() !== "",
             });
         }
     }, [

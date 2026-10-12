@@ -603,7 +603,7 @@ describe("useAddMediaForm", () => {
             {
                 mediaUrl: "https://youtube.com/watch?v=abc",
                 cookiesBrowser: "firefox",
-                cookiesPath: "",
+                cookiesFileSet: false,
             }
         );
     });
@@ -806,7 +806,7 @@ describe("useAddMediaForm", () => {
             {
                 mediaUrl: "https://youtube.com/watch?v=abc",
                 cookiesBrowser: "edge",
-                cookiesPath: "",
+                cookiesFileSet: false,
             }
         );
     });
