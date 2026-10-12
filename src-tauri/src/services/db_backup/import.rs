@@ -570,19 +570,21 @@ pub async fn stage_database_import(
         return Err(error);
     }
 
-    {
-        let written = staging_tmp.clone();
-        run_blocking(move || crate::services::filesystem::fsync_file(&written)).await?;
-    }
+    // The flush, the rename (which retries a held file with sleeps on Windows) and the directory
+    // flush on the blocking pool, like the copy above.
+    run_blocking(move || {
+        crate::services::filesystem::fsync_file(&staging_tmp)?;
 
-    let _ = std::fs::remove_file(&staged);
-    crate::services::filesystem::rename_retrying(&staging_tmp, &staged)
-        .map_err(|error| backup_error("failed to stage database import", error))?;
-    // Make the staged slot's directory entry durable, so a crash after this cannot lose the rename
-    // and leave a `.import-staged.tmp` the next launch would ignore.
-    crate::services::filesystem::fsync_parent_dir(&staged);
+        let _ = std::fs::remove_file(&staged);
+        crate::services::filesystem::rename_retrying(&staging_tmp, &staged)
+            .map_err(|error| backup_error("failed to stage database import", error))?;
+        // Make the staged slot's directory entry durable, so a crash after this cannot lose the
+        // rename and leave a `.import-staged.tmp` the next launch would ignore.
+        crate::services::filesystem::fsync_parent_dir(&staged);
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 /// How many times the marker removal after a completed swap is attempted before giving up. A file

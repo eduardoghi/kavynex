@@ -104,7 +104,15 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
     // VACUUM INTO fails if its target file already exists, so it always writes to a fresh
     // staging path rather than dest_path directly.
     let staging = sibling(dest_path, ".export-staging");
-    let _ = std::fs::remove_file(&staging);
+    {
+        // On the blocking pool, since the destination can be a slow drive or a share.
+        let staging = staging.clone();
+        run_blocking(move || {
+            let _ = std::fs::remove_file(&staging);
+            Ok(())
+        })
+        .await?;
+    }
 
     let vacuum_sql = format!(
         "VACUUM INTO '{}'",

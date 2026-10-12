@@ -23,7 +23,7 @@ use crate::services::database::{db_error, shared_pool};
 use crate::services::library::guard::configured_library_dir;
 use crate::services::library::media::delete_media_file_sync;
 use crate::services::logger;
-use crate::services::temp_paths::thumb_display_dir;
+use crate::services::temp_paths::thumb_display_dir_async;
 use crate::services::thumbnail::display::display_derivative_path;
 use crate::services::thumbnail::persist::delete_thumbnail_file_sync;
 
@@ -597,7 +597,7 @@ async fn execute_plan_locked<R: Runtime>(
     // Resolved here, alongside the library directory, because `remove_planned_artifacts_sync` takes
     // only paths. `None` when the cache directory cannot be resolved, which leaves the derivatives
     // to the size sweep rather than failing a deletion the user asked for over a cache entry.
-    let display_dir = thumb_display_dir(app).ok();
+    let display_dir = thumb_display_dir_async(app).await.ok();
 
     run_blocking(move || {
         Ok(remove_planned_artifacts_sync(
@@ -842,7 +842,7 @@ pub(crate) async fn trash_unreferenced_artifacts_locked<R: Runtime>(
         }
     };
 
-    let display_dir = thumb_display_dir(app).ok();
+    let display_dir = thumb_display_dir_async(app).await.ok();
     let skipped_shared_paths = plan.skipped_shared_paths;
 
     let mut report = run_blocking(move || {
@@ -1186,8 +1186,9 @@ pub async fn remove_orphan_artifacts<R: Runtime>(
     let expected =
         crate::services::library::integrity::expected_library_paths(&references, avatar_paths);
     let library_dir = configured_library_dir(app).await?;
+    let db_path = crate::services::database::database_path(app)?;
     let recent_database_swap =
-        database_was_recently_swapped(&crate::services::database::database_path(app)?);
+        run_blocking(move || Ok(database_was_recently_swapped(&db_path))).await?;
 
     let planning_dir = library_dir.clone();
     let (removal, deletable) = run_blocking(move || {
@@ -1224,7 +1225,7 @@ pub async fn remove_orphan_artifacts<R: Runtime>(
 
     drop_paths_referenced_again(&pool, &mut plan).await;
 
-    let display_dir = thumb_display_dir(app).ok();
+    let display_dir = thumb_display_dir_async(app).await.ok();
 
     run_blocking(move || {
         Ok(move_orphans_to_trash_sync(

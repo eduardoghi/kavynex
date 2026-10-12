@@ -89,6 +89,71 @@ pub(super) fn rotate_corrupt_snapshots(db_path: &Path) -> bool {
 }
 
 /// Where `restore_database_from_backup` stages the chosen snapshot before renaming it into place.
+/// Sets the current database aside and renames the staged snapshot into its place. Blocking
+/// filesystem work only (renames that retry a held file with sleeps on Windows), so the restore
+/// runs it on the blocking pool.
+fn swap_in_restored_database(db_path: &Path, staged: &Path) -> AppResult<()> {
+    // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than
+    // overwrite. A second restore (the restored database degraded again) would otherwise discard
+    // the first failure's evidence, which is exactly the case where repeated corruption most
+    // needs diagnosing.
+    //
+    // Move it under a scratch name *before* rotating. Rotating first would shift the existing
+    // generations (dropping the oldest and emptying the `.corrupt` slot), and a rename that then
+    // failed would leave that loss with nothing put in its place, so a couple of failed restores
+    // would evict every earlier snapshot while adding none. Rotating only once the database is
+    // safely out of the way keeps the generations intact on failure.
+    if db_path.exists() {
+        let pending = sibling(db_path, ".corrupt.tmp");
+        let _ = std::fs::remove_file(&pending);
+
+        if let Err(error) = crate::services::filesystem::rename_retrying(db_path, &pending) {
+            let _ = std::fs::remove_file(staged);
+            return Err(backup_error(
+                "failed to move aside the corrupt database",
+                error,
+            ));
+        }
+
+        // A rotation that stopped short leaves the previous `.corrupt` in its slot, and the database
+        // being set aside keeps the scratch name rather than replacing it.
+        let promoted = rotate_corrupt_snapshots(db_path).then(|| {
+            crate::services::filesystem::rename_retrying(&pending, &corrupt_path(db_path))
+        });
+
+        if let Some(Err(error)) = promoted {
+            // The database is already off the live path, so the restore can still proceed; the
+            // evidence just keeps the scratch name. Say so rather than lose the thread.
+            logger::warn(
+                "db_backup",
+                format!(
+                    "the corrupt database was set aside as .corrupt.tmp because it could not be \
+                     renamed into the .corrupt slot: {error}"
+                ),
+            );
+        } else if promoted.is_none() {
+            logger::warn(
+                "db_backup",
+                "the corrupt database was set aside as .corrupt.tmp because an earlier .corrupt \
+                 generation could not be rotated",
+            );
+        }
+    }
+
+    // On failure the staged snapshot is kept, so the next launch finishes the restore through
+    // resume_interrupted_restore once the log can be moved.
+    set_aside_corrupt_wal(db_path)?;
+    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
+
+    crate::services::filesystem::rename_retrying(staged, db_path)
+        .map_err(|error| backup_error("failed to restore database from backup", error))?;
+    // Flush the directory entry so the restored database is durably in place, not just staged.
+    crate::services::filesystem::fsync_parent_dir(db_path);
+    super::record_database_swap(db_path);
+
+    Ok(())
+}
+
 pub(super) fn restore_staging_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".restore.tmp")
 }
@@ -286,63 +351,11 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         .await?;
     }
 
-    // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than
-    // overwrite. A second restore (the restored database degraded again) would otherwise discard
-    // the first failure's evidence, which is exactly the case where repeated corruption most
-    // needs diagnosing.
-    //
-    // Move it under a scratch name *before* rotating. Rotating first would shift the existing
-    // generations (dropping the oldest and emptying the `.corrupt` slot), and a rename that then
-    // failed would leave that loss with nothing put in its place, so a couple of failed restores
-    // would evict every earlier snapshot while adding none. Rotating only once the database is
-    // safely out of the way keeps the generations intact on failure.
-    if db_path.exists() {
-        let pending = sibling(db_path, ".corrupt.tmp");
-        let _ = std::fs::remove_file(&pending);
-
-        if let Err(error) = crate::services::filesystem::rename_retrying(db_path, &pending) {
-            let _ = std::fs::remove_file(&staged);
-            return Err(backup_error(
-                "failed to move aside the corrupt database",
-                error,
-            ));
-        }
-
-        // A rotation that stopped short leaves the previous `.corrupt` in its slot, and the database
-        // being set aside keeps the scratch name rather than replacing it.
-        let promoted = rotate_corrupt_snapshots(db_path).then(|| {
-            crate::services::filesystem::rename_retrying(&pending, &corrupt_path(db_path))
-        });
-
-        if let Some(Err(error)) = promoted {
-            // The database is already off the live path, so the restore can still proceed; the
-            // evidence just keeps the scratch name. Say so rather than lose the thread.
-            logger::warn(
-                "db_backup",
-                format!(
-                    "the corrupt database was set aside as .corrupt.tmp because it could not be \
-                     renamed into the .corrupt slot: {error}"
-                ),
-            );
-        } else if promoted.is_none() {
-            logger::warn(
-                "db_backup",
-                "the corrupt database was set aside as .corrupt.tmp because an earlier .corrupt \
-                 generation could not be rotated",
-            );
-        }
+    {
+        let db_path = db_path.to_path_buf();
+        let staged = staged.clone();
+        run_blocking(move || swap_in_restored_database(&db_path, &staged)).await?;
     }
-
-    // On failure the staged snapshot is kept, so the next launch finishes the restore through
-    // resume_interrupted_restore once the log can be moved.
-    set_aside_corrupt_wal(db_path)?;
-    let _ = std::fs::remove_file(sibling(db_path, "-shm"));
-
-    crate::services::filesystem::rename_retrying(&staged, db_path)
-        .map_err(|error| backup_error("failed to restore database from backup", error))?;
-    // Flush the directory entry so the restored database is durably in place, not just staged.
-    crate::services::filesystem::fsync_parent_dir(db_path);
-    super::record_database_swap(db_path);
 
     logger::info(
         "db_backup",

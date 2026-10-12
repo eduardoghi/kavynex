@@ -86,6 +86,13 @@ pub fn thumb_display_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     )
 }
 
+/// [`thumb_display_dir`] on the blocking pool, for the same reason as [`yt_dlp_temp_dir_async`].
+/// The cleanup calls it while holding the media registration lock.
+pub async fn thumb_display_dir_async<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+    let app = app.clone();
+    crate::utils::task::run_blocking(move || thumb_display_dir(&app)).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

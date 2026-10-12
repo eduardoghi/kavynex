@@ -265,17 +265,29 @@ pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> App
         ));
     }
 
-    crate::services::filesystem::fsync_file(&temp)?;
-    crate::services::filesystem::rename_retrying(&temp, &target)
-        .map_err(|error| backup_error("failed to store the pre-migration snapshot", error))?;
-    crate::services::filesystem::fsync_parent_dir(&target);
+    // The flush, the rename (which retries a held file with sleeps on Windows) and the prune are
+    // blocking filesystem work, so they run on the blocking pool like the daily snapshot's.
+    {
+        let db_path = db_path.to_path_buf();
+        let target = target.clone();
+        crate::utils::task::run_blocking(move || {
+            crate::services::filesystem::fsync_file(&temp)?;
+            crate::services::filesystem::rename_retrying(&temp, &target).map_err(|error| {
+                backup_error("failed to store the pre-migration snapshot", error)
+            })?;
+            crate::services::filesystem::fsync_parent_dir(&target);
 
-    for version in pre_migration_versions_to_prune(
-        pre_migration_versions_on_disk(db_path),
-        from_version,
-        PRE_MIGRATION_SNAPSHOTS_KEPT,
-    ) {
-        let _ = std::fs::remove_file(pre_migration_path(db_path, version));
+            for version in pre_migration_versions_to_prune(
+                pre_migration_versions_on_disk(&db_path),
+                from_version,
+                PRE_MIGRATION_SNAPSHOTS_KEPT,
+            ) {
+                let _ = std::fs::remove_file(pre_migration_path(&db_path, version));
+            }
+
+            Ok(())
+        })
+        .await?;
     }
 
     logger::info(

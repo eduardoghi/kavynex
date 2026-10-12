@@ -12,7 +12,6 @@ use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
-use crate::services::filesystem::clean_matching_files_in_dir;
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
@@ -797,8 +796,6 @@ pub async fn download_media_from_url_async<R: Runtime>(
 
         let file_prefix = format!("{}_{}_{}", safe_extractor, safe_id, safe_format_id);
         let file_name_prefix = format!("{file_prefix}.");
-
-        clean_matching_files_in_dir(&temp_dir, &file_name_prefix)?;
 
         emit_download_log(
             app,

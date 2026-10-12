@@ -42,6 +42,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use crate::services::logger;
 use crate::utils::naming::unique_temp_suffix;
 use crate::utils::path::ensure_managed_library_relative_path;
+use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// The library-relative artifacts one in-flight media creation had already written when the marker
@@ -573,7 +574,12 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
         return Ok(0);
     }
 
-    let markers = read_pending_markers(app)?;
+    // The marker reads and writes are blocking disk work, and the record write retries a held
+    // rename with sleeps on Windows, so each one runs on the blocking pool.
+    let markers = {
+        let app = app.clone();
+        run_blocking(move || read_pending_markers(&app)).await?
+    };
     let mut removed_artifacts = 0usize;
     let mut abandoned_markers = 0usize;
 
@@ -583,7 +589,12 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
             // file an earlier, crashed one named, and its row does not exist yet for the reference
             // count to see. Read again for each marker, so a creation started during the sweep is
             // seen too.
-            let in_flight = paths_named_by_live_markers(app);
+            let in_flight = {
+                let app = app.clone();
+                run_blocking(move || Ok(paths_named_by_live_markers(&app)))
+                    .await
+                    .unwrap_or_default()
+            };
             let spare =
                 |path: &Option<String>| path.clone().filter(|path| !in_flight.contains(path));
 
@@ -634,7 +645,16 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
                 // the same failing cleanup, logs the same error and re-emits the notice below.
                 // The count is what `read_pending_markers` reads to stop offering this marker at
                 // all, so persisting it is the whole of what "giving up" means.
-                record_marker_attempt(app, &name, &artifacts, attempts);
+                {
+                    let app = app.clone();
+                    let name = name.clone();
+                    let artifacts = artifacts.clone();
+                    let _ = run_blocking(move || {
+                        record_marker_attempt(&app, &name, &artifacts, attempts);
+                        Ok(())
+                    })
+                    .await;
+                }
 
                 if marker_retries_are_exhausted(attempts) {
                     abandoned_markers += 1;
@@ -661,7 +681,13 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
             }
         }
 
-        if let Err(error) = clear_pending_media_artifacts(app, &name) {
+        let cleared = {
+            let app = app.clone();
+            let name = name.clone();
+            run_blocking(move || clear_pending_media_artifacts(&app, &name)).await
+        };
+
+        if let Err(error) = cleared {
             logger::warn(
                 "pending_media",
                 format!("could not clear a pending media marker: {error}"),
