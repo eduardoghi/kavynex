@@ -35,6 +35,8 @@ type ChannelSidebarProps = {
     deletingChannelId?: number | null;
     updatingChannelAvatarId?: number | null;
     libraryPath: string;
+    // See ChannelListItem. A folder can be configured while `libraryPath` is still handed empty.
+    hasLibraryFolder?: boolean;
     // Branding and the app-level actions the sidebar now hosts (the top bar was removed). Optional so
     // the component still renders bare in isolation tests; the app always supplies them.
     appIconSrc?: string;
@@ -58,6 +60,7 @@ export function ChannelSidebar({
     deletingChannelId = null,
     updatingChannelAvatarId = null,
     libraryPath,
+    hasLibraryFolder = true,
     appIconSrc,
     onOpenCreateChannel,
     onOpenSettings,
@@ -260,6 +263,7 @@ export function ChannelSidebar({
                                                 viewMode={viewMode}
                                                 shellBorder={shellBorder}
                                                 libraryPath={libraryPath}
+                                                hasLibraryFolder={hasLibraryFolder}
                                                 onSelectChannel={onSelectChannel}
                                                 onRequestEditChannel={onRequestEditChannel}
                                                 onRequestDeleteChannel={onRequestDeleteChannel}

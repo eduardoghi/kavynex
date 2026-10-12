@@ -315,6 +315,57 @@ describe("ChannelSidebar", () => {
         expect(onRequestEditChannel).toHaveBeenCalledWith(channel);
     });
 
+    it("disables the avatar choices when no library folder is configured", async () => {
+        // Keyed on the configured folder, not on `libraryPath`, which is handed empty while the
+        // asset scope is still being registered. With a folder configured the choices stay on.
+        const channel = {
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+
+        const renderSidebar = (hasLibraryFolder: boolean) =>
+            renderWithMantine(
+                <ChannelSidebar
+                    channels={[channel]}
+                    selectedChannelId={10}
+                    viewMode="library"
+                    shellBorder="rgba(255,255,255,0.1)"
+                    loading={false}
+                    deletingChannelId={null}
+                    updatingChannelAvatarId={null}
+                    libraryPath=""
+                    hasLibraryFolder={hasLibraryFolder}
+                    onSelectChannel={vi.fn()}
+                    onRequestEditChannel={vi.fn()}
+                    onRequestDeleteChannel={vi.fn()}
+                    onUpdateChannelAvatarFromFile={vi.fn()}
+                    onUpdateChannelAvatarFromYouTube={vi.fn()}
+                    onRemoveChannelAvatar={vi.fn()}
+                    onClosePlayer={vi.fn()}
+                />,
+                { withAppShell: true }
+            );
+
+        const { unmount } = renderSidebar(false);
+        fireEvent.click(screen.getByLabelText(/actions for canal a/i));
+
+        // By text and its button. A role query by name found the first disabled item and not the
+        // second, in jsdom.
+        expect((await screen.findByText("Choose avatar file")).closest("button")).toBeDisabled();
+        expect(screen.getByText("Load avatar from YouTube").closest("button")).toBeDisabled();
+        expect(screen.getByText("Choose a library folder to set an avatar.")).toBeInTheDocument();
+
+        unmount();
+        renderSidebar(true);
+        fireEvent.click(screen.getByLabelText(/actions for canal a/i));
+
+        expect((await screen.findByText("Choose avatar file")).closest("button")).toBeEnabled();
+        expect(screen.queryByText("Choose a library folder to set an avatar.")).toBeNull();
+    });
+
     it("requests delete from channel menu", async () => {
         const channel = {
             id: 10,

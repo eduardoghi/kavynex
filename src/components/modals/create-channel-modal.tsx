@@ -48,6 +48,8 @@ type CreateChannelModalProps = {
     submitLoadingLabel?: string;
     title?: string;
     allowAvatarEditing?: boolean;
+    // False with no library folder, where an avatar has nowhere to be stored.
+    hasLibraryFolder?: boolean;
     onChangeChannelName: (value: string) => void;
     onChangeYoutubeHandle: (value: string) => void;
     // Avatar handlers are only used when `allowAvatarEditing` is true (the avatar section is not
@@ -71,6 +73,7 @@ export function CreateChannelModal({
     submitLoadingLabel = "Saving...",
     title = "New channel",
     allowAvatarEditing = true,
+    hasLibraryFolder = true,
     onChangeChannelName,
     onChangeYoutubeHandle,
     onChangeAvatarMode,
@@ -157,11 +160,26 @@ export function CreateChannelModal({
                                 }
                                 data={[
                                     { label: "No avatar", value: "none" },
-                                    { label: "Upload file", value: "manual" },
-                                    { label: "YouTube avatar", value: "youtube" },
+                                    // Stored in the library folder, so refused without one.
+                                    {
+                                        label: "Upload file",
+                                        value: "manual",
+                                        disabled: !hasLibraryFolder,
+                                    },
+                                    {
+                                        label: "YouTube avatar",
+                                        value: "youtube",
+                                        disabled: !hasLibraryFolder,
+                                    },
                                 ]}
                                 disabled={loading}
                             />
+
+                            {!hasLibraryFolder && (
+                                <Text size="xs" c="dimmed">
+                                    Choose a library folder to give the channel an avatar.
+                                </Text>
+                            )}
 
                             {/* Both branches carry the same mt rather than the Stack
                                 carrying a bigger gap, since the gap would also push the

@@ -57,11 +57,11 @@ function formatBackupTimestamp(backedUpAtMs: number | null): string {
     return `the backup from ${new Date(backedUpAtMs).toLocaleString("en-US")}`;
 }
 
-// Every modal except AddMediaModal. Split out and memoized so an active yt-dlp download (whose log
-// lines change `media`'s identity several times a second), re-renders only AddMediaModal (which
-// shows the terminal), not this whole set. It deliberately receives the individual delete-media
-// fields rather than the `media` controller, so its props stay referentially stable across a log
-// update; every other slice it takes is already memoized by its own hook.
+// Every modal except AddMediaModal. Split out and memoized so what changes the `media` controller's
+// identity (a page of the list landing, the player saving its position) does not re-render this
+// whole set. It receives the individual delete-media fields rather than the `media` controller for
+// that reason. Every other slice it takes is already memoized by its own hook. The yt-dlp log does
+// not reach it either way, since AddMediaModalWithTerminal below reads it from its own store.
 type HomeSecondaryModalsProps = {
     channels: ChannelsController;
     mediaActions: HomeMediaActionsController;
@@ -104,6 +104,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
             <CreateChannelModal
                 opened={channels.createChannelOpen}
                 onClose={() => channels.setCreateChannelOpen(false)}
+                hasLibraryFolder={settings.settings.libraryPath.trim() !== ""}
                 channelName={channels.newChannelName}
                 youtubeHandle={channels.newYoutubeHandle}
                 avatarMode={channels.newChannelAvatarMode}

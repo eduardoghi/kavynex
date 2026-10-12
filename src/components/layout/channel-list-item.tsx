@@ -42,6 +42,9 @@ type ChannelListItemProps = {
     viewMode: ViewMode;
     shellBorder: string;
     libraryPath: string;
+    // Whether a library folder is configured. Not derived from `libraryPath`, which the sidebar is
+    // handed empty until the folder's asset scope is registered, and while the folder is unreachable.
+    hasLibraryFolder?: boolean;
     onSelectChannel: (channelId: number) => void;
     onRequestEditChannel: (channel: Channel) => void;
     onRequestDeleteChannel: (channel: Channel) => void;
@@ -63,6 +66,7 @@ export const ChannelListItem = memo(function ChannelListItem({
     viewMode,
     shellBorder,
     libraryPath,
+    hasLibraryFolder = true,
     onSelectChannel,
     onRequestEditChannel,
     onRequestDeleteChannel,
@@ -164,11 +168,14 @@ export const ChannelListItem = memo(function ChannelListItem({
                                 Edit name / handle
                             </Menu.Item>
 
+                            {/* An avatar is stored in the library folder. Without one the
+                                backend refuses both, after the file dialog or the download. */}
                             <Menu.Item
                                 leftSection={<ImagePlus size={16} />}
                                 onClick={() => {
                                     void onUpdateChannelAvatarFromFile(channel);
                                 }}
+                                disabled={!hasLibraryFolder}
                             >
                                 Choose avatar file
                             </Menu.Item>
@@ -178,9 +185,14 @@ export const ChannelListItem = memo(function ChannelListItem({
                                 onClick={() => {
                                     void onUpdateChannelAvatarFromYouTube(channel);
                                 }}
+                                disabled={!hasLibraryFolder}
                             >
                                 Load avatar from YouTube
                             </Menu.Item>
+
+                            {!hasLibraryFolder && (
+                                <Menu.Label>Choose a library folder to set an avatar.</Menu.Label>
+                            )}
 
                             <Menu.Item
                                 leftSection={<UserX size={16} />}

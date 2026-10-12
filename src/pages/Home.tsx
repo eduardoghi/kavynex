@@ -127,6 +127,7 @@ export default function Home(): JSX.Element {
                     // Avatars are library images, refused until the library's asset scope is
                     // registered and not requested again after, so they wait for it.
                     libraryPath={settings.libraryAssetsReady ? controller.libraryPath : ""}
+                    hasLibraryFolder={controller.libraryPath.trim() !== ""}
                     appIconSrc={AppIcon}
                     onOpenCreateChannel={() => channels.setCreateChannelOpen(true)}
                     onOpenSettings={settings.openSettings}

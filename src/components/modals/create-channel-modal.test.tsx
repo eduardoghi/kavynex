@@ -30,6 +30,34 @@ describe("CreateChannelModal", () => {
         expect(screen.getByText(/Channel avatar/i)).toBeInTheDocument();
     });
 
+    it("offers only the no-avatar mode when no library folder is configured", () => {
+        renderWithMantine(
+            <CreateChannelModal
+                opened
+                onClose={vi.fn()}
+                hasLibraryFolder={false}
+                channelName=""
+                youtubeHandle=""
+                avatarMode="none"
+                avatarPath=""
+                loading={false}
+                onChangeChannelName={vi.fn()}
+                onChangeYoutubeHandle={vi.fn()}
+                onChangeAvatarMode={vi.fn()}
+                onPickAvatar={vi.fn()}
+                onClearAvatar={vi.fn()}
+                onCreate={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("radio", { name: "Upload file" })).toBeDisabled();
+        expect(screen.getByRole("radio", { name: "YouTube avatar" })).toBeDisabled();
+        expect(screen.getByRole("radio", { name: "No avatar" })).toBeEnabled();
+        expect(
+            screen.getByText("Choose a library folder to give the channel an avatar.")
+        ).toBeInTheDocument();
+    });
+
     it("disables create button when fields are empty", () => {
         renderWithMantine(
             <CreateChannelModal

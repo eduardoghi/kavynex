@@ -62,6 +62,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- With no library folder chosen, the channel menu and the New channel form no longer offer an avatar
+  from a file or from YouTube, and say a library folder is needed. Both used to fail only after the
+  file was picked or the form sent.
 - The sort button shows the arrows that match the sort, not the A to Z ones for every sort.
 - The library grid keeps its rows while it reloads, so adding a media or typing in the search no
   longer sends it back to the top.
