@@ -289,6 +289,8 @@ pub fn stage_media_import_cancellable_sync(
     } else {
         crate::services::filesystem::verify_content_addressed_write(
             &destination,
+            // A consumed source was renamed, not copied, so there is nothing to compare against.
+            (!library_holds_only_copy).then_some(source.as_path()),
             &hash,
             "media",
             &ext,

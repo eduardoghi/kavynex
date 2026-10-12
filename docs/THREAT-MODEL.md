@@ -386,6 +386,14 @@ single-user desktop model (the import is user-triggered on a file the user just 
 re-hashing immediately before the delete would only narrow, not close, the window (the classic
 TOCTOU shape). Recorded as an accepted residual rather than left implicit.
 
+What the residual does not cover is the copy itself. A Move that has to copy (the library is on
+another volume) reads the copy back and compares it with what it read from the source before the
+copy takes its name, as the library migration does. A fresh library file whose bytes differ from the
+hash its name was built from is compared with the source again, and when the source still matches,
+the copy is what went wrong. The import then fails and the copy is removed, so a damaged copy never
+stands in for an original that is about to be deleted
+(`services/filesystem.rs::verify_content_addressed_write`).
+
 ### Creating a media is one command, and that is a boundary decision
 
 `create_media` (`commands/media.rs`, `services/media_creation.rs`) produces a media's artifacts,

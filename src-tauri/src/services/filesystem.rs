@@ -775,21 +775,6 @@ pub(crate) fn copy_file_atomic_verified(
     })
 }
 
-/// Picks the copy the caller is entitled to. The chunked, interruptible one when a cancel flag was
-/// offered, and the faster platform copy when it was not. Keeping the dispatch in one place is what
-/// lets the staged move below take a flag without every non-cancelling caller paying for userspace
-/// buffering it has no use for.
-fn copy_file_atomic_maybe_cancellable(
-    source: &Path,
-    destination: &Path,
-    cancel: Option<&AtomicBool>,
-) -> AppResult<()> {
-    match cancel {
-        Some(_) => copy_file_atomic_cancellable(source, destination, cancel),
-        None => copy_file_atomic(source, destination),
-    }
-}
-
 pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
     move_or_copy_file_using(source, destination, None)
 }
@@ -975,8 +960,11 @@ fn stage_move_using(
         return staged_onto_existing_destination(source, destination, source_hash);
     }
 
+    // A move that has to copy is followed by the source's removal, so the copy is the only one
+    // left. It is read back and compared before it takes the destination's name, the way the
+    // library migration copies (see copy_bytes_in_chunks_verified).
     if path_is_symlink(source) {
-        copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+        copy_file_atomic_verified(source, destination, cancel)?;
         return Ok(StagedMove::SourceKept);
     }
 
@@ -995,7 +983,7 @@ fn stage_move_using(
     }
 
     if is_cross_device_error(&link_error) {
-        copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+        copy_file_atomic_verified(source, destination, cancel)?;
         return Ok(StagedMove::SourceKept);
     }
 
@@ -1005,7 +993,7 @@ fn stage_move_using(
             Ok(StagedMove::SourceConsumed)
         }
         Err(error) if is_cross_device_error(&error) => {
-            copy_file_atomic_maybe_cancellable(source, destination, cancel)?;
+            copy_file_atomic_verified(source, destination, cancel)?;
             Ok(StagedMove::SourceKept)
         }
         Err(error) => Err(AppError::fs_error(
@@ -1046,11 +1034,19 @@ fn staged_onto_existing_destination(
 /// that corrected name (the real content was stored before), the mis-named fresh copy is dropped
 /// in favor of it. Returns the final path (unchanged in the overwhelmingly common matching case).
 ///
+/// A changed source is not the only way to get there. A copy whose bytes went wrong on the way (a
+/// flaky USB bridge, a write a share lost) differs from its name too, and renaming it would make a
+/// damaged file look sound. So when `source` is still there, it is hashed again. Still holding
+/// `expected_hash` means the source did not change and the copy is what went wrong, which is an
+/// error, and the copy is removed. `None` for a source the transfer consumed (a rename moves the
+/// bytes rather than copying them).
+///
 /// This costs a second full-file read, so callers gate it on a genuinely fresh write, never the
 /// dedup/skip paths. The guarantee is worth one extra hash on a user-initiated import, not on
 /// every no-op re-import of already-stored content.
 pub(crate) fn verify_content_addressed_write(
     written: &Path,
+    source: Option<&Path>,
     expected_hash: &str,
     prefix: &str,
     ext: &str,
@@ -1059,6 +1055,18 @@ pub(crate) fn verify_content_addressed_write(
 
     if actual_hash == expected_hash {
         return Ok(written.to_path_buf());
+    }
+
+    if let Some(source) = source.filter(|source| source.is_file()) {
+        if file_hash(source)? == expected_hash {
+            let _ = fs::remove_file(written);
+
+            return Err(AppError::from_code(
+                AppErrorCode::FileCopyFailed,
+                "the copy written to the library does not hold the bytes of the original, so it \
+                 was removed and the original was left where it was",
+            ));
+        }
     }
 
     let parent = written.parent().ok_or_else(|| {

@@ -62,6 +62,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A media import that copies to another drive checks the copy before the original is moved away.
+  A copy that came out different from the original stops the import and leaves the original where
+  it was, instead of being kept in the library under a name that vouched for it.
 - Changing the sort, filter or search while the library was loading more media could leave a run of
   media missing from the list until the next reload.
 - Add media no longer shows a Cancel download button that did nothing while a finished download is

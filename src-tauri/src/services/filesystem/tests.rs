@@ -130,7 +130,7 @@ fn verify_content_addressed_write_keeps_a_matching_name() {
     fs::write(&written, content).unwrap();
 
     // The name already matches the content, so nothing moves.
-    let result = verify_content_addressed_write(&written, &hash, "media", "mp4").unwrap();
+    let result = verify_content_addressed_write(&written, None, &hash, "media", "mp4").unwrap();
     assert_eq!(result, written);
     assert!(written.exists());
 
@@ -148,7 +148,8 @@ fn verify_content_addressed_write_corrects_a_name_built_from_a_stale_hash() {
     fs::write(&written, b"the bytes that actually landed").unwrap();
     let actual = file_hash(&written).unwrap();
 
-    let result = verify_content_addressed_write(&written, "stalehash", "media", "mp4").unwrap();
+    let result =
+        verify_content_addressed_write(&written, None, "stalehash", "media", "mp4").unwrap();
 
     let corrected = dir.join(format!("media_{actual}.mp4"));
     assert_eq!(result, corrected);
@@ -161,6 +162,30 @@ fn verify_content_addressed_write_corrects_a_name_built_from_a_stale_hash() {
         fs::read(&corrected).unwrap(),
         b"the bytes that actually landed"
     );
+
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn verify_content_addressed_write_refuses_a_copy_whose_source_did_not_change() {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+
+    let source = dir.join("original.mp4");
+    fs::write(&source, b"the original bytes").unwrap();
+    let hash = file_hash(&source).unwrap();
+
+    // The copy went wrong on the way. The source still hashes to the name, so renaming the copy
+    // would hand the library a damaged file under a name that vouches for it.
+    let written = dir.join(format!("media_{hash}.mp4"));
+    fs::write(&written, b"the original bytez").unwrap();
+
+    let error = verify_content_addressed_write(&written, Some(&source), &hash, "media", "mp4")
+        .expect_err("a copy that differs from an unchanged source is not adopted");
+
+    assert_eq!(error.code, AppErrorCode::FileCopyFailed.as_str());
+    assert!(!written.exists(), "the bad copy is removed");
+    assert_eq!(fs::read(&source).unwrap(), b"the original bytes");
 
     let _ = fs::remove_dir_all(&dir);
 }
@@ -180,7 +205,8 @@ fn verify_content_addressed_write_drops_a_mis_named_copy_when_the_correct_name_e
     let correct = dir.join(format!("media_{actual}.mp4"));
     fs::write(&correct, content).unwrap();
 
-    let result = verify_content_addressed_write(&mis_named, "stalehash", "media", "mp4").unwrap();
+    let result =
+        verify_content_addressed_write(&mis_named, None, "stalehash", "media", "mp4").unwrap();
 
     assert_eq!(result, correct);
     assert!(

@@ -145,6 +145,7 @@ fn persist_thumbnail_guarded(
 
         crate::services::filesystem::verify_content_addressed_write(
             &destination,
+            Some(source),
             &hash,
             "thumb",
             &ext,
