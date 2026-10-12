@@ -139,7 +139,13 @@ export function useMediaProgressPersistence(
 
             if (reportCompleted && isNewCompletion) {
                 completedMediaIdRef.current = currentMedia.id;
-                void reportCompleted();
+                // The callback reports its own failures today, and this catch is for one that
+                // does not. Left to reject from an event handler, it would be logged as fatal.
+                void Promise.resolve(reportCompleted()).catch((error: unknown) => {
+                    logError("player", "Failed to report the playback as completed.", error, {
+                        mediaId: currentMedia.id,
+                    });
+                });
                 return;
             }
 

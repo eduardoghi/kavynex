@@ -148,6 +148,27 @@ describe("useMediaProgressPersistence", () => {
         expect(onSave).not.toHaveBeenCalled();
     });
 
+    it("logs a completion report that rejects instead of leaving it unhandled", async () => {
+        const element = videoElementAt(600);
+        const refused = vi.fn(() => Promise.reject(new Error("database is busy")));
+
+        renderHook(() =>
+            useMediaProgressPersistence(createMedia({ id: 7 }), element, onSave, refused)
+        );
+
+        await act(async () => {
+            element.dispatchEvent(new Event("ended"));
+            await Promise.resolve();
+        });
+
+        expect(logError).toHaveBeenCalledWith(
+            "player",
+            "Failed to report the playback as completed.",
+            expect.any(Error),
+            { mediaId: 7 }
+        );
+    });
+
     it("reports completion once per media, however often the end is reached", () => {
         const element = videoElementAt(600);
         const onCompleted = vi.fn();
