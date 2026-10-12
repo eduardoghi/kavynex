@@ -70,6 +70,8 @@ export function useExternalToolsAvailability(
         if (!enabled) {
             // Cleared so a reopen re-checks rather than showing what was true last time. The
             // usual reason to close this modal after seeing the warning is to go install the tool.
+            // A probe still in flight is superseded too, or its answer would land after the clear.
+            checkIdRef.current += 1;
             setStatus(null);
             setIsChecking(false);
             return;

@@ -148,4 +148,26 @@ describe("useExternalToolsAvailability", () => {
         expect(getExternalToolsStatus).toHaveBeenCalledTimes(2);
         expect(result.current.isChecking).toBe(false);
     });
+
+    it("drops the answer of a probe that lands after the modal closed", async () => {
+        let answer!: (status: ExternalToolsStatus) => void;
+        vi.mocked(getExternalToolsStatus).mockReturnValueOnce(
+            new Promise((resolve) => (answer = resolve))
+        );
+
+        const { result, rerender } = renderHook(
+            ({ open }: { open: boolean }) => useExternalToolsAvailability(open, "yt-dlp"),
+            { initialProps: { open: true } }
+        );
+
+        rerender({ open: false });
+
+        await act(async () => {
+            answer(toolsStatus(false, true));
+        });
+
+        // Still closed, and the clear on close stands. Shown, it was a stale warning for the moment
+        // a reopen took to check again.
+        expect(result.current.missingTools).toEqual([]);
+    });
 });
