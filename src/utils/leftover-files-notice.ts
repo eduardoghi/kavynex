@@ -5,3 +5,8 @@ export function leftoverFilesNotice(what: "media" | "channel", count: number): s
 
     return `The ${what} was deleted, but ${files} could not be removed from the library folder. Diagnostics can remove leftover files later.`;
 }
+
+// The same for a channel avatar that was replaced or removed while its old file could not be.
+export function leftoverAvatarNotice(): string {
+    return "The channel avatar was changed, but the previous image could not be removed from the library folder. Diagnostics can remove leftover files later.";
+}

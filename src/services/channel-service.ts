@@ -116,10 +116,12 @@ export async function updateChannelNameHandle(
     );
 }
 
+// Resolves with how many files of the previous avatar stayed behind, like the channel deletion, so
+// the caller can say so rather than only the log.
 export async function updateChannelAvatarWithCleanup(
     channelId: number,
     avatarPath: string | null
-): Promise<void> {
+): Promise<number> {
     validateChannelId(channelId);
     const nextAvatarPath = avatarPath?.trim() || null;
 
@@ -138,6 +140,8 @@ export async function updateChannelAvatarWithCleanup(
             { channelId: channelId, failedPaths: report.failed_paths }
         );
     }
+
+    return report.failed_paths.length;
 }
 
 // The backend deletes the channel row (media and comments cascade) and its

@@ -670,7 +670,7 @@ describe("useChannelActions", () => {
         };
 
         vi.mocked(persistThumbnailFile).mockResolvedValueOnce("thumbnails/new-avatar.png");
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(undefined);
+        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>
@@ -714,6 +714,54 @@ describe("useChannelActions", () => {
         expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
     });
 
+    it("says so when the previous avatar file could not be removed", async () => {
+        const channel = {
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: "thumbnails/old-avatar.png",
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+        const onNotice = vi.fn();
+
+        vi.mocked(persistThumbnailFile).mockResolvedValueOnce("thumbnails/new-avatar.png");
+        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(1);
+        vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        await act(async () => {
+            await result.current.updateChannelAvatarAction(
+                channel,
+                "manual",
+                "C:/temp/avatar.png"
+            );
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(
+            expect.stringContaining("previous image could not be removed")
+        );
+        expect(onError).not.toHaveBeenCalled();
+    });
+
     it("updates channel avatar from youtube", async () => {
         const channel = {
             id: 10,
@@ -726,7 +774,7 @@ describe("useChannelActions", () => {
         vi.mocked(downloadChannelAvatarFromHandle).mockResolvedValueOnce(
             "thumbnails/youtube-avatar.png"
         );
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(undefined);
+        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>
@@ -772,7 +820,7 @@ describe("useChannelActions", () => {
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(undefined);
+        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>

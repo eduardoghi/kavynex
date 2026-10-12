@@ -15,7 +15,7 @@ import {
     persistThumbnailFile,
 } from "../../services/thumbnail-service";
 import { logError } from "../../utils/app-logger";
-import { leftoverFilesNotice } from "../../utils/leftover-files-notice";
+import { leftoverAvatarNotice, leftoverFilesNotice } from "../../utils/leftover-files-notice";
 import { executeCreateChannel, type CreateChannelAvatar } from "../../use-cases/create-channel";
 
 type UseChannelActionsOptions = {
@@ -314,7 +314,14 @@ export function useChannelActions({
                         );
                     }
 
-                    await updateChannelAvatarWithCleanup(channel.id, nextAvatarPath);
+                    const leftoverFiles = await updateChannelAvatarWithCleanup(
+                        channel.id,
+                        nextAvatarPath
+                    );
+
+                    if (leftoverFiles > 0) {
+                        onNotice?.(leftoverAvatarNotice());
+                    }
 
                     const items = await listAllChannels();
                     setChannels(items);
@@ -335,6 +342,7 @@ export function useChannelActions({
         [
             libraryPath,
             onError,
+            onNotice,
             runUpdateChannelAvatar,
             setChannels,
             setUpdatingChannelAvatarId,

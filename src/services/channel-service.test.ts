@@ -201,7 +201,7 @@ describe("channel-service", () => {
 
         await expect(
             updateChannelAvatarWithCleanup(10, "thumbnails/new.png")
-        ).resolves.toBeUndefined();
+        ).resolves.toBe(1);
 
         expect(logError).toHaveBeenCalledWith(
             "channel-service",
