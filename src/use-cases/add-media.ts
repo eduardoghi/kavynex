@@ -102,6 +102,16 @@ export function validateAddMediaForm(
         return { status: "error", message: INVALID_COOKIES_BROWSER_PROFILE_MESSAGE };
     }
 
+    // The same reasoning for a cookies file that was chosen as the source and never picked. The run
+    // would go ahead without cookies and fail on a members-only or age-restricted video for a reason
+    // that names something else.
+    if (sourceMode === "yt-dlp" && form.cookiesBrowser === "manual" && !form.cookiesPath.trim()) {
+        return {
+            status: "error",
+            message: "Choose the cookies file, or set the cookies option to a browser or to none.",
+        };
+    }
+
     return { status: "ok", sourceMode, sourceValue };
 }
 

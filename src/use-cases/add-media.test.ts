@@ -93,6 +93,24 @@ describe("validateAddMediaForm", () => {
 });
 
 describe("validateAddMediaForm cookies browser profile", () => {
+    it("refuses a manual cookies source with no file picked", () => {
+        // The run would go ahead without cookies and fail on a video that needs them, naming
+        // something else as the cause.
+        const result = validateAddMediaForm(
+            form({
+                sourceMode: "yt-dlp",
+                mediaUrl: "https://youtu.be/x",
+                selectedYtDlpFormatId: "137",
+                cookiesBrowser: "manual",
+                cookiesPath: "  ",
+            }),
+            1,
+            notBusy
+        );
+
+        expect(result.status).toBe("error");
+    });
+
     it("refuses a yt-dlp submit whose browser profile does not form a usable selector", () => {
         // The backend would drop the selector and run without cookies, so the refusal has to be
         // here, before the round trip, and name the field rather than the download.
@@ -135,6 +153,7 @@ describe("validateAddMediaForm cookies browser profile", () => {
                     selectedYtDlpFormatId: "137",
                     cookiesBrowser: "manual",
                     cookiesBrowserProfile: "-x",
+                    cookiesPath: "C:/exports/cookies.txt",
                 }),
                 1,
                 notBusy
