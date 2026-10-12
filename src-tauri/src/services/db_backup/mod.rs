@@ -314,6 +314,11 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
             .map(|generation| snapshot::generation_backup_path(db_path, generation)),
     );
     paths.push(snapshot::temp_backup_path(db_path));
+    // Where `.bak` waits while the older generations shift (see rotate_generations). Normally gone a
+    // moment later, and left only by a run that died midway.
+    paths.push(parked_generation_path(&snapshot::generation_backup_path(
+        db_path, 0,
+    )));
 
     // The copy a damaged database gets while it holds the rotation still, and its scratch name.
     paths.push(snapshot::after_damage_path(db_path));
@@ -334,6 +339,9 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
             .map(|generation| restore::generation_corrupt_path(db_path, generation)),
     );
     paths.push(sibling(db_path, ".corrupt.tmp"));
+    paths.push(parked_generation_path(&restore::generation_corrupt_path(
+        db_path, 0,
+    )));
     // The set-aside database's write-ahead log, kept beside it (see restore::set_aside_corrupt_wal).
     paths.push(restore::corrupt_wal_path(db_path));
 
@@ -575,8 +583,11 @@ pub(super) fn swap_marker_path(db_path: &Path) -> PathBuf {
 /// written leaves [`database_swapped_within`] reading the modification time of the set-aside
 /// database, as it did before the marker existed.
 pub(crate) fn record_database_swap(db_path: &Path) {
-    // A failed full check described the database that was just replaced.
+    // A failed full check described the database that was just replaced, and so did the last one
+    // that passed. Without the marker the weekly full check runs on the next launch, rather than up
+    // to a week later, while the new database is already going into the daily snapshots.
     integrity::clear_integrity_failure(db_path);
+    let _ = std::fs::remove_file(integrity::integrity_check_marker_path(db_path));
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

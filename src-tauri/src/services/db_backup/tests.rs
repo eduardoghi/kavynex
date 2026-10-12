@@ -598,6 +598,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
         "kavynex.db.bak.5",
         "kavynex.db.bak.6",
         "kavynex.db.bak.tmp",
+        "kavynex.db.bak.rotating",
         "kavynex.db.after-damage",
         "kavynex.db.after-damage.tmp",
     ]
@@ -611,6 +612,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.corrupt.1",
             "kavynex.db.corrupt.2",
             "kavynex.db.corrupt.tmp",
+            "kavynex.db.corrupt.rotating",
             "kavynex.db.corrupt-wal",
             "kavynex.db.restore.tmp",
             "kavynex.db.restore.partial",
@@ -2595,6 +2597,51 @@ async fn stage_and_apply_import_swaps_database_and_keeps_previous() {
 }
 
 #[tokio::test]
+async fn a_staged_import_keeps_this_machines_remote_image_choice() {
+    // A file from anywhere must not turn on requests to Google's image servers.
+    let dir = temp_dir("import-remote-images");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let source = dir.join("incoming.db");
+    seed_kavynex_db(&source, "imported").await;
+    {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(SqliteConnectOptions::new().filename(&source))
+            .await
+            .unwrap();
+        sqlx::query("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)")
+            .bind("load_remote_images")
+            .bind("true")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+    }
+
+    let local = MachinePaths {
+        library_path: "C:\\This machine\\Library".to_string(),
+        external_backup_dir: String::new(),
+        load_remote_images: "false".to_string(),
+    };
+
+    stage_database_import(&db, &source, Some(&local))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        read_machine_paths(&import_staged_path(&db))
+            .await
+            .unwrap()
+            .load_remote_images,
+        "false"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn a_staged_import_carries_this_machines_folders() {
     // The imported file names the folders of the machine it came from. Applied as they are, the
     // library pointed at a path that may not exist here and every media read as missing.
@@ -2627,6 +2674,7 @@ async fn a_staged_import_carries_this_machines_folders() {
     let local = MachinePaths {
         library_path: "C:\\This machine\\Library".to_string(),
         external_backup_dir: String::new(),
+        ..Default::default()
     };
 
     stage_database_import(&db, &source, Some(&local))
@@ -2940,6 +2988,7 @@ async fn an_imported_database_keeps_only_the_apps_own_triggers() {
     let local = MachinePaths {
         library_path: r"C:\This machine\Library".to_string(),
         external_backup_dir: r"E:\Mirror".to_string(),
+        ..Default::default()
     };
 
     stage_database_import(&db, &source, Some(&local))

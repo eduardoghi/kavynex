@@ -12,7 +12,8 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePo
 
 use super::{backup_error, is_healthy, open, sibling};
 use crate::services::database::{
-    get_app_settings_from_pool, EXTERNAL_BACKUP_DIR_KEY, LIBRARY_PATH_KEY, SQLITE_BUSY_TIMEOUT_MS,
+    get_app_settings_from_pool, EXTERNAL_BACKUP_DIR_KEY, LIBRARY_PATH_KEY, LOAD_REMOTE_IMAGES_KEY,
+    SQLITE_BUSY_TIMEOUT_MS,
 };
 use crate::services::logger;
 use crate::utils::task::run_blocking;
@@ -334,10 +335,16 @@ async fn count_unmanaged_stored_paths(pool: &SqlitePool) -> AppResult<usize> {
 /// media then reads as missing), and they skipped the checks `set_app_settings` makes on that
 /// path (an existing directory, not a drive root, not inside the config directory), although the
 /// library guard trusts the stored value from then on.
+///
+/// The same goes for `load_remote_images`, which is not a folder but is this user's choice about
+/// what the app may contact. A file from anywhere could otherwise turn on requests to Google's image
+/// servers that the user never asked for. Empty means "leave the file's value", which is only what a
+/// test or a database without the setting asks for.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MachinePaths {
     pub library_path: String,
     pub external_backup_dir: String,
+    pub load_remote_images: String,
 }
 
 /// Reads the machine paths stored in a database file.
@@ -350,6 +357,7 @@ pub async fn read_machine_paths(db_file: &Path) -> AppResult<MachinePaths> {
     Ok(MachinePaths {
         library_path: settings.library_path.unwrap_or_default(),
         external_backup_dir: settings.external_backup_dir.unwrap_or_default(),
+        load_remote_images: settings.load_remote_images.unwrap_or_default(),
     })
 }
 
@@ -377,6 +385,7 @@ pub(super) async fn read_machine_paths_untouched(db_file: &Path) -> AppResult<Ma
     Ok(MachinePaths {
         library_path: settings.library_path.unwrap_or_default(),
         external_backup_dir: settings.external_backup_dir.unwrap_or_default(),
+        load_remote_images: settings.load_remote_images.unwrap_or_default(),
     })
 }
 
@@ -422,10 +431,16 @@ pub(super) async fn prepare_staged_database(
         crate::services::db_schema::reset_triggers_and_views(&mut tx).await?;
 
         if let Some(paths) = paths {
+            let remote_images = (!paths.load_remote_images.trim().is_empty())
+                .then_some((LOAD_REMOTE_IMAGES_KEY, &paths.load_remote_images));
+
             for (key, value) in [
                 (LIBRARY_PATH_KEY, &paths.library_path),
                 (EXTERNAL_BACKUP_DIR_KEY, &paths.external_backup_dir),
-            ] {
+            ]
+            .into_iter()
+            .chain(remote_images)
+            {
                 sqlx::query(
                     "INSERT INTO app_settings (key, value) VALUES (?, ?) \
                      ON CONFLICT(key) DO UPDATE SET value = excluded.value",

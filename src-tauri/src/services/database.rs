@@ -17,7 +17,7 @@ const MAX_CONNECTIONS: u32 = 4;
 
 const IMPORT_MODE_KEY: &str = "import_mode";
 pub(crate) const LIBRARY_PATH_KEY: &str = "library_path";
-const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
+pub(crate) const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
 const CHECK_UPDATES_ON_STARTUP_KEY: &str = "check_updates_on_startup";
 pub(crate) const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
 

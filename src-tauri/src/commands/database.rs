@@ -189,6 +189,10 @@ async fn machine_paths_for_import<R: Runtime>(
             .as_ref()
             .and_then(|settings| settings.external_backup_dir.clone())
             .unwrap_or_default(),
+        load_remote_images: local
+            .as_ref()
+            .and_then(|settings| settings.load_remote_images.clone())
+            .unwrap_or_default(),
     };
 
     let imported = db_backup::read_machine_paths(imported_file)
@@ -220,6 +224,12 @@ async fn machine_paths_for_import<R: Runtime>(
             &imported.external_backup_dir,
             mirror_ok,
         ),
+        // Never the file's. Unset here means the default, which is off.
+        load_remote_images: if local.load_remote_images.trim().is_empty() {
+            "false".to_string()
+        } else {
+            local.load_remote_images
+        },
     }
 }
 

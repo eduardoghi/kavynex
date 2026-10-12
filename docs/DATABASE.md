@@ -673,6 +673,11 @@ live connection pool is a singleton that cannot be reopened mid-session:
    it, which would otherwise authenticate to the host it names. Only `key` and `value` are written,
    so an older schema still imports. The undo goes through the same staging, so it keeps them too.
 
+   `load_remote_images` is kept the same way, although it is not a folder. It decides whether the
+   app contacts Google's image servers, and a file from anywhere must not be able to turn that on.
+   This machine's value wins, and a machine that never set it gets the default, off. The file's
+   value is never taken.
+
    Before staging, the command checkpoints the live database's WAL, so the `.pre-import` the swap
    makes holds every commit as a single file.
 2. On the *next* app startup, before the pool opens, `lib.rs`'s `setup()` calls

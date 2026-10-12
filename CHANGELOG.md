@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- An imported or restored database gets the full integrity check on the next launch instead of up
+  to a week later.
 - A Move import onto a drive without hard links (FAT32, exFAT) that could not be added puts the file
   back where it was. It used to stay in the library unused, where Diagnostics offered to remove it.
 - A media import that copies to another drive checks the copy before the original is moved away.
@@ -171,6 +173,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Security
 
+- Importing a database keeps this machine's choice about loading comment and live chat images from
+  Google. The imported file could turn it on.
 - File paths are accepted only when you picked them in a dialog, for imports, exports, thumbnails
   and cookies files.
 - The app window cannot navigate away from Kavynex or open new windows.

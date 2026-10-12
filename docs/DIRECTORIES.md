@@ -47,7 +47,8 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
 - `kavynex.db.integrity-checked`: an empty marker whose mtime records the last time the background
   full `integrity_check` passed. It throttles that check to once a week (`db_backup/integrity.rs`); the
   automatic paths use the faster `quick_check`, and this thorough one runs off the startup critical
-  path to catch subtler damage a `quick_check` would pass.
+  path to catch subtler damage a `quick_check` would pass. A database swap (an import, its undo, a
+  restore) removes it, so the database that came in gets the full check on the next launch.
 - `kavynex.db.integrity-failed`: an empty marker a full `integrity_check` that found damage leaves,
   and a passing check or a database swap removes. While it is there the daily snapshot does not
   rotate, the external mirror does not rotate either, and compaction is refused.
@@ -74,7 +75,9 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   short does not look like a lost library (`library/recovery.rs`). It is removed once the new path
   is stored, and choosing another library in Settings removes it too.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
-  (the snapshot being vacuumed, before it is promoted to `.bak`), `.after-damage.tmp` (the same for
+  (the snapshot being vacuumed, before it is promoted to `.bak`), `.bak.rotating` and
+  `.corrupt.rotating` (the newest generation parked while the older ones shift, put back by the next
+  run when one died midway, with `kavynex-backup.db.rotating` the same in the external folder), `.after-damage.tmp` (the same for
   `.after-damage`), `.import-staged` /
   `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
   below), `.restore.partial` (a snapshot being copied for a restore, renamed to `.restore.tmp` once
