@@ -137,7 +137,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
 
     // The marker is written only *after* the copy to `new_path` finishes (see
     // `library::migration::migrate_library_contents_with_marker`), so a populated target is a
-    // complete copy of the library. Adopt it whenever the app is still pointed elsewhere.
+    // complete copy of the library. Adopt it whenever the app is still pointed elsewhere,
     // including when the old directory only *looks* intact because its removal failed partway
     // through (a partial `remove_dir_all`). Trusting a still-populated old directory here is
     // exactly what would strand the complete copy and leave the app on incomplete data.

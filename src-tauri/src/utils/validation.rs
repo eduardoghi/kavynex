@@ -68,8 +68,8 @@ fn is_valid_youtube_handle(value: &str) -> bool {
 
 /// True when `value` contains a control character (`\n`, `\r`, `\t`, and the rest of the C0/C1
 /// range). These never appear in a legitimate channel name or media title, and rejecting them here
-/// keeps a value that could forge a log line (an embedded newline) from ever being persisted.
-/// defense in depth mirroring `commands::logging::sanitize_log_text`, which strips the same
+/// keeps a value that could forge a log line (an embedded newline) from ever being persisted,
+/// as defense in depth mirroring `commands::logging::sanitize_log_text`, which strips the same
 /// characters at the other boundary. The database `CHECK`s cannot express this.
 fn contains_control_char(value: &str) -> bool {
     value.chars().any(|c| c.is_control())

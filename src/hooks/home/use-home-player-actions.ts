@@ -38,7 +38,7 @@ type UseHomePlayerActionsOptions = {
     onError: (message: string) => void;
     // The single implementation of the comment-refresh rule (result handling, the neutral
     // notice, and the media-list/active-media updates) lives in the media-library action;
-    // the player only adapts it to the active media, so both share one source of truth.
+    // the player only adapts it to the active media, so the two cannot apply different rules.
     refreshComments: (media: MediaRow) => Promise<void>;
     // Cancels an in-flight comment backup for a media id (see use-media-actions); the player adapts
     // it to the active media so the header's Cancel targets the media on screen.

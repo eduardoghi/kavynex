@@ -122,10 +122,6 @@ fn ensure_generated_thumbnail_exists(
     Ok(())
 }
 
-/// Runs a prepared ffmpeg command to completion, registering its pid in the process registry
-/// for the child's lifetime so the app-exit handler (`lib.rs`) tree-kills it instead of leaving
-/// an orphan. These local-media thumbnail generations run synchronously via `std::process`,
-/// outside the per-download and yt-dlp registries, so they would otherwise be untracked on exit.
 /// Cap on how much stdout/stderr is retained from the local ffmpeg thumbnail run. `wait_with_output`
 /// would buffer its whole output unbounded; this keeps memory bounded while still draining the pipes
 /// fully on separate threads, so neither pipe filling can deadlock the other. Mirrors the async twin
@@ -144,6 +140,10 @@ const FFMPEG_THUMBNAIL_TIMEOUT: Duration = Duration::from_secs(60);
 /// passes, long enough not to busy-spin the blocking-pool thread. Matches binaries.rs's health check.
 const FFMPEG_THUMBNAIL_POLL: Duration = Duration::from_millis(50);
 
+/// Runs a prepared ffmpeg command to completion, registering its pid in the process registry
+/// for the child's lifetime so the app-exit handler (`lib.rs`) tree-kills it instead of leaving
+/// an orphan. These local-media thumbnail generations run synchronously via `std::process`,
+/// outside the per-download and yt-dlp registries, so they would otherwise be untracked on exit.
 fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
     crate::utils::process::configure_child(&mut command);
 

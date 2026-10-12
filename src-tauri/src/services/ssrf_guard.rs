@@ -71,7 +71,7 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
     // an IPv4 address in the low 32 bits of ::/96. to_ipv4() returns it (and returns None for a
     // real global IPv6), so ::7f00:1 (= ::127.0.0.1) is judged by the same IPv4 rules rather than
     // slipping through as "some public v6". This also subsumes IPv6 loopback (::1) and unspecified
-    // (::). Both sit in ::/96, so to_ipv4() returns them here and is_disallowed_ipv4 rejects them.
+    // (::). Both sit in ::/96, so to_ipv4() returns them here and is_disallowed_ipv4 rejects them,
     // which is why the final classification below does not test is_loopback()/is_unspecified()
     // again (doing so would only add an unkillable equivalent branch).
     if let Some(compatible) = addr.to_ipv4() {

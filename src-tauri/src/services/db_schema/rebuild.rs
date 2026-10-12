@@ -100,16 +100,6 @@ async fn rebuild_table(conn: &mut SqliteConnection, spec: &TableRebuild) -> AppR
     Ok(())
 }
 
-/// Applies one or more table rebuilds atomically and stamps `target_version`.
-///
-/// Foreign keys are disabled for the duration (required because a rebuild drops and
-/// recreates tables that `ON DELETE CASCADE` children reference), then
-/// `PRAGMA foreign_key_check` verifies the rebuilt schema introduced no dangling references
-/// before the transaction commits. `PRAGMA foreign_keys` is a no-op inside a transaction,
-/// so it is toggled on a dedicated pooled connection around the transaction, and enforcement
-/// is always restored before that connection returns to the pool. The rebuilt tables' indexes
-/// are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`); other tables' indexes
-/// are left in place since their tables were never dropped.
 /// Owns the pooled connection a table rebuild runs on so that foreign-key enforcement can never
 /// leak back into the pool in the OFF state. The rebuild runs with `PRAGMA foreign_keys = OFF`;
 /// on the normal path enforcement is restored and `restored` is set, so `Drop` hands the
@@ -153,6 +143,16 @@ impl Drop for RebuildConnection {
     }
 }
 
+/// Applies one or more table rebuilds atomically and stamps `target_version`.
+///
+/// Foreign keys are disabled for the duration (required because a rebuild drops and
+/// recreates tables that `ON DELETE CASCADE` children reference), then
+/// `PRAGMA foreign_key_check` verifies the rebuilt schema introduced no dangling references
+/// before the transaction commits. `PRAGMA foreign_keys` is a no-op inside a transaction,
+/// so it is toggled on a dedicated pooled connection around the transaction, and enforcement
+/// is always restored before that connection returns to the pool. The rebuilt tables' indexes
+/// are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`); other tables' indexes
+/// are left in place since their tables were never dropped.
 #[allow(dead_code)]
 pub(crate) async fn apply_table_rebuilds(
     pool: &SqlitePool,

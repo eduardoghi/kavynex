@@ -94,7 +94,7 @@ mod tests {
     /// A mock app is enough here. These functions only need `app.path()` and the filesystem, not a
     /// command round trip. The cache directory it resolves is the real per-OS one, so each test
     /// asserts on the returned path and the directory it created rather than wiping anything.
-    /// removing the tree would delete a real cache shared with the running app.
+    /// Removing the tree would delete a real cache shared with the running app.
     fn mock_app() -> tauri::App<tauri::test::MockRuntime> {
         mock_builder().build(mock_context(noop_assets())).unwrap()
     }

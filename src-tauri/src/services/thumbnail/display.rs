@@ -85,7 +85,7 @@ const RESOLVE_CALL_BUDGET: std::time::Duration = std::time::Duration::from_secs(
 /// visit and zero afterwards. The cap is what keeps a caller-supplied list from turning into an
 /// unbounded run of FFmpeg invocations. Entries past it are simply reported as having no derivative,
 /// which the caller already handles by rendering the canonical file. Cache *hits* are not capped.
-/// they are a stat each, and refusing them would make a fully warmed page fall back for no reason.
+/// They are a stat each, and refusing them would make a fully warmed page fall back for no reason.
 ///
 /// Sized to a **full** page (`shared/media-page-size.json`, pinned by
 /// `the_generation_budget_covers_a_full_page_of_the_grid` below), which it was not. At 64 against a
@@ -334,24 +334,6 @@ fn display_thumbnail_file_name(cache_key: &str) -> String {
     format!("{cache_key}-w{DISPLAY_THUMBNAIL_MAX_WIDTH}.{THUMBNAIL_OUTPUT_FORMAT}")
 }
 
-/// The cache key for a library-relative thumbnail path, or `None` when the name is not one this app
-/// produced.
-///
-/// Every thumbnail and avatar the app writes is named `thumb_<sha256>.<ext>`
-/// (`services::thumbnail::persist`), so the content hash is already in the name and the key is free
-/// to compute. No re-reading the file on a cache hit, which is the point. A hit has to cost a stat,
-/// not a hash of the very bytes the derivative exists to avoid decoding.
-///
-/// The hash is what the key is taken from rather than the whole filename, so two rows pointing at
-/// the same content share one derivative exactly as they already share one canonical file. The
-/// extension is deliberately dropped. It is a property of the source encoding, while the derivative
-/// is always [`THUMBNAIL_OUTPUT_FORMAT`], and including it would keep two derivatives of identical
-/// content if a `.png` and a `.jpg` of it ever coexisted.
-///
-/// A name that does not match returns `None` instead of being hashed into some other key. That is
-/// the honest answer (the app cannot have written it, so it is a hand-placed or legacy file), and
-/// `None` costs nothing. The caller renders the canonical file, which is what it did before this
-/// module existed.
 /// Where the derivative of a stored, library-relative thumbnail lives, or `None` when the name is
 /// not one this app produced (see [`display_cache_key`]).
 ///
@@ -371,6 +353,24 @@ pub(crate) fn display_derivative_path(display_dir: &Path, relative_path: &str) -
     Some(display_dir.join(display_thumbnail_file_name(&cache_key)))
 }
 
+/// The cache key for a library-relative thumbnail path, or `None` when the name is not one this app
+/// produced.
+///
+/// Every thumbnail and avatar the app writes is named `thumb_<sha256>.<ext>`
+/// (`services::thumbnail::persist`), so the content hash is already in the name and the key is free
+/// to compute. No re-reading the file on a cache hit, which is the point. A hit has to cost a stat,
+/// not a hash of the very bytes the derivative exists to avoid decoding.
+///
+/// The hash is what the key is taken from rather than the whole filename, so two rows pointing at
+/// the same content share one derivative exactly as they already share one canonical file. The
+/// extension is deliberately dropped. It is a property of the source encoding, while the derivative
+/// is always [`THUMBNAIL_OUTPUT_FORMAT`], and including it would keep two derivatives of identical
+/// content if a `.png` and a `.jpg` of it ever coexisted.
+///
+/// A name that does not match returns `None` instead of being hashed into some other key. That is
+/// the honest answer (the app cannot have written it, so it is a hand-placed or legacy file), and
+/// `None` costs nothing. The caller renders the canonical file, which is what it did before this
+/// module existed.
 fn display_cache_key(relative_path: &str) -> Option<String> {
     let file_name = Path::new(relative_path.trim())
         .file_name()

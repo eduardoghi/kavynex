@@ -292,10 +292,10 @@ mod tests {
         ))
     }
 
-    // The asset-scope registration itself needs the Tauri runtime, which does not run under the
-    // mock runtime. These cover the grant helpers and the managed-directory lists that decide what
-    // the scope is ever widened to. The library-path guard behind register_library_asset_scope is
-    // covered by services::library::guard's paths_refer_to_same_location tests.
+    // These cover the grant helpers and the managed-directory lists that decide what the scope is
+    // ever widened to. The command itself is driven over IPC further down, and the library-path
+    // guard behind it is also covered by services::library::guard's paths_refer_to_same_location
+    // tests.
 
     /// Records every path a `grant_path_with_canonical` run authorized, so its two-grant contract
     /// can be asserted without a Tauri runtime. The closure is `Fn`, not `FnMut`, so the recording
@@ -569,12 +569,9 @@ mod tests {
     // `services::thumbnail::temp`, tested there, and with a network-location refusal it did not
     // have here.
 
-    // register_library_asset_scope itself turns out to be drivable through a real IPC round trip
-    // after all. `Scope::new` and `allow_directory`/`is_allowed` only touch an in-memory globset the
-    // app manages, and `mock_context` provisions that state the same way a real app does. The
-    // comment above predates checking that; it is left in place because the grant helpers and
-    // directory lists still need the pure-function coverage regardless of what the command itself
-    // can now prove.
+    // register_library_asset_scope through a real IPC round trip. `Scope::new` and
+    // `allow_directory`/`is_allowed` only touch an in-memory globset the app manages, and
+    // `mock_context` provisions that state the same way a real app does.
     use crate::commands::test_ipc::{invoke, memory_db};
     use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
     use tauri::test::{mock_builder, mock_context, noop_assets};

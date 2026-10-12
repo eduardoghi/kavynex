@@ -31,9 +31,9 @@ export function sortDiagnosticsIssues(issues: DiagnosticsIssue[]): DiagnosticsIs
 
 // The issues whose example paths name a file that is really sitting in the library, which is what
 // makes "reveal this in the file manager" a working action rather than a guaranteed failure. Both
-// families qualify by definition, because both are produced by walking the library directory. An
-// orphan is a file with no row behind it, and a corrupt one is a file whose bytes disagree with the
-// hash its own name declares.
+// families qualify by definition, because both are produced by stating the files in the library
+// directory. An orphan is a file with no row behind it, and a corrupt one is a file the check found
+// empty (zero bytes).
 //
 // The rest are deliberately absent, and the reason differs. The MISSING_* issues name a path taken
 // from a database row whose file is gone, so there is nothing to show. INVALID_PATH_REFERENCES is

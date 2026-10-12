@@ -187,7 +187,7 @@ pub async fn ensure_configured_library_path_in_pool(
     // `paths_refer_to_same_location` and the fallback-detection canonicalize below both call
     // `std::fs::canonicalize`, a blocking filesystem call. A library the user put on a network
     // share (a supported configuration) can make it block for the OS timeout when the share is
-    // offline, so run the comparison off the async runtime rather than occupying a tokio worker.
+    // offline, so run the comparison off the async runtime rather than occupying a tokio worker,
     // consistent with every other filesystem touch in the backend.
     let requested = trimmed.to_string();
     run_blocking(move || {

@@ -202,7 +202,7 @@ pub struct Drifting {
 
     it("does not read prose mentioning the checker's filename as a marker", () => {
         // This was a real bug in the first version of the marker, not a hypothetical. The test was
-        // `includes("path-surface")`, and the checker is called `verify-command-path-surface.js`.
+        // `includes("path-surface")`, and the checker is called `verify-command-path-surface.js`,
         // so any comment pointing a reader at it contained the marker text, and prose *explaining*
         // the convention applied it to whatever field it happened to sit above. The marker is a
         // directive now, anchored and requiring its colon.

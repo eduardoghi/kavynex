@@ -72,13 +72,13 @@ fn library_migration_lock() -> &'static Mutex<()> {
     LIBRARY_MIGRATION_LOCK.get_or_init(|| Mutex::new(()))
 }
 
+/// The name `ensure_distinct_directories` writes its probe file under, followed by a unique suffix.
+const MIGRATION_PROBE_PREFIX: &str = ".kavynex-migration-probe-";
+
 /// True for a file the OS itself drops into any folder the user merely browsed to in
 /// Finder/Explorer (macOS `.DS_Store`, Windows `Thumbs.db`/`desktop.ini`). The user never put
 /// these there, so a destination holding only them is still effectively empty and must not be
 /// rejected as "not empty". Matched case-insensitively, since Windows filenames are.
-/// The name `ensure_distinct_directories` writes its probe file under, followed by a unique suffix.
-const MIGRATION_PROBE_PREFIX: &str = ".kavynex-migration-probe-";
-
 fn is_ignorable_os_entry(name: &str) -> bool {
     const IGNORABLE_OS_FILES: [&str; 3] = [".ds_store", "thumbs.db", "desktop.ini"];
 

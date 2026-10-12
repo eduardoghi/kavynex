@@ -46,6 +46,6 @@ fn embed_windows_app_manifest() {
     // warnings, so any unrelated linker warning (e.g. LNK4098/LNK4099) also fails the MSVC build.
     // That is an accepted, deliberate tradeoff. A clean link is a reasonable bar, and a silent
     // manifest-embed failure is the worse outcome. Do not drop /WX to quiet an unrelated warning.
-    // fix the warning, or the manifest guarantee goes with it.
+    // Fix the warning, or the manifest guarantee goes with it.
     println!("cargo:rustc-link-arg=/WX");
 }

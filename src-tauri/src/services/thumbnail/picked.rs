@@ -125,7 +125,7 @@ pub(crate) fn file_starts_like_an_image(path: &std::path::Path) -> bool {
 /// A distinct prefix from `temp.rs`'s `temporary_thumbnail_file_name` so the two producers sharing
 /// that directory can never name the same file, and the source's own extension rather than
 /// `THUMBNAIL_OUTPUT_FORMAT` because the staged copy is byte-identical to what the user picked.
-/// naming a PNG `.jpg` would make the extension disagree with the bytes, and the persist step
+/// Naming a PNG `.jpg` would make the extension disagree with the bytes, and the persist step
 /// downstream derives the stored name from this one.
 ///
 /// Content-addressed like everything else here, which is what makes picking the same image twice

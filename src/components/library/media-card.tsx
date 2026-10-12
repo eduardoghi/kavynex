@@ -134,7 +134,8 @@ const INACTIVE_CARD_SHADOW =
     " 0 12px 32px light-dark(transparent, rgba(0,0,0,0.12))";
 
 // The static base of the root card. Only the four properties that react to isActive/isWatched
-// (background, borderColor, boxShadow, transform) are spread over this inline below; the rest (// including the rem() height and the long transition string) is built once here.
+// (background, borderColor, boxShadow, transform) are spread over this inline below. The rest,
+// including the rem() height and the long transition string, is built once here.
 const ROOT_CARD_BASE_STYLE: CSSProperties = {
     height: rem(MEDIA_CARD_HEIGHT),
     cursor: "pointer",

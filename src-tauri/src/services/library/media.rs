@@ -808,7 +808,7 @@ mod tests {
 
     #[test]
     fn an_import_that_is_never_cancelled_behaves_exactly_as_the_plain_one() {
-        // The flag must be inert when it is not set, including for the content-addressed name.
+        // The flag must be inert when it is not set, including for the content-addressed name,
         // which is a hash taken through the cancellable reader now, so a check placed one step
         // wrong would change the name every existing row is stored under.
         let root = unique_test_dir("not-cancelled");

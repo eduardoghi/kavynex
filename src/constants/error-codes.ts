@@ -41,7 +41,7 @@ export const SOURCE_THUMBNAIL_NOT_FOUND_ERROR_CODE = "SOURCE_THUMBNAIL_NOT_FOUND
 export const MEDIA_FILE_NOT_FOUND_ERROR_CODE = "MEDIA_FILE_NOT_FOUND" as const;
 export const LIVE_CHAT_FILE_NOT_FOUND_ERROR_CODE = "LIVE_CHAT_FILE_NOT_FOUND" as const;
 export const LIVE_CHAT_FILE_UNREADABLE_ERROR_CODE = "LIVE_CHAT_FILE_UNREADABLE" as const;
-// The replay read refused by its concurrency gate, which is about load rather than about the file.
+// The replay read refused by its concurrency gate, which is about load rather than about the file,
 // so it sits with the other two rather than with them being reused for it. The distinction reaches
 // the user. The other two mean the replay is gone or damaged, this one means to try again shortly.
 export const TOO_MANY_CONCURRENT_LIVE_CHAT_READS_ERROR_CODE =

@@ -258,7 +258,7 @@ const MAX_MARKER_SWEEP_ATTEMPTS: u32 = 5;
 /// event. How many markers this sweep gave up on.
 ///
 /// The count and nothing else. The paths would be library-relative names of files the user cannot
-/// act on from a banner, and Diagnostics is the one place that can both name them and remove them.
+/// act on from a banner, and Diagnostics is the one place that can both name them and remove them,
 /// so the event says that something is there and the dialog says what, rather than the banner trying
 /// to be the dialog. Frontend-owned contract, like the integrity event, so it is a plain serde struct
 /// rather than a ts-rs export.
@@ -282,8 +282,8 @@ struct PendingMediaAbandonedEvent {
 /// "Once" is only true because the count is persisted at the same moment and this predicate is
 /// consulted again by [`read_pending_markers`], which drops an exhausted marker before the sweep can
 /// see it. Without both halves the ceiling decides nothing. The marker would be re-read at one below
-/// it on every launch, retry the same failing cleanup, and re-emit the user-facing notice each time.
-/// strictly worse than the unbounded `warn` line this was meant to replace.
+/// it on every launch, retry the same failing cleanup, and re-emit the user-facing notice each time,
+/// which is strictly worse than the unbounded `warn` line this was meant to replace.
 pub(crate) fn marker_retries_are_exhausted(attempts: u32) -> bool {
     attempts >= MAX_MARKER_SWEEP_ATTEMPTS
 }

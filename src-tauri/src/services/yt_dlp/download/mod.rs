@@ -412,8 +412,8 @@ async fn supervise_download_child<R: Runtime>(
             // with neither output nor file growth is treated as a real stall.
             // Off the async runtime. read_dir is blocking I/O, and the project's convention
             // (utils::task) is that no synchronous filesystem work runs on a Tokio worker.
-            // A join failure defaults to 0 (no growth observed), which is the safe direction.
-            // it lets the stall be confirmed rather than masking a genuinely hung download.
+            // A join failure defaults to 0 (no growth observed), which is the safe direction,
+            // since it lets the stall be confirmed rather than masking a genuinely hung download.
             let temp_dir_probe = temp_dir.clone();
             let file_prefix_probe = file_prefix.clone();
             let current_temp_size = crate::utils::task::run_blocking(move || {

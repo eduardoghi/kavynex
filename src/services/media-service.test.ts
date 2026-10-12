@@ -211,7 +211,7 @@ describe("media-service", () => {
     });
 
     it("still reports the created media when the duration step fails", async () => {
-        // The media is registered by then, so a failed measurement is a card without a runtime.
+        // The media is registered by then, so a failed measurement is a card without a runtime,
         // never a failed import, and never something the user is shown an error for.
         const input = localInput();
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);

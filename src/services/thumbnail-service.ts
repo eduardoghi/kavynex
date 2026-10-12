@@ -21,10 +21,10 @@ export async function generateTemporaryThumbnail(mediaPath: string): Promise<str
  * Copies an image the user picked into the app's preview directory and returns its path there.
  *
  * The preview is drawn from that copy rather than from the file the user chose, because the preview
- * directory is already authorized in the asset-protocol scope as a whole. The alternative. Granting
- * the chosen file: is what this replaced: Tauri's scope cannot withdraw a grant, so those
- * accumulated for the session, and revoking one would have made the same image picked for a second
- * media silently render nothing (a forbid outranks every later allow).
+ * directory is already authorized in the asset-protocol scope as a whole. Granting the chosen file
+ * instead, which is what this replaced, cannot be undone, since Tauri's scope cannot withdraw a
+ * grant. Those grants accumulated for the session, and revoking one would have made the same image
+ * picked for a second media silently render nothing (a forbid outranks every later allow).
  *
  * The copy is byte-identical, so persisting from it lands exactly the file that would have been
  * stored before, and it is cleaned up through `deleteTemporaryThumbnail` like any generated preview.

@@ -341,7 +341,7 @@ fn a_fetched_thumbnail_is_discarded_only_when_it_is_not_the_one_that_was_stored(
     );
 
     // The two resolved to the same content-addressed file, so there is nothing left over.
-    // discarding it here would unlink the file the row points at.
+    // Discarding it here would unlink the file the row points at.
     assert_eq!(
         fetched_thumbnail_to_discard(
             Some("thumbnails/thumb_same.jpg".to_string()),

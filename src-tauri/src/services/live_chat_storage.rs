@@ -98,7 +98,7 @@ fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<S
 /// `stream_reader_lines` and the old `gzip_decompress_with_limit` both do. That extra byte exists so
 /// a counter can tell "landed exactly on the limit" apart from "went past it" and raise a specific
 /// error; here the digest comparison already draws that line for free. A payload of exactly
-/// `max_bytes` reads whole and matches, and anything larger is truncated and therefore cannot.
+/// `max_bytes` reads whole and matches, and anything larger is truncated and therefore cannot,
 /// whereas with the `+ 1` a payload one byte over the ceiling would read whole and verify, which is
 /// the opposite of what the ceiling is for. Copying the idiom without its counter was the first
 /// version of this function, and `verification_accepts_a_payload_landing_exactly_on_the_read_ceiling`

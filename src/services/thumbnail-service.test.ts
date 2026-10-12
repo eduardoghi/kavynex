@@ -134,7 +134,7 @@ describe("resolveDisplayThumbnails", () => {
 
     it("ignores an answer shorter than the request instead of misaligning it", async () => {
         // Defense in depth over the zod array schema at the seam. A truncated response must leave
-        // the unanswered paths without a derivative, never shift the remaining answers onto them.
+        // the unanswered paths without a derivative, never shift the remaining answers onto them,
         // and must not settle them either, since nothing was decided about those paths.
         vi.mocked(invokeCommand).mockResolvedValueOnce([resolved("/cache/thumb-display/aaa.jpg")]);
 

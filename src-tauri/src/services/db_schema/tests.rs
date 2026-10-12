@@ -376,7 +376,7 @@ async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_data
 ///
 /// Two historical eras are what make this worth seeding by hand rather than reusing the current
 /// DDL. `title_normalized` only entered `VIDEOS_ADDITIVE_COLUMNS` with v11, so a database
-/// stamped 7..=10 by the build of its day carries every other additive column and not that one.
+/// stamped 7..=10 by the build of its day carries every other additive column and not that one,
 /// exactly the shape whose `CREATE INDEX ... ON videos(title_normalized)` used to fail. Below
 /// the baseline (0..=6) none of the additive columns are there either, since the baseline is
 /// what adds them. Column types are kept loose on purpose. This models what an older build

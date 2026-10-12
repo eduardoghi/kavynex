@@ -278,7 +278,7 @@ fn collect_missing_paths(library_path: &Path, stored_paths: Vec<String>) -> Path
         outcome.checked += 1;
 
         // canonicalize resolves symlinks. Re-check containment on the real path.
-        // if the path doesn't exist, canonicalize fails and we treat it as missing.
+        // If the path doesn't exist, canonicalize fails and we treat it as missing.
         let exists_within_library = resolved_path
             .canonicalize()
             .map(|canonical| canonical.starts_with(&canonical_library))

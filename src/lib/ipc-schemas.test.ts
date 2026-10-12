@@ -27,7 +27,7 @@ describe("validateIpcResult", () => {
 
     it("strips unknown keys so a new backend field does not break the call", () => {
         // A response carrying a field the schema does not know about (a backend that shipped a new
-        // column before the frontend schema learned it) must pass, with the extra field dropped.
+        // column before the frontend schema learned it) must pass, with the extra field dropped,
         // never rejected. This is why the schemas are non-strict.
         const withExtra = { ...validChannel, brand_new_field: "surprise" } as unknown as never;
         const result = validateIpcResult("get_channel_by_id", withExtra);

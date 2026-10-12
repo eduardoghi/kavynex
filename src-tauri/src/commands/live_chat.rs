@@ -156,7 +156,8 @@ pub async fn stream_live_chat_file<R: Runtime>(
     // as that, rather than queueing for a slot it will not use.
     let _read_permit = acquire_read_permit().await?;
 
-    // Deliberately does NOT take library::lock::library_read_guard(), unlike delete/migrate above.
+    // Deliberately does NOT take library::lock::library_read_guard(), unlike the media and
+    // channel deletes (library::cleanup) and the live chat migration below.
     // That gate serializes writes and deletes against a migration's copy/remove phase, because
     // only those can lose data (a file written into the old tree between copy and remove). A pure
     // read cannot. The worst a concurrent migration does to it is move the file mid-read, which

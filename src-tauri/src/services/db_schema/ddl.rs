@@ -180,7 +180,7 @@ pub(super) const INDEX_DDLS: &[IndexDdl] = &[
         ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_ordered ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END), (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END), title_normalized)",
     },
     // `publication_date` needs a second index because its two directions are not mirror images.
-    // desc keeps the dated-first group key ASC and the title tie-break ASC while reversing only
+    // The `desc` one keeps the dated-first group key ASC and the title tie-break ASC while reversing only
     // the date. SQLite can walk an index forwards or backwards, but not partly each way, so the
     // all-ASC index above serves only the leading group key for desc and sorts the remaining
     // three terms, and desc is the grid's default view, i.e. the hottest query in the app.

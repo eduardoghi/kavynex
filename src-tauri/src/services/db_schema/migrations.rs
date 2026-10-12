@@ -163,12 +163,12 @@ pub(super) async fn apply_migration_13(pool: &SqlitePool) -> AppResult<()> {
 /// (CREATE TABLE IF NOT EXISTS is a no-op and SQLite cannot add a CHECK to an existing table without
 /// rebuilding it). Rather than rebuild the comments table just to add a CHECK, this truncates any row
 /// that already exceeds the ceiling and installs BEFORE INSERT/UPDATE triggers that reject future
-/// ones (the same additive strategy as v13.
+/// ones, the same additive strategy as v13.
 ///
 /// The truncation is non-destructive beyond the overflow itself. It keeps the first
 /// `MAX_COMMENT_TEXT_CHARS` characters (`substr` uses character semantics on a TEXT value), the same
 /// cap the app's own write path already applies (media_comments::truncate_to_chars), so a comment
-/// stored by the app is never affected), only an out-of-band/oversized row is. It must run before the
+/// stored by the app is never affected. Only an out-of-band or oversized row is. It must run before the
 /// triggers, which fire only on new writes and would otherwise leave a pre-existing over-length row
 /// in place. The repair, the trigger creation and the version stamp share one transaction, so a crash
 /// leaves the database fully at v13 or fully at v14. The TRIGGER_DDLS list is re-run in full (every
@@ -406,15 +406,6 @@ pub(super) async fn apply_migration_10(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v11. Adds the `title_normalized` column and its index, and backfills the column for every
-/// existing row.
-///
-/// `title_normalized` is the accent/case-folded copy of `title` the paginated library list
-/// searches and title-sorts against. SQLite has no accent folding of its own, so the backfill is
-/// computed in Rust with the same `utils::text::normalize_search_text` used at insert/update time
-/// (that shared normalization is what keeps a search term and a stored title comparable). The
-/// column-add, the per-row backfill and the index creation all run in one transaction that stamps
-/// `user_version = 11`, so a crash leaves the database fully at v10 or fully at v11.
 /// Computes `title_normalized` for every row that is still missing one, and reports how many rows
 /// it repaired.
 ///

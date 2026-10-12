@@ -17,7 +17,7 @@ import { mediaSrcFromAbsolutePath } from "../utils/media-utils";
 import type { WebviewCheckReport } from "../types/generated/WebviewCheckReport";
 
 // How long the asset probe waits for the image to load or fail. An `<img>` whose URL the CSP
-// refuses fires `error` promptly, but one the asset protocol never answers fires nothing at all.
+// refuses fires `error` promptly, but one the asset protocol never answers fires nothing at all,
 // which is the case this bound exists for, and the reason it cannot simply await the element.
 // Comfortably under the backend watchdog's own deadline so this reports a named failure rather than
 // being cut off by it.

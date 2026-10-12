@@ -195,12 +195,12 @@ pub async fn migrate_library_directory<R: Runtime>(
         })
         .await?;
 
-    // Only revoke when the library actually moved to a different directory. `changed` is also
-    // true for first-time setup (no prior library), where `old_dir_for_scope` is empty and
-    // there is nothing to forbid.
     // The frontend stores the folder the migration ended in, so that spelling is allowed too.
     crate::services::chosen_folders::record(FolderPurpose::Library, &result.final_library_path);
 
+    // Only revoke when the library actually moved to a different directory. `changed` is also
+    // true for first-time setup (no prior library), where `old_dir_for_scope` is empty and
+    // there is nothing to forbid.
     if result.changed && !old_dir_for_scope.is_empty() {
         revoke_directory_from_asset_scope(&app, &old_dir_for_scope);
     }

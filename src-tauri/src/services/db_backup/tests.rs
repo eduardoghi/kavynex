@@ -1411,7 +1411,7 @@ async fn a_move_aside_whose_marker_cannot_be_written_is_rolled_back() {
     // database already set aside with nothing recording that fact. Returning the error there
     // and walking away would leave `db_path` missing, and the app carries on past a failed
     // import (lib.rs only logs), so the pool would create an empty database in its place and
-    // the next run would read that as an ordinary second import and consume `.pre-import`.
+    // the next run would read that as an ordinary second import and consume `.pre-import`,
     // the only copy. Undoing the move-aside is what keeps the failure inert.
     let dir = temp_dir("import-marker-write-fails");
     let db = dir.join("kavynex.db");

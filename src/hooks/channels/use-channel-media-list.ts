@@ -293,7 +293,7 @@ export function useChannelMediaList({
 
             // Append only the rows this list does not already hold. A row can arrive twice when the
             // sort key of an already-loaded row changed under the window (a rename moves a media in
-            // every sort category, since they all tie-break on the title), and the grid keys by id.
+            // every sort category, since they all tie-break on the title), and the grid keys by id,
             // so a repeat is a duplicate React key and a card shown twice, not a cosmetic blemish.
             setMediaItems((current) => {
                 const loadedIds = new Set(current.map((item) => item.id));

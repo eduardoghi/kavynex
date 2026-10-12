@@ -656,8 +656,8 @@ where
 }
 
 /// Accepts only the two supported import modes. The UI only ever sends these, so any other
-/// value comes from a bug or a compromised frontend and is rejected rather than persisted.
-/// otherwise a later read would surface a nonsensical mode in the settings UI. `library_path`
+/// value comes from a bug or a compromised frontend and is rejected rather than persisted,
+/// since otherwise a later read would surface a nonsensical mode in the settings UI. `library_path`
 /// is intentionally left free-form. It is re-derived and canonicalized downstream
 /// (`library::guard`, `ensure_library_dir`), and an empty value is the valid "not configured
 /// yet" state.

@@ -60,8 +60,8 @@ type DiagnosticsToolsAndLibrarySectionProps = {
     librarySummary: LibrarySummaryInfo;
 };
 
-// The two external tools and the library folder share one row. Two columns rather than three,
-// and uneven, because the tools carry two paths and the library carries one plus a summary line.
+// The external tools and the library folder share one row. Two columns rather than one per item,
+// and uneven, because the tools carry a path each and the library carries one plus a summary line.
 export function DiagnosticsToolsAndLibrarySection({
     externalTools,
     libraryPath,

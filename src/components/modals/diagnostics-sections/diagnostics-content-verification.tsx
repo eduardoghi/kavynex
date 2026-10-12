@@ -88,7 +88,8 @@ function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element
 }
 
 /**
- * The deep library check. re-reads every stored file and compares it against the hash in its name.
+ * The deep library check. It re-reads every stored file and compares it against the hash in its
+ * name.
  *
  * Separate from the rest of Diagnostics, and behind a button, because it costs a full read of the
  * library. The summary above it is built from `stat` and opens instantly; this one can take as long
