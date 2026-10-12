@@ -468,6 +468,11 @@ new value. That order is required, not stylistic. The state change is what fires
 request against the persisted library path. Persisting second would make a legitimate
 registration fail.
 
+An image the asset protocol refuses is not requested again once the folder is granted, so what
+draws library images on its own waits for the grant. The channel sidebar gets an empty library
+path, and so no avatars, until `libraryAssetsReady` says the registration for the current folder has
+settled.
+
 A few outcomes surface to the user rather than only to the log. `oldDirectoryRetained` means the
 copy succeeded but the old folder, or part of it, could not be removed (the commit marker could
 not be written, or a removal failed on a locked file), so media are still on the old volume. A move

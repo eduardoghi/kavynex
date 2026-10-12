@@ -28,6 +28,10 @@ export type AppSettingsController = {
     // The configured library folder could not be reached at startup. The path is still in
     // `settings.libraryPath`; see initializeAppSettings.
     isLibraryUnreachable: boolean;
+    // True once the asset scope registration for the current library folder has settled. Until
+    // then an image pointed at the library is refused by the protocol and is not requested again,
+    // so what draws library images on its own (the channel avatars) waits for it.
+    libraryAssetsReady: boolean;
     isRetryingLibraryFolder: boolean;
     pendingLibraryMove: PendingLibraryMove | null;
     libraryMoveProgress: LibraryMigrationProgress | null;
@@ -52,6 +56,8 @@ export function useAppSettings({
 }: UseAppSettingsOptions): AppSettingsController {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settings, setSettings] = useState<AppSettings>(getDefaultAppSettings());
+    // The library folder whose asset scope registration last settled.
+    const [assetScopeReadyFor, setAssetScopeReadyFor] = useState<string | null>(null);
 
     const settingsActions = useAppSettingsActions({
         onError,
@@ -132,21 +138,24 @@ export function useAppSettings({
             return;
         }
 
-        void registerLibraryAssetScope(libraryPath).catch((error) => {
-            logError("asset-scope", "Failed to register library asset scope.", error, {
-                libraryPath,
-            });
+        void registerLibraryAssetScope(libraryPath)
+            .catch((error) => {
+                logError("asset-scope", "Failed to register library asset scope.", error, {
+                    libraryPath,
+                });
 
-            // One failure here is worth interrupting the user for, against the log-only default
-            // above. Changing the library folder and changing it back within a session leaves the
-            // scope permanently refusing that folder (see commands/security.rs), so *every*
-            // thumbnail and video stops loading, and the fix, restarting, is something only the
-            // user can do and would never guess. Every other failure is genuinely partial and
-            // stays in the log.
-            if (parseAppError(error).code === ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE) {
-                onError(toUserFriendlyError(error));
-            }
-        });
+                // One failure here is worth interrupting the user for, against the log-only default
+                // above. Changing the library folder and changing it back within a session leaves the
+                // scope permanently refusing that folder (see commands/security.rs), so *every*
+                // thumbnail and video stops loading, and the fix, restarting, is something only the
+                // user can do and would never guess. Every other failure is genuinely partial and
+                // stays in the log.
+                if (parseAppError(error).code === ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE) {
+                    onError(toUserFriendlyError(error));
+                }
+            })
+            // Settled either way. A failed grant is not retried, so waiting longer draws nothing more.
+            .finally(() => setAssetScopeReadyFor(libraryPath));
 
         // Best effort. Move any live chat files still in the old app-data location into the
         // library so they travel with it and are covered by a library backup. Idempotent.
@@ -176,9 +185,14 @@ export function useAppSettings({
         cancelRunningLibraryMove,
     } = settingsActions;
 
+    const currentLibraryPath = settings.libraryPath.trim();
+    const libraryAssetsReady =
+        currentLibraryPath !== "" && assetScopeReadyFor === currentLibraryPath;
+
     return useMemoObject({
         settingsOpen,
         settings,
+        libraryAssetsReady,
         isPreparingSettings,
         hasLoadedSettings,
         isMigratingLibraryPath,

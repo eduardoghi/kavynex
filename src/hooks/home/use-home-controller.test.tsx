@@ -99,6 +99,7 @@ const mockSettingsState = {
     isMigratingLibraryPath: false,
     isSavingExternalBackupDir: false,
     isLibraryUnreachable: false,
+    libraryAssetsReady: true,
     isRetryingLibraryFolder: false,
     pendingLibraryMove: null,
     libraryMoveProgress: null,

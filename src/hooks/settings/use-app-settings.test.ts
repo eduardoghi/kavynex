@@ -486,4 +486,52 @@ describe("useAppSettings", () => {
         expect(mockedRegisterLibraryAssetScope).toHaveBeenCalledWith("/new-library");
         expect(mockedMigrateLiveChatToLibrary).toHaveBeenCalledTimes(2);
     });
+
+    it("reports the library assets ready only once the current folder's scope registration settles", async () => {
+        // The channel avatars wait on this flag. An image requested before the grant is refused and
+        // never requested again, so a flag that ran ahead of the registration, or stayed true for the
+        // previous folder, would leave the sidebar without avatars until something re-rendered them.
+        mockedGetDefaultAppSettings.mockReturnValue({
+            importMode: "copy",
+            libraryPath: "/library",
+            loadRemoteImages: true,
+            checkUpdatesOnStartup: false,
+            externalBackupDir: "",
+        });
+
+        let resolveFirst!: () => void;
+        let rejectSecond!: (error: unknown) => void;
+        mockedRegisterLibraryAssetScope
+            .mockReturnValueOnce(new Promise<void>((resolve) => (resolveFirst = resolve)))
+            .mockReturnValueOnce(new Promise<void>((_, reject) => (rejectSecond = reject)));
+
+        // Hoisted, so the effect sees the stable callback it gets in the app and runs once per folder.
+        const onError = vi.fn();
+        const { result } = renderHook(() => useAppSettings({ onError }));
+
+        expect(result.current.libraryAssetsReady).toBe(false);
+
+        await act(async () => {
+            resolveFirst();
+        });
+
+        expect(result.current.libraryAssetsReady).toBe(true);
+
+        const { setSettings } = mockedUseAppSettingsActions.mock.calls[0]![0];
+
+        act(() => {
+            setSettings((previous) => ({ ...previous, libraryPath: "/new-library" }));
+        });
+
+        expect(result.current.libraryAssetsReady).toBe(false);
+
+        // A failed grant is not retried, so it settles the wait the same way a granted one does.
+        await act(async () => {
+            rejectSecond(new Error("scope failure"));
+        });
+
+        await waitFor(() => {
+            expect(result.current.libraryAssetsReady).toBe(true);
+        });
+    });
 });

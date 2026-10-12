@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- Channel avatars no longer stay blank when the sidebar draws them before the library folder is
+  authorized, at startup or after a folder change.
 - An update download that stalls now ends with an error after ten minutes, which unlocks Settings.
   It used to keep Settings locked until the app was quit.
 - After Fetch comments finds nothing, the button is no longer offered again for the same media, and
