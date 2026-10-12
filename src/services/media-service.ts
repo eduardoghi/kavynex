@@ -21,7 +21,10 @@ import {
 } from "./media-input-service";
 import { validateChannelId } from "./channel-input-service";
 import { createAppError, parseAppError } from "../utils/app-error";
-import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
+import {
+    INVALID_MEDIA_TITLE_ERROR_CODE,
+    YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
+} from "../constants/error-codes";
 import { commentsRefreshRunId, fetchMediaComments } from "./media-download-service";
 import { logError } from "../utils/app-logger";
 
@@ -69,7 +72,7 @@ export async function updateMediaTitle(mediaId: number, title: string): Promise<
 
     if (!normalizedTitle) {
         throw createAppError(
-            "INVALID_MEDIA_TITLE",
+            INVALID_MEDIA_TITLE_ERROR_CODE,
             "The media title cannot be empty."
         );
     }

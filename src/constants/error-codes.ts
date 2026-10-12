@@ -158,8 +158,6 @@ export const MEDIA_NOT_FOUND_ERROR_CODE = "MEDIA_NOT_FOUND" as const;
 export const INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE = "INVALID_YOUTUBE_VIDEO_ID" as const;
 export const INVALID_MEDIA_TITLE_ERROR_CODE = "INVALID_MEDIA_TITLE" as const;
 export const MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE = "MEDIA_WITHOUT_YOUTUBE_SOURCE" as const;
-export const YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE =
-    "YOUTUBE_COMMENTS_EMPTY_REFRESH" as const;
 
 // Error codes raised only by the frontend (never emitted by the Rust backend), so they are not
 // part of the ts-rs-generated AppErrorCode union and are exempt from the check below.
@@ -167,8 +165,16 @@ type FrontendOnlyErrorCode =
     | typeof CLIENT_ERROR_CODE
     | typeof INVALID_CHANNEL_ID_ERROR_CODE
     | typeof MEDIA_IMPORT_FAILED_ERROR_CODE
-    | typeof MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE
-    | typeof YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE;
+    | typeof MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE;
+
+// The same codes as a set. Their messages are written on this side to be shown as they are, so the
+// user-friendly lookup does not mistake one for a backend code it has no text for.
+export const FRONTEND_ONLY_ERROR_CODES: ReadonlySet<string> = new Set<FrontendOnlyErrorCode>([
+    CLIENT_ERROR_CODE,
+    INVALID_CHANNEL_ID_ERROR_CODE,
+    MEDIA_IMPORT_FAILED_ERROR_CODE,
+    MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE,
+]);
 
 // Compile-time link to the Rust AppErrorCode enum (the ts-rs-generated union). Every known code
 // must be either a member of that union or an explicitly-declared frontend-only code. Renaming or
@@ -259,7 +265,6 @@ export const KNOWN_ERROR_CODES = [
     INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE,
     INVALID_MEDIA_TITLE_ERROR_CODE,
     MEDIA_WITHOUT_YOUTUBE_SOURCE_ERROR_CODE,
-    YOUTUBE_COMMENTS_EMPTY_REFRESH_ERROR_CODE,
 ] as const satisfies readonly (AppErrorCode | FrontendOnlyErrorCode)[];
 
 export type KnownErrorCode = typeof KNOWN_ERROR_CODES[number];

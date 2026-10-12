@@ -214,6 +214,17 @@ describe("toUserFriendlyError", () => {
         ).toBe("The selected folder must be empty before it can be used as the library folder.");
     });
 
+    it("shows the message of a code the frontend raises itself", () => {
+        // Shaped like a backend code, these read as one with no text and became the generic
+        // "check the app log file" message.
+        expect(
+            toUserFriendlyError({
+                code: "MEDIA_WITHOUT_YOUTUBE_SOURCE",
+                message: "This media does not have a YouTube source for comment refresh.",
+            })
+        ).toBe("This media does not have a YouTube source for comment refresh.");
+    });
+
     it("falls back to the unknown message for a CLIENT_ERROR with a blank message", () => {
         expect(
             toUserFriendlyError({

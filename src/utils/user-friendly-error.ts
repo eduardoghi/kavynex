@@ -4,6 +4,7 @@ import type { KnownErrorCode } from "../constants/error-codes";
 import {
     APP_ERROR_CODE,
     CLIENT_ERROR_CODE,
+    FRONTEND_ONLY_ERROR_CODES,
     MEDIA_NOT_FOUND_ERROR_CODE,
     DATABASE_SCHEMA_TOO_NEW_ERROR_CODE,
     DATABASE_UNAVAILABLE_ERROR_CODE,
@@ -314,8 +315,15 @@ function friendlyMessageFor(code: string): string | undefined {
 // Error or a bare string the APP_ERROR code, so a code that reaches here matching this shape
 // but absent from the catalog above is always a real backend error code that simply has not
 // been catalogued yet, never an ad-hoc human message we would want to surface verbatim.
+//
+// The codes the frontend raises itself have the same shape and carry a message written to be shown,
+// so they are not treated as uncatalogued.
 function isUncataloguedBackendCode(code: string): boolean {
-    return friendlyMessageFor(code) === undefined && /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code);
+    return (
+        friendlyMessageFor(code) === undefined &&
+        !FRONTEND_ONLY_ERROR_CODES.has(code) &&
+        /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(code)
+    );
 }
 
 function resolveFriendlyMessage(parsed: AppErrorShape): string {
