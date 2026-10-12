@@ -686,6 +686,17 @@ async fn run_yt_dlp_and_capture_json(
         None => Vec::new(),
     };
 
+    // Ahead of the exit status. Once the reader stops at the cap it drops the pipe, and yt-dlp then
+    // fails writing to it, so checked after the status this would read as an ordinary failure with
+    // an unrelated stderr tail.
+    if stdout_overflowed {
+        return Err(AppError::from_code_with_details(
+            AppErrorCode::YtDlpMetadataParseFailed,
+            "yt-dlp returned more data than can be processed for this URL.",
+            format!("yt-dlp output exceeded the {MAX_YT_DLP_JSON_BYTES}-byte limit"),
+        ));
+    }
+
     if !status.success() {
         let detail = select_best_error_detail(&stdout_logs, &stderr_logs, failed_message);
         // The detail is embedded in the returned AppError, which is serialized to the frontend and
@@ -706,14 +717,6 @@ async fn run_yt_dlp_and_capture_json(
             failed_code,
             failed_message,
             format!("{failed_message}: {detail}"),
-        ));
-    }
-
-    if stdout_overflowed {
-        return Err(AppError::from_code_with_details(
-            AppErrorCode::YtDlpMetadataParseFailed,
-            "yt-dlp returned more data than can be processed for this URL.",
-            format!("yt-dlp output exceeded the {MAX_YT_DLP_JSON_BYTES}-byte limit"),
         ));
     }
 
