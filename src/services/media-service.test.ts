@@ -117,7 +117,7 @@ describe("media-service", () => {
         vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
         vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
 
-        await expect(createMedia(input)).resolves.toEqual({ id: 55 });
+        await expect(createMedia(input)).resolves.toMatchObject({ id: 55 });
 
         // Every field the creation needs, and nothing this side invented. `downloadComments` stays
         // here because the comment backup runs after the row lands, not inside the creation.
@@ -218,7 +218,7 @@ describe("media-service", () => {
         vi.mocked(createMediaInBackend).mockResolvedValueOnce(created());
         vi.mocked(readMediaDurationInSeconds).mockRejectedValueOnce(new Error("decode failed"));
 
-        await expect(createMedia(input)).resolves.toEqual({ id: 55 });
+        await expect(createMedia(input)).resolves.toMatchObject({ id: 55 });
 
         expect(logError).toHaveBeenCalledWith(
             "media-service",
@@ -241,6 +241,20 @@ describe("media-service", () => {
         // backend resolved it from the download, which is the authoritative one.
         expect(fetchMediaComments).toHaveBeenCalledWith(55, "abc", null, null, undefined);
         expect(messages).toContain("Comments saved: 3");
+    });
+
+    it("tells the caller when the comment backup failed", async () => {
+        // The media stays registered. The outcome is what lets the add-media flow say so once its
+        // modal, the only other place the failure shows, has closed.
+        const input = ytDlpInput({ downloadComments: true });
+        vi.mocked(validateCreateMediaInput).mockReturnValueOnce(input);
+        vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
+        vi.mocked(fetchMediaComments).mockRejectedValueOnce({
+            code: "YT_DLP_COMMENTS_FAILED",
+            message: "rate limited",
+        });
+
+        await expect(createMedia(input)).resolves.toEqual({ id: 55, comments: "failed" });
     });
 
     it("says no comments came back when the fetch returned none", async () => {
@@ -290,7 +304,7 @@ describe("media-service", () => {
                 onProgress: (message) => void messages.push(message),
                 onCommentsFetchChange,
             })
-        ).resolves.toEqual({ id: 55 });
+        ).resolves.toEqual({ id: 55, comments: "skipped" });
 
         expect(messages).toContain("Comments skipped. The media was added without them.");
         expect(messages).not.toContain("Failed to fetch comments. Import will continue without them.");
@@ -325,7 +339,7 @@ describe("media-service", () => {
         vi.mocked(createMediaInBackend).mockResolvedValueOnce(created({ youtubeVideoId: "abc" }));
         vi.mocked(fetchMediaComments).mockRejectedValueOnce(new Error("extraction incomplete"));
 
-        await expect(createMedia(input)).resolves.toEqual({ id: 55 });
+        await expect(createMedia(input)).resolves.toMatchObject({ id: 55 });
     });
 
     it("reports progress around the creation", async () => {

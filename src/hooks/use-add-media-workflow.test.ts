@@ -154,7 +154,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("adds local media and reloads list", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         const { result } = renderHook(() =>
             useAddMediaWorkflow({
@@ -202,6 +202,58 @@ describe("useAddMediaWorkflow", () => {
         expect(result.current.addMediaOpen).toBe(false);
     });
 
+    it("says so after the modal closes when the comment backup failed", async () => {
+        // The terminal line saying it goes away with the modal, so the media looked added in full.
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "failed" });
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        act(() => {
+            result.current.setAddMediaOpen(true);
+        });
+
+        await act(async () => {
+            await result.current.addMedia();
+        });
+
+        expect(result.current.addMediaOpen).toBe(false);
+        expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("comments could not be saved"));
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("stays quiet about comments that were saved, absent or skipped", async () => {
+        for (const comments of ["saved", "none", "skipped", "not-requested"] as const) {
+            vi.mocked(createMedia).mockResolvedValue({ id: 1, comments });
+            onNotice.mockClear();
+
+            const { result } = renderHook(() =>
+                useAddMediaWorkflow({
+                    selectedChannelId: 10,
+                    importMode: "copy",
+                    libraryPath: "/library",
+                    onError,
+                    onNotice,
+                    onReloadMedia,
+                })
+            );
+
+            await act(async () => {
+                await result.current.addMedia();
+            });
+
+            expect(onNotice).not.toHaveBeenCalled();
+        }
+    });
+
     it("starts with the modal closed", () => {
         const { result } = renderHook(() =>
             useAddMediaWorkflow({
@@ -220,7 +272,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("trims the media path, title and forwards a non-empty thumbnail and published date", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         mockAddMediaForm.mediaPath = "  /tmp/file.mp4  ";
         mockAddMediaForm.title = "  My media  ";
@@ -328,7 +380,7 @@ describe("useAddMediaWorkflow", () => {
         vi.mocked(createMedia).mockImplementation(
             () =>
                 new Promise((resolve) => {
-                    finishImport = () => resolve({ id: 1 });
+                    finishImport = () => resolve({ id: 1, comments: "not-requested" });
                 })
         );
         vi.mocked(cancelMediaDownload).mockResolvedValue(undefined);
@@ -387,7 +439,7 @@ describe("useAddMediaWorkflow", () => {
         vi.mocked(createMedia).mockImplementation(
             () =>
                 new Promise((resolve) => {
-                    finishImport = () => resolve({ id: 1 });
+                    finishImport = () => resolve({ id: 1, comments: "not-requested" });
                 })
         );
         vi.mocked(cancelMediaDownload).mockRejectedValue({
@@ -437,7 +489,7 @@ describe("useAddMediaWorkflow", () => {
                     options?.onCommentsFetchChange?.(true);
                     finishComments = () => {
                         options?.onCommentsFetchChange?.(false);
-                        resolve({ id: 1 });
+                        resolve({ id: 1, comments: "not-requested" });
                     };
                 })
         );
@@ -515,7 +567,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("treats a blank published date as no date", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         mockAddMediaForm.publishedAt = "   ";
 
@@ -547,7 +599,7 @@ describe("useAddMediaWorkflow", () => {
     it("forwards onProgress log lines to the yt-dlp terminal", async () => {
         vi.mocked(createMedia).mockImplementation(async (_payload, callbacks) => {
             void callbacks?.onProgress?.("50% downloaded");
-            return { id: 1 };
+            return { id: 1, comments: "not-requested" };
         });
 
         const { result } = renderHook(() =>
@@ -756,7 +808,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("builds the yt-dlp command preview without cookies and logs enabled options", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         mockAddMediaForm.sourceMode = "yt-dlp";
         mockAddMediaForm.mediaUrl = "  https://youtube.com/watch?v=abc  ";
@@ -802,7 +854,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("generates a run id even when crypto.randomUUID is unavailable", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         vi.stubGlobal("crypto", { ...globalThis.crypto, randomUUID: undefined });
 
@@ -837,7 +889,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("passes the selected format and the download options when importing from url", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         mockAddMediaForm.sourceMode = "yt-dlp";
         mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
@@ -927,7 +979,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("forwards the resolved youtube video id for yt-dlp source mode", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         mockAddMediaForm.sourceMode = "yt-dlp";
         mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
@@ -961,7 +1013,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("does not forward a resolved youtube video id for local source mode", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         // A stale value from a previous yt-dlp session must never leak into a local import.
         mockAddMediaForm.resolvedYoutubeVideoId = "abc";
@@ -996,7 +1048,7 @@ describe("useAddMediaWorkflow", () => {
         // --cookies-from-browser value. The picked .txt file path must reach createMedia as
         // cookiesPath (with cookiesBrowser null), otherwise the download runs unauthenticated
         // while the UI claims cookies were used.
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         mockAddMediaForm.sourceMode = "yt-dlp";
         mockAddMediaForm.mediaUrl = "https://youtube.com/watch?v=abc";
@@ -1048,7 +1100,7 @@ describe("useAddMediaWorkflow", () => {
     it("starts a single createMedia run when addMedia fires twice synchronously", async () => {
         // Regression guard. The reentrancy check must use a synchronous ref, not render
         // state, so a double click before the next render can never start two downloads.
-        let resolveCreateMedia: (value: { id: number | null }) => void = () => {};
+        let resolveCreateMedia: (value: Awaited<ReturnType<typeof createMedia>>) => void = () => {};
         vi.mocked(createMedia).mockImplementation(
             () =>
                 new Promise((resolve) => {
@@ -1071,7 +1123,7 @@ describe("useAddMediaWorkflow", () => {
             const first = result.current.addMedia();
             const second = result.current.addMedia();
 
-            resolveCreateMedia({ id: 1 });
+            resolveCreateMedia({ id: 1, comments: "not-requested" });
             await Promise.all([first, second]);
         });
 
@@ -1112,7 +1164,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("uses the latest selectedChannelId and onError across re-renders", async () => {
-        vi.mocked(createMedia).mockResolvedValue({ id: 1 });
+        vi.mocked(createMedia).mockResolvedValue({ id: 1, comments: "not-requested" });
 
         const { result, rerender } = renderHook(
             (props: { selectedChannelId: number | null; onError: (message: string) => void }) =>
@@ -1429,7 +1481,7 @@ describe("useAddMediaWorkflow", () => {
     });
 
     it("does not close the modal while an add-media run is in flight", async () => {
-        let resolveCreateMedia: (value: { id: number | null }) => void = () => {};
+        let resolveCreateMedia: (value: Awaited<ReturnType<typeof createMedia>>) => void = () => {};
         vi.mocked(createMedia).mockImplementation(
             () =>
                 new Promise((resolve) => {
@@ -1470,7 +1522,7 @@ describe("useAddMediaWorkflow", () => {
         expect(mockResetForm).not.toHaveBeenCalled();
         expect(result.current.addMediaOpen).toBe(true);
 
-        resolveCreateMedia({ id: 1 });
+        resolveCreateMedia({ id: 1, comments: "not-requested" });
         await act(async () => {
             await addMediaPromise;
         });

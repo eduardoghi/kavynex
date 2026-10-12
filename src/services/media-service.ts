@@ -25,8 +25,14 @@ import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
 import { commentsRefreshRunId, fetchMediaComments } from "./media-download-service";
 import { logError } from "../utils/app-logger";
 
+// What the comment backup that follows a download ended in. `failed` is the one the caller has to
+// say out loud. The media is registered either way, and the only other trace of it is a line in the
+// terminal of a modal that closes on its own.
+export type CommentsBackupOutcome = "saved" | "none" | "skipped" | "failed" | "not-requested";
+
 type CreateMediaResult = {
     id: number | null;
+    comments: CommentsBackupOutcome;
 };
 
 type CreateMediaOptions = {
@@ -106,12 +112,12 @@ async function tryPersistYouTubeComments(
     cookiesBrowser: string | null,
     cookiesPath: string | null,
     options: CreateMediaOptions
-): Promise<void> {
+): Promise<CommentsBackupOutcome> {
     const { onProgress, commentsRunId, onCommentsFetchChange } = options;
     const normalizedVideoId = youtubeVideoId?.trim() ?? "";
 
     if (!mediaId || !normalizedVideoId) {
-        return;
+        return "not-requested";
     }
 
     try {
@@ -140,11 +146,13 @@ async function tryPersistYouTubeComments(
                 ? "No public comments were returned for this media."
                 : `Comments saved: ${outcome.stored}`
         );
+
+        return outcome.fetched === 0 ? "none" : "saved";
     } catch (error) {
         // The user skipped them. The media is already registered and stays.
         if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
             await emitProgress(onProgress, "Comments skipped. The media was added without them.");
-            return;
+            return "skipped";
         }
 
         logError("media-service", "Failed to fetch and persist YouTube comments.", error, {
@@ -157,6 +165,8 @@ async function tryPersistYouTubeComments(
             onProgress,
             "Failed to fetch comments. Import will continue without them."
         );
+
+        return "failed";
     }
 }
 
@@ -258,9 +268,11 @@ export async function createMedia(
     // needs a media element the backend does not have.
     await tryStoreMeasuredDuration(created, normalizedInput.libraryPath);
 
+    let comments: CommentsBackupOutcome = "not-requested";
+
     if (normalizedInput.sourceMode === "yt-dlp") {
         if (normalizedInput.downloadComments) {
-            await tryPersistYouTubeComments(
+            comments = await tryPersistYouTubeComments(
                 created.id,
                 created.youtubeVideoId,
                 normalizedInput.cookiesBrowser,
@@ -287,6 +299,7 @@ export async function createMedia(
 
     return {
         id: created.id,
+        comments,
     };
 }
 

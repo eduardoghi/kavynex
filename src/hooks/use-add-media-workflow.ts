@@ -234,7 +234,7 @@ export function useAddMediaWorkflow({
                     }
                 }
 
-                await createMedia(
+                const created = await createMedia(
                     buildCreateMediaInput(form, {
                         channelId: selectedChannelId,
                         sourceMode,
@@ -262,6 +262,14 @@ export function useAddMediaWorkflow({
                 await form.resetForm();
 
                 setAddMediaOpen(false);
+
+                // Said after the modal closes, since its terminal is the only other place the
+                // failure shows and it goes with the modal.
+                if (created.comments === "failed") {
+                    onNotice(
+                        "The media was added, but its comments could not be saved. Open it and choose Fetch comments to try again."
+                    );
+                }
             } catch (error) {
                 markStopped();
 
