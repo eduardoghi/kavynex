@@ -59,6 +59,11 @@ export function toAppUpdateInfo(update: Update): AppUpdateInfo {
     };
 }
 
+// Settings stays locked while the download runs, so a download that stalls has to end on its own or
+// the window cannot be closed short of quitting. Generous for an installer of a few tens of megabytes
+// on a slow link.
+const UPDATE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
 export async function installAppUpdate(
     update: Update,
     onProgress?: (progress: AppUpdateProgress) => void
@@ -99,7 +104,7 @@ export async function installAppUpdate(
                 percent: 100
             });
         }
-    });
+    }, { timeout: UPDATE_DOWNLOAD_TIMEOUT_MS });
 
     await relaunch();
 }

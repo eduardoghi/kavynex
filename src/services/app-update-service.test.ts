@@ -288,6 +288,11 @@ describe("installAppUpdate", () => {
         await installAppUpdate(update);
 
         expect(update.downloadAndInstall).toHaveBeenCalledTimes(1);
+        // Bounded, so a download that stalls ends and unlocks Settings.
+        expect(update.downloadAndInstall).toHaveBeenCalledWith(
+            expect.any(Function),
+            expect.objectContaining({ timeout: expect.any(Number) })
+        );
         expect(relaunchMock).toHaveBeenCalledTimes(1);
     });
 

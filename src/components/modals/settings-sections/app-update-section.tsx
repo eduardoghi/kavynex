@@ -105,8 +105,13 @@ export function AppUpdateSection({
                         )}
 
                         {appUpdateStatus === "downloading" && (
-                            <Stack gap={4}>
-                                <Progress value={appUpdateProgress?.percent ?? 0} />
+                            // Out of the alert's live region. Announced from inside it, every percent
+                            // was read out while the download ran.
+                            <Stack gap={4} aria-live="off">
+                                <Progress
+                                    value={appUpdateProgress?.percent ?? 0}
+                                    aria-label="Update download"
+                                />
                                 <Text size="xs" c="dimmed">
                                     {appUpdateProgress?.percent ?? 0}% downloaded
                                 </Text>

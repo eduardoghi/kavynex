@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- An update download that stalls now ends with an error after ten minutes, which unlocks Settings.
+  It used to keep Settings locked until the app was quit.
 - After Fetch comments finds nothing, the button is no longer offered again for the same media, and
   Refresh comments is no longer in the player menu for a media without a YouTube source.
 - A library move that finished but could not save the new folder says so and asks for a restart,
