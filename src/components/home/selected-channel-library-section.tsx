@@ -19,6 +19,7 @@ import {
     ArrowUpNarrowWide,
     Search,
     Video,
+    X,
 } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
@@ -213,6 +214,18 @@ export function SelectedChannelLibrarySection({
                         value={searchValue}
                         onChange={(event) => setSearchValue(event.currentTarget.value)}
                         leftSection={<Search size={16} />}
+                        // The same clear control as the comments search.
+                        rightSection={
+                            searchValue.trim() ? (
+                                <ActionIcon
+                                    variant="subtle"
+                                    aria-label="Clear library search"
+                                    onClick={() => setSearchValue("")}
+                                >
+                                    <X size={16} />
+                                </ActionIcon>
+                            ) : undefined
+                        }
                         style={{ flex: 1, minWidth: 240 }}
                     />
 

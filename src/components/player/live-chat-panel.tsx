@@ -332,7 +332,9 @@ export function LiveChatPanel({
                         what keeps it meaning something out of context. */}
                     <Tooltip label="Messages visible at the current playback time" withArrow>
                         <Text size="sm" fw={700} c="dimmed" style={{ flexShrink: 0 }}>
-                            {visibleLiveChatMessages.length}
+                            {/* The list's own count. A pin shows in the banner above it,
+                                not in the list. */}
+                            {inlineMessages.length}
                             <VisuallyHidden> messages visible</VisuallyHidden>
                         </Text>
                     </Tooltip>
@@ -409,9 +411,12 @@ export function LiveChatPanel({
                                         </Text>
                                     )}
 
+                                {/* Also when the window holds only pins, which the banner
+                                    shows and the list leaves out. */}
                                 {!isLoadingLiveChat &&
+                                    !error &&
                                     liveChatMessages.length > 0 &&
-                                    visibleLiveChatMessages.length === 0 && (
+                                    inlineMessages.length === 0 && (
                                         <Text size="sm" c="dimmed">
                                             No messages visible for the current playback time.
                                         </Text>

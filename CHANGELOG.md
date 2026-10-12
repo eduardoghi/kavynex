@@ -6,6 +6,7 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Added
 
+- The library search has a button to clear it, like the comments search.
 - Diagnostics can remove orphan media and thumbnail files, the ones named by Kavynex that nothing in
   the library uses. They go to a `.trash` folder inside the library for 30 days rather than being
   deleted, the confirmation says how many and how much space, and the removal is not offered after
@@ -62,6 +63,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- When only a pinned message falls in the live chat's current window, the list says no messages
+  are visible instead of staying blank, and the count leaves out the pin shown above it.
 - In the light theme, warnings, load errors and member names in the live chat are dark enough to
   read. They used the shades made for the dark theme.
 - Keyboard and screen reader fixes. The file pickers in Add media show a focus ring, the reply
