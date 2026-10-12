@@ -90,9 +90,10 @@ pub fn is_webview_check_run(args: impl IntoIterator<Item = String>) -> bool {
 /// What the frontend needs in order to run the check. The absolute paths of two real files inside a
 /// directory the asset-protocol scope has authorized, an image for the `convertFileSrc` probe and a
 /// short sound for the media protocol probe.
-#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct WebviewCheckPlan {
     pub asset_path: String,
     pub media_path: String,
@@ -101,9 +102,10 @@ pub struct WebviewCheckPlan {
 /// What the frontend observed. Every field is one probe. `failures` carries the frontend's own
 /// description of anything that threw, which is what turns "the asset did not load" into a line
 /// naming the URL that was refused.
-#[derive(Debug, Clone, Default, Deserialize, ts_rs::TS)]
+#[derive(Debug, Clone, Default, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct WebviewCheckReport {
     /// `getVersion()`'s result, or `None` when the call was refused. Probes
     /// `core:app:allow-version`.

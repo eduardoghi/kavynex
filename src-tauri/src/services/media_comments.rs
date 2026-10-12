@@ -148,9 +148,10 @@ struct PreparedComment {
 /// The backend fetches and stores them in one command (`commands::comments::fetch_media_comments`),
 /// so a window closed between the two halves can no longer lose a fetch, and the largest payload
 /// the app had (up to 100,000 comments, there and back) is gone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MediaCommentsFetch {
     /// How many comments the fetch returned, before blank and repeated ones were dropped.
     pub fetched: u32,

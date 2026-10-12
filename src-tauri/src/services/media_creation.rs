@@ -61,16 +61,17 @@ pub enum MediaSourceMode {
 /// not asked for at all. A download reports it and a local import takes it from its extension, the
 /// same rule that picks the file's subdirectory, so a row cannot say "video" about a file in
 /// `audio/`.
-#[derive(Debug, Clone, Deserialize, ts_rs::TS)]
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct CreateMediaRequest {
     // Tauri serializes an i64 as a JSON number, so it is annotated rather than left to ts-rs's
     // `bigint` default. The same override every other exported id in this crate carries.
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub channel_id: i64,
     pub title: String,
-    #[ts(type = "\"local\" | \"yt-dlp\"")]
+    #[cfg_attr(test, ts(type = "\"local\" | \"yt-dlp\""))]
     pub source_mode: MediaSourceMode,
     /// A URL for a yt-dlp run, an absolute path for a local import.
     // path-surface: an absolute path in local-import mode, so it belongs to the caller-supplied
@@ -83,11 +84,11 @@ pub struct CreateMediaRequest {
     /// A managed `thumbnails/...` path, a remote URL, or an absolute path the user picked. Absent
     /// means "derive one", from the download's own thumbnail, or from the media file itself.
     pub thumbnail_source_path: Option<String>,
-    #[ts(type = "\"copy\" | \"move\"")]
+    #[cfg_attr(test, ts(type = "\"copy\" | \"move\""))]
     pub import_mode: ImportMode,
     /// Not sent by the renderer. `commands::media::create_media` fills it from the settings.
     #[serde(skip_deserializing)]
-    #[ts(skip)]
+    #[cfg_attr(test, ts(skip))]
     pub library_path: String,
     pub published_at: Option<String>,
     pub yt_dlp_run_id: String,
@@ -105,15 +106,16 @@ pub struct CreateMediaRequest {
 /// Carries the stored paths rather than only the id because the steps that stay in the renderer
 /// need them. The duration probe reads `file_path`/`media_type`, the comment backup reads
 /// `youtube_video_id`, and the live-chat notice reads whether a replay was actually saved.
-#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct CreatedMedia {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub id: i64,
     pub file_path: String,
     pub thumbnail_path: Option<String>,
-    #[ts(type = "\"video\" | \"audio\"")]
+    #[cfg_attr(test, ts(type = "\"video\" | \"audio\""))]
     pub media_type: String,
     pub youtube_video_id: Option<String>,
     pub live_chat_file_path: Option<String>,

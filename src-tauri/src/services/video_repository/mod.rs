@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
-use ts_rs::TS;
 
 use crate::services::database::{
     database_error_message, db_error, is_foreign_key_violation, is_unique_violation,
@@ -14,37 +13,38 @@ use crate::{AppError, AppErrorCode, AppResult};
 // serializes them as JSON numbers, so the runtime value is a JS `number`. `media_type` is
 // refined to the union the app relies on. These per-field overrides keep the generated
 // type identical to what `invoke` actually returns.
-#[derive(Debug, Serialize, sqlx::FromRow, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MediaRow {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub id: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub channel_id: i64,
     pub title: String,
     pub file_path: String,
     pub thumbnail_path: Option<String>,
-    #[ts(type = "\"video\" | \"audio\"")]
+    #[cfg_attr(test, ts(type = "\"video\" | \"audio\""))]
     pub media_type: String,
     pub youtube_video_id: Option<String>,
     pub watched_at: Option<String>,
     pub published_at: Option<String>,
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub duration_seconds: Option<i64>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub progress_seconds: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub has_comments: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub comments_count: i64,
     /// What a comment fetch last concluded. `unknown`, `none` or `available`. See
     /// `media_comments::CommentsState`; the CHECK on the column keeps it to those three, and
     /// the player reads it to decide whether offering a Fetch button would be honest.
-    #[ts(type = "\"unknown\" | \"none\" | \"available\"")]
+    #[cfg_attr(test, ts(type = "\"unknown\" | \"none\" | \"available\""))]
     pub comments_state: String,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub is_live: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub has_live_chat: i64,
     pub live_chat_file_path: Option<String>,
     pub created_at: String,
@@ -53,12 +53,13 @@ pub struct MediaRow {
 // i64 columns are annotated as `number`. The Tauri IPC layer serializes them as JSON
 // numbers, so the runtime value is a JS `number` rather than the `bigint` ts-rs emits by
 // default.
-#[derive(Debug, Serialize, sqlx::FromRow, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MediaCommentRow {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub id: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub video_id: i64,
     pub comment_id: Option<String>,
     pub parent_comment_id: Option<String>,
@@ -69,53 +70,54 @@ pub struct MediaCommentRow {
     pub text: String,
     /// What the comment said when it was first stored, when a later fetch brought a different text.
     pub original_text: Option<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub like_count: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub reply_count: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub is_author_uploader: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub is_favorited: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub is_pinned: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub is_edited: i64,
     pub time_text: Option<String>,
     pub published_at: Option<String>,
     pub created_at: String,
 }
 
-#[derive(Debug, Serialize, sqlx::FromRow, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MediaRepositoryStats {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_media: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_video_media: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_audio_media: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_with_thumbnail: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_without_thumbnail: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_watched: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_unwatched: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_live_media: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_with_live_chat: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_without_live_chat: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_media_with_live_chat_flag_but_no_path: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_media_with_live_chat_path_but_not_live: i64,
     /// Channels whose handle another channel holds in another letter case, which only a database
     /// from before the case-insensitive rule can contain.
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub channels_sharing_a_handle: i64,
 }
 
@@ -137,11 +139,12 @@ pub struct MediaIntegrityReference {
 
 /// One page of a channel's media plus the total number of rows matching the same filters (not
 /// just the returned page), so the frontend can show "X of Y" and know when to stop paging.
-#[derive(Debug, Serialize, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MediaPage {
     pub items: Vec<MediaRow>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total: i64,
 }
 
@@ -149,24 +152,30 @@ pub struct MediaPage {
 /// fields carry the same literal unions the frontend already models in
 /// `src/utils/media-library-filters.ts`; `search` is the raw term (normalized in Rust so it
 /// matches `title_normalized`), and `limit`/`offset` drive the page window.
-#[derive(Debug, Deserialize, TS)]
+#[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MediaPageQuery {
-    #[ts(type = "\"all\" | \"video\" | \"audio\"")]
+    #[cfg_attr(test, ts(type = "\"all\" | \"video\" | \"audio\""))]
     pub media_type: String,
-    #[ts(type = "\"all\" | \"watched\" | \"unwatched\"")]
+    #[cfg_attr(test, ts(type = "\"all\" | \"watched\" | \"unwatched\""))]
     pub watched: String,
-    #[ts(type = "\"all\" | \"with\" | \"without\"")]
+    #[cfg_attr(test, ts(type = "\"all\" | \"with\" | \"without\""))]
     pub publication: String,
     pub search: String,
-    #[ts(type = "\"publication_date\" | \"added_date\" | \"title\" | \"duration\" | \"comments\"")]
+    #[cfg_attr(
+        test,
+        ts(
+            type = "\"publication_date\" | \"added_date\" | \"title\" | \"duration\" | \"comments\""
+        )
+    )]
     pub sort_category: String,
-    #[ts(type = "\"asc\" | \"desc\"")]
+    #[cfg_attr(test, ts(type = "\"asc\" | \"desc\""))]
     pub sort_direction: String,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub limit: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub offset: i64,
 }
 

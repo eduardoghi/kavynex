@@ -12,17 +12,18 @@ use std::sync::{Mutex, OnceLock};
 
 use serde::Serialize;
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct StartupNotices {
     /// The background integrity check failed. The problems themselves stay in the log.
     pub database_integrity_failed: bool,
     /// How many crashed media creations the startup sweep stopped retrying.
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub pending_media_abandoned: Option<usize>,
     /// How many files the rows of a just-applied import name that the library folder lacks.
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub imported_missing_files: Option<usize>,
     /// A staged database import could not be applied at startup, so the previous database is
     /// still the one in use.

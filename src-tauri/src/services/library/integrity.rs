@@ -28,49 +28,50 @@ const MAX_EXAMPLES: usize = 5;
 
 // usize counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs
 // emits by default).
-#[derive(Serialize, Clone, Debug, ts_rs::TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct LibraryIntegrityReport {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub checked_media_files: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub missing_media_files: usize,
     pub missing_media_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub corrupt_media_files: usize,
     pub corrupt_media_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub checked_thumbnail_files: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub missing_thumbnail_files: usize,
     pub missing_thumbnail_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub corrupt_thumbnail_files: usize,
     pub corrupt_thumbnail_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub orphan_media_files: usize,
     pub orphan_media_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub orphan_thumbnail_files: usize,
     pub orphan_thumbnail_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub invalid_media_files: usize,
     pub invalid_media_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub invalid_thumbnail_files: usize,
     pub invalid_thumbnail_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub checked_live_chat_files: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub missing_live_chat_files: usize,
     pub missing_live_chat_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub corrupt_live_chat_files: usize,
     pub corrupt_live_chat_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub orphan_live_chat_files: usize,
     pub orphan_live_chat_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub invalid_live_chat_files: usize,
     pub invalid_live_chat_examples: Vec<String>,
 }
@@ -80,13 +81,14 @@ pub struct LibraryIntegrityReport {
 ///
 /// camelCase on the wire because the frontend consumed a hand-written type of this shape long
 /// before the resolution moved here; exporting it means the two can no longer drift.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct DiagnosticsMediaTarget {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub channel_id: i64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub media_id: i64,
 }
 
@@ -99,9 +101,10 @@ pub struct DiagnosticsMediaTarget {
 /// matter how large the library is. The renderer used to build it by pulling every media row over
 /// IPC and sending three arrays of every stored path back, which made an operation whose output is
 /// bounded cost time proportional to the whole library, twice.
-#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct LibraryIntegrityCheck {
     pub report: LibraryIntegrityReport,
     /// Keyed by the stored path exactly as it appears in the report's example lists, so a lookup

@@ -198,7 +198,8 @@ Two tools, for two kinds of commit, and neither is a substitute for the other:
 ## Regenerating the TypeScript bindings
 
 Rust types shared with the frontend derive `ts_rs::TS` and export to
-`src/types/generated/`. After changing one of those types (or adding a new one), regenerate
+`src/types/generated/`, as `#[cfg_attr(test, derive(ts_rs::TS))]` with every `#[ts(...)]` written as
+`#[cfg_attr(test, ts(...))]`, since ts-rs is a dev-dependency. After changing one of those types (or adding a new one), regenerate
 the bindings and check the diff in:
 
 ```bash

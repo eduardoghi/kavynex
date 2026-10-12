@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
 #[derive(Deserialize, Clone, Copy, Debug)]
 #[serde(rename_all = "lowercase")]
@@ -24,14 +23,15 @@ impl ImportMode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct DownloadedMediaResult {
     pub file_path: String,
     pub suggested_title: String,
     pub youtube_video_id: Option<String>,
     pub published_at: Option<String>,
-    #[ts(type = "\"video\" | \"audio\"")]
+    #[cfg_attr(test, ts(type = "\"video\" | \"audio\""))]
     pub media_type: String,
     pub thumbnail_path: Option<String>,
     pub is_live: bool,
@@ -39,13 +39,14 @@ pub struct DownloadedMediaResult {
     /// The crash marker the download recorded for its file as soon as it was in the library, which
     /// the registration replaces with its own. Backend only.
     #[serde(skip)]
-    #[ts(skip)]
+    #[cfg_attr(test, ts(skip))]
     pub placement_marker: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum DownloadLogLevel {
     Info,
     Warn,
@@ -54,25 +55,33 @@ pub enum DownloadLogLevel {
 
 // Exposed to the frontend as `YtDlpLogEvent`. `stream` is a plain String, but the emitter
 // only ever sets these three values, so it is refined to a union for the frontend.
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(
-    export,
-    rename = "YtDlpLogEvent",
-    export_to = "../../src/types/generated/"
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "YtDlpLogEvent",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct DownloadLogEvent {
     pub run_id: String,
     pub line: String,
-    #[ts(type = "\"stdout\" | \"stderr\" | \"system\"")]
+    #[cfg_attr(test, ts(type = "\"stdout\" | \"stderr\" | \"system\""))]
     pub stream: String,
     pub level: DownloadLogLevel,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(
-    export,
-    rename = "YtDlpFinishedEvent",
-    export_to = "../../src/types/generated/"
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "YtDlpFinishedEvent",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct DownloadFinishedEvent {
     pub run_id: String,
@@ -81,31 +90,40 @@ pub struct DownloadFinishedEvent {
 }
 
 // Emitted for both the error and cancelled events (identical shape).
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(
-    export,
-    rename = "YtDlpFailedEvent",
-    export_to = "../../src/types/generated/"
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "YtDlpFailedEvent",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct DownloadFailedEvent {
     pub run_id: String,
     pub message: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "lowercase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum DownloadTerminalStatus {
     Finished,
     Failed,
     Cancelled,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(
-    export,
-    rename = "YtDlpTerminalEvent",
-    export_to = "../../src/types/generated/"
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "YtDlpTerminalEvent",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct DownloadTerminalEvent {
     pub run_id: String,
@@ -221,22 +239,26 @@ pub struct YtDlpCommentMetadata {
 // emitted, and a label produced here would be overwritten for every row. What the two sides
 // do agree on is `format_id`. The frontend mints combined ids like `137+140` from these, and
 // `yt_dlp::download::resolve_format_has_video` resolves them back against this metadata.
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(
-    export,
-    rename = "YtDlpFormat",
-    export_to = "../../src/types/generated/"
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "YtDlpFormat",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct YtDlpFormatOption {
     pub format_id: String,
     pub ext: String,
-    #[ts(type = "\"video\" | \"audio\"")]
+    #[cfg_attr(test, ts(type = "\"video\" | \"audio\""))]
     pub media_type: String,
     pub has_video: bool,
     pub has_audio: bool,
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub filesize_bytes: Option<u64>,
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub height: Option<u64>,
     pub abr: Option<f64>,
     pub tbr: Option<f64>,
@@ -244,8 +266,9 @@ pub struct YtDlpFormatOption {
     pub protocol: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct YtDlpFormatsResult {
     pub suggested_title: String,
     // Resolved from the same metadata fetch, before any download starts, so the frontend can
@@ -256,8 +279,9 @@ pub struct YtDlpFormatsResult {
     pub terminal_logs: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct YtDlpComment {
     pub comment_id: Option<String>,
     pub parent_comment_id: Option<String>,
@@ -266,9 +290,9 @@ pub struct YtDlpComment {
     pub author_channel_id: Option<String>,
     pub author_thumbnail: Option<String>,
     pub text: String,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub like_count: u64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub reply_count: u64,
     pub is_author_uploader: bool,
     pub is_favorited: bool,
@@ -279,11 +303,15 @@ pub struct YtDlpComment {
 }
 
 // Exposed to the frontend as `ExternalToolStatus`.
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(
-    export,
-    rename = "ExternalToolStatus",
-    export_to = "../../src/types/generated/"
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "ExternalToolStatus",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct ExternalToolHealth {
     pub path: String,
@@ -299,8 +327,9 @@ pub struct ExternalToolHealth {
     pub release_age_days: Option<u32>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct ExternalToolsStatus {
     pub yt_dlp: ExternalToolHealth,
     pub ffmpeg: ExternalToolHealth,

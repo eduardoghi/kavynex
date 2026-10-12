@@ -6,11 +6,15 @@ use std::fmt;
 // the IPC boundary on `AppError.code`), so `src/constants/error-codes.ts` can be type-checked
 // against this generated union. Renaming or removing a variant here then breaks the frontend
 // build instead of silently leaving a dead `error.code === X` comparison.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ts_rs::TS)]
-#[ts(
-    export,
-    rename_all = "SCREAMING_SNAKE_CASE",
-    export_to = "../../src/types/generated/"
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename_all = "SCREAMING_SNAKE_CASE",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub enum AppErrorCode {
     AppError,

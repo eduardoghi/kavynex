@@ -25,9 +25,10 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// The generated binding (`src/types/generated/LiveChatStreamEvent.ts`) is what the frontend's
 /// zod schema in `lib/ipc-schemas.ts` is checked against, so a change here fails `tsc` there
 /// instead of silently desyncing the wire shape.
-#[derive(Clone, serde::Serialize, ts_rs::TS)]
+#[derive(Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum LiveChatStreamEvent {
     Batch { lines: Vec<String> },
     Done,

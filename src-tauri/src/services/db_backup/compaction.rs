@@ -12,13 +12,14 @@ use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// What a compaction gave back.
-#[derive(Debug, Clone, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct DatabaseCompaction {
     /// How many bytes smaller the database is. Annotated `number` because ts-rs emits `bigint` for
     /// `u64` by default, and this crosses IPC as a plain JSON number.
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub freed_bytes: u64,
     /// [`freed_bytes`](Self::freed_bytes) rendered with the formatter Settings uses for the
     /// database size, so the two read in the same units.

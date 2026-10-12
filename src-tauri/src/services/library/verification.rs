@@ -82,21 +82,22 @@ pub(crate) enum ContentVerification {
 
 // usize counts are annotated `number` (serialized as JSON numbers, not the bigint ts-rs emits by
 // default), matching LibraryIntegrityReport.
-#[derive(Serialize, Clone, Debug, Default, ts_rs::TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Clone, Debug, Default)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ContentVerificationReport {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub checked: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub verified: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub corrupt: usize,
     pub corrupt_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub unverifiable: usize,
     pub unverifiable_examples: Vec<String>,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub unreadable: usize,
     pub unreadable_examples: Vec<String>,
     /// True when the run stopped early because the user cancelled. The counts above are then a
@@ -158,14 +159,15 @@ pub(crate) fn verification_cancel_flag() -> &'static AtomicBool {
 /// carrying the report. Same shape and same reason as `LiveChatStreamEvent`. The frontend resolves
 /// on `done` rather than on the command returning, because channel messages and the invoke response
 /// travel independently.
-#[derive(Clone, Serialize, ts_rs::TS)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum ContentVerificationEvent {
     Progress {
-        #[ts(type = "number")]
+        #[cfg_attr(test, ts(type = "number"))]
         checked: usize,
-        #[ts(type = "number")]
+        #[cfg_attr(test, ts(type = "number"))]
         total: usize,
     },
     Done {

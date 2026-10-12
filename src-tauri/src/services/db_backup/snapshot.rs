@@ -566,18 +566,19 @@ pub(super) fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-#[derive(Debug, Serialize, ts_rs::TS)]
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct DatabaseBackupStatus {
     pub available: bool,
     /// Modification time of the backup that would be restored, in epoch milliseconds.
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub backed_up_at_ms: Option<u64>,
     /// Total bytes the database and every file this module keeps beside it currently occupy
     /// (see `managed_database_paths`). Annotated `number` because ts-rs emits `bigint` for
     /// `u64` by default, and this crosses IPC as a plain JSON number.
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_bytes: u64,
     /// [`total_bytes`](Self::total_bytes) rendered for display, using the same formatter as the
     /// library summary so the two sizes shown in Settings cannot disagree on units or rounding.

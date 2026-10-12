@@ -13,16 +13,16 @@
 use serde::Deserialize;
 use tauri::{Runtime, Window};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder, FilePath};
-use ts_rs::TS;
 
 use crate::services::chosen_folders::FolderPurpose;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// One entry of a picker's file-type list, as the user sees it (`Images: png, jpg`).
-#[derive(Debug, Clone, Deserialize, TS)]
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct FileDialogFilter {
     pub name: String,
     pub extensions: Vec<String>,

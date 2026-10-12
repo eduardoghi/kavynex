@@ -28,16 +28,17 @@ pub(super) const EXTERNAL_BACKUP_ROTATED_GENERATIONS: usize = 2;
 /// the one copy that outlives the disk the database is on, and when its folder went away (a drive
 /// unplugged, a share offline, a drive letter reassigned) the daily copy stopped with nothing saying
 /// so.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct ExternalBackupStatus {
     pub configured: bool,
     /// The folder is there as a directory right now.
     pub reachable: bool,
     /// When the current mirror was written, in epoch milliseconds. `None` before the first copy, or
     /// when the folder cannot be reached.
-    #[ts(type = "number | null")]
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub mirrored_at_ms: Option<u64>,
 }
 

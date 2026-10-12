@@ -25,8 +25,9 @@ use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
 
-#[derive(Serialize, Clone, Debug, ts_rs::TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Serialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct MigrateLibraryDirectoryResult {
     pub final_library_path: String,
     pub changed: bool,
@@ -40,17 +41,18 @@ pub struct MigrateLibraryDirectoryResult {
 }
 
 /// How far the copy phase has got, sent to the frontend while a migration runs.
-#[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq, ts_rs::TS)]
+#[derive(Serialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct LibraryMigrationProgress {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub copied_files: u64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_files: u64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub copied_bytes: u64,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub total_bytes: u64,
 }
 

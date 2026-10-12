@@ -209,9 +209,10 @@ pub(crate) fn capped_call_length(requested: usize) -> usize {
 /// this whole module already declares acceptable, while the cost of treating them as retryable is
 /// the unbounded re-asking above. A fresh launch retries all of them anyway, since the cache is
 /// consulted by content hash and nothing is remembered across sessions.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(tag = "kind", rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum DisplayThumbnail {
     /// The absolute path of the display-sized copy.
     Resolved { path: String },

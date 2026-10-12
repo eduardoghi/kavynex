@@ -1,15 +1,18 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
-use ts_rs::TS;
 
 use crate::services::database::{db_error, is_unique_violation};
 use crate::{AppError, AppErrorCode, AppResult};
 
 // Exposed to the frontend as `Channel`; `id` is annotated as `number` (see MediaRow).
-#[derive(Debug, Serialize, sqlx::FromRow, TS)]
-#[ts(export, rename = "Channel", export_to = "../../src/types/generated/")]
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(export, rename = "Channel", export_to = "../../src/types/generated/")
+)]
 pub struct ChannelRow {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub id: i64,
     pub name: String,
     pub youtube_handle: String,

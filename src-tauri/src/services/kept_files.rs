@@ -23,20 +23,22 @@ use crate::services::library::cleanup::LIBRARY_TRASH_DIR;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// How many files a kept folder holds and how much space they take.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct FolderSummary {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub files: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub bytes: u64,
 }
 
 /// The kept folders, for Diagnostics.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct KeptFilesSummary {
     /// `None` when no library is configured or its folder is not there.
     pub library_trash: Option<FolderSummary>,
@@ -45,9 +47,10 @@ pub struct KeptFilesSummary {
 }
 
 /// Which kept folder to open.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum KeptFolder {
     LibraryTrash,
     RecoveredDownloads,

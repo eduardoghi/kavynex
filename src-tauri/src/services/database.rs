@@ -120,12 +120,16 @@ impl Db {
 
 // Exposed to the frontend as `StoredAppSettingsPayload`, and serde camelCase is honored by
 // ts-rs so the generated keys are importMode/libraryPath.
-#[derive(Debug, Default, Serialize, ts_rs::TS)]
+#[derive(Debug, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(
-    export,
-    rename = "StoredAppSettingsPayload",
-    export_to = "../../src/types/generated/"
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        rename = "StoredAppSettingsPayload",
+        export_to = "../../src/types/generated/"
+    )
 )]
 pub struct StoredAppSettings {
     pub import_mode: Option<String>,

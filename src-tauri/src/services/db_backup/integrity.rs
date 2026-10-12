@@ -16,9 +16,10 @@ use crate::AppResult;
 
 /// The outcome of a full `PRAGMA integrity_check`. Whether the database is sound and, when it is
 /// not, what SQLite actually reported.
-#[derive(Debug, Clone, serde::Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct DatabaseIntegrityReport {
     pub ok: bool,
     /// The problems SQLite listed, one per entry, capped at [`MAX_INTEGRITY_PROBLEMS`]. Empty when

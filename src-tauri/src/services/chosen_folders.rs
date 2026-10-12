@@ -18,7 +18,6 @@ use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
 
 use serde::Deserialize;
-use ts_rs::TS;
 
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -26,9 +25,10 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// folder will be used as, and a folder picked for one purpose is not accepted for the other. A
 /// folder picked as the backup mirror would otherwise be accepted as the library, or as where the
 /// library is moved, and the reverse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum FolderPurpose {
     /// The library folder, chosen first or as a migration destination.
     Library,

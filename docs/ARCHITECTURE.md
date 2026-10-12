@@ -177,9 +177,11 @@ see `docs/THREAT-MODEL.md` for why that is the correct state rather than a missi
 ### Generated TypeScript bindings (ts-rs)
 
 Rust types that cross the IPC boundary derive `ts_rs::TS` with `#[ts(export, export_to =
-"../../src/types/generated/")]` (see `StoredAppSettings` in `services/database.rs` for an
-example). Running the type's generated test (the `ts-rs` macro emits a hidden `#[test]`
-per exported type) writes the corresponding `.ts` file under `src/types/generated/`. CI
+"../../src/types/generated/")]`, both behind `cfg_attr(test, ...)` (see `StoredAppSettings` in
+`services/database.rs` for an example). ts-rs is a dev-dependency, since only tests use it, so a
+release build does not compile it. Running the type's generated test (the `ts-rs` macro emits a
+hidden `#[test]` per exported type) writes the corresponding `.ts` file under
+`src/types/generated/`. CI
 regenerates and diffs them so a Rust-side type change can never silently drift from what
 the frontend imports:
 

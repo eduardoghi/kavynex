@@ -66,8 +66,9 @@ pub struct ArtifactCleanupPlan {
     pub skipped_shared_paths: Vec<String>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, ts_rs::TS)]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[derive(Debug, Default, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct ArtifactCleanupReport {
     pub deleted_paths: Vec<String>,
     pub skipped_shared_paths: Vec<String>,
@@ -982,9 +983,10 @@ fn was_written_recently(path: &Path) -> bool {
 const SHARE_RULE_MIN_FILES: usize = 10;
 
 /// Why the orphan removal will not run on this library right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub enum OrphanRemovalRefusal {
     /// The database was imported or restored within [`ORPHAN_GRACE_PERIOD`]. Files the previous
     /// database used read as orphans to this one, and undoing the import would bring back rows
@@ -996,13 +998,14 @@ pub enum OrphanRemovalRefusal {
 }
 
 /// What an orphan removal would do on this library, for Diagnostics to show before it is asked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, ts_rs::TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/types/generated/")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
 pub struct OrphanRemovalPlan {
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub files: usize,
-    #[ts(type = "number")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub bytes: u64,
     pub refusal: Option<OrphanRemovalRefusal>,
 }
