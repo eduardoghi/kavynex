@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A database that does not open at startup no longer queues "Failed to load channels" and
+  "Failed to prepare app settings" around the message or the recovery dialog that explains it.
 - Channel avatars no longer stay blank when the sidebar draws them before the library folder is
   authorized, at startup or after a folder change.
 - An update download that stalls now ends with an error after ten minutes, which unlocks Settings.

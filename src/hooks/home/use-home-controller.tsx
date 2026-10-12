@@ -5,7 +5,7 @@ import { useChannels } from "../channels/use-channels";
 import { useMediaLibrary } from "../media/use-media-library";
 import { useDiagnostics } from "../use-diagnostics";
 import { useErrorModal } from "../use-error-modal";
-import { useAppBootstrap } from "../use-app-bootstrap";
+import { useAppBootstrap, useStartupErrorGate } from "../use-app-bootstrap";
 import { useAppSettings } from "../settings/use-app-settings";
 import { useHomeUiGuards } from "./use-home-ui-guards";
 import { useHomeActions } from "./use-home-actions";
@@ -26,8 +26,16 @@ export function useHomeController(): HomeController {
         onError: errorState.showError,
     });
 
+    // For the hooks whose first load runs beside the database check. A database that does not open
+    // fails those loads too, and "Failed to load channels" and "Failed to prepare app settings"
+    // would queue around the bootstrap's own message.
+    const showStartupError = useStartupErrorGate(
+        errorState.showError,
+        databaseRecovery.databaseStatus
+    );
+
     const settingsState = useAppSettings({
-        onError: errorState.showError,
+        onError: showStartupError,
         onNotice: errorState.showNotice,
     });
 
@@ -36,7 +44,7 @@ export function useHomeController(): HomeController {
 
     const channelsState = useChannels({
         libraryPath,
-        onError: errorState.showError,
+        onError: showStartupError,
         onNotice: errorState.showNotice,
     });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ensureDatabaseReady,
     getDatabaseBackupStatus,
@@ -28,7 +28,12 @@ type UseAppBootstrapOptions = {
 // database whose daily snapshot then rotates the backups out.
 export type DatabaseRecoveryReason = "damaged" | "missing";
 
+// Where the startup database check stands. "failed" covers every outcome that reported something
+// to the user, the recovery dialog included.
+export type DatabaseStatus = "pending" | "ready" | "failed";
+
 export type DatabaseRecoveryController = {
+    databaseStatus: DatabaseStatus;
     open: boolean;
     reason: DatabaseRecoveryReason;
     backedUpAtMs: number | null;
@@ -55,13 +60,16 @@ export function useAppBootstrap({
     const [backedUpAtMs, setBackedUpAtMs] = useState<number | null>(null);
     const [isRestoring, setIsRestoring] = useState(false);
     const [confirmingStartEmpty, setConfirmingStartEmpty] = useState(false);
+    const [databaseStatus, setDatabaseStatus] = useState<DatabaseStatus>("pending");
 
     useEffect(() => {
         let cancelled = false;
+        let ready = false;
 
         void (async () => {
             try {
                 await ensureDatabaseReady();
+                ready = true;
             } catch (error) {
                 logError("bootstrap", "Failed to initialize app.", error);
 
@@ -124,7 +132,13 @@ export function useAppBootstrap({
                     onError(resolveErrorMessage(error, "Failed to initialize app."));
                 }
             }
-        })();
+        })().finally(() => {
+            // Set once the outcome has been reported, whichever it was, so what the startup error
+            // gate drops on a failure is never shown ahead of the message that explains it.
+            if (!cancelled) {
+                setDatabaseStatus(ready ? "ready" : "failed");
+            }
+        });
 
         return () => {
             cancelled = true;
@@ -178,6 +192,7 @@ export function useAppBootstrap({
 
     // Memoized so consumers depending on the whole object identity don't re-render unnecessarily.
     return useMemoObject({
+        databaseStatus,
         open,
         reason,
         backedUpAtMs,
@@ -189,4 +204,48 @@ export function useAppBootstrap({
         startEmpty,
         dismiss,
     });
+}
+
+/**
+ * Wraps `onError` for the loads that start beside the database check (channels, settings), which
+ * fail too when the database does not open, each with its own message.
+ *
+ * Errors reported while the check is pending are held. They are shown once it succeeds, and dropped
+ * when it fails, since the bootstrap's own message or the recovery dialog already says what is
+ * wrong, and the callers log every one of them. Once the check settles, errors pass straight through.
+ */
+export function useStartupErrorGate(
+    onError: (message: string) => void,
+    databaseStatus: DatabaseStatus
+): (message: string) => void {
+    // Written during render, so an error reported by an effect of the commit that settled the check
+    // already passes through instead of being held behind a flush that has run.
+    const statusRef = useRef(databaseStatus);
+    statusRef.current = databaseStatus;
+    const heldRef = useRef<string[]>([]);
+
+    useEffect(() => {
+        if (databaseStatus === "pending") {
+            return;
+        }
+
+        const held = heldRef.current;
+        heldRef.current = [];
+
+        if (databaseStatus === "ready") {
+            held.forEach((message) => onError(message));
+        }
+    }, [databaseStatus, onError]);
+
+    return useCallback(
+        (message: string): void => {
+            if (statusRef.current === "pending") {
+                heldRef.current.push(message);
+                return;
+            }
+
+            onError(message);
+        },
+        [onError]
+    );
 }

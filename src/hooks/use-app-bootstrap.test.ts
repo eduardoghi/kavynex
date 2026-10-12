@@ -1,6 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useAppBootstrap } from "./use-app-bootstrap";
+import {
+    type DatabaseStatus,
+    useAppBootstrap,
+    useStartupErrorGate,
+} from "./use-app-bootstrap";
 
 vi.mock("../services/database-service", () => ({
     ensureDatabaseReady: vi.fn(),
@@ -54,6 +58,24 @@ describe("useAppBootstrap", () => {
 
         expect(onError).not.toHaveBeenCalled();
         expect(result.current.open).toBe(false);
+
+        await waitFor(() => {
+            expect(result.current.databaseStatus).toBe("ready");
+        });
+    });
+
+    it("reports the database check failed when it does", async () => {
+        vi.mocked(ensureDatabaseReady).mockRejectedValueOnce(new Error("boom"));
+
+        // Hoisted, since a new callback identity runs the check again.
+        const onError = vi.fn();
+        const { result } = renderHook(() => useAppBootstrap({ onError }));
+
+        expect(result.current.databaseStatus).toBe("pending");
+
+        await waitFor(() => {
+            expect(result.current.databaseStatus).toBe("failed");
+        });
     });
 
     it("reports the initialization error when no backup is available", async () => {
@@ -473,5 +495,49 @@ describe("useAppBootstrap", () => {
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
         expect(onError).not.toHaveBeenCalled();
+    });
+});
+
+describe("useStartupErrorGate", () => {
+    function renderGate(initial: DatabaseStatus) {
+        const onError = vi.fn();
+        const hook = renderHook(
+            ({ status }: { status: DatabaseStatus }) => useStartupErrorGate(onError, status),
+            { initialProps: { status: initial } }
+        );
+
+        return { onError, ...hook };
+    }
+
+    it("holds an error until the database check succeeds, then shows it", () => {
+        const { onError, result, rerender } = renderGate("pending");
+
+        result.current("Failed to load channels.");
+
+        expect(onError).not.toHaveBeenCalled();
+
+        rerender({ status: "ready" });
+
+        expect(onError).toHaveBeenCalledWith("Failed to load channels.");
+    });
+
+    it("drops what it held when the database check fails", () => {
+        // The bootstrap's own message, or the recovery dialog, says what is wrong. The loads that
+        // failed beside it only repeat it under other names.
+        const { onError, result, rerender } = renderGate("pending");
+
+        result.current("Failed to load channels.");
+        result.current("Failed to prepare app settings.");
+        rerender({ status: "failed" });
+
+        expect(onError).not.toHaveBeenCalled();
+    });
+
+    it("passes errors straight through once the check has settled", () => {
+        const { onError, result } = renderGate("failed");
+
+        result.current("Failed to update channel.");
+
+        expect(onError).toHaveBeenCalledWith("Failed to update channel.");
     });
 });

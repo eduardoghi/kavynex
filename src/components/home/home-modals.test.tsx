@@ -253,6 +253,7 @@ function createUiGuards(): HomeUiGuardsController {
 
 function createDatabaseRecovery(): DatabaseRecoveryController {
     return {
+        databaseStatus: "ready",
         open: false,
         reason: "damaged",
         backedUpAtMs: null,

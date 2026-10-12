@@ -508,6 +508,11 @@ The hook branches on which:
 - Anything else asks `getDatabaseBackupStatus()`. If a backup exists, the recovery modal opens
   showing its date; otherwise the initialization error is surfaced as-is.
 
+The channel list and the settings start loading beside that check, and a database that does not
+open fails them too. Their errors go through `useStartupErrorGate`, which holds what arrives while
+the check is pending, shows it once the check succeeds and drops it when the check fails, since the
+outcome above already says what is wrong. Later errors pass straight through.
+
 `restoreFromBackup` calls `restore_database_from_backup` (which refuses to run once the pool is
 open, and holds the open lock for the whole restore so nothing can create the file underneath
 it) and then reloads the window, so the app re-initializes against the restored database rather

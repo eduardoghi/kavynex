@@ -8,6 +8,8 @@ vi.mock("../use-error-modal", () => ({
 
 vi.mock("../use-app-bootstrap", () => ({
     useAppBootstrap: vi.fn(),
+    // Passes the callback through, so the wiring below can name the error modal's own.
+    useStartupErrorGate: vi.fn((onError: (message: string) => void) => onError),
 }));
 
 vi.mock("../settings/use-app-settings", () => ({
@@ -395,6 +397,7 @@ describe("useHomeController", () => {
         vi.mocked(useHomeViewState).mockReturnValue(mockViewState);
         vi.mocked(useHomeLibraryPanel).mockReturnValue(mockLibraryPanelState);
         vi.mocked(useAppBootstrap).mockReturnValue({
+            databaseStatus: "ready",
             open: false,
             reason: "damaged",
             backedUpAtMs: null,
