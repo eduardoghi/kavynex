@@ -1,4 +1,5 @@
 import { parseAppError } from "./app-error";
+import { redactCookiesBrowserSelector } from "../constants/cookies-browsers";
 
 type LogLevel = "info" | "warn" | "error";
 
@@ -23,6 +24,44 @@ export function setLogSink(next: LogSink | null): void {
     sink = next;
 }
 
+// A meta key naming a path. Matched by name, since the values are plain strings.
+const PATH_META_KEY = /path$/i;
+
+// The final component of a path, the way the backend's `logger::redact_path` writes one.
+function lastPathComponent(value: string): string {
+    const parts = value.split(/[\\/]/).filter((part) => part.length > 0);
+
+    return parts[parts.length - 1] ?? "";
+}
+
+// What a meta value may say in the log file. The file is what a user attaches to a public bug report
+// (see TROUBLESHOOTING.md), and the backend reduces every path it logs to its last component and
+// hides the profile in a cookies selector. Done here, at the sink, so a call site that passes a path
+// or a selector cannot leak it by forgetting. The console keeps the full values for development.
+function redactMetaForSink(meta: LogMeta): LogMeta {
+    return Object.fromEntries(
+        Object.entries(meta).map(([key, value]) => {
+            if (typeof value !== "string" || value.length === 0) {
+                return [key, value];
+            }
+
+            if (key === "cookiesBrowser") {
+                return [key, redactCookiesBrowserSelector(value)];
+            }
+
+            if (key === "cookiesPath") {
+                return [key, "<set>"];
+            }
+
+            if (PATH_META_KEY.test(key)) {
+                return [key, lastPathComponent(value)];
+            }
+
+            return [key, value];
+        })
+    );
+}
+
 // Flattens what the console gets into one line the file can hold. The error is reduced to its code
 // and message rather than serialized whole, because the file is read as text and a nested object
 // helps nobody there.
@@ -34,7 +73,7 @@ function describeForSink(message: string, error?: unknown, meta?: LogMeta): stri
         parts.push(`error=${normalized.code}: ${normalized.message}`);
     }
 
-    const normalizedMeta = normalizeMeta(meta);
+    const normalizedMeta = meta ? normalizeMeta(redactMetaForSink(meta)) : undefined;
 
     if (normalizedMeta) {
         try {

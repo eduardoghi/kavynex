@@ -186,6 +186,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Security
 
+- The log file no longer gets full file paths or a cookies browser profile from the app's interface.
+  A path is written as its last part and the profile as redacted, as the rest of the log already did.
 - Importing a database keeps this machine's choice about loading comment and live chat images from
   Google. The imported file could turn it on.
 - File paths are accepted only when you picked them in a dialog, for imports, exports, thumbnails

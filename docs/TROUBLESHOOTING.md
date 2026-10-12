@@ -410,8 +410,9 @@ Kavynex writes a rolling log file in addition to stderr. The quickest way there 
 manager. Failing that, it is the current platform's app log directory (see `DIRECTORIES.md`).
 Look for `kavynex.log` (and `kavynex.log.1`, the previous rotation, once the current file passes
 5 MB). Attach the relevant lines when reporting a bug. Your home folder is written as `~` in every
-line, so the OS user name it carries stays out of the file. Logs can still contain other file paths
-(a library on another drive, for one) and a reference to each video you download, so
+line, so the OS user name it carries stays out of the file, and the paths the app logs about your
+files are written as their last part (`media_<hash>.mp4`, `Library`). Logs can still contain other
+file paths, in a message an external tool printed, for one, and a reference to each video you download, so
 they do reveal which videos were fetched. A run that succeeds records only a reduced
 reference (the video id; the playlist and tracking parameters of the URL you pasted are
 dropped), but one that fails also records yt-dlp's own verbose output, which can include the

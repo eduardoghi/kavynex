@@ -170,4 +170,31 @@ describe("app-logger", () => {
             setLogSink(null);
         }
     });
+
+    it("writes only the last component of a path and hides a cookies profile in the log file", () => {
+        // The file is what a user attaches to a public issue. The console keeps the full values.
+        vi.spyOn(console, "error").mockImplementation(() => {});
+        const sink = vi.fn();
+        setLogSink(sink);
+
+        try {
+            logError("test-scope", "failure", new Error("boom"), {
+                libraryPath: "C:\\Users\\someone\\Library",
+                filePath: "video/media_abc.mp4",
+                cookiesBrowser: "firefox:C:\\Users\\someone\\Profiles\\default",
+                cookiesPath: "C:\\Users\\someone\\cookies.txt",
+                mediaId: 7,
+            });
+
+            const line = String(sink.mock.calls[0]![2]);
+
+            expect(line).not.toContain("someone");
+            expect(line).toContain('"libraryPath":"Library"');
+            expect(line).toContain('"filePath":"media_abc.mp4"');
+            expect(line).toContain("firefox:<redacted>");
+            expect(line).toContain('"mediaId":7');
+        } finally {
+            setLogSink(null);
+        }
+    });
 });
