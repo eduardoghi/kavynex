@@ -122,6 +122,20 @@ export function useChannelActions({
         }
     }, [loadRequestGuard, onError, setChannels]);
 
+    // A reload after a write that already landed. Its failure is reported with `message`, which says
+    // the change was stored, rather than as a failure of the change itself.
+    const reloadChannelsAfterChange = useCallback(
+        async (message: string): Promise<void> => {
+            try {
+                setChannels(await listAllChannels());
+            } catch (error) {
+                logError("channels", "Failed to reload channels after a change.", error);
+                onError(message);
+            }
+        },
+        [onError, setChannels]
+    );
+
     const createChannelAction = useCallback(
         async (
             name: string,
@@ -251,11 +265,6 @@ export function useChannelActions({
                         normalizedName,
                         normalizedYoutubeHandle
                     );
-
-                    const items = await listAllChannels();
-                    setChannels(items);
-
-                    return true;
                 } catch (error) {
                     logError("channels", "Failed to update channel identity.", error, {
                         channelId,
@@ -265,11 +274,19 @@ export function useChannelActions({
                     onError(resolveErrorMessage(error, "Failed to update channel."));
                     return false;
                 }
+
+                // The change is stored by now, so a list that will not reload is not a failed edit.
+                // Reported on its own, as creating a channel does, and the edit form closes.
+                await reloadChannelsAfterChange(
+                    "The channel was updated, but the channel list could not be reloaded. Restart the app if it does not show the change."
+                );
+
+                return true;
             });
 
             return updated ?? false;
         },
-        [onError, runEditChannel, setChannels]
+        [onError, reloadChannelsAfterChange, runEditChannel]
     );
 
     const updateChannelAvatarAction = useCallback(
@@ -323,8 +340,10 @@ export function useChannelActions({
                         onNotice?.(leftoverAvatarNotice());
                     }
 
-                    const items = await listAllChannels();
-                    setChannels(items);
+                    // Reports its own failure, which says the avatar was stored.
+                    await reloadChannelsAfterChange(
+                        "The avatar was changed, but the channel list could not be reloaded. Restart the app if it does not show the new avatar."
+                    );
                 } catch (error) {
                     logError("channels", "Failed to update channel avatar.", error, {
                         channelId: channel.id,
@@ -343,8 +362,8 @@ export function useChannelActions({
             libraryPath,
             onError,
             onNotice,
+            reloadChannelsAfterChange,
             runUpdateChannelAvatar,
-            setChannels,
             setUpdatingChannelAvatarId,
         ]
     );

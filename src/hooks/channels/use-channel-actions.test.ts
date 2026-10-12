@@ -624,6 +624,42 @@ describe("useChannelActions", () => {
         expect(setChannels).toHaveBeenCalled();
     });
 
+    it("keeps an edit that was stored when only the list reload fails", async () => {
+        // "Failed to update channel" with the edit form left open made the user redo a rename that
+        // had already been saved.
+        vi.mocked(updateChannelNameHandle).mockResolvedValueOnce(undefined);
+        vi.mocked(listAllChannels).mockRejectedValueOnce(new Error("database is busy"));
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                onChannelDeleted,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                setUpdatingChannelAvatarId,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let updated = false;
+
+        await act(async () => {
+            updated = await result.current.updateChannelIdentityAction(10, "Canal", "@canal");
+        });
+
+        expect(updated).toBe(true);
+        expect(onError).toHaveBeenCalledWith(expect.stringContaining("The channel was updated"));
+        expect(onError).not.toHaveBeenCalledWith("Failed to update channel.");
+    });
+
     it("returns false and reports error when update channel identity fails", async () => {
         vi.mocked(updateChannelNameHandle).mockRejectedValueOnce(new Error("boom"));
 
