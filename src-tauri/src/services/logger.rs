@@ -56,9 +56,10 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
         return;
     }
 
-    let backup = backup_path(path);
-    let _ = fs::remove_file(&backup);
-    let _ = fs::rename(path, &backup);
+    // `rename` replaces an existing backup on every platform this app runs on, so the previous `.1`
+    // is not removed first. When the log is held open by another program (a viewer, an antivirus)
+    // the rename fails, and removing the backup beforehand lost it while the log kept growing.
+    let _ = fs::rename(path, backup_path(path));
 }
 
 /// Reduces a path to its final component for use in a log line. A log line can be pasted into
@@ -343,6 +344,23 @@ mod tests {
 
         assert!(!path.exists());
         assert!(backup_path(&path).exists());
+        assert_eq!(
+            fs::read_to_string(backup_path(&path)).unwrap(),
+            "0123456789"
+        );
+
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn rotate_replaces_the_previous_backup() {
+        let path = temp_log("rotate-again");
+        fs::write(backup_path(&path), "the previous rotation").unwrap();
+        fs::write(&path, "0123456789").unwrap();
+
+        rotate_if_needed(&path, 5);
+
+        assert!(!path.exists());
         assert_eq!(
             fs::read_to_string(backup_path(&path)).unwrap(),
             "0123456789"
