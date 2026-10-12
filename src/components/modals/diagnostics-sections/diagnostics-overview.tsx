@@ -1,6 +1,7 @@
 import { Box, Group, Text } from "@mantine/core";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { DiagnosticsOverview, DiagnosticsOverviewStatus } from "../../../types/diagnostics";
+import { formatCount } from "../../../utils/pluralize";
 import { StatusBadge } from "./diagnostics-summary-primitives";
 
 // The status colours the overview icon used to carry inside a tinted circle. The circle went, the
@@ -52,13 +53,13 @@ export function DiagnosticsOverviewHeader({
                 empty Group holding the Stack's gap open. */}
             {overview.issueCount > 0 && (
                 <Group gap="xs" wrap="wrap">
-                    <StatusBadge color="gray" label={`${overview.issueCount} issues`} />
+                    <StatusBadge color="gray" label={formatCount(overview.issueCount, "issue")} />
 
                     {overview.errorCount > 0 && (
-                        <StatusBadge color="red" label={`${overview.errorCount} errors`} />
+                        <StatusBadge color="red" label={formatCount(overview.errorCount, "error")} />
                     )}
                     {overview.warningCount > 0 && (
-                        <StatusBadge color="yellow" label={`${overview.warningCount} warnings`} />
+                        <StatusBadge color="yellow" label={formatCount(overview.warningCount, "warning")} />
                     )}
                     {overview.infoCount > 0 && (
                         <StatusBadge color="blue" label={`${overview.infoCount} info`} />

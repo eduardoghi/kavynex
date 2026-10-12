@@ -440,7 +440,7 @@ describe("buildDiagnosticsIssues", () => {
                 severity: "warning",
                 title: "Some live chat replay files are missing",
                 description:
-                    "2 live chat file(s) referenced by the database were not found in app storage.",
+                    "2 live chat file(s) referenced by the database were not found in the library folder.",
             },
         ]);
     });
@@ -470,7 +470,7 @@ describe("buildDiagnosticsIssues", () => {
                 severity: "info",
                 title: "Orphan live chat replay files were found",
                 description:
-                    "3 live chat file(s) exist in app storage without a linked media record.",
+                    "3 live chat file(s) exist in the library folder without a linked media record.",
             },
         ]);
     });

@@ -70,8 +70,8 @@ function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element
                 <AlertTriangle size={16} />
                 <Text size="sm">
                     {report.verified} file(s) match the content they were saved with.{" "}
-                    {report.unreadable + report.unverifiable} could not be checked, listed below.
-                    This is not a clean result.
+                    {report.unreadable + report.unverifiable} could not be checked, as explained
+                    below. This is not a clean result.
                 </Text>
             </Group>
         );

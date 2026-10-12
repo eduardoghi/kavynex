@@ -387,7 +387,7 @@ export function buildDiagnosticsIssues(
                     code: "MISSING_LIVE_CHAT_FILES",
                     severity: "warning",
                     title: "Some live chat replay files are missing",
-                    description: `${input.liveChatIntegrity.missing_live_chat_files} live chat file(s) referenced by the database were not found in app storage.`,
+                    description: `${input.liveChatIntegrity.missing_live_chat_files} live chat file(s) referenced by the database were not found in the library folder.`,
                 },
                 input.liveChatIntegrity.missing_live_chat_examples
             )
@@ -415,7 +415,7 @@ export function buildDiagnosticsIssues(
                     code: "ORPHAN_LIVE_CHAT_FILES",
                     severity: "info",
                     title: "Orphan live chat replay files were found",
-                    description: `${input.liveChatIntegrity.orphan_live_chat_files} live chat file(s) exist in app storage without a linked media record.`,
+                    description: `${input.liveChatIntegrity.orphan_live_chat_files} live chat file(s) exist in the library folder without a linked media record.`,
                 },
                 input.liveChatIntegrity.orphan_live_chat_examples
             )

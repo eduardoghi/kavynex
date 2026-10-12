@@ -44,6 +44,8 @@ export function EditMediaTitleModal({
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
+            // Mantine's close button is an icon with no text, so it needs a name for a screen reader.
+            closeButtonProps={{ "aria-label": "Close edit title" }}
             {...modalLock}
         >
             <form

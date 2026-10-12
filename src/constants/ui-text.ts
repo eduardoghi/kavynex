@@ -127,7 +127,7 @@ export const UI_TEXT = {
         truncatedNoticeMiddle: "of",
         truncatedNoticeSuffix: "saved comments; the rest are not loaded here.",
         sortOptions: {
-            likes: "Most relevant",
+            likes: "Most liked",
             newest: "Newest first",
             oldest: "Oldest first",
         },
