@@ -11,7 +11,15 @@ import {
     Tooltip,
     VisuallyHidden,
 } from "@mantine/core";
-import { ArrowDownAZ, ArrowLeft, ArrowUpAZ, Search, Video } from "lucide-react";
+import {
+    ArrowDownAZ,
+    ArrowDownWideNarrow,
+    ArrowLeft,
+    ArrowUpAZ,
+    ArrowUpNarrowWide,
+    Search,
+    Video,
+} from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
@@ -319,10 +327,18 @@ export function SelectedChannelLibrarySection({
                                 background: "rgba(124,92,255,0.13)",
                             }}
                         >
-                            {sortDirection === "desc" ? (
-                                <ArrowDownAZ size={18} />
+                            {/* A to Z is the title sort only. Dates, durations and counts are
+                                ordered by size, which the plain arrows say. */}
+                            {sortCategory === "title" ? (
+                                sortDirection === "desc" ? (
+                                    <ArrowDownAZ size={18} />
+                                ) : (
+                                    <ArrowUpAZ size={18} />
+                                )
+                            ) : sortDirection === "desc" ? (
+                                <ArrowDownWideNarrow size={18} />
                             ) : (
-                                <ArrowUpAZ size={18} />
+                                <ArrowUpNarrowWide size={18} />
                             )}
                         </ActionIcon>
                     </Tooltip>
