@@ -241,6 +241,7 @@ export function AddMediaModal({
                         />
 
                         <SegmentedControl
+                            aria-label="Media source"
                             value={sourceMode}
                             onChange={(value) =>
                                 void onChangeSourceMode(

@@ -62,6 +62,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- Keyboard and screen reader fixes. The file pickers in Add media show a focus ring, the reply
+  toggle says whether the replies are open, like and comment counts are read with their unit, the
+  media source and channel avatar choices have a name, and the Diagnostics loading text is announced.
 - The New channel and Edit title dialogs open with the cursor in their first field, so typing goes
   straight into it. Focus used to land on the close button. Edit title also uses the same title and
   buttons as the other dialogs.

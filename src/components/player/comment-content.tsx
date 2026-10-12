@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { Anchor, Badge, Group, Stack, Text } from "@mantine/core";
+import { Anchor, Badge, Group, Stack, Text, VisuallyHidden } from "@mantine/core";
 import { ThumbsUp } from "lucide-react";
 import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
 import { UI_TEXT } from "../../constants/ui-text";
@@ -123,6 +123,11 @@ export function CommentContent({
                             <ThumbsUp size={14} />
                             <Text size="xs" c="dimmed">
                                 {comment.like_count}
+                                {/* The icon is hidden from screen readers, which left a bare
+                                    number. */}
+                                <VisuallyHidden>
+                                    {comment.like_count === 1 ? " like" : " likes"}
+                                </VisuallyHidden>
                             </Text>
                         </Group>
                     )}

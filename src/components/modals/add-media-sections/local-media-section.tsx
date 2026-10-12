@@ -35,6 +35,7 @@ function LocalMediaSectionView({
     return (
         <Box
             role="button"
+            className="kx-file-picker"
             tabIndex={isLocked ? -1 : 0}
             aria-disabled={isLocked || undefined}
             onClick={isLocked ? undefined : onPickMedia}
@@ -56,7 +57,6 @@ function LocalMediaSectionView({
                 cursor: isLocked ? "progress" : "pointer",
                 userSelect: "none",
                 opacity: isLocked ? 0.7 : 1,
-                outline: "none",
                 transition:
                     "opacity 140ms ease, border-color 140ms ease, background 140ms ease",
             }}

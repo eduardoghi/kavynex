@@ -147,7 +147,7 @@ export function DiagnosticsModal({
                         <Stack gap="md" pr="xs">
                             {showInitialLoading && (
                                 <Paper withBorder radius="lg" p="xl">
-                                    <Stack align="center" gap="sm">
+                                    <Stack align="center" gap="sm" role="status">
                                         <Loader size="sm" />
                                         <Text c="dimmed">Loading diagnostics.</Text>
                                     </Stack>
@@ -156,7 +156,7 @@ export function DiagnosticsModal({
 
                             {showRefreshingState && (
                                 <Paper withBorder radius="lg" p="sm">
-                                    <Group gap="sm">
+                                    <Group gap="sm" role="status">
                                         <Loader size="xs" />
                                         <Text size="sm" c="dimmed">
                                             Refreshing diagnostics...

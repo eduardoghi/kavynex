@@ -64,6 +64,7 @@ function CommentItemComponent({
                 expandedReplies ? <ChevronUp size={14} /> : <ChevronDown size={14} />
             }
             onClick={() => setExpandedReplies((current) => !current)}
+            aria-expanded={expandedReplies}
             styles={REPLY_TOGGLE_BUTTON_STYLES}
         >
             {expandedReplies ? UI_TEXT.comments.hideReplies : replyCountLabel}

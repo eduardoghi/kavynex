@@ -151,6 +151,7 @@ export function CreateChannelModal({
                             </Text>
 
                             <SegmentedControl
+                                aria-label="Channel avatar"
                                 value={avatarMode}
                                 onChange={(value) =>
                                     onChangeAvatarMode?.(

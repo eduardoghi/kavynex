@@ -143,6 +143,8 @@ export function SelectedChannelLibrarySection({
                         size={58}
                         radius="xl"
                         src={avatarSrc || undefined}
+                        // Decorative. The channel's name is the heading beside it.
+                        alt=""
                         color="violet"
                         style={{
                             border: `1px solid ${shellBorder}`,

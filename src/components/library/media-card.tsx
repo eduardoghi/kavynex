@@ -1,5 +1,5 @@
 import { memo, type CSSProperties } from "react";
-import { Badge, Box, Group, Stack, Text, Tooltip, rem } from "@mantine/core";
+import { Badge, Box, Group, Stack, Text, Tooltip, VisuallyHidden, rem } from "@mantine/core";
 import { Headphones, MessageCircle, Radio, Video } from "lucide-react";
 import { LIVE_BADGE_STYLE } from "../../constants/live-badge";
 import { StretchedButtonCard } from "../common/stretched-button-card";
@@ -337,6 +337,11 @@ function MediaCardComponent({
                                 style={COMMENTS_BADGE_STYLE}
                             >
                                 {commentsCount}
+                                {/* The icon is hidden from screen readers, which left a bare
+                                    number. */}
+                                <VisuallyHidden>
+                                    {commentsCount === 1 ? " comment" : " comments"}
+                                </VisuallyHidden>
                             </Badge>
                         )}
 

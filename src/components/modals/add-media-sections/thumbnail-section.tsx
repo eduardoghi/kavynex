@@ -57,6 +57,7 @@ function ThumbnailSectionView({
             radius={FILE_PICKER_RADIUS}
             p="md"
             role="button"
+            className="kx-file-picker"
             tabIndex={!isBusy && canSelectThumb ? 0 : -1}
             aria-disabled={isBusy || !canSelectThumb || undefined}
             onClick={!isBusy && canSelectThumb ? onPickThumb : undefined}
@@ -82,7 +83,6 @@ function ThumbnailSectionView({
                 userSelect: "none",
                 opacity: !canSelectThumb ? 0.55 : isAudio ? 0.92 : 1,
                 pointerEvents: !canSelectThumb ? "none" : "auto",
-                outline: "none",
                 transition:
                     "opacity 160ms ease, border-color 160ms ease, background 160ms ease",
             }}

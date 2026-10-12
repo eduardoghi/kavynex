@@ -5,8 +5,12 @@
 /* StretchedButtonCard activates a whole card through an absolutely-positioned UnstyledButton,
    which is unstyled and shows nothing on keyboard focus. Draw a crisp violet ring, inset so it
    sits just inside the card's rounded edge (offset follows the button's inherited radius). Only
-   on :focus-visible, so it appears for keyboard navigation and never on a mouse click. */
-.kx-card-button:focus-visible {
+   on :focus-visible, so it appears for keyboard navigation and never on a mouse click.
+
+   The file pickers in Add media are a Box with role="button" for the same reason, with nothing of
+   Mantine's to draw a ring on them. */
+.kx-card-button:focus-visible,
+.kx-file-picker:focus-visible {
     outline: 2px solid rgba(124, 92, 255, 0.9);
     outline-offset: -3px;
 }

@@ -45,8 +45,12 @@ export function RegularChatMessage({
         <>
             {message.author_name}
             {isModerator && (
+                // role and aria-hidden as on the panel's Clock icon. lucide hides its glyphs,
+                // and the label alone does not reach a screen reader.
                 <Wrench
                     size={12}
+                    role="img"
+                    aria-hidden={false}
                     aria-label="Moderator"
                     style={{ marginLeft: 4, verticalAlign: "middle" }}
                 />
@@ -54,6 +58,8 @@ export function RegularChatMessage({
             {isOwner && isVerified && (
                 <Check
                     size={12}
+                    role="img"
+                    aria-hidden={false}
                     aria-label="Verified"
                     style={{ marginLeft: 4, verticalAlign: "middle" }}
                 />
