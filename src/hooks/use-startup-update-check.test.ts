@@ -2,18 +2,18 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useStartupUpdateCheck } from "./use-startup-update-check";
 import { checkAppUpdate } from "../services/app-update-service";
-import { logError } from "../utils/app-logger";
+import { logWarn } from "../utils/app-logger";
 
 vi.mock("../services/app-update-service", () => ({
     checkAppUpdate: vi.fn(),
 }));
 
 vi.mock("../utils/app-logger", () => ({
-    logError: vi.fn(),
+    logWarn: vi.fn(),
 }));
 
 const checkAppUpdateMock = vi.mocked(checkAppUpdate);
-const logErrorMock = vi.mocked(logError);
+const logWarnMock = vi.mocked(logWarn);
 
 function updateWithVersion(version: string): Awaited<ReturnType<typeof checkAppUpdate>> {
     return { version } as unknown as Awaited<ReturnType<typeof checkAppUpdate>>;
@@ -88,7 +88,7 @@ describe("useStartupUpdateCheck", () => {
         renderHook(() => useStartupUpdateCheck({ enabled: true, onUpdateAvailable }));
 
         // A failed passive check must never interrupt startup. It is logged and stays quiet.
-        await waitFor(() => expect(logErrorMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(logWarnMock).toHaveBeenCalledTimes(1));
         expect(onUpdateAvailable).not.toHaveBeenCalled();
     });
 });

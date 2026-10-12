@@ -1082,14 +1082,20 @@ pub async fn download_media_from_url_async<R: Runtime>(
     }
     // The registry entry is released by `_run_release_guard` when this function returns.
 
-    if let Err(error) = &result {
-        logger::error(
+    // A cancel is what the user asked for, so it is not logged as a failure.
+    match &result {
+        Err(error) if error.code == AppErrorCode::YtDlpDownloadCancelled.as_str() => logger::info(
+            "yt_dlp",
+            format!("download run cancelled: run_id='{normalized_run_id}'"),
+        ),
+        Err(error) => logger::error(
             "yt_dlp",
             format!(
                 "download run failed: run_id='{}', error='{}'",
                 normalized_run_id, error
             ),
-        );
+        ),
+        Ok(_) => {}
     }
 
     result
@@ -1861,7 +1867,7 @@ mod tests {
         // The URL after `--` is reduced to its video id, dropping any playlist/tracking params,
         // since this line is shown in the UI terminal and may be pasted into a public bug report.
         assert!(!logged.contains("https://youtube.com/watch?v=x"));
-        assert!(logged.contains("-- youtube.com?v=x"));
+        assert!(logged.contains("-- youtube.com/watch?v=x"));
     }
 
     #[test]

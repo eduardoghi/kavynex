@@ -506,20 +506,23 @@ fn run_command_capturing_first_line_within(
     };
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let detail = if !stderr.is_empty() {
-            stderr
-        } else if !stdout.is_empty() {
-            stdout
-        } else {
-            "unknown execution failure".to_string()
-        };
-
-        return Err(AppError::from_code(
+        // The tail only, like every other process error. A broken install can print a long trace,
+        // and this message reaches Diagnostics and the log.
+        let error = crate::utils::process::read_process_error(
+            &output,
             error_code,
-            format!("{default_message}: {detail}"),
-        ));
+            default_message,
+            str::to_string,
+        );
+
+        return Err(if error.message == default_message {
+            AppError::from_code(
+                error_code,
+                format!("{default_message}: unknown execution failure"),
+            )
+        } else {
+            error
+        });
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -615,9 +618,9 @@ pub fn resolve_external_tools_status<R: Runtime>(
     })
 }
 
-// Async wrappers so callers on the Tokio runtime do not block a worker thread while these
-// shell out (where.exe/which, and the `--version` health checks). Blocking work is moved to
-// the dedicated blocking pool via `run_blocking`.
+// Async wrappers so callers on the Tokio runtime do not block a worker thread while these walk
+// the PATH and run the `--version` health checks. Blocking work is moved to the dedicated
+// blocking pool via `run_blocking`.
 pub async fn resolve_yt_dlp_binary_async<R: Runtime>(app: &AppHandle<R>) -> AppResult<String> {
     let app = app.clone();
     run_blocking(move || resolve_yt_dlp_binary(&app)).await

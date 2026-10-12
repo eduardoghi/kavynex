@@ -299,7 +299,7 @@ fn redact_sensitive_reduces_the_full_url_to_a_video_reference() {
     );
 
     assert!(
-        redacted.contains("www.youtube.com?v=abc123"),
+        redacted.contains("www.youtube.com/watch?v=abc123"),
         "url should be reduced to its video reference: {redacted}"
     );
     assert!(

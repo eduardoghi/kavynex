@@ -20,7 +20,7 @@ fn is_allowed_youtube_host(host: &str) -> bool {
 /// Builds a privacy-reduced reference to a YouTube URL for the file log. The canonical video id
 /// when it can be extracted, otherwise the host and path alone. The full URL a user pastes can
 /// carry extra query parameters (playlist ids, referral/tracking params, timestamps) beyond the
-/// video itself; logging just `host?v=<id>` (or `youtu.be/<id>`) keeps the log useful for
+/// video itself; logging just `host/watch?v=<id>` (or `youtu.be/<id>`) keeps the log useful for
 /// diagnosis without recording those extras, which may end up in a public bug report.
 pub fn youtube_ref_for_log(url: &str) -> String {
     let Ok(uri) = url.trim().parse::<Uri>() else {
@@ -43,7 +43,7 @@ pub fn youtube_ref_for_log(url: &str) -> String {
         for pair in query.split('&') {
             if let Some(value) = pair.strip_prefix("v=") {
                 if !value.is_empty() {
-                    return format!("{host}?v={value}");
+                    return format!("{host}{}?v={value}", uri.path());
                 }
             }
         }
@@ -209,7 +209,7 @@ mod tests {
         // watch URLs keep only the `v` param, dropping playlist/tracking params.
         assert_eq!(
             youtube_ref_for_log("https://www.youtube.com/watch?v=abc123&list=PLxyz&t=42s"),
-            "www.youtube.com?v=abc123"
+            "www.youtube.com/watch?v=abc123"
         );
         // youtu.be short links. The id is the path.
         assert_eq!(
