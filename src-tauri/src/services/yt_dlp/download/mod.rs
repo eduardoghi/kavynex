@@ -552,7 +552,12 @@ pub async fn download_media_from_url_async<R: Runtime>(
     let normalized_run_id = validated.run_id;
     let normalized_format_id = validated.format_id;
     let normalized_cookies_browser = normalize_cookies_browser(cookies_browser);
-    let normalized_cookies_path = normalize_cookies_path(cookies_path);
+    // Off the async runtime, since validating the path stats and reads the user's file, which can
+    // sit on a slow or mapped drive.
+    let normalized_cookies_path = {
+        let cookies_path = cookies_path.map(str::to_string);
+        run_blocking(move || Ok(normalize_cookies_path(cookies_path.as_deref()))).await?
+    };
 
     let cancel_flag = register_download_run(&normalized_run_id)?;
     // Release the registry entry on every exit path. The `?` operators below (binary
@@ -1045,7 +1050,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             placement_marker,
         };
 
-        run_cookies.keep_refreshed();
+        run_cookies.keep_refreshed_async().await;
 
         emit_download_finished(
             app,

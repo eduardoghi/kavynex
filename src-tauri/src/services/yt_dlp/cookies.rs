@@ -462,6 +462,19 @@ impl RunCookies {
     }
 }
 
+impl RunCookies {
+    /// [`Self::keep_refreshed`] on the blocking pool, where the run's folder is removed too. Both
+    /// read and write the user's file, which can sit on a slow or mapped drive, so they stay off the
+    /// async runtime the way [`Self::prepare_async`] does.
+    pub async fn keep_refreshed_async(self) {
+        let _ = crate::utils::task::run_blocking(move || {
+            self.keep_refreshed();
+            Ok(())
+        })
+        .await;
+    }
+}
+
 impl Drop for RunCookies {
     fn drop(&mut self) {
         if let Some(scratch) = &self.scratch {

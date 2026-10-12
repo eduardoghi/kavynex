@@ -59,6 +59,13 @@ pub fn yt_dlp_temp_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     ensure_temp_subdir(app, TEMP_DIR_YT_DLP, AppErrorCode::CreateTempRootDirFailed)
 }
 
+/// [`yt_dlp_temp_dir`] on the blocking pool, for a caller on the async runtime, since it creates
+/// the directory.
+pub async fn yt_dlp_temp_dir_async<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
+    let app = app.clone();
+    crate::utils::task::run_blocking(move || yt_dlp_temp_dir(&app)).await
+}
+
 pub fn yt_dlp_thumb_temp_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<PathBuf> {
     ensure_temp_subdir(
         app,

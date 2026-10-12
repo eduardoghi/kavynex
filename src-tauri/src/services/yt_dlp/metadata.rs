@@ -950,7 +950,7 @@ pub async fn fetch_youtube_comments_async<R: Runtime>(
     // yt-dlp reads and rewrites a copy (see RunCookies).
     let run_cookies = super::cookies::RunCookies::prepare_async(
         cookies_path,
-        crate::services::temp_paths::yt_dlp_temp_dir(app)?,
+        crate::services::temp_paths::yt_dlp_temp_dir_async(app).await?,
     )
     .await;
 
@@ -963,7 +963,7 @@ pub async fn fetch_youtube_comments_async<R: Runtime>(
     )
     .await?;
 
-    run_cookies.keep_refreshed();
+    run_cookies.keep_refreshed_async().await;
 
     let reported_comment_count = metadata.comment_count;
 
@@ -1034,7 +1034,7 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     // yt-dlp reads and rewrites a copy (see RunCookies).
     let run_cookies = super::cookies::RunCookies::prepare_async(
         cookies_path,
-        crate::services::temp_paths::yt_dlp_temp_dir(app)?,
+        crate::services::temp_paths::yt_dlp_temp_dir_async(app).await?,
     )
     .await;
 
@@ -1079,7 +1079,7 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     }
 
     // The probe is a full YouTube request, so the cookies it renewed are kept like a download's.
-    run_cookies.keep_refreshed();
+    run_cookies.keep_refreshed_async().await;
 
     let metadata: YtDlpMetadata = serde_json::from_str(&json_payload).map_err(|e| {
         AppError::from_code_with_details(
