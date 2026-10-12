@@ -1,11 +1,5 @@
-import { ClientError } from "./app-error";
-
 export function normalizeString(value: string | null | undefined): string {
     return value?.trim() ?? "";
-}
-
-export function isNonEmptyString(value: string | null | undefined): value is string {
-    return normalizeString(value) !== "";
 }
 
 // Narrows a Mantine control's `string` onChange value to a known union, falling back when it is
@@ -19,17 +13,4 @@ export function toUnionValue<T extends string>(
     return value != null && (allowed as readonly string[]).includes(value)
         ? (value as T)
         : fallback;
-}
-
-export function assertNonEmptyString(
-    value: string | null | undefined,
-    fallbackMessage: string
-): string {
-    const normalized = normalizeString(value);
-
-    if (!normalized) {
-        throw new ClientError(fallbackMessage);
-    }
-
-    return normalized;
 }

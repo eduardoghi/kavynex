@@ -24,7 +24,6 @@ import {
     RESUME_COMPLETION_TOLERANCE_SECONDS,
     VIDEO_FILE_EXTENSIONS,
     resumePositionFor,
-    shortPath,
     stripWindowsExtendedPrefix,
 } from "./media-utils";
 
@@ -548,38 +547,6 @@ describe("media-utils", () => {
 
         it("returns unparseable values unchanged", () => {
             expect(formatCreatedAt("invalid-date")).toBe("invalid-date");
-        });
-    });
-
-    describe("shortPath", () => {
-        it("returns short paths normalized and trimmed", () => {
-            expect(shortPath("  C:\\media\\video.mp4  ")).toBe("C:/media/video.mp4");
-        });
-
-        it("returns an empty string for blank values", () => {
-            expect(shortPath("")).toBe("");
-            expect(shortPath("   ")).toBe("");
-        });
-
-        it("keeps a path exactly at the maximum length untouched", () => {
-            const path = `C:/${"a".repeat(53)}.mp4`;
-
-            expect(path).toHaveLength(60);
-            expect(shortPath(path)).toBe(path);
-        });
-
-        it("truncates long paths keeping the start and the file name", () => {
-            const path = `C:/${"d".repeat(70)}/file.mp4`;
-
-            expect(shortPath(path)).toBe(`C:/${"d".repeat(45)}.../file.mp4`);
-        });
-
-        it("keeps only the file name when it barely fits the limit", () => {
-            const fileName = `${"e".repeat(54)}.mp4`;
-            const path = `C:/${fileName}`;
-
-            expect(path.length).toBeGreaterThan(60);
-            expect(shortPath(path)).toBe(`.../${fileName}`);
         });
     });
 

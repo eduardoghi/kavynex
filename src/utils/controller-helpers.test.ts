@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Channel, MediaRow } from "../types/media";
+import type { Channel } from "../types/media";
 import {
-    buildItemCountLabel,
     findSelectedChannel,
     hasSelectedChannel,
 } from "./controller-helpers";
@@ -12,30 +11,6 @@ function createChannel(overrides: Partial<Channel> = {}): Channel {
         name: "Canal A",
         youtube_handle: "@canala",
         avatar_path: null,
-        created_at: "2026-03-31T10:00:00.000Z",
-        ...overrides,
-    };
-}
-
-function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
-        id: 1,
-        channel_id: 10,
-        title: "Item 1",
-        file_path: "video/item.mp4",
-        thumbnail_path: null,
-        media_type: "video",
-        youtube_video_id: null,
-        watched_at: null,
-        published_at: null,
-        duration_seconds: 0,
-        progress_seconds: 0,
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         created_at: "2026-03-31T10:00:00.000Z",
         ...overrides,
     };
@@ -62,12 +37,6 @@ describe("controller-helpers", () => {
 
     it("returns null when no channel matches the selected id", () => {
         expect(findSelectedChannel([createChannel({ id: 1 })], 99)).toBeNull();
-    });
-
-    it("builds item count label", () => {
-        expect(buildItemCountLabel([])).toBe("0 items");
-        expect(buildItemCountLabel([createMediaRow()])).toBe("1 item");
-        expect(buildItemCountLabel([createMediaRow(), createMediaRow()])).toBe("2 items");
     });
 
     it("checks selected channel existence", () => {

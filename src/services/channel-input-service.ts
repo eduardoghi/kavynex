@@ -2,7 +2,6 @@ import { createAppError } from "../utils/app-error";
 import {
     INVALID_CHANNEL_ID_ERROR_CODE,
     INVALID_CHANNEL_NAME_ERROR_CODE,
-    INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_YOUTUBE_HANDLE_ERROR_CODE,
 } from "../constants/error-codes";
 import { assertValidEntityId } from "../utils/id-validation";
@@ -59,20 +58,4 @@ export function validateCreateChannelInput(
 // copy (same rule, same code as a string literal), which is the shape where one copy drifts.
 export function validateChannelId(channelId: number): void {
     assertValidEntityId(channelId, INVALID_CHANNEL_ID_ERROR_CODE, "Channel id is invalid.");
-}
-
-export function requireLibraryPath(
-    libraryPath: string,
-    message = "Library folder must be configured for this operation."
-): string {
-    const normalizedLibraryPath = libraryPath.trim();
-
-    if (!normalizedLibraryPath) {
-        throw createAppError(
-            INVALID_LIBRARY_PATH_ERROR_CODE,
-            message
-        );
-    }
-
-    return normalizedLibraryPath;
 }

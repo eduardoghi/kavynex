@@ -402,24 +402,3 @@ export function formatCreatedAt(value: string | null | undefined): string {
 
     return MEDIUM_DATE_TIME_FORMAT.format(date);
 }
-
-export function shortPath(value: string, maxLength = 60): string {
-    const normalized = normalizePathSeparators(value.trim());
-
-    if (!normalized) {
-        return "";
-    }
-
-    if (normalized.length <= maxLength) {
-        return normalized;
-    }
-
-    const fileName = fileNameFromPath(normalized);
-
-    if (fileName.length + 4 >= maxLength) {
-        return `.../${fileName}`;
-    }
-
-    const remaining = maxLength - fileName.length - 4;
-    return `${normalized.slice(0, remaining)}.../${fileName}`;
-}

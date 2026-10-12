@@ -1,4 +1,4 @@
-import type { Channel, MediaRow } from "../types/media";
+import type { Channel } from "../types/media";
 import { formatCount } from "./pluralize";
 
 export function findSelectedChannel(
@@ -10,10 +10,6 @@ export function findSelectedChannel(
     }
 
     return channels.find((channel) => channel.id === selectedChannelId) ?? null;
-}
-
-export function buildItemCountLabel(items: MediaRow[]): string {
-    return formatCount(items.length, "item");
 }
 
 // Same label built from a count rather than an array, for the paginated library where the full
