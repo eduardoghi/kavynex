@@ -25,8 +25,9 @@ export function MotionSection({
             </Group>
 
             <Text size="sm" c="dimmed">
-                Transitions and animations: the cards lifting on hover, modals sliding in, the
-                striped download bar. Reducing them helps if motion on screen makes you uncomfortable.
+                Transitions and animations, such as the playing card lifting, modals sliding in and
+                the striped download bar. Reducing them helps if motion on screen makes you
+                uncomfortable.
             </Text>
 
             <Radio.Group
