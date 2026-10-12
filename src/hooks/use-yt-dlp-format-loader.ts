@@ -238,7 +238,13 @@ export function useYtDlpFormatLoader({
         } finally {
             isLoadingRef.current = false;
             setIsLoadingYtDlpFormats(false);
-            onTerminalStop?.(outcome);
+
+            // A probe superseded by a reset (a URL change, the modal closing) does not report how it
+            // ended. The reset already cleared the terminal, and a stop here would mark that empty
+            // terminal finished.
+            if (requestGuard.isCurrent(requestId)) {
+                onTerminalStop?.(outcome);
+            }
         }
     }, [
         getCookiesBrowser,

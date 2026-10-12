@@ -431,6 +431,53 @@ describe("useAddMediaWorkflow", () => {
         expect(cancelMediaDownload).not.toHaveBeenCalled();
     });
 
+    it("asks once more when a cancel arrives before the backend registered the run", async () => {
+        // The creation registers its run id a moment after the click that starts it. A Cancel in
+        // that moment used to find nothing and do nothing.
+        mockYtDlpEvents.isYtDlpRunning = false;
+
+        let finishImport: (() => void) | undefined;
+        vi.mocked(createMedia).mockImplementation(
+            () =>
+                new Promise((resolve) => {
+                    finishImport = () => resolve({ id: 1, comments: "not-requested" });
+                })
+        );
+        vi.mocked(cancelMediaDownload)
+            .mockRejectedValueOnce({ code: "INVALID_RUN_ID", message: "run_id is not active" })
+            .mockResolvedValueOnce(undefined);
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        let addMediaPromise: Promise<void> | undefined;
+        await act(async () => {
+            addMediaPromise = result.current.addMedia();
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            await result.current.cancelYtDlpDownload();
+        });
+
+        expect(cancelMediaDownload).toHaveBeenCalledTimes(2);
+        expect(onNotice).not.toHaveBeenCalled();
+        expect(onError).not.toHaveBeenCalled();
+
+        await act(async () => {
+            finishImport?.();
+            await addMediaPromise;
+        });
+    });
+
     it("treats a cancel that reaches a run already over as nothing to do", async () => {
         // The click and the end of the run can cross. The backend then answers INVALID_RUN_ID, which
         // means only that the run is gone, so no error modal opens for it.

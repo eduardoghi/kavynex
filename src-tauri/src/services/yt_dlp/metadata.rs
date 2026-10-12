@@ -1030,12 +1030,13 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
         ));
     }
 
-    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
-
     // Register the run (when a run_id was supplied) so the frontend can cancel a slow format probe
     // promptly instead of waiting out YT_DLP_METADATA_TIMEOUT_SECS. The guard unregisters the run
-    // when this function returns.
+    // when this function returns. Before anything else awaits, as the comment fetch does, so a
+    // cancel sent right after the probe starts finds it.
     let (cancel_flag, _run_release_guard) = optional_cancellable_run(run_id)?;
+
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
 
     let mut args = vec![
         "-v".to_string(),

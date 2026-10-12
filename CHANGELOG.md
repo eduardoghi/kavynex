@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- Cancel pressed right as an import or download starts now stops it, and one pressed once the media
+  is being saved says it can no longer be cancelled instead of doing nothing.
 - An imported or restored database gets the full integrity check on the next launch instead of up
   to a week later.
 - A Move import onto a drive without hard links (FAT32, exFAT) that could not be added puts the file

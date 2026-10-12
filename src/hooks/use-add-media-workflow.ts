@@ -56,6 +56,24 @@ type UseAddMediaWorkflowReturn = {
     closeAddMediaModal: () => Promise<void>;
 };
 
+// How long a cancel waits before asking once more for a run the backend did not know yet. The
+// creation registers its run id a moment after the click that starts it, and a Cancel pressed in
+// that moment found nothing and did nothing.
+const CANCEL_RETRY_DELAY_MS = 400;
+
+async function cancelRegisteredRun(runId: string): Promise<void> {
+    try {
+        await cancelMediaDownload(runId);
+    } catch (error) {
+        if (parseAppError(error).code !== INVALID_RUN_ID_ERROR_CODE) {
+            throw error;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, CANCEL_RETRY_DELAY_MS));
+        await cancelMediaDownload(runId);
+    }
+}
+
 export function useAddMediaWorkflow({
     selectedChannelId,
     importMode,
@@ -70,6 +88,10 @@ export function useAddMediaWorkflow({
     // await. Two synchronous invocations can never both pass the guard, so a double
     // click cannot start two downloads (each with its own run id).
     const { isRunning: isAddingMedia, runWithFlag: runAddMedia } = useAsyncFlag();
+
+    // Read by the cancel handler after an await, when the render it was created in may be stale.
+    const isAddingMediaRef = useRef(isAddingMedia);
+    isAddingMediaRef.current = isAddingMedia;
     const {
         isRunning: isCancellingYtDlp,
         runWithFlag: runCancelYtDlp,
@@ -348,10 +370,18 @@ export function useAddMediaWorkflow({
 
         await runCancelYtDlp(async () => {
             try {
-                await cancelMediaDownload(runId);
+                await cancelRegisteredRun(runId);
             } catch (error) {
-                // The run ended between the click and the command, so there is nothing left to stop.
+                // The run is not registered. Either it ended between the click and the command, or
+                // the media is past the part a cancel can stop (the download or the copy is over and
+                // it is being saved). Only the second leaves the modal open, so it is said.
                 if (parseAppError(error).code === INVALID_RUN_ID_ERROR_CODE) {
+                    if (isAddingMediaRef.current) {
+                        onNotice(
+                            "The media is already being saved to your library, so it can no longer be cancelled."
+                        );
+                    }
+
                     return;
                 }
 
@@ -361,7 +391,13 @@ export function useAddMediaWorkflow({
                 onError(resolveErrorMessage(error, "Failed to cancel media download."));
             }
         });
-    }, [onError, runCancelYtDlp, ytDlpEvents.currentRunIdRef, ytDlpEvents.isYtDlpRunning]);
+    }, [
+        onError,
+        onNotice,
+        runCancelYtDlp,
+        ytDlpEvents.currentRunIdRef,
+        ytDlpEvents.isYtDlpRunning,
+    ]);
 
     const closeAddMediaModal = useCallback(async (): Promise<void> => {
         const isModalLocked =

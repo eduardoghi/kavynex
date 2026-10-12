@@ -1549,6 +1549,7 @@ describe("useYtDlpFormatLoader: error handling", () => {
         expect(
             onTerminalLog.mock.calls.some((call) => String(call[0]).startsWith("ERROR"))
         ).toBe(false);
-        expect(onTerminalStop).toHaveBeenCalled();
+        // The reset already cleared the terminal, so the superseded probe does not mark it stopped.
+        expect(onTerminalStop).not.toHaveBeenCalled();
     });
 });
