@@ -147,8 +147,8 @@ const MAX_COOKIES_BROWSER_SELECTOR_CHARS: usize = 512;
 /// yt-dlp would read the default profile, find no session, and the download would fail with
 /// nothing saying why. The grammar here is yt-dlp's own (`--cookies-from-browser` in its
 /// README), validated part by part so the value that reaches the argv is still one this side chose
-/// to allow. The browser and the keyring are allow-listed; the profile and the container are free
-/// text (a profile is often a path) bounded to what an argument may safely carry.
+/// to allow. The browser and the keyring are allow-listed, while the profile and the container are
+/// free text (a profile is often a path) bounded to what an argument may safely carry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CookiesBrowserSelector {
     browser: String,

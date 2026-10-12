@@ -3,8 +3,8 @@
 //
 // `tauri build` refuses that pairing ("Found version mismatched Tauri packages"), and nothing else in
 // ci.yml runs `tauri build`, so a skew would surface only in release.yml, after the six-leg build
-// had started. Dependabot opens the npm and cargo bumps as separate PRs, which is how it happens: PR
-// #60 moved the crates to tauri 2.12.0 and left the npm side behind.
+// had started. Dependabot opens the npm and cargo bumps as separate PRs, which is how a skew happens.
+// PR #60 moved the crates to tauri 2.12.0 and left the npm side behind.
 //
 // The pairing is the CLI's: `@tauri-apps/api` with `tauri`, and `@tauri-apps/plugin-<name>` with
 // `tauri-plugin-<name>`. A crate with no npm counterpart (a Rust-only plugin, or one pulled in
