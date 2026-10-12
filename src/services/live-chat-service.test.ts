@@ -81,6 +81,27 @@ describe("readLiveChatMessagesFromFile", () => {
         expect(second?.message_text).toBe("two");
     });
 
+    it("keeps a message that a replay carries twice only once", async () => {
+        // Overlapping continuations repeat an action. The panel keys rows by message_id, so the
+        // repeat would be a second row under the same key.
+        mockFile(
+            [
+                rawLine({ id: "m1", message: { runs: [{ text: "one" }] } }, "1000"),
+                rawLine({ id: "m1", message: { runs: [{ text: "one" }] } }, "1000"),
+                rawLine({ id: "m2", message: { runs: [{ text: "two" }] } }, "2000"),
+            ].join("\n")
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages.map((message) => message.message_id)).toEqual(["m1", "m2"]);
+        expect(logWarn).toHaveBeenCalledWith(
+            "live-chat",
+            "Some live chat replay messages were repeated and kept only once.",
+            { liveChatFilePath: "live_chat/x.json", duplicateMessages: 1 }
+        );
+    });
+
     it("parses author_channel_id from authorExternalChannelId", async () => {
         mockFile(
             rawLine(

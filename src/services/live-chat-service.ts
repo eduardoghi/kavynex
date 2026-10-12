@@ -113,8 +113,14 @@ export async function readLiveChatMessagesFromFile(
 ): Promise<LiveChatMessageItem[]> {
     const messages: LiveChatMessageItem[] = [];
     const interner = new LiveChatInterner();
+    // Ids of the chat items kept so far. A replay whose continuations overlap carries the same action
+    // twice, and the panel keys its rows by `message_id`, so a repeat would be two rows sharing a key
+    // and a measurement. Pins are left out. A pin repeats its message's id by design, and the same
+    // pin added again later is a second appearance of the banner, not a duplicate.
+    const seenMessageIds = new Set<string>();
     let parsedLines = 0;
     let failedLines = 0;
+    let duplicateMessages = 0;
 
     await streamLiveChatFile(
         relativePath,
@@ -126,6 +132,15 @@ export async function readLiveChatMessagesFromFile(
 
                 try {
                     for (const message of parseLiveChatLine(line)) {
+                        if (message.kind !== "pinned" && message.message_id !== null) {
+                            if (seenMessageIds.has(message.message_id)) {
+                                duplicateMessages += 1;
+                                continue;
+                            }
+
+                            seenMessageIds.add(message.message_id);
+                        }
+
                         messages.push(interner.message(message));
                     }
                     parsedLines += 1;
@@ -146,6 +161,13 @@ export async function readLiveChatMessagesFromFile(
             liveChatFilePath: relativePath,
             failedLines,
             parsedLines,
+        });
+    }
+
+    if (duplicateMessages > 0) {
+        logWarn("live-chat", "Some live chat replay messages were repeated and kept only once.", {
+            liveChatFilePath: relativePath,
+            duplicateMessages,
         });
     }
 
