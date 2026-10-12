@@ -120,22 +120,45 @@ pub async fn export_database(db_path: &Path, dest_path: &Path) -> AppResult<()> 
         return Err(backup_error("failed to export database", error));
     }
 
-    // The snapshot is confirmed good; only now is any previous export at dest_path replaced. These
-    // are filesystem calls on a possibly slow/removable/network destination, so run them off the
-    // async runtime, consistent with the rest of the app's blocking IO. The caller's save dialog
-    // has already confirmed the overwrite.
+    // SQLite does not sync a VACUUM INTO target, and a removable or network destination is where
+    // a write cut short is likeliest. Synced first, so the export that replaces the previous one
+    // is whole. Off the async runtime, like the rest of this module's blocking IO.
+    {
+        let staging = staging.clone();
+        run_blocking(move || {
+            crate::services::filesystem::fsync_file(&staging).inspect_err(|_| {
+                let _ = std::fs::remove_file(&staging);
+            })
+        })
+        .await?;
+    }
+
+    // Then read back. The source passed quick_check, but what reached the target is what replaces
+    // the previous export, and a flaky drive or a share can acknowledge a write it did not keep.
+    // This is also what lets the external mirror adopt a leftover `.new` without checking it again
+    // (mirror_database_to_external_dir).
+    let written_is_sound = match open(&staging).await {
+        Ok(written) => {
+            let verdict = pool_quick_check(&written).await;
+            written.close().await;
+            matches!(verdict, QuickCheck::Healthy)
+        }
+        Err(_) => false,
+    };
+
+    if !written_is_sound {
+        let _ = std::fs::remove_file(&staging);
+        return Err(backup_error(
+            "failed to export database",
+            "the copy written to the destination failed quick_check, so nothing there was replaced",
+        ));
+    }
+
+    // Only now is any previous export at dest_path replaced. The caller's save dialog has already
+    // confirmed the overwrite.
     let staging_final = staging.clone();
     let dest = dest_path.to_path_buf();
     run_blocking(move || {
-        // SQLite does not sync a VACUUM INTO target, and a removable or network destination is where
-        // a write cut short is likeliest. Synced first, so the export that replaces the previous one
-        // is whole. It is also what lets the external mirror adopt a leftover `.new` without
-        // checking it again (mirror_database_to_external_dir).
-        if let Err(error) = crate::services::filesystem::fsync_file(&staging_final) {
-            let _ = std::fs::remove_file(&staging_final);
-            return Err(error);
-        }
-
         // rename overwrites an existing target atomically on both Windows and Unix, so the previous
         // export is never pre-deleted. A rename that then fails (a locked file, an AV/indexer hold, a
         // removable/network destination going away) must not leave the user with neither the old

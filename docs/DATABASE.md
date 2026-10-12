@@ -564,7 +564,9 @@ dialog). Refuses to export a database that fails `quick_check`. The destination 
 cleared first, because `VACUUM INTO` cannot write over an existing file, so the snapshot goes to a
 `.export-staging` sibling and only once it succeeds is it renamed onto the destination
 (the rename overwrites atomically). That ordering is the point. Exporting over last month's
-export must not destroy it before knowing the new one is good.
+export must not destroy it before knowing the new one is good, so the staged copy is flushed and
+passes its own `quick_check` before the rename. The source passing one says nothing about what a
+flaky drive or a share kept of the write. The external mirror below goes through the same function.
 
 ### External database mirror (`mirror_database_to_external_dir`)
 
