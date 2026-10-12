@@ -55,8 +55,11 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
         };
     }, [cleanupTempThumb]);
 
-    const replaceGeneratedTempThumb = useCallback(
-        async (nextPath: string): Promise<void> => {
+    // Adopts `nextPath` as the current temp thumbnail once the previous one is deleted. A reset or
+    // a newer pick that lands during that delete makes `requestId` stale, and then `nextPath` is
+    // deleted instead of adopted, since nothing will ever show or clean it up otherwise.
+    const adoptTempThumb = useCallback(
+        async (nextPath: string, tracksTempFile: boolean, requestId: number): Promise<void> => {
             const normalizedNextPath = nextPath.trim();
             const previousPath = currentTempThumbRef.current.trim();
 
@@ -64,10 +67,18 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
                 await cleanupTempThumb(previousPath);
             }
 
-            currentTempThumbRef.current = normalizedNextPath;
+            if (!thumbGenerationGuard.isCurrent(requestId)) {
+                if (tracksTempFile) {
+                    await cleanupTempThumb(normalizedNextPath);
+                }
+
+                return;
+            }
+
+            currentTempThumbRef.current = tracksTempFile ? normalizedNextPath : "";
             setThumbPath(normalizedNextPath);
         },
-        [cleanupTempThumb]
+        [cleanupTempThumb, thumbGenerationGuard]
     );
 
     // `tracksTempFile` says whether `nextPath` is a file this app wrote into the preview directory
@@ -75,22 +86,16 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
     // previewed without widening the asset scope to the user's own file), which makes it a temp file
     // with the same lifecycle as a generated one; if that staging failed the caller falls back to
     // the path the user picked, which is *not* ours and must never be handed to the delete command.
+    //
+    // The pick takes a request id of its own, which supersedes a generation still in flight.
     const setManualThumbPath = useCallback(
         async (nextPath: string, tracksTempFile: boolean): Promise<void> => {
-            const normalizedNextPath = nextPath.trim();
-            const previousTempPath = currentTempThumbRef.current.trim();
-
-            thumbGenerationGuard.invalidate();
+            const requestId = thumbGenerationGuard.begin();
             setIsGeneratingThumb(false);
 
-            if (previousTempPath && previousTempPath !== normalizedNextPath) {
-                await cleanupTempThumb(previousTempPath);
-            }
-
-            currentTempThumbRef.current = tracksTempFile ? normalizedNextPath : "";
-            setThumbPath(normalizedNextPath);
+            await adoptTempThumb(nextPath, tracksTempFile, requestId);
         },
-        [cleanupTempThumb, thumbGenerationGuard]
+        [adoptTempThumb, thumbGenerationGuard]
     );
 
     const generateThumbForMedia = useCallback(
@@ -112,19 +117,18 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
                     return;
                 }
 
-                await replaceGeneratedTempThumb(generatedPath);
+                await adoptTempThumb(generatedPath, true, requestId);
             } catch (error) {
                 logError("temp-thumbnail", "Failed to generate the temporary thumbnail.", error);
 
                 if (thumbGenerationGuard.isCurrent(requestId)) {
                     const currentTempThumb = currentTempThumbRef.current.trim();
+                    currentTempThumbRef.current = "";
+                    setThumbPath("");
 
                     if (currentTempThumb) {
                         await cleanupTempThumb(currentTempThumb);
                     }
-
-                    currentTempThumbRef.current = "";
-                    setThumbPath("");
                 }
             } finally {
                 if (thumbGenerationGuard.isCurrent(requestId)) {
@@ -132,7 +136,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
                 }
             }
         },
-        [cleanupTempThumb, replaceGeneratedTempThumb, thumbGenerationGuard]
+        [adoptTempThumb, cleanupTempThumb, thumbGenerationGuard]
     );
 
     const resetThumbState = useCallback(async (): Promise<void> => {

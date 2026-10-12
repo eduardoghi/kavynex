@@ -339,4 +339,71 @@ describe("useTempThumbnail", () => {
         // The failed cleanup must not block adopting the new thumbnail.
         expect(result.current.thumbPath).toBe("/tmp/two.jpg");
     });
+
+    it("drops a generated thumbnail when a reset lands while the previous one is deleted", async () => {
+        // The window is the delete of the previous thumbnail, after the guard was last checked. A
+        // reset there (the modal closing) used to be undone by the adoption that followed it, and
+        // the closed form tracked a file nothing would show.
+        vi.mocked(generateTemporaryThumbnail)
+            .mockResolvedValueOnce("/tmp/one.jpg")
+            .mockResolvedValueOnce("/tmp/two.jpg");
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video1.mp4");
+        });
+
+        let finishDelete: (() => void) | null = null;
+        vi.mocked(deleteTemporaryThumbnail).mockImplementationOnce(
+            () => new Promise<void>((resolve) => (finishDelete = resolve))
+        );
+
+        let generation: Promise<void> | null = null;
+
+        await act(async () => {
+            generation = result.current.generateThumbForMedia("/tmp/video2.mp4");
+        });
+
+        expect(deleteTemporaryThumbnail).toHaveBeenLastCalledWith("/tmp/one.jpg");
+
+        await act(async () => {
+            await result.current.resetThumbState();
+            finishDelete?.();
+            await generation;
+        });
+
+        expect(result.current.thumbPath).toBe("");
+        expect(deleteTemporaryThumbnail).toHaveBeenLastCalledWith("/tmp/two.jpg");
+    });
+
+    it("drops a staged manual thumbnail when a reset lands while the previous one is deleted", async () => {
+        vi.mocked(generateTemporaryThumbnail).mockResolvedValueOnce("/tmp/generated.jpg");
+
+        const { result } = renderHook(() => useTempThumbnail());
+
+        await act(async () => {
+            await result.current.generateThumbForMedia("/tmp/video.mp4");
+        });
+
+        let finishDelete: (() => void) | null = null;
+        vi.mocked(deleteTemporaryThumbnail).mockImplementationOnce(
+            () => new Promise<void>((resolve) => (finishDelete = resolve))
+        );
+
+        let pick: Promise<void> | null = null;
+
+        await act(async () => {
+            pick = result.current.setManualThumbPath("/tmp/staged.jpg", true);
+        });
+
+        await act(async () => {
+            await result.current.resetThumbState();
+            finishDelete?.();
+            await pick;
+        });
+
+        expect(result.current.thumbPath).toBe("");
+        expect(deleteTemporaryThumbnail).toHaveBeenLastCalledWith("/tmp/staged.jpg");
+    });
 });
