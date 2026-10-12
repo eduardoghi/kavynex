@@ -157,7 +157,36 @@ pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResu
         .await?;
 
     let pool = db.pool().await?;
-    set_external_backup_dir_in_pool(&pool, &trimmed).await
+    set_external_backup_dir_in_pool(&pool, &trimmed).await?;
+
+    // The first copy goes now rather than at the next pass of the periodic loop, which can be hours
+    // away, so the folder holds a copy before the user closes Settings believing it does. Throttled
+    // like every mirror, so a folder that already holds a recent copy is left as it is. A test
+    // database has no file to copy.
+    if !trimmed.is_empty() && !db.path().as_os_str().is_empty() {
+        let db_path = db.path().to_path_buf();
+
+        tauri::async_runtime::spawn(async move {
+            match crate::services::db_backup::mirror_database_to_external_dir(
+                &db_path,
+                Path::new(&trimmed),
+            )
+            .await
+            {
+                Ok(true) => crate::services::logger::info(
+                    "db_backup",
+                    "external database backup written for the newly chosen folder",
+                ),
+                Ok(false) => {}
+                Err(error) => crate::services::logger::warn(
+                    "db_backup",
+                    format!("external database backup failed: {error}"),
+                ),
+            }
+        });
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

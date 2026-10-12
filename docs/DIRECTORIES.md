@@ -142,7 +142,7 @@ default folder and nothing prompts for one, so a fresh install has no off-volume
 is worth stating plainly because the paragraph above otherwise reads as though the problem were
 already solved. When a folder *is* configured (Settings > Database, stored as `external_backup_dir`
 in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir` writes
-`kavynex-backup.db` there once a day, rotated as `kavynex-backup.db.1` / `kavynex-backup.db.2`
+`kavynex-backup.db` there once a day, the first time as soon as the folder is chosen, rotated as `kavynex-backup.db.1` / `kavynex-backup.db.2`
 (`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the same atomic `export_database`. Only the
 database is mirrored (the media files are not), and the folder is left untouched when it is
 unreachable (an unplugged drive) rather than recreated. Next to the copies sits

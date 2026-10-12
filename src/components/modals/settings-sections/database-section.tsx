@@ -33,7 +33,7 @@ function ExternalBackupStatusLine({
     if (status.mirroredAtMs === null) {
         return (
             <Text size="sm" c="dimmed">
-                No copy yet. The first one is made within a minute of the app starting.
+                No copy yet. One is made as soon as the folder is chosen, then once a day.
             </Text>
         );
     }
