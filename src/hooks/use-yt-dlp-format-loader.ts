@@ -11,6 +11,7 @@ import {
     inferSelectedMediaType,
 } from "../services/yt-dlp-format-rules";
 import { useMemoObject } from "./use-memo-object";
+import type { YtDlpRunOutcome } from "./yt-dlp-terminal-store";
 
 type UseYtDlpFormatLoaderOptions = {
     getUrl: () => string;
@@ -21,7 +22,7 @@ type UseYtDlpFormatLoaderOptions = {
     onMediaTypeResolved: (value: MediaType) => void;
     onTerminalStart?: (runId: string, header: string) => void;
     onTerminalLog?: (line: string) => void;
-    onTerminalStop?: () => void;
+    onTerminalStop?: (outcome?: YtDlpRunOutcome) => void;
 };
 
 type UseYtDlpFormatLoaderReturn = {
@@ -153,6 +154,8 @@ export function useYtDlpFormatLoader({
         onTerminalStart?.(FORMAT_LOADER_RUN_ID, commandParts.join(" "));
         onTerminalLog?.("Loading formats...");
 
+        let outcome: YtDlpRunOutcome = "finished";
+
         try {
             const result = await listYtDlpFormats(
                 url,
@@ -230,11 +233,12 @@ export function useYtDlpFormatLoader({
             }
 
             onTerminalLog?.(`ERROR: ${message}`);
+            outcome = "failed";
             throw error;
         } finally {
             isLoadingRef.current = false;
             setIsLoadingYtDlpFormats(false);
-            onTerminalStop?.();
+            onTerminalStop?.(outcome);
         }
     }, [
         getCookiesBrowser,

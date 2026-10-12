@@ -336,6 +336,7 @@ describe("useAddMediaWorkflow", () => {
             "Download cancelled. Nothing was added to your library."
         );
         expect(onError).not.toHaveBeenCalled();
+        expect(mockMarkStopped).toHaveBeenCalledWith("cancelled");
     });
 
     it("reports a cancelled local import as a notice rather than an error", async () => {
@@ -1149,7 +1150,7 @@ describe("useAddMediaWorkflow", () => {
         });
 
         expect(onError).toHaveBeenCalledWith("Failed to add media.");
-        expect(mockMarkStopped).toHaveBeenCalled();
+        expect(mockMarkStopped).toHaveBeenCalledWith("failed");
         expect(logError).toHaveBeenCalledWith(
             "add-media",
             "Failed to add media.",

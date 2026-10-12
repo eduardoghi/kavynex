@@ -26,6 +26,7 @@ import {
     INVALID_COOKIES_BROWSER_PROFILE_MESSAGE,
 } from "../use-cases/add-media";
 import { useMemoObject } from "./use-memo-object";
+import type { YtDlpRunOutcome } from "./yt-dlp-terminal-store";
 
 // What each picker offers. The backend refuses anything else, and filtering here keeps a wrong
 // file from being chosen in the first place (a .txt picked as media was classed as a video and only
@@ -43,7 +44,7 @@ type UseAddMediaFormOptions = {
     ytDlpTerminal?: {
         startManualSession: (runId: string, header: string) => void;
         appendManualLog: (line: string) => void;
-        markStopped: () => void;
+        markStopped: (outcome?: YtDlpRunOutcome) => void;
         resetYtDlpState: (clearLogs?: boolean) => void;
     };
 };

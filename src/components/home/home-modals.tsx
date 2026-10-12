@@ -298,12 +298,19 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
 function AddMediaModalWithTerminal({
     terminal,
     ...props
-}: Omit<ComponentProps<typeof AddMediaModal>, "ytDlpLogs" | "ytDlpProgress"> & {
+}: Omit<ComponentProps<typeof AddMediaModal>, "ytDlpLogs" | "ytDlpProgress" | "ytDlpOutcome"> & {
     terminal: YtDlpTerminalStore;
 }): JSX.Element {
-    const { logs, progress } = useYtDlpTerminal(terminal);
+    const { logs, progress, outcome } = useYtDlpTerminal(terminal);
 
-    return <AddMediaModal {...props} ytDlpLogs={logs} ytDlpProgress={progress} />;
+    return (
+        <AddMediaModal
+            {...props}
+            ytDlpLogs={logs}
+            ytDlpProgress={progress}
+            ytDlpOutcome={outcome}
+        />
+    );
 }
 
 export function HomeModals({

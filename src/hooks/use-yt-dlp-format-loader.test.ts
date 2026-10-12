@@ -1428,7 +1428,7 @@ describe("useYtDlpFormatLoader: error handling", () => {
         expect(result.current.selectedYtDlpFormatId).toBe("");
         expect(onMediaTypeResolved).toHaveBeenCalledWith("video");
         expect(result.current.isLoadingYtDlpFormats).toBe(false);
-        expect(onTerminalStop).toHaveBeenCalled();
+        expect(onTerminalStop).toHaveBeenCalledWith("failed");
     });
 
     it("appends a trimmed details line when the error carries string details", async () => {

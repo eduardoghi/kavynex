@@ -97,6 +97,53 @@ describe("YtDlpTerminal", () => {
         expect(screen.getAllByText("Done").length).toBeGreaterThan(0);
     });
 
+    it("shows failed rather than ready after a run that failed", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("ERROR: boom")}
+                isYtDlpRunning={false}
+                ytDlpProgress={null}
+                ytDlpOutcome="failed"
+            />
+        );
+
+        expect(screen.getByText("failed")).toBeInTheDocument();
+        expect(screen.queryByText("ready")).not.toBeInTheDocument();
+    });
+
+    it("shows stopped after a cancelled run", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("Cancelled: by user")}
+                isYtDlpRunning={false}
+                ytDlpProgress={null}
+                ytDlpOutcome="cancelled"
+            />
+        );
+
+        expect(screen.getByText("stopped")).toBeInTheDocument();
+    });
+
+    it("shows running over a previous outcome while an import is still going", () => {
+        renderWithMantine(
+            <YtDlpTerminal
+                opened
+                visible
+                ytDlpLogs={logs("Download finished: video.mp4")}
+                isYtDlpRunning={false}
+                isImporting
+                ytDlpProgress={null}
+                ytDlpOutcome="finished"
+            />
+        );
+
+        expect(screen.getByText("running")).toBeInTheDocument();
+    });
+
     it("renders error log line", () => {
         renderWithMantine(
             <YtDlpTerminal

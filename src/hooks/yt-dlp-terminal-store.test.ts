@@ -7,7 +7,7 @@ describe("createYtDlpTerminalStore", () => {
         const listener = vi.fn();
         store.subscribe(listener);
 
-        expect(store.getSnapshot()).toEqual({ logs: [], progress: null });
+        expect(store.getSnapshot()).toEqual({ logs: [], progress: null, outcome: null });
 
         store.update((current) => ({
             ...current,

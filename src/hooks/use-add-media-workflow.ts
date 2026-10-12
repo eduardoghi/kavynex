@@ -271,7 +271,12 @@ export function useAddMediaWorkflow({
                     );
                 }
             } catch (error) {
-                markStopped();
+                const { code } = parseAppError(error);
+                const cancelled =
+                    code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE ||
+                    code === MEDIA_IMPORT_CANCELLED_ERROR_CODE;
+
+                markStopped(cancelled ? "cancelled" : "failed");
 
                 // A cancelled run travels as an error because that is how the backend unwinds it,
                 // but it is the outcome the user clicked for. The run stopped and nothing was left
@@ -281,8 +286,6 @@ export function useAddMediaWorkflow({
                 // Two codes, because a download and a file import are different operations even
                 // though they are stopped by the same command, and the message has to be, since
                 // an import also has something to say about the file it did not touch.
-                const { code } = parseAppError(error);
-
                 if (code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
                     onNotice("Download cancelled. Nothing was added to your library.");
                     return;

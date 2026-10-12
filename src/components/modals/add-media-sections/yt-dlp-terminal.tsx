@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { YtDlpLogLevel, YtDlpLogLine } from "../../../hooks/use-yt-dlp-events";
 import { parseYtDlpProgress, type YtDlpProgress } from "../../../services/yt-dlp-progress";
 import { YtDlpProgressBar } from "./yt-dlp-progress-bar";
+import type { YtDlpRunOutcome } from "../../../hooks/yt-dlp-terminal-store";
 
 type YtDlpTerminalProps = {
     opened: boolean;
@@ -16,6 +17,7 @@ type YtDlpTerminalProps = {
     // log underneath was still printing "Fetching YouTube comments...".
     isImporting?: boolean;
     ytDlpProgress: YtDlpProgress | null;
+    ytDlpOutcome?: YtDlpRunOutcome | null;
 };
 
 // Height of the scrollback viewport. Previously a Mantine ScrollArea `h`; the virtualizer needs a
@@ -68,6 +70,28 @@ function latestAnnouncedLine(logs: YtDlpLogLine[]): string {
     return "";
 }
 
+// The badge's word and colour. A failed run used to read "ready" in green, since the badge only
+// knew whether the log had lines, and the error under it said the opposite.
+function terminalBadge(
+    isRunning: boolean,
+    outcome: YtDlpRunOutcome | null,
+    hasLogs: boolean
+): { label: string; color: string } {
+    if (isRunning) {
+        return { label: "running", color: "yellow" };
+    }
+
+    if (outcome === "failed") {
+        return { label: "failed", color: "red" };
+    }
+
+    if (outcome === "cancelled") {
+        return { label: "stopped", color: "gray" };
+    }
+
+    return hasLogs ? { label: "ready", color: "green" } : { label: "idle", color: "gray" };
+}
+
 export function YtDlpTerminal({
     opened,
     visible,
@@ -75,6 +99,7 @@ export function YtDlpTerminal({
     isYtDlpRunning,
     isImporting = false,
     ytDlpProgress,
+    ytDlpOutcome = null,
 }: YtDlpTerminalProps): JSX.Element | null {
     const terminalViewportRef = useRef<HTMLDivElement | null>(null);
     const shouldStickToBottomRef = useRef(true);
@@ -164,6 +189,7 @@ export function YtDlpTerminal({
     // full height the moment a run starts or a line arrives.
     const isRunning = isYtDlpRunning || isImporting;
     const isIdle = !hasScrollback;
+    const badge = terminalBadge(isRunning, ytDlpOutcome, ytDlpLogs.length > 0);
 
     return (
         <Box>
@@ -176,11 +202,8 @@ export function YtDlpTerminal({
             <Group justify="space-between" mb="xs">
                 <Text fw={800}>Integrated terminal</Text>
 
-                <Badge
-                    variant="light"
-                    color={isRunning ? "yellow" : ytDlpLogs.length > 0 ? "green" : "gray"}
-                >
-                    {isRunning ? "running" : ytDlpLogs.length > 0 ? "ready" : "idle"}
+                <Badge variant="light" color={badge.color}>
+                    {badge.label}
                 </Badge>
             </Group>
 

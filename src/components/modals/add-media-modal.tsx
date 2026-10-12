@@ -16,6 +16,7 @@ import { YtDlpSection } from "./add-media-sections/yt-dlp-section";
 import { YtDlpTerminal } from "./add-media-sections/yt-dlp-terminal";
 import type { YtDlpLogLine } from "../../hooks/use-yt-dlp-events";
 import type { YtDlpProgress } from "../../services/yt-dlp-progress";
+import type { YtDlpRunOutcome } from "../../hooks/yt-dlp-terminal-store";
 import {
     applyPublishedAtMask,
     displayDateToIso,
@@ -42,6 +43,7 @@ type AddMediaModalProps = {
     ytDlpLogs: YtDlpLogLine[];
     isYtDlpRunning: boolean;
     ytDlpProgress: YtDlpProgress | null;
+    ytDlpOutcome?: YtDlpRunOutcome | null;
 
     onAdd: () => void;
     onCancelYtDlpDownload?: () => void | Promise<void>;
@@ -58,6 +60,7 @@ export function AddMediaModal({
     ytDlpLogs,
     isYtDlpRunning,
     ytDlpProgress,
+    ytDlpOutcome = null,
     onAdd,
     onCancelYtDlpDownload,
 }: AddMediaModalProps): JSX.Element {
@@ -333,6 +336,7 @@ export function AddMediaModal({
                             isYtDlpRunning={isYtDlpRunning}
                             isImporting={loading}
                             ytDlpProgress={ytDlpProgress}
+                            ytDlpOutcome={ytDlpOutcome}
                         />
 
                         <AddMediaModalActions

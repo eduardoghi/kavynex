@@ -219,6 +219,7 @@ describe("useYtDlpEvents", () => {
         });
 
         expect(result.current.terminal.getSnapshot().logs).toEqual(logsAfterFinished);
+        expect(result.current.terminal.getSnapshot().outcome).toBe("finished");
         expect(
             result.current.terminal.getSnapshot().logs.filter((line) => line.text.includes("finished"))
         ).toHaveLength(1);
@@ -246,6 +247,7 @@ describe("useYtDlpEvents", () => {
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(result.current.currentRunIdRef.current).toBe("");
         expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Terminal failed: Network error");
+        expect(result.current.terminal.getSnapshot().outcome).toBe("failed");
     });
 
     it("terminal failure without a message falls back to a default", async () => {
@@ -449,6 +451,34 @@ describe("useYtDlpEvents", () => {
 
         expect(result.current.isYtDlpRunning).toBe(false);
         expect(logTexts(result.current.terminal.getSnapshot().logs)).toContain("Cancelled: User cancelled");
+        expect(result.current.terminal.getSnapshot().outcome).toBe("cancelled");
+    });
+
+    it("keeps the outcome markStopped is given until the next run starts", async () => {
+        // The case yt-dlp events cannot report, an import that failed after yt-dlp itself finished.
+        const { result } = renderHook(() => useYtDlpEvents());
+
+        act(() => {
+            result.current.startRun("run-1", "cmd");
+        });
+
+        act(() => {
+            result.current.markStopped("failed");
+        });
+
+        expect(result.current.terminal.getSnapshot().outcome).toBe("failed");
+
+        act(() => {
+            result.current.startRun("run-2", "cmd");
+        });
+
+        expect(result.current.terminal.getSnapshot().outcome).toBeNull();
+
+        act(() => {
+            result.current.markStopped();
+        });
+
+        expect(result.current.terminal.getSnapshot().outcome).toBe("finished");
     });
 
     it("markStopped stops current run and ignores later events", async () => {

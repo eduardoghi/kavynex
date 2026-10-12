@@ -11,7 +11,11 @@ import { listenValidated } from "../lib/tauri-client";
 import { IPC_EVENT_SCHEMAS } from "../lib/ipc-schemas";
 import { logError } from "../utils/app-logger";
 import { useMemoObject } from "./use-memo-object";
-import { createYtDlpTerminalStore, type YtDlpTerminalStore } from "./yt-dlp-terminal-store";
+import {
+    createYtDlpTerminalStore,
+    type YtDlpRunOutcome,
+    type YtDlpTerminalStore,
+} from "./yt-dlp-terminal-store";
 import type { DownloadLogLevel } from "../types/generated/DownloadLogLevel";
 import {
     advanceYtDlpProgress,
@@ -46,7 +50,9 @@ type UseYtDlpEventsReturn = {
     startRun: (runId: string, commandPreview: string) => void;
     startManualSession: (runId: string, header: string) => void;
     appendManualLog: (line: string) => void;
-    markStopped: () => void;
+    // `outcome` is "finished" unless the caller says otherwise. Only the caller knows a run that
+    // threw after yt-dlp exited (registering the media, say) failed, since yt-dlp itself finished.
+    markStopped: (outcome?: YtDlpRunOutcome) => void;
     resetYtDlpState: (clearLogs?: boolean) => void;
 };
 
@@ -158,6 +164,10 @@ function setProgress(
     });
 }
 
+function setOutcome(terminal: YtDlpTerminalStore, outcome: YtDlpRunOutcome | null): void {
+    terminal.update((current) => (current.outcome === outcome ? current : { ...current, outcome }));
+}
+
 export function useYtDlpEvents(): UseYtDlpEventsReturn {
     const [terminal] = useState(createYtDlpTerminalStore);
     const [isYtDlpRunning, setIsYtDlpRunning] = useState(false);
@@ -202,6 +212,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
             currentRunIdRef.current = "";
             setIsYtDlpRunning(false);
             setProgress(terminal, null);
+            setOutcome(terminal, null);
 
             if (clearLogs) {
                 setLogs(terminal, []);
@@ -216,6 +227,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
             setLogs(terminal, sessionLines(commandPreview, listenerFailedRef.current));
             setIsYtDlpRunning(true);
             setProgress(terminal, null);
+            setOutcome(terminal, null);
         },
         [terminal]
     );
@@ -226,22 +238,27 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
             setLogs(terminal, sessionLines(header, listenerFailedRef.current));
             setIsYtDlpRunning(true);
             setProgress(terminal, null);
+            setOutcome(terminal, null);
         },
         [terminal]
     );
 
-    const markStopped = useCallback((): void => {
-        currentRunIdRef.current = "";
-        setIsYtDlpRunning(false);
-        setProgress(terminal, null);
-    }, [terminal]);
+    const markStopped = useCallback(
+        (outcome: YtDlpRunOutcome = "finished"): void => {
+            currentRunIdRef.current = "";
+            setIsYtDlpRunning(false);
+            setProgress(terminal, null);
+            setOutcome(terminal, outcome);
+        },
+        [terminal]
+    );
 
     // `level` is required, and it is what replaced the terminal's old `startsWith("ERROR:")` check.
     // That sniff only ever matched one of these outcomes (the yt-dlp error event, whose text
     // happens to start with the prefix), so a terminal-failed line rendered as ordinary output. The
     // caller knows which outcome it is reporting, so it says so.
     const finalizeRun = useCallback(
-        (message: string, level: YtDlpLogLevel): void => {
+        (message: string, level: YtDlpLogLevel, outcome: YtDlpRunOutcome): void => {
             if (message) {
                 appendLogs(level, "", message);
             }
@@ -249,6 +266,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
             currentRunIdRef.current = "";
             setIsYtDlpRunning(false);
             setProgress(terminal, null);
+            setOutcome(terminal, outcome);
         },
         [appendLogs, terminal]
     );
@@ -294,7 +312,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                                 return;
                             }
 
-                            finalizeRun(`Download finished: ${payload.file_path}`, "info");
+                            finalizeRun(`Download finished: ${payload.file_path}`, "info", "finished");
                         }
                     ),
             ],
@@ -308,7 +326,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             return;
                         }
 
-                        finalizeRun(`ERROR: ${payload.message}`, "error");
+                        finalizeRun(`ERROR: ${payload.message}`, "error", "failed");
                     }),
             ],
             [
@@ -324,7 +342,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                                 return;
                             }
 
-                            finalizeRun(`Cancelled: ${payload.message}`, "info");
+                            finalizeRun(`Cancelled: ${payload.message}`, "info", "cancelled");
                         }
                     ),
             ],
@@ -343,18 +361,23 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
 
                             if (payload.status === "finished") {
                                 if (payload.file_path?.trim()) {
-                                    finalizeRun(`Terminal finished: ${payload.file_path}`, "info");
+                                    finalizeRun(
+                                        `Terminal finished: ${payload.file_path}`,
+                                        "info",
+                                        "finished"
+                                    );
                                     return;
                                 }
 
-                                finalizeRun("Terminal finished.", "info");
+                                finalizeRun("Terminal finished.", "info", "finished");
                                 return;
                             }
 
                             if (payload.status === "failed") {
                                 finalizeRun(
                                     `Terminal failed: ${payload.message?.trim() || "Unknown failure"}`,
-                                    "error"
+                                    "error",
+                                    "failed"
                                 );
                                 return;
                             }
@@ -362,7 +385,8 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
                             if (payload.status === "cancelled") {
                                 finalizeRun(
                                     `Terminal cancelled: ${payload.message?.trim() || "Cancelled"}`,
-                                    "info"
+                                    "info",
+                                    "cancelled"
                                 );
                             }
                         }

@@ -2,9 +2,15 @@ import { useSyncExternalStore } from "react";
 import type { YtDlpProgress } from "../services/yt-dlp-progress";
 import type { YtDlpLogLine } from "./use-yt-dlp-events";
 
+// How the last run ended, null while one runs or before the first. A failed or cancelled run
+// keeps its log on screen, and the terminal's badge reads this rather than the log to tell it from
+// one that finished.
+export type YtDlpRunOutcome = "finished" | "failed" | "cancelled";
+
 export type YtDlpTerminalSnapshot = {
     logs: YtDlpLogLine[];
     progress: YtDlpProgress | null;
+    outcome: YtDlpRunOutcome | null;
 };
 
 // The yt-dlp terminal's lines and progress, kept outside React state on purpose. A download writes
@@ -17,7 +23,7 @@ export type YtDlpTerminalStore = {
     update: (change: (current: YtDlpTerminalSnapshot) => YtDlpTerminalSnapshot) => void;
 };
 
-const EMPTY_SNAPSHOT: YtDlpTerminalSnapshot = { logs: [], progress: null };
+const EMPTY_SNAPSHOT: YtDlpTerminalSnapshot = { logs: [], progress: null, outcome: null };
 
 export function createYtDlpTerminalStore(): YtDlpTerminalStore {
     let snapshot = EMPTY_SNAPSHOT;
