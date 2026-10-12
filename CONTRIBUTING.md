@@ -122,8 +122,10 @@ Repository consistency (plain Node, no install needed. CI runs all nine on every
   not named in `docs/ARCHITECTURE.md`. It checks names, not what the docs say about them, so a
   behavior change still needs its doc updated by hand in the same commit.
 - `node scripts/verify-comment-sentences.js`: fails when a code comment ends a line with a period
-  and the next comment line goes on in lowercase, which is a sentence split in the wrong place. A
-  name like `yt-dlp`, a label, or anything in backticks may start a line lowercase.
+  and the next comment line goes on in lowercase, which is a sentence split in the wrong place, and
+  on the same split inside one line. A name like `yt-dlp`, a label, or anything in backticks may
+  start a line lowercase, and the tools in its `LOWERCASE_NAMES` (npm, jsdom, ...) may start a
+  sentence that way.
 
 Another consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
 on every push:

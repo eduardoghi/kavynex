@@ -94,7 +94,7 @@ export function useChannelMediaList({
     // OFFSET, so the offset means "skip this many rows of the current sort", and every ORDER BY in
     // `resolve_order_by` tie-breaks on `title_normalized`, so renaming a media moves it within any
     // sort category, not only the title one. `editTitle` updates the row in place without reloading
-    // (correctly. A rename should not throw away the pages the user scrolled), so the loaded list
+    // (correctly, since a rename should not throw away the pages the user scrolled), so the loaded list
     // and the backend's sorted set can disagree about which rows come first, and the next page can
     // repeat a row already on screen.
     //

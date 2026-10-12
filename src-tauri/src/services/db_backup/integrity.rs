@@ -162,8 +162,8 @@ pub(super) fn integrity_check_marker_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".integrity-checked")
 }
 
-/// Whether a background full integrity check is due. true when the marker is missing (never run)
-/// or older than [`INTEGRITY_CHECK_MIN_INTERVAL_SECS`]. The marker's mtime records the last check
+/// Whether a background full integrity check is due, which is when the marker is missing (never
+/// run) or older than [`INTEGRITY_CHECK_MIN_INTERVAL_SECS`]. The marker's mtime records the last check
 /// that passed, so a database that keeps failing is re-checked every launch until it is repaired.
 pub fn integrity_check_is_due(db_path: &Path) -> bool {
     !is_recent(

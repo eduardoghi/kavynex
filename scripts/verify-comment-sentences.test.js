@@ -43,6 +43,24 @@ describe("findBrokenSentences", () => {
         expect(findBrokenSentences("// See cleanup.rs.\n// see also guard.rs.")).toEqual([]);
     });
 
+    it("flags the same join inside one line", () => {
+        expect(findBrokenSentences("/// Whether the check is due. true when the marker is missing.")).toEqual([
+            { line: 1, end: "due.", next: "true" },
+        ]);
+    });
+
+    it("leaves lowercase tool names, abbreviations and quoted text inside a line alone", () => {
+        for (const line of [
+            "// The search view virtualizes its rows. jsdom gives the container no height.",
+            "// Reads the lockfile rather than adding a dependency. pnpm prints it already.",
+            "// Any shape works, e.g. a file or a folder.",
+            "// Logged as `failed. retry` by the old build.",
+            '// The message reads "Saved. next one" in the log.',
+        ]) {
+            expect(findBrokenSentences(line)).toEqual([]);
+        }
+    });
+
     it("ignores code lines, which are not prose", () => {
         expect(findBrokenSentences("let value = a.\n    method();")).toEqual([]);
     });

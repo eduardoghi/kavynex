@@ -17,8 +17,8 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// it validates rather than assuming the run id is well-formed.
 pub(super) const MAX_RUN_ID_LEN: usize = 128;
 
-/// True for a well-formed run id. non-empty, within [`MAX_RUN_ID_LEN`], and made only of the
-/// characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
+/// True for a well-formed run id, one that is non-empty, within [`MAX_RUN_ID_LEN`], and made only
+/// of the characters a UUID (or a hex/dash fallback) uses. It becomes part of a temp-directory name, so
 /// restricting it to `[A-Za-z0-9._-]` also keeps a path separator or other filesystem-significant
 /// character out of that name regardless of what the frontend sends.
 ///
@@ -249,10 +249,11 @@ pub(super) enum DownloadTermination {
     Succeeded,
 }
 
-/// Decides the wait loop's terminal outcome. Extracted as a pure function so the precedence a
-/// stall preempts a cancel, which preempts a non-zero exit and the failure-message shaping can be
-/// asserted without spawning a process; the surrounding orchestration (`download_media_from_url_async`)
-/// needs a live `AppHandle` to emit events and cannot run under the unit-test harness.
+/// Decides the wait loop's terminal outcome. Extracted as a pure function so the precedence (a
+/// stall preempts a cancel, which preempts a non-zero exit) and the failure-message shaping can be
+/// asserted without spawning a process. The surrounding orchestration
+/// (`download_media_from_url_async`) needs a live `AppHandle` to emit events and cannot run under
+/// the unit-test harness.
 ///
 /// The precedence matters. A run killed for stalling also comes back with a non-success exit
 /// status and a cancel flag set once the kill lands, so classifying purely on the exit status

@@ -484,7 +484,7 @@ pub(crate) async fn database_schema_version(db_path: &Path) -> Option<i64> {
     version.ok().map(|(value,)| value)
 }
 
-/// Whether opening the database will run a schema migration. true when the file is missing
+/// Whether opening the database will run a schema migration, which is when the file is missing
 /// (the schema is created on first open) or its `user_version` is below the version this
 /// build ships. Callers use this to decide whether the pre-migration snapshot must block
 /// startup (only when a migration will actually run), or can be deferred to the background.
