@@ -118,6 +118,10 @@ pub struct CreatedMedia {
     pub youtube_video_id: Option<String>,
     pub live_chat_file_path: Option<String>,
     pub is_live: bool,
+    /// A Move import whose original could not be removed (another program holding it, a read-only
+    /// folder). The media is registered from the library copy, so the import ended as a Copy, and
+    /// the user is told rather than left to find the file still there.
+    pub original_kept: bool,
 }
 
 /// The artifacts one creation wrote into the library, before any row points at them.
@@ -798,19 +802,27 @@ async fn cleanup_artifacts_best_effort_locked<R: Runtime>(
 /// Best effort. The media is registered and complete either way, so a source that cannot be removed
 /// (another program holding it open on Windows, a read-only folder) is left where it was and
 /// logged, which turns this one Move into a Copy rather than failing a creation that succeeded.
-async fn remove_move_source_best_effort(source: Option<PathBuf>) {
+///
+/// Returns whether a source was left in place.
+async fn remove_move_source_best_effort(source: Option<PathBuf>) -> bool {
     let Some(source) = source else {
-        return;
+        return false;
     };
 
     let removed =
         run_blocking(move || library::media::remove_moved_import_source_sync(&source)).await;
 
-    if let Err(error) = removed {
-        logger::warn(
-            "media_creation",
-            format!("the media was imported, but its original file could not be removed: {error}"),
-        );
+    match removed {
+        Ok(()) => false,
+        Err(error) => {
+            logger::warn(
+                "media_creation",
+                format!(
+                    "the media was imported, but its original file could not be removed: {error}"
+                ),
+            );
+            true
+        }
     }
 }
 
@@ -949,7 +961,8 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
 
             // Only now, with a row pointing at the library copy, is the Move source no longer the
             // thing standing between the user and losing the file.
-            remove_move_source_best_effort(prepared.move_source_to_remove).await;
+            let original_kept =
+                remove_move_source_best_effort(prepared.move_source_to_remove).await;
 
             Ok(CreatedMedia {
                 id,
@@ -959,6 +972,7 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
                 youtube_video_id: prepared.youtube_video_id,
                 live_chat_file_path: prepared.live_chat_file_path,
                 is_live: prepared.is_live,
+                original_kept,
             })
         }
         Err(error) => {

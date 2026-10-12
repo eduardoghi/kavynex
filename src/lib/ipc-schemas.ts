@@ -303,6 +303,7 @@ const createdMediaSchema = z.object({
     youtubeVideoId: z.string().nullable(),
     liveChatFilePath: z.string().nullable(),
     isLive: z.boolean(),
+    originalKept: z.boolean(),
 });
 
 const storedAppSettingsPayloadSchema = z.object({

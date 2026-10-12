@@ -7,4 +7,10 @@
  * need them. The duration probe reads `file_path`/`media_type`, the comment backup reads
  * `youtube_video_id`, and the live-chat notice reads whether a replay was actually saved.
  */
-export type CreatedMedia = { id: number, filePath: string, thumbnailPath: string | null, mediaType: "video" | "audio", youtubeVideoId: string | null, liveChatFilePath: string | null, isLive: boolean, };
+export type CreatedMedia = { id: number, filePath: string, thumbnailPath: string | null, mediaType: "video" | "audio", youtubeVideoId: string | null, liveChatFilePath: string | null, isLive: boolean, 
+/**
+ * A Move import whose original could not be removed (another program holding it, a read-only
+ * folder). The media is registered from the library copy, so the import ended as a Copy, and
+ * the user is told rather than left to find the file still there.
+ */
+originalKept: boolean, };

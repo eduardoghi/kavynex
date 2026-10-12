@@ -292,6 +292,12 @@ export function useAddMediaWorkflow({
                         "The media was added, but its comments could not be saved. Open it and choose Fetch comments to try again."
                     );
                 }
+
+                if (created.originalKept) {
+                    onNotice(
+                        "The media was added, but the original file could not be removed, so it was copied rather than moved. The original is still where it was."
+                    );
+                }
             } catch (error) {
                 const { code } = parseAppError(error);
                 const cancelled =

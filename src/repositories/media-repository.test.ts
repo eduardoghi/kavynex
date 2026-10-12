@@ -49,6 +49,7 @@ describe("media-repository command wiring", () => {
             youtubeVideoId: "yt1",
             liveChatFilePath: null,
             isLive: false,
+            originalKept: false,
         };
         invokeCommandMock.mockResolvedValueOnce(created as never);
 

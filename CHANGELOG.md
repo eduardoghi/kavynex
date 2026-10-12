@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A Move import that could not remove the original file says it copied the file instead. It used to
+  look moved while the original stayed where it was.
 - Cancel pressed right as an import or download starts now stops it, and one pressed once the media
   is being saved says it can no longer be cancelled instead of doing nothing.
 - An imported or restored database gets the full integrity check on the next launch instead of up

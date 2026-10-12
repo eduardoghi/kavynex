@@ -33,6 +33,8 @@ export type CommentsBackupOutcome = "saved" | "none" | "skipped" | "failed" | "n
 type CreateMediaResult = {
     id: number | null;
     comments: CommentsBackupOutcome;
+    // A Move import whose original could not be removed, so it ended as a Copy.
+    originalKept: boolean;
 };
 
 type CreateMediaOptions = {
@@ -300,6 +302,7 @@ export async function createMedia(
     return {
         id: created.id,
         comments,
+        originalKept: created.originalKept,
     };
 }
 

@@ -96,6 +96,7 @@ function created(overrides: Partial<CreatedMedia> = {}): CreatedMedia {
         youtubeVideoId: null,
         liveChatFilePath: null,
         isLive: false,
+        originalKept: false,
         ...overrides,
     };
 }
@@ -254,7 +255,7 @@ describe("media-service", () => {
             message: "rate limited",
         });
 
-        await expect(createMedia(input)).resolves.toEqual({ id: 55, comments: "failed" });
+        await expect(createMedia(input)).resolves.toEqual({ id: 55, comments: "failed", originalKept: false });
     });
 
     it("says no comments came back when the fetch returned none", async () => {
@@ -304,7 +305,7 @@ describe("media-service", () => {
                 onProgress: (message) => void messages.push(message),
                 onCommentsFetchChange,
             })
-        ).resolves.toEqual({ id: 55, comments: "skipped" });
+        ).resolves.toEqual({ id: 55, comments: "skipped", originalKept: false });
 
         expect(messages).toContain("Comments skipped. The media was added without them.");
         expect(messages).not.toContain("Failed to fetch comments. Import will continue without them.");
