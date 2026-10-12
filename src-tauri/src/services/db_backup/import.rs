@@ -887,18 +887,23 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
         return Err(backup_error("failed to apply the imported database", error));
     }
 
-    // The imported database is in place; flush the directory entry so the swap is durable, then
-    // clear the marker and flush again so its removal is durable too.
+    // The imported database is in place. Flush the directory entry so the swap is durable, then
+    // clear the marker and flush again so its removal is durable too, before anything else is
+    // written.
     //
     // The second flush is not optional. `.pre-import` is deliberately kept as the undo copy after a
     // successful import, so once the marker is gone the on-disk shape (a database at `db_path`, a
     // `.pre-import`, no staged file) is a normal completed import, but with the marker still
     // present it is exactly the shape the recovery branch above acts on to revert. A plain
     // `remove_file` leaves the unlink in the OS write cache, so a crash here could resurrect the
-    // marker and send the next launch into that revert, undoing a completed import. Flushing the
-    // removal closes the window down to the swap itself; a crash strictly between the two flushes is
-    // the residual non-atomic rename+unlink window, the same shape the rest of this module accepts.
+    // marker and send the next launch into that revert, undoing a completed import. The swap and
+    // lineage records below are durable writes of their own, which is why they wait until the
+    // marker is gone. A crash strictly between the rename and the second flush is the residual
+    // non-atomic rename+unlink window, the same shape the rest of this module accepts.
     crate::services::filesystem::fsync_parent_dir(db_path);
+    remove_import_applying_marker(&marker);
+    crate::services::filesystem::fsync_parent_dir(&marker);
+
     super::record_database_swap(db_path);
 
     // An imported database is another library as far as the external copies can tell. Keeping the
@@ -906,9 +911,6 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     // imported one's. With a new id they are set aside instead. An import of a copy of this same
     // library sets them aside too, which keeps more than needed and loses nothing.
     super::lineage::record_new_lineage(db_path);
-
-    remove_import_applying_marker(&marker);
-    crate::services::filesystem::fsync_parent_dir(&marker);
 
     logger::info("db_backup", "imported database applied on startup");
 
