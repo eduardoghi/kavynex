@@ -38,7 +38,8 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   cleanly, and it belongs to the copy (copy both to use it by hand).
 - `kavynex.db.pre-migration-v<N>`: the database as it was right before an upgrade migrated it from
   schema version N. Taken every time a migration is pending, never throttled or rotated by the
-  daily snapshot, and the two most recent are kept (`PRE_MIGRATION_SNAPSHOTS_KEPT`). It is the copy
+  daily snapshot. Two are kept (`PRE_MIGRATION_SNAPSHOTS_KEPT`), the one just taken and the highest
+  other version. It is the copy
   to go back to after a migration that went wrong, or after installing an older version, which
   cannot open a database a newer one migrated. The restore offered after a failed start tries it
   after the daily snapshots. Going back to it from a database that still opens means closing

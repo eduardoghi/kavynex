@@ -175,7 +175,7 @@ async fn snapshot_after_damage(db_path: &Path, pool: &sqlx::SqlitePool) -> AppRe
 }
 
 /// How many pre-migration snapshots are kept. Each is a full copy, taken once per upgrade that
-/// changes the schema, so this many cover the upgrade that just ran and the one before it.
+/// changes the schema, so this many cover the migration that just ran and one other.
 pub(super) const PRE_MIGRATION_SNAPSHOTS_KEPT: usize = 2;
 
 /// The snapshot taken right before a migration from `from_version` runs.
@@ -187,14 +187,25 @@ fn pre_migration_temp_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".pre-migration.tmp")
 }
 
-/// The versions whose pre-migration snapshots go, given the ones on disk. The `keep` highest stay.
+/// The versions whose pre-migration snapshots go, given the ones on disk and the one just written.
+/// The one just written always stays, and the highest of the others fill the remaining `keep`
+/// slots.
+///
+/// Keeping only the highest versions deleted the snapshot of a database older than the last two
+/// upgrades (an imported export, a restored old backup) right after it was taken, so its migration
+/// ran with no rollback point.
 ///
 /// Pure so the retention can be pinned without a directory, because a wrong answer here deletes the
 /// one copy taken before an upgrade.
-pub(super) fn pre_migration_versions_to_prune(mut versions: Vec<i64>, keep: usize) -> Vec<i64> {
+pub(super) fn pre_migration_versions_to_prune(
+    mut versions: Vec<i64>,
+    just_written: i64,
+    keep: usize,
+) -> Vec<i64> {
+    versions.retain(|version| *version != just_written);
     versions.sort_unstable_by(|left, right| right.cmp(left));
     versions.dedup();
-    versions.into_iter().skip(keep).collect()
+    versions.into_iter().skip(keep.saturating_sub(1)).collect()
 }
 
 /// The schema versions of the pre-migration snapshots sitting beside `db_path`.
@@ -227,8 +238,8 @@ fn pre_migration_versions_on_disk(db_path: &Path) -> Vec<i64> {
 /// Separate from [`backup_database`] for two reasons. That one is throttled to a day, so before a
 /// migration it often wrote nothing and the rollback point was a `.bak` up to a day old. And its
 /// generations rotate daily, so within a week the last copy in the old schema was gone, which is
-/// the copy a downgrade needs. This one always runs, and only a later upgrade's snapshot replaces
-/// it. The caller has already run `quick_check` on the database, so it is not repeated here.
+/// the copy a downgrade needs. This one always runs, and is never pruned by the snapshot it is
+/// taken alongside. The caller has already run `quick_check` on the database, so it is not repeated here.
 pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> AppResult<PathBuf> {
     let _guard = BACKUP_IN_PROGRESS.lock().await;
 
@@ -261,6 +272,7 @@ pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> App
 
     for version in pre_migration_versions_to_prune(
         pre_migration_versions_on_disk(db_path),
+        from_version,
         PRE_MIGRATION_SNAPSHOTS_KEPT,
     ) {
         let _ = std::fs::remove_file(pre_migration_path(db_path, version));

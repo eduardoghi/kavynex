@@ -504,7 +504,9 @@ When `build_pool_at` finds a migration pending, it snapshots the database into
 `kavynex.db.pre-migration-v<N>`, N being the schema version the migration starts from, before any
 DDL runs. Unlike `backup_database` this is never throttled, so the rollback point is the database
 as it was a moment before the upgrade, and it is outside the `.bak` rotation, so the daily snapshot
-does not push it out. The two most recent are kept. A failure to take it blocks the migration with
+does not push it out. Two are kept, the one just taken and the highest other version, so the
+snapshot of an older database (an imported export, a restored old backup) is not pruned by its own
+write. A failure to take it blocks the migration with
 `DatabaseMigrationBlocked`, and so does a migration that fails (it rolls back to the version it
 started from). The database is not damaged in either case, so the frontend shows what to do instead
 of offering the restore below, which would bring back an older snapshot that fails the same way.

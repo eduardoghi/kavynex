@@ -2271,26 +2271,32 @@ async fn database_quick_check_ok_reports_health() {
 }
 
 #[test]
-fn pre_migration_retention_keeps_the_two_most_recent_versions() {
+fn pre_migration_retention_keeps_the_one_just_written_and_the_highest_other() {
     assert_eq!(
-        pre_migration_versions_to_prune(vec![13, 15, 14], 2),
+        pre_migration_versions_to_prune(vec![13, 15, 14], 15, 2),
         vec![13]
     );
     assert_eq!(
-        pre_migration_versions_to_prune(vec![15, 14], 2),
+        pre_migration_versions_to_prune(vec![15, 14], 15, 2),
         Vec::<i64>::new()
     );
     assert_eq!(
-        pre_migration_versions_to_prune(vec![15], 2),
+        pre_migration_versions_to_prune(vec![15], 15, 2),
         Vec::<i64>::new()
     );
     assert_eq!(
-        pre_migration_versions_to_prune(Vec::new(), 2),
+        pre_migration_versions_to_prune(Vec::new(), 15, 2),
         Vec::<i64>::new()
     );
     assert_eq!(
-        pre_migration_versions_to_prune(vec![9, 12, 10, 11], 2),
+        pre_migration_versions_to_prune(vec![9, 12, 10, 11], 12, 2),
         vec![10, 9]
+    );
+    // A database older than the last two upgrades, imported or restored. Its own snapshot stays
+    // even though both others have a higher version.
+    assert_eq!(
+        pre_migration_versions_to_prune(vec![15, 16, 12], 12, 2),
+        vec![15]
     );
     assert_eq!(PRE_MIGRATION_SNAPSHOTS_KEPT, 2);
 }
@@ -2316,6 +2322,14 @@ async fn a_pre_migration_snapshot_is_written_whatever_the_daily_throttle_says() 
 
     assert!(!dir.join("kavynex.db.pre-migration-v14").exists());
     assert!(dir.join("kavynex.db.pre-migration-v15").exists());
+    assert!(dir.join("kavynex.db.pre-migration-v16").exists());
+
+    // An older database brought in after those upgrades. Its snapshot is the rollback point of
+    // the migration about to run, so it stays, and the lower of the other two goes.
+    let written = snapshot_before_migration(&db, 12).await.unwrap();
+
+    assert!(written.exists());
+    assert!(!dir.join("kavynex.db.pre-migration-v15").exists());
     assert!(dir.join("kavynex.db.pre-migration-v16").exists());
 
     let _ = std::fs::remove_dir_all(&dir);
