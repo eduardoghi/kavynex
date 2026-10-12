@@ -794,20 +794,6 @@ pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
     move_or_copy_file_using(source, destination, None)
 }
 
-/// Like [`move_or_copy_file`], but reuses a precomputed SHA-256 of `source` for the
-/// identical-content check taken when the destination already exists. A caller that has just
-/// hashed `source` to derive a content-addressed destination name (the media import) can pass that
-/// hash here instead of paying for a second full-file hash of a possibly multi-GB file. All the
-/// safety of the plain variant is kept. The same-file guard, the size pre-check, and the hash of
-/// the destination (so a corrupt destination whose bytes no longer match its name is still caught).
-pub fn move_or_copy_file_with_known_source_hash(
-    source: &Path,
-    destination: &Path,
-    source_hash: &str,
-) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, Some(source_hash))
-}
-
 fn move_or_copy_file_using(
     source: &Path,
     destination: &Path,
@@ -1250,84 +1236,6 @@ fn file_modified_sort_key(path: &Path) -> SystemTime {
         .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
-pub fn find_latest_matching_file(dir: &Path, prefix: &str) -> AppResult<PathBuf> {
-    if !dir.exists() || !dir.is_dir() {
-        return Err(AppError::from_code(
-            AppErrorCode::MatchingFileNotFound,
-            "matching file was not found",
-        ));
-    }
-
-    fs::read_dir(dir)
-        .map_err(|e| {
-            AppError::fs_error(
-                AppErrorCode::ReadDirFailed,
-                "failed to read directory",
-                dir,
-                &e,
-            )
-        })?
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| {
-            path.is_file()
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| name.starts_with(prefix))
-                    .unwrap_or(false)
-        })
-        .max_by_key(|path| file_modified_sort_key(path))
-        .ok_or_else(|| {
-            AppError::from_code(
-                AppErrorCode::MatchingFileNotFound,
-                "matching file was not found",
-            )
-        })
-}
-
-pub fn find_unique_matching_file(dir: &Path, prefix: &str) -> AppResult<PathBuf> {
-    if !dir.exists() || !dir.is_dir() {
-        return Err(AppError::from_code(
-            AppErrorCode::MatchingFileNotFound,
-            "matching file was not found",
-        ));
-    }
-
-    let mut matches: Vec<PathBuf> = fs::read_dir(dir)
-        .map_err(|e| {
-            AppError::fs_error(
-                AppErrorCode::ReadDirFailed,
-                "failed to read directory",
-                dir,
-                &e,
-            )
-        })?
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| {
-            path.is_file()
-                && path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| name.starts_with(prefix))
-                    .unwrap_or(false)
-        })
-        .collect();
-
-    matches.sort_by_key(|path| std::cmp::Reverse(file_modified_sort_key(path)));
-
-    match matches.len() {
-        0 => Err(AppError::from_code(
-            AppErrorCode::MatchingFileNotFound,
-            "matching file was not found",
-        )),
-        1 => Ok(matches.remove(0)),
-        _ => Err(AppError::from_code(
-            AppErrorCode::MultipleMatchingFilesFound,
-            "multiple matching files were found when only one was expected",
-        )),
-    }
-}
-
 pub fn find_best_matching_file(
     dir: &Path,
     prefix: &str,
@@ -1427,6 +1335,7 @@ pub(crate) fn path_is_symlink(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(test)]
 pub fn copy_directory_contents(source_dir: &Path, destination_dir: &Path) -> AppResult<()> {
     copy_directory_contents_tracked(source_dir, destination_dir, None, &mut |_| {})
 }

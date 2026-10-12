@@ -453,8 +453,6 @@ fn matching_helpers_ignore_a_prefix_named_subdirectory() {
     sleep(Duration::from_millis(20));
     fs::create_dir_all(dir.join("media_x_dir")).unwrap();
 
-    assert_eq!(find_latest_matching_file(&dir, "media_x").unwrap(), file);
-    assert_eq!(find_unique_matching_file(&dir, "media_x").unwrap(), file);
     assert_eq!(
         find_best_matching_file(&dir, "media_x", None).unwrap(),
         file
@@ -464,7 +462,7 @@ fn matching_helpers_ignore_a_prefix_named_subdirectory() {
 }
 
 #[test]
-fn matching_helpers_reject_a_non_directory_path() {
+fn find_best_matching_file_rejects_a_non_directory_path() {
     // A path that exists but is a file must come back as the catalogued MatchingFileNotFound,
     // not an attempt to read it as a directory (which would surface a different error).
     let dir = unique_test_dir();
@@ -472,52 +470,9 @@ fn matching_helpers_reject_a_non_directory_path() {
     let file = dir.join("not_a_dir");
     fs::write(&file, b"x").unwrap();
 
-    for result in [
-        find_latest_matching_file(&file, "x"),
-        find_unique_matching_file(&file, "x"),
-        find_best_matching_file(&file, "x", None),
-    ] {
-        let error = result.expect_err("a file path is not a searchable directory");
-        assert_eq!(error.code, AppErrorCode::MatchingFileNotFound.as_str());
-    }
-
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn find_latest_matching_file_returns_the_most_recent_match() {
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).unwrap();
-    let older = dir.join("run_a.log");
-    let newer = dir.join("run_b.log");
-    fs::write(&older, b"a").unwrap();
-    sleep(Duration::from_millis(20));
-    fs::write(&newer, b"b").unwrap();
-
-    assert_eq!(find_latest_matching_file(&dir, "run_").unwrap(), newer);
-    assert!(find_latest_matching_file(&dir, "none_").is_err());
-
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn find_unique_matching_file_distinguishes_none_one_and_many() {
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).unwrap();
-
-    // None. The catalogued not-found code, not a silent success.
-    let none = find_unique_matching_file(&dir, "only_").unwrap_err();
-    assert_eq!(none.code, AppErrorCode::MatchingFileNotFound.as_str());
-
-    // Exactly one match, which is returned.
-    let one = dir.join("only_1.txt");
-    fs::write(&one, b"1").unwrap();
-    assert_eq!(find_unique_matching_file(&dir, "only_").unwrap(), one);
-
-    // Two. The distinct multiple-match error, never a quiet pick of one.
-    fs::write(dir.join("only_2.txt"), b"2").unwrap();
-    let many = find_unique_matching_file(&dir, "only_").unwrap_err();
-    assert_eq!(many.code, AppErrorCode::MultipleMatchingFilesFound.as_str());
+    let error = find_best_matching_file(&file, "x", None)
+        .expect_err("a file path is not a searchable directory");
+    assert_eq!(error.code, AppErrorCode::MatchingFileNotFound.as_str());
 
     let _ = fs::remove_dir_all(dir);
 }
@@ -617,43 +572,6 @@ fn copy_file_atomic_is_idempotent_when_destination_already_has_same_content() {
 
     let result = copy_file_atomic(&source, &destination);
     assert!(result.is_ok());
-
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn find_unique_matching_file_returns_single_match() {
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).unwrap();
-
-    let target = dir.join("media_abc.mp4");
-    fs::write(&target, b"abc").unwrap();
-
-    let result = find_unique_matching_file(&dir, "media_").unwrap();
-
-    assert_eq!(
-        result.file_name().and_then(|v| v.to_str()),
-        Some("media_abc.mp4")
-    );
-
-    let _ = fs::remove_dir_all(dir);
-}
-
-#[test]
-fn find_unique_matching_file_rejects_multiple_matches() {
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).unwrap();
-
-    fs::write(dir.join("media_a.mp4"), b"a").unwrap();
-    fs::write(dir.join("media_b.mp4"), b"b").unwrap();
-
-    let result = find_unique_matching_file(&dir, "media_");
-
-    assert!(result.is_err());
-    assert_eq!(
-        result.err().unwrap().code,
-        AppErrorCode::MultipleMatchingFilesFound.as_str()
-    );
 
     let _ = fs::remove_dir_all(dir);
 }

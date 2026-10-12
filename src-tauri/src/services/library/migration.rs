@@ -213,7 +213,11 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
     Ok(())
 }
 
-pub fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
+/// The copy and the removal without the exclusive library gate, the commit marker or the completeness
+/// check, for the tests that exercise those two phases on their own. Production goes through
+/// [`migrate_library_contents_with_marker`].
+#[cfg(test)]
+fn migrate_library_contents(old_library_dir: &Path, new_library_dir: &Path) -> AppResult<()> {
     copy_library_contents(old_library_dir, new_library_dir, None, &mut |_| {})?;
     let _ = remove_old_library_contents(old_library_dir);
     Ok(())

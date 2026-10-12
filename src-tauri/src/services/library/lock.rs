@@ -1,7 +1,7 @@
 //! Serializes library file mutations against a library-directory migration.
 //!
 //! A library migration copies every managed subdirectory (video/audio/thumbnails/live_chat)
-//! to the new location and then removes the old one (`library::migration::migrate_library_contents`).
+//! to the new location and then removes the old one (`library::migration::migrate_library_contents_with_marker`).
 //! Nothing else stopped a concurrent import/download/delete from writing a brand-new file into
 //! the old directory in the window between the copy and the `remove_dir_all`; that file would be
 //! silently deleted and never reach the new location, with the operation still reporting success.
