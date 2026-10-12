@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Card, Group, Stack, Text, Title, VisuallyHidden } from "@mantine/core";
+import { Box, Card, Group, Loader, Stack, Text, Title, VisuallyHidden } from "@mantine/core";
 import { useElementSize, useWindowEvent } from "@mantine/hooks";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { UI_TEXT } from "../../constants/ui-text";
@@ -487,12 +487,24 @@ export function MediaGrid({
     return (
         <Stack gap="md">
             <Group justify="space-between" align="center" wrap="wrap">
-                <Title order={3} fw={900}>
-                    {UI_TEXT.library.title}
-                </Title>
+                <Group gap="xs" align="center">
+                    <Title order={3} fw={900}>
+                        {UI_TEXT.library.title}
+                    </Title>
+
+                    {/* A reload with rows already on screen keeps them, with this beside the title
+                        instead of the skeleton. Replacing them unmounted the scroll container, so
+                        adding a media or typing in the search sent the user back to the top. */}
+                    {loading && hasItems && (
+                        <Box role="status">
+                            <Loader size="xs" aria-hidden />
+                            <VisuallyHidden>{UI_TEXT.library.loading}</VisuallyHidden>
+                        </Box>
+                    )}
+                </Group>
             </Group>
 
-            {loading && (
+            {loading && !hasItems && (
                 <Box role="status">
                     <VisuallyHidden>{UI_TEXT.library.loading}</VisuallyHidden>
                     <MediaGridSkeleton shellBorder={shellBorder} />
@@ -558,8 +570,8 @@ export function MediaGrid({
                 </Card>
             )}
 
-            {!loading && hasItems && (
-                <Box ref={measureRef}>
+            {hasItems && (
+                <Box ref={measureRef} aria-busy={loading || undefined}>
                     <Box
                         ref={scrollParentRef}
                         onScroll={onScroll}

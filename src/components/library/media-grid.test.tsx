@@ -125,6 +125,23 @@ describe("MediaGrid", () => {
         );
     });
 
+    it("keeps the rows on screen while a reload runs, so the scroll position survives", () => {
+        renderWithMantine(
+            <MediaGrid
+                items={[createMedia({ id: 1, title: "Kept" })]}
+                libraryPath="/library"
+                shellBorder="rgba(255,255,255,0.1)"
+                shellSurface="rgba(255,255,255,0.03)"
+                loading
+                onOpen={vi.fn()}
+                onRequestDelete={vi.fn()}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: "card Kept" })).toBeInTheDocument();
+        expect(screen.getByRole("status")).toBeInTheDocument();
+    });
+
     it("shows loading state", () => {
         renderWithMantine(
             <MediaGrid
