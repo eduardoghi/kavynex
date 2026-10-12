@@ -491,7 +491,9 @@ A generation that cannot be moved (a file another program holds open, a read-onl
 rotation where it is, and `.bak` is then still in its slot. The fresh snapshot is not promoted over
 it. It stays in `.bak.tmp`, already flushed and checked, where a restore still finds it, the run
 reports an error, and the next one tries the rotation again. Promoting anyway would discard the
-previous snapshot every day the file stays held.
+previous snapshot every day the file stays held. `.bak` itself is moved first, to `.bak.rotating`, before the older generations shift, so
+when it is the held file nothing above it moves either. A `.bak.rotating` left by a run that died
+midway is put back by the next one.
 
 A database whose `user_version` is above this build's `SCHEMA_VERSION` (an older version installed
 over a newer one) is not snapshotted at all. This build can neither open it nor restore a copy of

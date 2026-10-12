@@ -951,6 +951,74 @@ fn rotation_stops_instead_of_overwriting_a_generation_it_could_not_promote() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[test]
+fn a_held_newest_generation_leaves_the_older_ones_where_they_are() {
+    // Generation 0 is the file a sync client or a backup tool holds. The rotation used to shift
+    // every older generation first, so each day of the hold moved them up one slot and dropped the
+    // oldest, until only the held file was left.
+    let dir = temp_dir("rotate-held-newest");
+    let db = dir.join("kavynex.db");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(generation_corrupt_path(&db, 0), b"gen0").unwrap();
+    std::fs::write(generation_corrupt_path(&db, 1), b"gen1").unwrap();
+    std::fs::write(generation_corrupt_path(&db, 2), b"gen2").unwrap();
+
+    // A non-empty directory on the parked name, which `rename` cannot write over, is the stand-in
+    // for generation 0 being held.
+    let mut parked = generation_corrupt_path(&db, 0).into_os_string();
+    parked.push(".rotating");
+    let parked = PathBuf::from(parked);
+    std::fs::create_dir_all(parked.join("held")).unwrap();
+
+    for _day in 0..3 {
+        assert!(!rotate_corrupt_snapshots(&db));
+    }
+
+    assert_eq!(
+        std::fs::read(generation_corrupt_path(&db, 0)).unwrap(),
+        b"gen0"
+    );
+    assert_eq!(
+        std::fs::read(generation_corrupt_path(&db, 1)).unwrap(),
+        b"gen1"
+    );
+    assert_eq!(
+        std::fs::read(generation_corrupt_path(&db, 2)).unwrap(),
+        b"gen2"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_rotation_interrupted_after_parking_puts_the_snapshot_back() {
+    // A process that died between parking generation 0 and placing it. The parked file is the only
+    // copy of that snapshot, and the next rotation finds it and carries on as usual.
+    let dir = temp_dir("rotate-interrupted");
+    let db = dir.join("kavynex.db");
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let mut parked = generation_corrupt_path(&db, 0).into_os_string();
+    parked.push(".rotating");
+    std::fs::write(PathBuf::from(&parked), b"parked").unwrap();
+    std::fs::write(generation_corrupt_path(&db, 1), b"gen1").unwrap();
+
+    assert!(rotate_corrupt_snapshots(&db));
+
+    assert!(!PathBuf::from(&parked).exists());
+    assert_eq!(
+        std::fs::read(generation_corrupt_path(&db, 1)).unwrap(),
+        b"parked"
+    );
+    assert_eq!(
+        std::fs::read(generation_corrupt_path(&db, 2)).unwrap(),
+        b"gen1"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[tokio::test]
 async fn a_backup_whose_rotation_stops_short_keeps_the_previous_snapshot() {
     // A generation another program holds stops the rotation with `.bak` still in its slot.

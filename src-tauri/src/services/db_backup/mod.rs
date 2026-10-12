@@ -72,10 +72,13 @@ fn remove_stale_sidecars(staging: &Path) {
 /// overwritten by `N-1`, and so on down to generation 0 becoming generation 1.
 ///
 /// Returns whether generation 0 is free. A generation that cannot be moved (a file another program
-/// holds, a read-only one) stops the rotation where it is, and generation 0 is then still in its
-/// slot. The caller must not promote a fresh file over it in that case, or the previous snapshot is
-/// lost, and with a file that stays held it is lost again every day while the older generations sit
-/// still.
+/// holds, a read-only one) stops the rotation, and generation 0 is then back in its slot. The caller
+/// must not promote a fresh file over it in that case, or the previous snapshot is lost.
+///
+/// Generation 0 is moved first, to a parked name, before anything above it shifts. It is the one a
+/// sync client or a backup tool is most likely to be holding, and shifting the older generations
+/// first meant that a held `.bak` let them move up and fall off the end one a day, until only the
+/// held file was left.
 ///
 /// Shared by the `.bak`, `.corrupt` and external-mirror families, which is why it takes the
 /// per-generation path function rather than knowing any of their names.
@@ -85,41 +88,96 @@ fn rotate_generations(
     generations: usize,
     path_for: fn(&Path, usize) -> PathBuf,
 ) -> bool {
-    for generation in (1..=generations).rev() {
+    let newest = path_for(db_path, 0);
+    let parked = parked_generation_path(&newest);
+
+    // A rotation that died between parking generation 0 and placing it left it here, and nothing
+    // else names this file. Put back when the slot is free. When it is not, the slot holds a later
+    // promotion and this copy is older than everything the rotation keeps anyway.
+    if parked.exists() {
+        if newest.exists() {
+            let _ = std::fs::remove_file(&parked);
+        } else if crate::services::filesystem::rename_retrying(&parked, &newest).is_err() {
+            logger::warn(
+                "db_backup",
+                "backup rotation stopped: a snapshot left by an interrupted rotation could not be put back",
+            );
+            return false;
+        }
+    }
+
+    let newest_parked = newest.exists();
+
+    if newest_parked && crate::services::filesystem::rename_retrying(&newest, &parked).is_err() {
+        logger::warn(
+            "db_backup",
+            "backup rotation stopped at generation 0: the snapshot could not be moved",
+        );
+        return false;
+    }
+
+    for generation in (2..=generations).rev() {
         let source = path_for(db_path, generation - 1);
-        let target = path_for(db_path, generation);
 
         if !source.exists() {
             continue;
         }
 
-        // `rename` already replaces an existing target on both Windows and Unix, so the removal
-        // below is only a fallback for the targets rename itself refuses (a locked or read-only
-        // file on Windows). It has to come *after* the first attempt rather than before it.
-        // Clearing the target up front and then failing to rename into it leaves the snapshot
-        // sitting in `source`, which the next iteration's removal would then delete without it
-        // ever having been copied anywhere. Silently costing a generation.
-        if crate::services::filesystem::rename_retrying(&source, &target).is_ok() {
-            continue;
-        }
-
-        let _ = std::fs::remove_file(&target);
-
-        if crate::services::filesystem::rename_retrying(&source, &target).is_err() {
+        if !promote_generation(&source, &path_for(db_path, generation)) {
             // Stop instead of shifting the generations below into a slot this one still holds.
-            // Rotation is best effort, so a generation that cannot be promoted is left where it
-            // is, but letting the loop continue would have generation N-1 overwrite it.
             logger::warn(
                 "db_backup",
                 format!(
                     "backup rotation stopped at generation {generation}: the snapshot could not be promoted"
                 ),
             );
+            unpark_generation(&parked, &newest, newest_parked);
             return false;
         }
     }
 
-    !path_for(db_path, 0).exists()
+    if newest_parked && generations > 0 && !promote_generation(&parked, &path_for(db_path, 1)) {
+        logger::warn(
+            "db_backup",
+            "backup rotation stopped at generation 1: the snapshot could not be promoted",
+        );
+        unpark_generation(&parked, &newest, newest_parked);
+        return false;
+    }
+
+    !newest.exists()
+}
+
+/// Where generation 0 waits while the generations above it shift.
+fn parked_generation_path(newest: &Path) -> PathBuf {
+    let mut name = newest.as_os_str().to_owned();
+    name.push(".rotating");
+    PathBuf::from(name)
+}
+
+/// Moves `source` into `target`, replacing it. `rename` already replaces an existing target on
+/// both Windows and Unix, so removing the target is only a fallback for one rename itself refuses (a
+/// locked or read-only file on Windows), and it comes after the first attempt. Clearing it up front
+/// and then failing to rename into it would cost that generation for nothing.
+fn promote_generation(source: &Path, target: &Path) -> bool {
+    if crate::services::filesystem::rename_retrying(source, target).is_ok() {
+        return true;
+    }
+
+    let _ = std::fs::remove_file(target);
+
+    crate::services::filesystem::rename_retrying(source, target).is_ok()
+}
+
+/// Returns generation 0 to its slot after a rotation that stopped. Best effort. A parked file that
+/// cannot be put back is left under its parked name, which the next rotation retries.
+fn unpark_generation(parked: &Path, newest: &Path, newest_parked: bool) {
+    if newest_parked && crate::services::filesystem::rename_retrying(parked, newest).is_err() {
+        logger::warn(
+            "db_backup",
+            "a snapshot could not be returned to its slot after the rotation stopped",
+        );
+    }
 }
 
 fn backup_error(message: impl Into<String>, error: impl std::fmt::Display) -> AppError {
