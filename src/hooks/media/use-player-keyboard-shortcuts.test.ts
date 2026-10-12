@@ -2,6 +2,12 @@ import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlayerKeyboardShortcuts } from "./use-player-keyboard-shortcuts";
 
+vi.mock("../../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
+
+import { logError } from "../../utils/app-logger";
+
 type PlayerStub = {
     paused: boolean;
     play: ReturnType<typeof vi.fn>;
@@ -42,6 +48,7 @@ async function flush(): Promise<void> {
 describe("usePlayerKeyboardShortcuts", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
+        vi.mocked(logError).mockClear();
     });
 
     it("plays a paused player on Space", async () => {
@@ -89,6 +96,43 @@ describe("usePlayerKeyboardShortcuts", () => {
         await flush();
 
         expect(player.play).toHaveBeenCalledTimes(1);
+    });
+
+    it("logs a play the webview refuses instead of letting it reject", async () => {
+        // Unhandled, it would be written to the file log as fatal (see the test above). Vitest
+        // fails the run on that too, so this also covers the rejection not escaping.
+        const refusal = new DOMException("not allowed", "NotAllowedError");
+        const player = createPlayer({ paused: true, play: vi.fn().mockRejectedValue(refusal) });
+        renderWithPlayer(player);
+
+        pressSpace();
+        await flush();
+
+        expect(logError).toHaveBeenCalledWith(
+            "player",
+            "Failed to start playback from the keyboard.",
+            refusal
+        );
+    });
+
+    it("logs a fullscreen request the webview refuses instead of letting it reject", async () => {
+        const video = document.createElement("video");
+        document.body.appendChild(video);
+        const refusal = new TypeError("fullscreen not allowed");
+        video.requestFullscreen = vi.fn().mockRejectedValue(refusal);
+        renderHook(() => usePlayerKeyboardShortcuts({ current: video }));
+
+        pressKey("KeyF");
+        await flush();
+
+        expect(video.requestFullscreen).toHaveBeenCalledTimes(1);
+        expect(logError).toHaveBeenCalledWith(
+            "player",
+            "Failed to toggle fullscreen from the keyboard.",
+            refusal
+        );
+
+        video.remove();
     });
 
     it("raises the volume and unmutes on ArrowUp, lowers it on ArrowDown", () => {

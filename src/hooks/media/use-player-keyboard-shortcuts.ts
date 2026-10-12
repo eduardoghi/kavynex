@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from "react";
+import { logError } from "../../utils/app-logger";
 
 // True when no other element has a claim on the key. Focus is on the player itself, or on nothing,
 // which is the body (where focus lands after a click on content that cannot take it). Anything else
@@ -59,12 +60,15 @@ export function usePlayerKeyboardShortcuts(
                     // `paused` flips to false synchronously when play() is called, before its
                     // promise settles, so a fast second Space takes the pause() branch below and
                     // interrupts the pending play(), which rejects with AbortError. That is the
-                    // shortcut working, not a failure. Left unhandled it reached the
-                    // unhandledrejection listener, which logs a *fatal* error to the rolling file
-                    // log. An ordinary double-tap would dilute the one log that survives a webview
-                    // crash and lands in bug reports. Anything else still surfaces.
+                    // shortcut working, not a failure.
+                    //
+                    // Anything else is logged here rather than left to reject. The key handler does
+                    // not await this, so a rejection would reach the unhandledrejection listener,
+                    // which logs a *fatal* error to the rolling file log, the one log that survives
+                    // a webview crash and lands in bug reports. A media the webview cannot play is
+                    // not that, and the player reports it through the element's own error state.
                     if (!(error instanceof DOMException) || error.name !== "AbortError") {
-                        throw error;
+                        logError("player", "Failed to start playback from the keyboard.", error);
                     }
                 }
 
@@ -115,12 +119,20 @@ export function usePlayerKeyboardShortcuts(
                         return null;
                     }
 
+                    // Caught for the reason togglePlayback catches. The webview can refuse
+                    // either call (fullscreen not allowed, the element detached meanwhile).
                     return () => {
-                        if (document.fullscreenElement) {
-                            void document.exitFullscreen();
-                        } else {
-                            void element.requestFullscreen();
-                        }
+                        const toggled = document.fullscreenElement
+                            ? document.exitFullscreen()
+                            : element.requestFullscreen();
+
+                        toggled.catch((error: unknown) => {
+                            logError(
+                                "player",
+                                "Failed to toggle fullscreen from the keyboard.",
+                                error
+                            );
+                        });
                     };
                 default:
                     return null;
