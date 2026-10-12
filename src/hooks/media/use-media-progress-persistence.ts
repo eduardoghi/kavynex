@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { MediaRow } from "../../types/media";
 import { isMediaWatched } from "../../utils/media-utils";
+import { logError } from "../../utils/app-logger";
 
 // timeupdate fires ~4x/second; persist at most this often so a crash, a force-close, or the
 // updater relaunch never loses more than a few seconds of watch position. The exact position
@@ -40,7 +41,22 @@ export function useMediaProgressPersistence(
             return;
         }
 
-        void onSaveProgress(currentMedia.id, lastProgressRef.current);
+        // Caught here because nothing else awaits it. A save the database refuses (busy with a
+        // compaction, a check or an export) would otherwise reach the window as an unhandled
+        // rejection, reported as fatal, every ten seconds of playback. The next save retries.
+        const logFailure = (error: unknown): void => {
+            logError("player", "Failed to save the playback position.", error, {
+                mediaId: currentMedia.id,
+            });
+        };
+
+        try {
+            void Promise.resolve(onSaveProgress(currentMedia.id, lastProgressRef.current)).catch(
+                logFailure
+            );
+        } catch (error) {
+            logFailure(error);
+        }
     }, [onSaveProgress]);
 
     // Latest persistProgress, so the unmount-only effect below can call it without listing it as a

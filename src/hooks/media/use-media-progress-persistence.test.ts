@@ -2,6 +2,11 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { useMediaProgressPersistence } from "./use-media-progress-persistence";
 import { createMedia } from "../../test/factories/media";
+import { logError } from "../../utils/app-logger";
+
+vi.mock("../../utils/app-logger", () => ({
+    logError: vi.fn(),
+}));
 
 type SaveProgress = (mediaId: number, progressSeconds: number) => void;
 
@@ -34,6 +39,28 @@ describe("useMediaProgressPersistence", () => {
         });
 
         expect(onSave).toHaveBeenCalledWith(7, 42);
+    });
+
+    it("logs a save the backend refuses instead of leaving it unhandled", async () => {
+        // Nothing awaits the save, so a rejection would reach the window as a fatal error every ten
+        // seconds while the database is busy.
+        const element = videoElementAt(42);
+        const refused = vi.fn(() => Promise.reject(new Error("database is busy")));
+
+        renderHook(() => useMediaProgressPersistence(createMedia({ id: 7 }), element, refused));
+
+        await act(async () => {
+            element.dispatchEvent(new Event("pause"));
+            await Promise.resolve();
+        });
+
+        expect(refused).toHaveBeenCalledWith(7, 42);
+        expect(logError).toHaveBeenCalledWith(
+            "player",
+            "Failed to save the playback position.",
+            expect.any(Error),
+            { mediaId: 7 }
+        );
     });
 
     it("persists the seeded position when the player unmounts", () => {
