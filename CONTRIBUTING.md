@@ -72,7 +72,7 @@ unless you `cd src-tauri` first):
 - `cargo fmt --manifest-path src-tauri/Cargo.toml --all`: format (CI runs
   `--check`, i.e. it fails if this would change anything, it does not auto-fix for you).
 
-Repository consistency (plain Node, no install needed. CI runs all eight on every push):
+Repository consistency (plain Node, no install needed. CI runs all nine on every push):
 
 - `node scripts/verify-release-version.js`: fails when `package.json`,
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
@@ -121,6 +121,9 @@ Repository consistency (plain Node, no install needed. CI runs all eight on ever
   or in a Rust `//` comment, names nothing in the tree, and when a module under `src-tauri/src` is
   not named in `docs/ARCHITECTURE.md`. It checks names, not what the docs say about them, so a
   behavior change still needs its doc updated by hand in the same commit.
+- `node scripts/verify-comment-sentences.js`: fails when a code comment ends a line with a period
+  and the next comment line goes on in lowercase, which is a sentence split in the wrong place. A
+  name like `yt-dlp`, a label, or anything in backticks may start a line lowercase.
 
 Another consistency check needs cargo-mutants installed, so it runs in `mutation.yml` rather than
 on every push:
