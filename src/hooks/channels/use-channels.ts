@@ -28,7 +28,6 @@ type UseChannelsOptions = {
     libraryPath: string;
     onError: (message: string) => void;
     onNotice?: (message: string) => void;
-    onChannelDeleted?: (channelId: number) => void;
 };
 
 export type ChannelsController = {
@@ -95,7 +94,6 @@ export function useChannels({
     libraryPath,
     onError,
     onNotice,
-    onChannelDeleted,
 }: UseChannelsOptions): ChannelsController {
     const [channels, setChannels] = useState<Channel[]>([]);
     const [selectedChannelId, setSelectedChannelId] = useState<number | null>(null);
@@ -121,7 +119,6 @@ export function useChannels({
         libraryPath,
         onError,
         onNotice,
-        onChannelDeleted,
         selectedChannelId,
         setChannels,
         setSelectedChannelId,

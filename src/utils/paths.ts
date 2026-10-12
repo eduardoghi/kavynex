@@ -1,9 +1,4 @@
 /**
- * Trims each value, drops empties, and de-duplicates while preserving first-seen order.
- * Used to turn a raw list of stored relative paths (media, thumbnails, live chat) into the
- * clean set the backend integrity checks expect.
- */
-/**
  * Whether `path` is a filesystem/volume root. A location with no parent directory, rather
  * than a normal folder. Accepting a root as the library folder would make the asset:// scope
  * recursive over the whole drive, so callers must reject it before accepting the selection.

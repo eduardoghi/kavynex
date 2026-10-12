@@ -115,7 +115,7 @@ export function useHomePlayerActions({
     const cancelActiveComments = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        // Explicit undefined check, not truthiness. Media id 0 is a valid row id.
+        // An explicit undefined check rather than truthiness, so it says what it tests for.
         if (activeId === undefined) {
             return;
         }
@@ -126,8 +126,7 @@ export function useHomePlayerActions({
     const markActiveAsWatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        // Explicit undefined check, not truthiness. A media id of 0 is a valid row id and must
-        // not be treated as "no active media".
+        // An explicit undefined check rather than truthiness, so it says what it tests for.
         if (activeId === undefined) {
             return;
         }
@@ -142,8 +141,7 @@ export function useHomePlayerActions({
     const markActiveAsUnwatched = useCallback(async (): Promise<void> => {
         const activeId = activeMedia?.id;
 
-        // Explicit undefined check, not truthiness. A media id of 0 is a valid row id and must
-        // not be treated as "no active media".
+        // An explicit undefined check rather than truthiness, so it says what it tests for.
         if (activeId === undefined) {
             return;
         }

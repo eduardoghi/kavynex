@@ -22,7 +22,6 @@ type UseChannelActionsOptions = {
     libraryPath: string;
     onError: (message: string) => void;
     onNotice?: (message: string) => void;
-    onChannelDeleted?: (channelId: number) => void;
     selectedChannelId: number | null;
     setChannels: React.Dispatch<React.SetStateAction<Channel[]>>;
     setSelectedChannelId: (value: number | null) => void;
@@ -68,7 +67,6 @@ export function useChannelActions({
     libraryPath,
     onError,
     onNotice,
-    onChannelDeleted,
     selectedChannelId,
     setChannels,
     setSelectedChannelId,
@@ -389,7 +387,6 @@ export function useChannelActions({
 
             setConfirmDeleteChannelOpen(false);
             setChannelToDelete(null);
-            onChannelDeleted?.(deletedId);
 
             if (leftoverFiles > 0) {
                 onNotice?.(leftoverFilesNotice("channel", leftoverFiles));
@@ -409,7 +406,6 @@ export function useChannelActions({
     }, [
         channelToDelete,
         libraryPath,
-        onChannelDeleted,
         onError,
         onNotice,
         runDeleteChannel,

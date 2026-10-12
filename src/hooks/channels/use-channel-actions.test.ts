@@ -48,7 +48,6 @@ describe("useChannelActions", () => {
     const setChannelToDelete = vi.fn();
     const setConfirmDeleteChannelOpen = vi.fn();
     const onError = vi.fn();
-    const onChannelDeleted = vi.fn();
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -69,7 +68,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -116,7 +114,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -162,7 +159,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -208,7 +204,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -252,7 +247,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -291,7 +285,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -331,7 +324,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -374,7 +366,6 @@ describe("useChannelActions", () => {
                 libraryPath: "/library",
                 onError,
                 onNotice,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -415,7 +406,6 @@ describe("useChannelActions", () => {
                 libraryPath: "/library",
                 onError,
                 onNotice,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -452,7 +442,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -491,7 +480,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -532,7 +520,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -583,7 +570,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -628,7 +614,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -661,7 +646,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -707,7 +691,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -760,7 +743,6 @@ describe("useChannelActions", () => {
                 libraryPath: "/library",
                 onError,
                 onNotice,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -808,7 +790,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -851,7 +832,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -887,7 +867,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -929,7 +908,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: 10,
                 setChannels,
                 setSelectedChannelId,
@@ -953,7 +931,6 @@ describe("useChannelActions", () => {
         expect(setChannels).toHaveBeenCalledWith([]);
         expect(setConfirmDeleteChannelOpen).toHaveBeenCalledWith(false);
         expect(setChannelToDelete).toHaveBeenCalledWith(null);
-        expect(onChannelDeleted).toHaveBeenCalledWith(10);
     });
 
     it("closes the dialog and drops the channel when only the reload after a delete fails", async () => {
@@ -972,7 +949,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: 10,
                 setChannels,
                 setSelectedChannelId,
@@ -992,7 +968,6 @@ describe("useChannelActions", () => {
         });
 
         expect(setConfirmDeleteChannelOpen).toHaveBeenCalledWith(false);
-        expect(onChannelDeleted).toHaveBeenCalledWith(10);
         expect(onError).toHaveBeenCalledWith(expect.stringContaining("The channel was deleted"));
 
         // The list drops the deleted channel even without a reload.
@@ -1015,7 +990,6 @@ describe("useChannelActions", () => {
                 libraryPath: "/library",
                 onError,
                 onNotice,
-                onChannelDeleted,
                 selectedChannelId: 10,
                 setChannels,
                 setSelectedChannelId,
@@ -1050,7 +1024,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
@@ -1077,7 +1050,6 @@ describe("useChannelActions", () => {
             useChannelActions({
                 libraryPath: "/library",
                 onError,
-                onChannelDeleted,
                 selectedChannelId: null,
                 setChannels,
                 setSelectedChannelId,
