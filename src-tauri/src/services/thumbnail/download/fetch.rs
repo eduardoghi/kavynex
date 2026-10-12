@@ -86,9 +86,10 @@ pub(super) fn direct_image_extension(url: &str) -> Option<&'static str> {
 /// Resolves the host of `uri` and rejects it if it maps to any private, loopback or
 /// reserved address (SSRF guard). Applied to the initial URL and every redirect target.
 ///
-/// This checks the resolved addresses before the request; it does not pin the connection
-/// to a validated address, so a determined DNS-rebinding attacker could still race it.
-/// That residual risk is acceptable for a local desktop app fetching image thumbnails.
+/// It resolves the name on its own, before the request, so on its own it could be raced by a DNS
+/// rebinding between this answer and the connector's. The connector closes that by dialing through
+/// [`PublicOnlyResolver`], which applies the same refusal to the addresses it actually connects to.
+/// This one stays because it fails the fetch with a clear error before any connection is attempted.
 pub(super) async fn assert_url_host_is_public(uri: &Uri) -> AppResult<()> {
     let host = uri.host().ok_or_else(|| {
         AppError::from_code(AppErrorCode::InvalidUrl, "thumbnail url has no host")
