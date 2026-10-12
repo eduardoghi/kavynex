@@ -170,12 +170,40 @@ pub(super) fn place_downloaded_file(
 /// Runs `place_downloaded_file` (a cross-device move can fall back to a full `fs::copy` of a
 /// multi-GB video) on the blocking thread pool, so this heavy I/O never runs directly on an
 /// async task.
+///
+/// Also returns the placed file's library-relative path, worked out in the same blocking call. Once
+/// the file is in the library nothing may fail the run, and resolving the path canonicalizes it, so
+/// a failure there (an antivirus holding the new file, the drive dropping) falls back to the path
+/// the placement built rather than leaving the file with no row and no crash marker.
 pub(super) async fn place_downloaded_file_async(
     downloaded_temp: PathBuf,
     media_dir: PathBuf,
     library_dir: PathBuf,
-) -> AppResult<(PathBuf, bool)> {
-    run_blocking(move || place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)).await
+) -> AppResult<(PathBuf, String, bool)> {
+    run_blocking(move || {
+        let (final_destination, kept_existing) =
+            place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)?;
+        let file_path = placed_file_relative_path(&library_dir, &final_destination)?;
+
+        Ok((final_destination, file_path, kept_existing))
+    })
+    .await
+}
+
+/// The library-relative path of a file the placement just put at `final_destination`. Built from
+/// `library_dir` itself, so the lexical fallback holds whenever the canonical one cannot be read.
+pub(super) fn placed_file_relative_path(
+    library_dir: &Path,
+    final_destination: &Path,
+) -> AppResult<String> {
+    crate::utils::path::relative_path_from_base(library_dir, final_destination).or_else(|error| {
+        final_destination
+            .strip_prefix(library_dir)
+            .ok()
+            .and_then(Path::to_str)
+            .map(|relative| relative.replace('\\', "/"))
+            .ok_or(error)
+    })
 }
 
 /// Records a crash marker naming a download's file, the moment it is in the library. Best effort,

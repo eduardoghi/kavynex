@@ -36,7 +36,6 @@ use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::format::codec_is_present;
 use crate::utils::io::{read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
 use crate::utils::naming::unique_temp_suffix;
-use crate::utils::path::relative_path_from_base;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
@@ -929,7 +928,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             place_downloaded_file_async(downloaded_temp.clone(), media_dir, library_dir.clone())
                 .await;
 
-        let (final_destination, kept_existing) = match placement {
+        let (final_destination, file_path, kept_existing) = match placement {
             Ok(placed) => placed,
             Err(error) => {
                 let (error, left_in_run_dir) =
@@ -940,8 +939,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
         };
 
         // Nothing past this point may fail the run. The file is in the library, and an error here
-        // would leave it there with no row while the user is told the download failed.
-        let file_path = relative_path_from_base(&library_dir, &final_destination)?;
+        // would leave it there with no row while the user is told the download failed. That is why
+        // the placement already returned the library-relative path.
 
         // Recorded now, before the live chat and the thumbnail, which can take minutes. A process
         // that dies in that stretch leaves this marker, and the next launch's sweep moves the file
@@ -1428,6 +1427,24 @@ mod tests {
         );
 
         assert_eq!(picked, None);
+    }
+
+    #[test]
+    fn a_placed_file_gets_its_relative_path_even_when_it_cannot_be_canonicalized() {
+        // Once the file is in the library the run must not fail, so a path that cannot be
+        // resolved on disk (the drive dropped, an antivirus holding the new file) falls back to the
+        // one the placement built. Neither path exists here, which is what makes canonicalize fail.
+        let library = unique_temp_dir("placed-relative").join("gone");
+        let placed = library.join("video").join("media_abc.mp4");
+
+        assert_eq!(
+            placed_file_relative_path(&library, &placed).unwrap(),
+            "video/media_abc.mp4"
+        );
+
+        // A destination outside the library has no lexical answer either, so it still fails.
+        let elsewhere = unique_temp_dir("placed-elsewhere").join("media_abc.mp4");
+        assert!(placed_file_relative_path(&library, &elsewhere).is_err());
     }
 
     #[test]
