@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CreateChannelModal } from "./create-channel-modal";
 import { describeViolations, findAccessibilityViolations } from "../../test/axe";
@@ -56,6 +56,31 @@ describe("CreateChannelModal", () => {
         expect(
             screen.getByText("Choose a library folder to give the channel an avatar.")
         ).toBeInTheDocument();
+    });
+
+    it("puts initial focus on the name, so typing goes into it", async () => {
+        renderWithMantine(
+            <CreateChannelModal
+                opened
+                onClose={vi.fn()}
+                channelName=""
+                youtubeHandle=""
+                avatarMode="none"
+                avatarPath=""
+                loading={false}
+                onChangeChannelName={vi.fn()}
+                onChangeYoutubeHandle={vi.fn()}
+                onChangeAvatarMode={vi.fn()}
+                onPickAvatar={vi.fn()}
+                onClearAvatar={vi.fn()}
+                onCreate={vi.fn()}
+            />
+        );
+
+        const field = screen.getByLabelText(/Name/i);
+
+        expect(field).toHaveAttribute("data-autofocus");
+        await waitFor(() => expect(field).toHaveFocus());
     });
 
     it("disables create button when fields are empty", () => {

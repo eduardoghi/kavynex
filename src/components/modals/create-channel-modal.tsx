@@ -124,7 +124,10 @@ export function CreateChannelModal({
                         onChange={(event) => onChangeChannelName(event.currentTarget.value)}
                         required
                         disabled={loading}
-                        autoFocus
+                        // Mantine's focus trap, not React's autoFocus. The trap moves focus after
+                        // React does, to `[data-autofocus]` or else the first tabbable element,
+                        // which is the header's close button.
+                        data-autofocus
                     />
 
                     {/* The description names one shape where the parser takes handles,
@@ -280,8 +283,7 @@ export function CreateChannelModal({
                             Cancel
                         </AppButton>
 
-                        {/* The app's primary, like every other CTA. It was the one
-                            violet-to-cyan gradient left in the interface. */}
+                        {/* The app's primary, like every other CTA. */}
                         <AppButton
                             type="submit"
                             appVariant="primary"

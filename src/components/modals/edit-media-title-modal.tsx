@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button, Group, Modal, Stack, Text, TextInput } from "@mantine/core";
+import { Group, Modal, Stack, TextInput } from "@mantine/core";
 import type { MediaRow } from "../../types/media";
 import { useModalLock } from "../../hooks/use-modal-lock";
+import { AppButton } from "../ui/app-button";
+import { MODAL_CLOSE_BUTTON_STYLE, MODAL_TITLE_STYLE } from "../ui/modal-chrome";
 
 type EditMediaTitleModalProps = {
     media: MediaRow | null;
@@ -40,12 +42,13 @@ export function EditMediaTitleModal({
     return (
         <Modal
             opened={media !== null}
-            title={<Text fw={900}>Edit title</Text>}
+            title="Edit title"
             centered
             radius="lg"
             overlayProps={{ blur: 6 }}
+            styles={{ title: MODAL_TITLE_STYLE }}
             // Mantine's close button is an icon with no text, so it needs a name for a screen reader.
-            closeButtonProps={{ "aria-label": "Close edit title" }}
+            closeButtonProps={{ "aria-label": "Close edit title", style: MODAL_CLOSE_BUTTON_STYLE }}
             {...modalLock}
         >
             <form
@@ -61,23 +64,30 @@ export function EditMediaTitleModal({
                         onChange={(event) => setTitle(event.currentTarget.value)}
                         required
                         disabled={loading}
-                        autoFocus
+                        // Mantine's focus trap, not React's autoFocus. The trap moves focus after
+                        // React does, to `[data-autofocus]` or else the first tabbable element,
+                        // which is the header's close button.
+                        data-autofocus
                     />
 
                     <Group justify="flex-end">
-                        <Button type="button" variant="subtle" onClick={onClose} disabled={loading}>
+                        <AppButton
+                            type="button"
+                            appVariant="secondary"
+                            onClick={onClose}
+                            disabled={loading}
+                        >
                             Cancel
-                        </Button>
+                        </AppButton>
 
-                        <Button
+                        <AppButton
                             type="submit"
-                            variant="gradient"
-                            gradient={{ from: "violet", to: "cyan" }}
+                            appVariant="primary"
                             disabled={!canSubmit}
                             loading={loading}
                         >
                             Save
-                        </Button>
+                        </AppButton>
                     </Group>
                 </Stack>
             </form>

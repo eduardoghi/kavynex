@@ -62,6 +62,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- The New channel and Edit title dialogs open with the cursor in their first field, so typing goes
+  straight into it. Focus used to land on the close button. Edit title also uses the same title and
+  buttons as the other dialogs.
 - With no library folder chosen, the channel menu and the New channel form no longer offer an avatar
   from a file or from YouTube, and say a library folder is needed. Both used to fail only after the
   file was picked or the form sent.
