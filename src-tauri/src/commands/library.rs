@@ -250,13 +250,13 @@ pub async fn open_path_in_system(db: State<'_, Db>, path: String) -> AppResult<(
 /// `<library_path>/video`, `/audio`, `/thumbnails` and `/live_chat`, so a caller-supplied path
 /// would make this command a directory enumerator for any such tree on disk.
 ///
-/// **The stored paths are read here rather than sent in.** This command used to take three
-/// `Vec<String>` of every path the database holds, which the renderer assembled by first pulling
-/// every media row over IPC. That made an operation whose output is bounded (five examples per
-/// category), cost time and memory proportional to the whole library, in both directions, on a
-/// round trip that existed only because the resolution lived on the wrong side. The pool is open
-/// here and the rows are two queries away, so nothing was gained by asking. It also removed this
-/// command's one unbounded input. Those vectors arrived from IPC with no ceiling, the only
+/// **The stored paths are read here rather than sent in.** Taking three `Vec<String>` of every
+/// path the database holds would mean the renderer first pulling every media row over IPC. That
+/// would make an operation whose output is bounded (five examples per category) cost time and
+/// memory proportional to the whole library, in both directions, on a round trip that exists only
+/// if the resolution lives on the wrong side. The pool is open here and the rows are two queries
+/// away, so nothing is gained by asking. Reading them here also leaves the command with no
+/// unbounded input, since those vectors would arrive from IPC with no ceiling, the only
 /// caller-supplied value in the backend without one.
 ///
 /// The library is the configured one, read from the settings before the rows are.
@@ -669,9 +669,9 @@ mod tests {
 
     #[test]
     fn check_library_integrity_command_reads_the_stored_paths_itself() {
-        // The command takes only `libraryPath` now. The three path arrays it used to be handed
-        // are read from the pool here instead. Seeding rows and then asserting the counts is what
-        // proves that, since a command that still expected them would report nothing checked.
+        // The command takes only `libraryPath`. The three path arrays are read from the pool
+        // instead. Seeding rows and then asserting the counts is what proves that, since a
+        // command that still expected them would report nothing checked.
         let library = unique_test_dir("command-integrity");
         fs::create_dir_all(library.join("video")).unwrap();
         fs::create_dir_all(library.join("live_chat")).unwrap();
@@ -859,10 +859,9 @@ mod tests {
         assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
     }
 
-    // The commands below used to take a `library_path` over IPC and verify it against the persisted
-    // setting. They take none now and read the setting. Each test still names another folder in the
-    // payload, the way a compromised renderer would, and pins that it is not the one acted on. They
-    // differ in what acting on it would have bought an attacker.
+    // The commands below take no `library_path` over IPC and read the setting. Each test still
+    // names another folder in the payload, the way a compromised renderer would, and pins that it
+    // is not the one acted on. They differ in what acting on it would have bought an attacker.
 
     #[test]
     fn get_library_summary_command_reads_the_configured_library_whatever_the_caller_names() {

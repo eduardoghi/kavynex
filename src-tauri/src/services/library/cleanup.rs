@@ -160,10 +160,10 @@ async fn plan_artifact(
 /// Refuses a deletion that would leave its files behind because the library cannot be reached.
 ///
 /// Checked inside the deletion transaction, once the plan says which files are about to become
-/// unreferenced, so a refusal rolls the rows back. Committed anyway, as it used to be, a media
-/// deleted with the library drive unplugged lost its row while its files stayed on that drive as
-/// orphans nothing pointed at any more. A plan with nothing to remove (every file still shared)
-/// needs no library and goes through.
+/// unreferenced, so a refusal rolls the rows back. Committed anyway, a media deleted with the
+/// library drive unplugged would lose its row while its files stayed on that drive as orphans
+/// nothing pointed at any more. A plan with nothing to remove (every file still shared) needs no
+/// library and goes through.
 fn ensure_library_reachable_for(
     plan: &ArtifactCleanupPlan,
     library_reachable: bool,
@@ -738,10 +738,10 @@ pub async fn media_registration_guard() -> tokio::sync::MutexGuard<'static, ()> 
 /// marker/duplicate-check/insert sequence, so a creation resolving to the same content-addressed
 /// path can never be counted as absent by a cleanup that is about to unlink the file it just wrote.
 ///
-/// This used to rest on the add-media modal being locked for the duration of one creation, i.e. on
-/// frontend behavior, which is the one thing the rest of this codebase refuses to depend on. It no
-/// longer does. The whole creation is a single backend call now, so the exclusion is a lock here
-/// rather than a flag in the renderer.
+/// The exclusion does not rest on the add-media modal being locked for the duration of one
+/// creation, since that is frontend behavior, which the rest of this codebase refuses to depend
+/// on. The whole creation is a single backend call, so the exclusion is a lock here rather than a
+/// flag in the renderer.
 ///
 /// The startup sweep (`services::pending_media`) keeps its own, separate guard on top, because the
 /// lock alone cannot answer its question. It refuses any marker registered as in flight by this

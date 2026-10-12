@@ -694,9 +694,9 @@ pub struct MigrationContext {
 
 /// Whether a migration whose current library folder does not exist has to stop and ask.
 ///
-/// It used to switch without a word, which was right for a library that was never used and wrong
-/// for one whose drive is simply not connected. Every media then pointed at the new, empty folder
-/// and read as missing.
+/// Switching without a word is right for a library that was never used and wrong for one whose
+/// drive is simply not connected. Every media would then point at the new, empty folder and read
+/// as missing.
 fn must_ask_before_switching(context: MigrationContext) -> bool {
     context.library_has_media && !context.switch_without_moving
 }

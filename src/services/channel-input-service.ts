@@ -54,8 +54,8 @@ export function validateCreateChannelInput(
     };
 }
 
-// The only channel id check on the frontend. The media input service used to carry a second
-// copy (same rule, same code as a string literal), which is the shape where one copy drifts.
+// The only channel id check on the frontend. A second copy elsewhere (same rule, same code as a
+// string literal) is the shape where one copy drifts.
 export function validateChannelId(channelId: number): void {
     assertValidEntityId(channelId, INVALID_CHANNEL_ID_ERROR_CODE, "Channel id is invalid.");
 }

@@ -2,7 +2,7 @@
 // major.minor releases.
 //
 // `tauri build` refuses that pairing ("Found version mismatched Tauri packages"), and nothing else in
-// ci.yml runs `tauri build`, so a skew used to surface only in release.yml, after the six-leg build
+// ci.yml runs `tauri build`, so a skew would surface only in release.yml, after the six-leg build
 // had started. Dependabot opens the npm and cargo bumps as separate PRs, which is how it happens: PR
 // #60 moved the crates to tauri 2.12.0 and left the npm side behind.
 //

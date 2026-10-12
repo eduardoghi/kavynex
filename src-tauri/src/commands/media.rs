@@ -7,12 +7,11 @@ use crate::AppResult;
 /// Creates a media. Produces its artifacts, records the crash marker, inserts the row and clears
 /// the marker, as one operation.
 ///
-/// One command rather than the seven the renderer used to chain, and that is the point rather than
-/// a tidy-up. The window in which artifacts exist with no row pointing at them no longer crosses the
+/// One command rather than seven the renderer chains, and that is the point rather than a
+/// tidy-up. The window in which artifacts exist with no row pointing at them does not cross the
 /// process boundary, and the exclusion that keeps two creations off the same content-addressed path
 /// is a lock in `library::cleanup` instead of the add-media modal refusing to open twice. See
-/// `services::media_creation` for the ordering and `docs/THREAT-MODEL.md` for what that changed about the
-/// trust boundary.
+/// `services::media_creation` for the ordering and `docs/THREAT-MODEL.md` for the trust boundary.
 ///
 /// The library is the configured one, read from the settings before any file is written. The
 /// request carries no library path.
@@ -219,9 +218,8 @@ mod tests {
 
     #[test]
     fn create_media_command_writes_into_the_configured_library_whatever_the_request_names() {
-        // The request used to carry the library, checked against the settings. It carries none now,
-        // and a renderer that still sends one is ignored. The import lands in the configured
-        // library and nothing is written where the payload pointed.
+        // The request carries no library, and a renderer that sends one is ignored. The import
+        // lands in the configured library and nothing is written where the payload pointed.
         let root = unique_test_dir("ipc-create-guard");
         let configured = root.join("configured");
         let elsewhere = root.join("elsewhere");

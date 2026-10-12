@@ -663,12 +663,11 @@ mod tests {
 
     /// Buffer-based gzip, a test fixture rather than production code.
     ///
-    /// These two used to be both. `compress_verified` gzipped a whole file in memory and
-    /// decompressed the result to check it, which is what made this module hold the source, the
-    /// archive and the restored copy alive at once, three copies of something that runs to
-    /// hundreds of megabytes for a long stream. The production path streams now, and what is left
-    /// here is a different job. Building a gzip fixture and reading one back, both on payloads
-    /// measured in kilobytes.
+    /// The production path streams. A buffer-based `compress_verified` would gzip a whole file in
+    /// memory and decompress the result to check it, holding the source, the archive and the
+    /// restored copy alive at once, three copies of something that runs to hundreds of megabytes
+    /// for a long stream. The job here is a different one. Building a gzip fixture and reading one
+    /// back, both on payloads measured in kilobytes.
     fn gzip_compress(data: &[u8]) -> Vec<u8> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         encoder.write_all(data).unwrap();

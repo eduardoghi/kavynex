@@ -18,12 +18,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// nowhere near its cause. The pattern was fixed in one helper and re-appeared by copy-paste in
 /// sixteen more, so the fix is to delegate here rather than to reproduce the three components.
 ///
-/// The rule is written that way on purpose. It used to name three helpers (`unique_test_dir`,
-/// `unique_dir`, `unique_temp_db`), and a later sweep that believed it had converted every one of
-/// them missed eight more (`temp_dir`, `temp_log`, `unique_temp_path`, `unique_library_dir` and
+/// The rule is written that way on purpose. A rule that named three helpers (`unique_test_dir`,
+/// `unique_dir`, `unique_temp_db`) let a sweep that believed it had converted every one of them
+/// miss eight more (`temp_dir`, `temp_log`, `unique_temp_path`, `unique_library_dir` and
 /// friends) simply because their names were not on that list. Three of those eight had drifted
 /// further still and carried only the timestamp, without even the pid. Match on what the helper
-/// *does*, never on what it is called. `ci.yml` now enforces this rather than trusting it.
+/// *does*, never on what it is called. `ci.yml` enforces this rather than trusting it.
 pub fn unique_temp_suffix() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 

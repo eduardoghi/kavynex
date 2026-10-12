@@ -1062,9 +1062,10 @@ mod tests {
         //
         // Both halves are asserted because either alone passes while the bug is live. The marker
         // surviving proves nothing on its own (the sweep leaves a failed marker in place anyway),
-        // and the count is what decides whether it is ever offered again. Five launches with an
-        // unopenable database used to abandon every pending record in the library, each one naming
-        // artifacts still sitting on disk and still reconcilable the moment the database came back.
+        // and the count is what decides whether it is ever offered again. Without the pre-check,
+        // five launches with an unopenable database would abandon every pending record in the
+        // library, each one naming artifacts still sitting on disk and still reconcilable the
+        // moment the database came back.
         let app = mock_app();
         let handle = app.handle();
 
@@ -1415,8 +1416,8 @@ mod tests {
 
     #[test]
     fn a_marker_that_does_not_parse_is_left_in_place() {
-        // A crash halfway through a rewrite used to leave a file like this, and it was read as a
-        // marker naming nothing and deleted, with whatever it named still in the library.
+        // A crash halfway through a rewrite can leave a file like this. Reading it as a marker
+        // naming nothing would delete it, with whatever it named still in the library.
         let app = mock_app();
         let handle = app.handle();
         let name = format!("pending-{}.json", unique_temp_suffix());

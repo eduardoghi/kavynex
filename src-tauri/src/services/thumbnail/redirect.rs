@@ -134,20 +134,20 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 /// `Location` string. A protocol-relative or path-relative value inherits the current scheme, so
 /// only the resolved URI carries the scheme the request would actually be made with.
 ///
-/// What it closes. `http_get_image` used to build its connector with `https_or_http()`, so a `302`
-/// out of an allowed CDN to `http://<same cdn>/...` was followed in the clear. The host gate below
-/// does not see that (the host is still allowed), the SSRF guard does not either (the address is
-/// still public), and every remaining constraint applies to the response, after the request has
-/// already gone out. An on-path attacker could therefore substitute any payload under the size cap
-/// that passes the magic-byte sniff, and the result is persisted into the library as that media's
-/// thumbnail under a content-addressed name. The connector is `https_only()` now, so this refusal
-/// is the one that names the reason rather than surfacing it as a connect error.
+/// What it closes. A connector built with `https_or_http()` would follow a `302` out of an
+/// allowed CDN to `http://<same cdn>/...` in the clear. The host gate below does not see that
+/// (the host is still allowed), the SSRF guard does not either (the address is still public), and
+/// every remaining constraint applies to the response, after the request has already gone out. An
+/// on-path attacker could therefore substitute any payload under the size cap that passes the
+/// magic-byte sniff, and the result would be persisted into the library as that media's thumbnail
+/// under a content-addressed name. The connector in `http_get_image` is `https_only()`, so this
+/// refusal is the one that names the reason rather than surfacing it as a connect error.
 ///
-/// The host gate is the one worth explaining, because for a while it was not here and the loop
-/// did not have it either. The caller gates the *initial* URL against the image CDNs before the
-/// fetch starts, which reads as a gate on the whole operation and is not one. Only
-/// `assert_url_host_is_public` re-ran per hop, so a `302` out of an allowed CDN was followed to any
-/// public host. The SSRF guard kept that off internal addresses, and the response was still capped,
+/// The host gate is the one worth explaining, because the loop does not apply it by itself. The
+/// caller gates the *initial* URL against the image CDNs before the fetch starts, which reads as
+/// a gate on the whole operation and is not one. Only `assert_url_host_is_public` re-runs per
+/// hop, so without this gate a `302` out of an allowed CDN would be followed to any public host.
+/// The SSRF guard keeps that off internal addresses, and the response is still capped,
 /// content-type checked and magic-byte sniffed, but none of that stops the *request*, which is the
 /// outbound channel `super::url` exists to close. Deciding it here rather than in the loop is what
 /// puts it under the mutation gate, like every other decision this module holds.

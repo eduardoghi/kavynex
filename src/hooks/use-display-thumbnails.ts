@@ -79,14 +79,15 @@ export function keepWithinCeiling<T>(remembered: Set<T>, current: ReadonlySet<T>
  * re-run the effect and turn one request per page into a chain of them.
  *
  * "Settled" is the backend's word, not this hook's guess, and that is the point. An entry that came
- * back without a derivative used to be left unrecorded so it would be asked about again, which is
- * right for a page whose misses exhausted the per-call generation budget, and wrong for every other
- * way a path can fail to resolve. Those other ways are permanent (a name this app did not write, a
- * machine with no FFmpeg, a source that is gone), so re-asking about them meant every page append
- * carried them again. The request grew with the number of pages scrolled instead of staying one
- * page's worth, which is the quadratic cost this hook exists to remove, and past the backend's
- * per-call ceiling it also logged a truncation warning per page. The backend now says which kind of
- * miss it was (`DisplayThumbnail`), and only the retryable kind is left out of the set.
+ * back without a derivative is left out of the set only when the backend calls the miss retryable.
+ * Leaving every such entry unrecorded so it would be asked about again is right for a page whose
+ * misses exhausted the per-call generation budget, and wrong for every other way a path can fail
+ * to resolve. Those other ways are permanent (a name this app did not write, a machine with no
+ * FFmpeg, a source that is gone), so re-asking about them would make every page append carry them
+ * again. The request would grow with the number of pages scrolled instead of staying one page's
+ * worth, which is the quadratic cost this hook exists to remove, and past the backend's per-call
+ * ceiling it would also log a truncation warning per page. The backend says which kind of miss it
+ * was (`DisplayThumbnail`), and only the retryable kind is left out of the set.
  *
  * **Asking again is this hook's job, and waiting for the item list to change is not enough.** The
  * backend's own note on its refused-slot answer says "the caller already re-asks about this", which

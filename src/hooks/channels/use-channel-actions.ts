@@ -191,7 +191,7 @@ export function useChannelActions({
                 }
 
                 // The channel exists from here on, so nothing below may report the creation as
-                // failed. That used to send the user back to create it again, into
+                // failed. That would send the user back to create it again, into
                 // CHANNEL_ALREADY_EXISTS.
                 setNewChannelName("");
                 setNewYoutubeHandle("");

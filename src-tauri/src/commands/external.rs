@@ -56,9 +56,9 @@ fn open_in_browser<R: Runtime>(app: AppHandle<R>, url: String) -> AppResult<()> 
 
 /// Opens a YouTube video in the default browser.
 ///
-/// The renderer used to call the opener plugin's `open_url` directly, which needed
-/// `opener:allow-open-url` granted to the webview. The app only ever opens a video's watch page or
-/// an author's channel page, so the renderer now sends just the id and holds no opener grant.
+/// The renderer sends just the id and holds no opener grant. Calling the opener plugin's
+/// `open_url` directly would need `opener:allow-open-url` granted to the webview, and the app only
+/// ever opens a video's watch page or an author's channel page.
 #[tauri::command]
 pub async fn open_youtube_video<R: Runtime>(app: AppHandle<R>, video_id: String) -> AppResult<()> {
     let url = youtube_watch_url(&video_id)?;

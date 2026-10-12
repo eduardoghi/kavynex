@@ -35,10 +35,10 @@ export const TAURI_COMMANDS = {
     CANCEL_LIBRARY_MIGRATION: "cancel_library_migration",
     OPEN_PATH_IN_SYSTEM: "open_path_in_system",
 
-    // Creating a media is one command rather than the chain of steps this list used to name
-    // (import/download, the two crash-marker ends, the duplicate pre-check, insert). The backend
-    // owns that sequence now, so the steps are no longer reachable from here. See
-    // src-tauri/src/commands/media.rs for why they were removed rather than left registered.
+    // Creating a media is one command rather than a chain of steps (import/download, the two
+    // crash-marker ends, the duplicate pre-check, insert). The backend owns that sequence, so the
+    // steps are not reachable from here. See src-tauri/src/commands/media.rs for why they are not
+    // registered.
     CREATE_MEDIA: "create_media",
     STREAM_LIVE_CHAT_FILE: "stream_live_chat_file",
     CANCEL_LIVE_CHAT_STREAM: "cancel_live_chat_stream",

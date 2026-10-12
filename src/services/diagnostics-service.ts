@@ -154,10 +154,10 @@ function deriveLiveChatIntegrity(report: LibraryIntegrityReport): LiveChatIntegr
 }
 
 // One entry per check. The code and label a failure is reported under, and how the check runs.
-// These used to be three lists kept in step by position (the labels here, the calls passed to
-// `Promise.allSettled`, and the destructuring of its results), which is the shape where a check
+// Three lists kept in step by position (the labels here, the calls passed to
+// `Promise.allSettled`, and the destructuring of its results) are the shape where a check
 // added to one list and not the others turns into the wrong label on a failure and the wrong
-// value in a field, with nothing failing. Everything now derives from this one table. The runs
+// value in a field, with nothing failing. Everything derives from this one table instead. The runs
 // are read off it, the results come back keyed by the same names, and the failure report reads
 // the label of the entry whose run rejected. The library path is bound here, once, because two
 // of the checks take it and a runner that takes no argument is what lets `settleAll` stay typed.

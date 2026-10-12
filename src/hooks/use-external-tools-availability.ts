@@ -44,8 +44,8 @@ type UseExternalToolsAvailabilityReturn = {
 // Checks yt-dlp and ffmpeg while `enabled` is true (the import modal being open), so the form can
 // say up front that a tool it needs is missing.
 //
-// Before this, the check only ran when someone opened Diagnostics on their own, so the usual way to
-// find out was to fill the whole form, paste a URL and have the format load fail with
+// Without it, the check would only run when someone opened Diagnostics on their own, so the usual
+// way to find out would be to fill the whole form, paste a URL and have the format load fail with
 // YT_DLP_NOT_FOUND.
 //
 // A failure to check is deliberately silent. The status is an extra warning, not a precondition,

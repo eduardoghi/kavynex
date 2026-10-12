@@ -124,8 +124,8 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     // failed. A transient cause (a lock held by an antivirus scan, a file momentarily busy) plus
     // one of the background tasks that open the pool by themselves. The recovery modal is the only
     // place a restore is offered, so there is nothing else the user could have been trying to do.
-    // This used to read "Restart Kavynex and try the restore again", which is the opposite of the
-    // right action. The database is working, and restoring would replace it with an older snapshot.
+    // "Restart Kavynex and try the restore again" would be the opposite of the right action. The
+    // database is working, and restoring would replace it with an older snapshot.
     [DATABASE_ALREADY_OPEN_ERROR_CODE]:
         "The database recovered on its own and is working normally, so there is nothing to restore. Close this dialog and keep using Kavynex. Your data is intact.",
 

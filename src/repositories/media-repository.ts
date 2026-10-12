@@ -19,12 +19,12 @@ export async function listMediaPage(
     return invokeCommand(TAURI_COMMANDS.LIST_MEDIA_PAGE, { channelId, query });
 }
 
-// Creates a media end to end. One call rather than the chain this file used to expose (duplicate
-// pre-check, download or import, crash marker, duplicate check, insert, clear marker), because the
-// backend owns that sequence now. See src-tauri/src/services/media_creation.rs.
+// Creates a media end to end. One call rather than a chain (duplicate pre-check, download or
+// import, crash marker, duplicate check, insert, clear marker), because the backend owns that
+// sequence. See src-tauri/src/services/media_creation.rs.
 //
-// The request is passed as one named object for the reason the old `insertMedia` input was. It
-// carries four `string | null` fields in a row, and a positional list would let two of them be
+// The request is passed as one named object. It carries four `string | null` fields in a row, and
+// a positional list would let two of them be
 // swapped at the call site with the mistake showing up only as wrong data in the database.
 export async function createMedia(request: CreateMediaRequest): Promise<CreatedMedia> {
     return invokeCommand(TAURI_COMMANDS.CREATE_MEDIA, { request });

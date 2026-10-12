@@ -19,8 +19,8 @@ use http::Uri;
 /// pinned by `allowed_thumbnail_hosts_match_the_csp_img_src` below, in both directions, so the two
 /// lists cannot drift.
 ///
-/// This exists because the two halves of `download_thumbnail_from_url_async` used to treat the host
-/// differently. The yt-dlp fallback has always refused a non-YouTube URL (it hands the value to
+/// This exists because the two halves of `download_thumbnail_from_url_async` would otherwise treat
+/// the host differently. The yt-dlp fallback refuses a non-YouTube URL (it hands the value to
 /// yt-dlp's generic extractor, which runs with access to the user's browser cookies), while the
 /// direct-image branch accepted any *public* host. The SSRF guard kept that branch off internal
 /// addresses, but nothing kept it off the open internet, so a compromised frontend could use it as

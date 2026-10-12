@@ -1,10 +1,10 @@
 // Whether the module whose `import.meta.url` is given is the script `node` was started with.
 //
-// The scripts used to compare `import.meta.url` with `process.argv[1]` as strings. The URL
+// Comparing `import.meta.url` with `process.argv[1]` as strings does not work. The URL
 // percent-encodes a space or an accented letter and the path does not, so in a checkout under
-// `C:\Users\João Silva\` or `dir com espaço` every script skipped its main block and exited 0. The
-// gates passed without running and `before-build.js` left a stale `dist/` to be bundled. Comparing
-// the two as paths is what the check meant.
+// `C:\Users\João Silva\` or `dir com espaço` every script would skip its main block and exit 0. The
+// gates would pass without running and `before-build.js` would leave a stale `dist/` to be bundled.
+// Comparing the two as paths is what the check means.
 
 import { realpathSync } from "fs";
 import { resolve } from "path";

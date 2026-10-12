@@ -404,11 +404,11 @@ pub async fn kill_process_tree(pid: u32) {
 /// Signals the whole process group `pid` leads, via the `kill(2)` syscall rather than the `kill`
 /// binary.
 ///
-/// This used to spawn `/usr/bin/kill -9 -<pid>`, which meant the one operation whose job is to
-/// stop an orphaned yt-dlp/ffmpeg depended on resolving an executable through the process's
-/// `PATH`, and a failed spawn was swallowed. On a minimal PATH (an AppImage in a sandbox, a GUI
-/// launch that inherited launchd's default) the cancel looked successful in the UI while the tree
-/// kept running. The syscall has no such dependency, returns synchronously, and reports the one
+/// Spawning `/usr/bin/kill -9 -<pid>` would make the one operation whose job is to stop an
+/// orphaned yt-dlp/ffmpeg depend on resolving an executable through the process's `PATH`, with a
+/// failed spawn swallowed. On a minimal PATH (an AppImage in a sandbox, a GUI launch that
+/// inherited launchd's default) the cancel would look successful in the UI while the tree kept
+/// running. The syscall has no such dependency, returns synchronously, and reports the one
 /// outcome worth knowing about.
 ///
 /// `ESRCH` is not reported. The group is already gone, which is the state the caller wanted.

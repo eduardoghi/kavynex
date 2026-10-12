@@ -1,10 +1,11 @@
 //! Revealing a path in the operating system's own file manager.
 //!
-//! This used to live inside `services::library`, which is where its first caller was but not where
-//! it belongs. Resolving `explorer.exe`/`open`/`xdg-open` and spawning it has nothing to do with
-//! the user's media directory. It moved when a second caller appeared (the Diagnostics dialog's
-//! "Open log folder"), and the alternative was a second copy of the three platform spawn branches,
-//! which is exactly the kind of duplicated rule this codebase gates elsewhere rather than tolerates.
+//! This does not live inside `services::library`, even though that is where its first caller is.
+//! Resolving `explorer.exe`/`open`/`xdg-open` and spawning it has nothing to do with the user's
+//! media directory. A second caller exists (the Diagnostics dialog's "Open log folder"), and
+//! keeping it in the library module would mean a second copy of the three platform spawn
+//! branches, which is exactly the kind of duplicated rule this codebase gates elsewhere rather
+//! than tolerates.
 //!
 //! **The split between what is here and what is not is the security-relevant part.**
 //! [`reveal_canonical_path`] reveals whatever canonical path it is handed and decides nothing about

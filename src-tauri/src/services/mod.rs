@@ -33,10 +33,10 @@ pub mod ssrf_guard;
 pub mod startup_notices;
 // `temp_cleanup` rather than `cleanup`, because `library::cleanup` already owns that name for a
 // different job. This one sweeps the disposable cache directories, that one reference-counts and
-// unlinks the user's media. docs/ARCHITECTURE.md used to resolve the collision by convention (reach
-// a family sibling through `super::`, everything else by full path), which worked but left the two
-// distinguishable only by how they were imported. Naming them apart makes a call site say which is
-// meant without the reader having to know the rule.
+// unlinks the user's media. Resolving the collision by convention (reach a family sibling through
+// `super::`, everything else by full path) would leave the two distinguishable only by how they
+// were imported. Naming them apart makes a call site say which is meant without the reader
+// having to know the rule.
 pub mod temp_cleanup;
 pub mod temp_paths;
 pub mod thumbnail;

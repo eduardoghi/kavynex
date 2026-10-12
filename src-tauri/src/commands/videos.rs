@@ -77,9 +77,9 @@ const MAX_MEDIA_SECONDS: i64 = 30 * 24 * 60 * 60;
 ///
 /// The probe runs after `create_media` returns, not inside it. It decodes the file through a media
 /// element, which is a capability the webview has and the backend would have to re-implement over
-/// FFmpeg to match. Keeping it outside also keeps it off the creation's critical path. It used to
-/// sit between the crash marker and the insert, where a source that never fired `loadedmetadata` nor
-/// `error` would hang the whole creation with the marker on disk.
+/// FFmpeg to match. Keeping it outside also keeps it off the creation's critical path. Between the
+/// crash marker and the insert, a source that never fired `loadedmetadata` nor `error` would hang
+/// the whole creation with the marker on disk.
 ///
 /// A non-positive value, or one past [`MAX_MEDIA_SECONDS`], is stored as unknown rather than as
 /// given. It arrives over IPC, and a duration is only ever a count of seconds.
@@ -125,11 +125,10 @@ pub async fn get_media_repository_stats(db: State<'_, Db>) -> AppResult<MediaRep
     repo::get_media_repository_stats(&pool).await
 }
 
-// `list_media_integrity_references` is deliberately not a command. It existed so the renderer
-// could assemble the path lists `check_library_integrity` used to take, and that resolution moved
-// into that command, which holds the same pool and is the only caller. Re-exposing it would put
-// every stored path back on the IPC surface for a step rather than an operation, which is the rule
-// `create_media` established when the creation sequence stopped being seven calls.
+// `list_media_integrity_references` is deliberately not a command. The path lists are resolved
+// inside `check_library_integrity`, which holds the same pool and is the only caller. Exposing it
+// would put every stored path on the IPC surface for a step rather than an operation, which is
+// the rule `create_media` follows by being one command instead of seven calls.
 
 #[cfg(test)]
 mod tests {
@@ -166,10 +165,9 @@ mod tests {
 
     /// The pool the mock app manages, for seeding rows the commands under test then read.
     ///
-    /// These tests used to seed through the `insert_media` command, which is what kept that command
-    /// registered long after `create_media` had made it dead IPC surface. Seeding through the
-    /// repository instead is what let it be removed. The row is what these tests need, and how it got
-    /// there is not what any of them is about.
+    /// These tests seed through the repository rather than an `insert_media` command, which would
+    /// have to stay registered as dead IPC surface now that `create_media` exists. The row is what
+    /// these tests need, and how it got there is not what any of them is about.
     fn seed_pool(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>) -> sqlx::SqlitePool {
         let db = webview.state::<Db>();
         tauri::async_runtime::block_on(db.pool()).expect("the managed pool must open")

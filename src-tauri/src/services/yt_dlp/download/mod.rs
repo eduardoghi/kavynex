@@ -1389,8 +1389,8 @@ mod tests {
 
     #[test]
     fn a_merged_download_is_picked_over_a_newer_or_larger_live_chat_replay() {
-        // A merged format has no expected extension. The replay used to win on mtime whenever
-        // yt-dlp dated the video by the server's Last-Modified, and was then stored as the video.
+        // A merged format has no expected extension. The replay would win on mtime whenever
+        // yt-dlp dated the video by the server's Last-Modified, and be stored as the video.
         let picked = pick_downloaded_media(
             vec![
                 candidate("youtube_ID_137_140.live_chat.json", 50_000_000),
@@ -1973,7 +1973,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_replay_that_cannot_be_stored_leaves_the_media_without_one_instead_of_failing() {
-        // The media is already in the library when this runs. Failing here used to abandon a
+        // The media is already in the library when this runs. Failing here would abandon a
         // finished download with no row and no crash marker behind it.
         let root = unique_temp_dir("live-chat-unstorable");
         let temp_dir = root.join("run");

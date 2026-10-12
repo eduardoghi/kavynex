@@ -1,15 +1,13 @@
 // The composition of the Home page's slice controllers, and nothing else.
 //
-// Each slice type now lives in the file of the hook that produces it, so a field added to a slice
-// is one edit in one file instead of two in two. This module used to hold all fifteen, which made
-// it the point every frontend change had to pass through while saying nothing about any domain.
+// Each slice type lives in the file of the hook that produces it, so a field added to a slice
+// is one edit in one file instead of two in two. Holding all fifteen here would make this module
+// the point every frontend change has to pass through while saying nothing about any domain.
 //
-// It also let four of them be declared twice. `use-add-media-form`, `use-channels` and
-// `use-app-settings` each carried a local `Use*Return` shape, and `use-home-library-panel` carried
-// its own `HomeLibraryPanelState`, all four duplicating the version here. They agreed by hand
-// rather than by construction, and one had already drifted (the local add-media shape carried a
-// `resolvedYoutubeVideoId` the copy here did not, so `MediaLibraryController.addMediaForm`
-// silently narrowed it away). Each pair is now one exported type.
+// It would also let a slice be declared twice, as a local `Use*Return` shape in a hook and again
+// here. The copies would agree by hand rather than by construction, and one can drift (a local
+// add-media shape carrying a `resolvedYoutubeVideoId` the copy here did not would make
+// `MediaLibraryController.addMediaForm` silently narrow it away). Each slice is one exported type.
 import type { ChannelsController } from "../hooks/channels/use-channels";
 import type { HomeLibraryPanelState } from "../hooks/home/use-home-library-panel";
 import type { HomeMediaActionsController } from "../hooks/home/use-home-media-actions";

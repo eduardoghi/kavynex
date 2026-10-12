@@ -617,12 +617,12 @@ pub fn checkpoint_wal_blocking<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub async fn get_app_settings_from_pool(pool: &SqlitePool) -> AppResult<StoredAppSettings> {
-    // Every row, with no `IN (?, ?, ...)` filter. The filter used to be the thing that had to
-    // grow a placeholder per setting, and building that list dynamically would mean handing sqlx
-    // a non-literal SQL string, which it refuses outright (`SqlSafeStr`), correctly, since that
-    // is the shape injection arrives in. Selecting the whole table sidesteps both. It is a
-    // handful of rows on a local database, the dispatch below already ignores a key it does not
-    // recognize, and adding a setting now touches the query not at all.
+    // Every row, with no `IN (?, ?, ...)` filter. Such a filter would have to grow a placeholder
+    // per setting, and building that list dynamically would mean handing sqlx a non-literal SQL
+    // string, which it refuses outright (`SqlSafeStr`), correctly, since that is the shape
+    // injection arrives in. Selecting the whole table sidesteps both. It is a handful of rows on
+    // a local database, the dispatch below already ignores a key it does not recognize, and
+    // adding a setting touches the query not at all.
     let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM app_settings")
         .fetch_all(pool)
         .await
@@ -1100,7 +1100,7 @@ mod tests {
     #[tokio::test]
     async fn opening_a_database_that_needs_a_migration_snapshots_it_first() {
         // A real v5 database, so ensure_schema has migrations to run. The daily .bak is fresh,
-        // which is the case where the rollback point used to be that day-old snapshot instead of
+        // which is the case where the rollback point could be that day-old snapshot instead of
         // the database as it was a moment before the migration.
         let dir = std::env::temp_dir().join(format!(
             "kavynex-premigration-{}",

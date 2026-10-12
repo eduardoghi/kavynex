@@ -24,12 +24,12 @@
 // existing one), fails CI until the inventory is updated, and updating it is where the author has to
 // decide which of the threat model's cases the new path falls into.
 //
-// That last sentence described a hope until the inventory started carrying a `guard` class per path
-// (see DECLARED_PATH_SURFACE). Updating the inventory used to mean adding a name, which took no
-// opinion at all, and two commands reached production with a library-relative path confined to the
-// library root rather than to a managed subdirectory while sitting in this list the whole time. The
-// class is not verified against the code, for the reason above, but what it does is make "which
-// rule does this answer to" a question the diff cannot avoid.
+// That last sentence holds because the inventory carries a `guard` class per path (see
+// DECLARED_PATH_SURFACE). An inventory entry that was only a name took no opinion at all, and two
+// commands reached production with a library-relative path confined to the library root rather
+// than to a managed subdirectory while sitting in this list the whole time. The class is not
+// verified against the code, for the reason above, but what it does is make "which rule does this
+// answer to" a question the diff cannot avoid.
 //
 // The failure is deliberately two-directional. A removed or renamed command fails too, so the
 // inventory cannot rot into a list of names that no longer exist, which is how the prose version
@@ -560,14 +560,13 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
 
 // The classes of rule a caller-supplied path can be required to satisfy, from docs/THREAT-MODEL.md.
 //
-// This list used to live only in that document, on the stated grounds that duplicating it here
-// would give this file a second job it could not keep honest. That reasoning was right about the
-// job and wrong about the cost of not doing it. Naming the class is not a second job, because
-// nothing here verifies it. The check below is that every path *has* a class and that the class
-// names a real parameter, not that the code implements it. What it buys is a thinking step at the
-// only moment anyone is guaranteed to be looking, which is the moment CI refuses the diff.
+// The list lives here as well as in that document. Naming the class is not a second job for this
+// file, because nothing here verifies it. The check below is that every path *has* a class and
+// that the class names a real parameter, not that the code implements it. What it buys is a
+// thinking step at the only moment anyone is guaranteed to be looking, which is the moment CI
+// refuses the diff.
 //
-// The evidence for the change is two commands, found five weeks apart, that took a
+// The evidence for keeping it here is two commands, found five weeks apart, that took a
 // library-relative path and confined it to the library *root* rather than to a managed
 // subdirectory, so a bare `contract.docx` resolved inside the user's own library folder and was
 // unlinked. Both were in the inventory below the whole time, correctly, and both passed this gate,

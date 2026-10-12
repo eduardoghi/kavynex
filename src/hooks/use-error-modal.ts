@@ -39,8 +39,8 @@ function enqueue(queue: QueuedMessage[], next: QueuedMessage): QueuedMessage[] {
 /**
  * Error and notice messages for the shared modal, shown one at a time in arrival order.
  *
- * A message never replaces the one on screen. A notice landing while an error is open used to
- * overwrite it, and the user never saw the failure. Closing shows the next one.
+ * A message never replaces the one on screen. A notice landing while an error is open would
+ * overwrite it, and the user would never see the failure. Closing shows the next one.
  */
 export function useErrorModal(): ErrorModalController {
     const [queue, setQueue] = useState<QueuedMessage[]>([]);

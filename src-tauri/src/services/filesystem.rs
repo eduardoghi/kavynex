@@ -59,7 +59,7 @@ pub(crate) fn retry_while_held<T>(op: impl FnMut() -> std::io::Result<T>) -> std
 
 /// [`retry_while_held`] with a longer wait, for a file of gigabytes a scanner is still reading when
 /// the rename comes. Under a second of retries is enough for a thumbnail and not for a finished
-/// download, whose failed placement used to leave it only in the run folder that is deleted next.
+/// download, whose failed placement would leave it only in the run folder that is deleted next.
 pub(crate) fn retry_while_held_patiently<T>(
     op: impl FnMut() -> std::io::Result<T>,
 ) -> std::io::Result<T> {
@@ -153,8 +153,8 @@ pub(crate) fn fsync_parent_dir(path: &Path) {
 /// Flushes `dir`'s entries to disk and says whether that happened.
 ///
 /// The handle is opened for writing as well as reading. `FlushFileBuffers` refuses a handle without
-/// write access, and this used to open the directory read-only, so every call failed with access
-/// denied and nothing was flushed, while the callers' comments relied on it.
+/// write access, so a read-only open would fail every call with access denied and flush nothing,
+/// while the callers' comments rely on it.
 #[cfg(windows)]
 fn flush_directory(dir: &Path) -> bool {
     use std::os::windows::ffi::OsStrExt;

@@ -83,7 +83,8 @@ pub async fn resolve_display_thumbnails<R: Runtime>(
     // Taken before the settings read rather than after it, so a refused call costs one atomic.
     //
     // `all_retryable` bounds the answer by the module's own per-call ceiling rather than by the
-    // number the caller sent, which this exit used to inherit. The one place in the module that did.
+    // number the caller sent. Inheriting the caller's number here would make this the one place in
+    // the module that did.
     let Some(_resolve_slot) = display::try_reserve_resolve_slot() else {
         return Ok(display::all_retryable(relative_paths.len()));
     };
@@ -214,9 +215,9 @@ mod tests {
 
     #[test]
     fn persist_thumbnail_file_command_refuses_a_network_source_over_ipc() {
-        // The parameter arrives raw over IPC and is the one this command used to stat before any
-        // check. The library is the configured one, so only the source can be what refuses, and the
-        // refusal must come before the library's managed directory is created.
+        // The parameter arrives raw over IPC, so stat-ing it before any check would touch a
+        // caller-supplied path. The library is the configured one, so only the source can be what
+        // refuses, and the refusal must come before the library's managed directory is created.
         let root = unique_test_dir("persist-unc");
         let library = root.join("library");
         fs::create_dir_all(&library).unwrap();

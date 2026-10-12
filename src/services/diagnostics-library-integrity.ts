@@ -10,12 +10,12 @@ import type {
 // path to the media row it belongs to, so the diagnostics UI can turn a "missing media" path into
 // a jump-to-the-media action.
 //
-// Both halves come from one command now. This module used to assemble them here. It pulled every
-// media row over IPC, built three arrays holding every stored path, and sent those back to the
-// backend, which had the same rows two queries away the whole time. That made a check whose output
-// is capped at five examples per category cost time and memory proportional to the entire library,
-// in both directions. The mapping is kept as a `Record` rather than the command's own shape so the
-// consumer (diagnostics-rules) is unchanged.
+// Both halves come from one command. Assembling them here would mean pulling every media row over
+// IPC, building three arrays holding every stored path, and sending those back to the backend,
+// which has the same rows two queries away. That would make a check whose output is capped at five
+// examples per category cost time and memory proportional to the entire library, in both
+// directions. The mapping is kept as a `Record` rather than the command's own shape so the
+// consumer (diagnostics-rules) does not depend on the wire shape.
 export type LibraryIntegrityResult = {
     report: LibraryIntegrityReport;
     mediaByPath: Record<string, DiagnosticsMediaTarget>;

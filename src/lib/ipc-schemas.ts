@@ -222,7 +222,7 @@ const mediaRepositoryStatsSchema = z.object({
 
 // The jump-to-the-media target the integrity check resolves for each path its report named. Keyed
 // by that path, so the map holds at most the handful of examples the report caps itself at, not
-// one entry per media, which is what the renderer used to build for itself.
+// one entry per media.
 const diagnosticsMediaTargetSchema = z.object({
     channelId: z.number(),
     mediaId: z.number(),

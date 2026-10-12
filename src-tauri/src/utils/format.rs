@@ -220,10 +220,10 @@ mod tests {
 
     #[test]
     fn every_audio_extension_lands_in_the_audio_subdir_and_every_video_one_does_not() {
-        // media_subdir_from_extension used to spell the audio list a second time, so the two could
+        // A second spelling of the audio list in media_subdir_from_extension would let the two
         // disagree about whether a `.opus` is audio. The file would be accepted for import and
-        // then filed under video/. Deriving both from ALLOWED_AUDIO_EXTENSIONS is what removes that,
-        // and this is what pins it.
+        // then filed under video/. Deriving both from ALLOWED_AUDIO_EXTENSIONS is what prevents
+        // that, and this is what pins it.
         for ext in ALLOWED_AUDIO_EXTENSIONS {
             assert_eq!(media_subdir_from_extension(ext), "audio", "{ext}");
         }

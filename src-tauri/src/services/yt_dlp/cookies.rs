@@ -142,10 +142,10 @@ const MAX_COOKIES_BROWSER_SELECTOR_CHARS: usize = 512;
 
 /// A parsed `--cookies-from-browser` value, `BROWSER[+KEYRING][:PROFILE][::CONTAINER]`.
 ///
-/// Only the browser used to be accepted, as a bare name, which left anyone with more than one
-/// Firefox profile (or a Chromium whose keyring yt-dlp does not guess right) unable to use the
-/// option at all. yt-dlp would read the default profile, find no session, and the download failed
-/// with nothing saying why. The grammar here is yt-dlp's own (`--cookies-from-browser` in its
+/// A bare browser name is not enough, since it leaves anyone with more than one Firefox profile
+/// (or a Chromium whose keyring yt-dlp does not guess right) unable to use the option at all.
+/// yt-dlp would read the default profile, find no session, and the download would fail with
+/// nothing saying why. The grammar here is yt-dlp's own (`--cookies-from-browser` in its
 /// README), validated part by part so the value that reaches the argv is still one this side chose
 /// to allow. The browser and the keyring are allow-listed; the profile and the container are free
 /// text (a profile is often a path) bounded to what an argument may safely carry.

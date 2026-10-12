@@ -540,10 +540,10 @@ pub use integrity::{
     mark_integrity_check_passed, rebuild_indexes, run_full_integrity_check,
     DatabaseIntegrityReport,
 };
-// The integrity tests now live in `integrity.rs` itself, so the `#[cfg(test)] use` that used to
-// pull `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them is gone with
-// them, which is the point of the move. An internal a submodule's own tests reach no longer has
-// to be visible to its parent.
+// The integrity tests live in `integrity.rs` itself, so no `#[cfg(test)] use` pulls
+// `integrity_check_marker_path` and `MAX_INTEGRITY_PROBLEMS` up here for them, which is the point
+// of the placement. An internal a submodule's own tests reach does not have to be visible to its
+// parent.
 
 // Which database a backup was made from, so the mirror can tell an earlier database's copies.
 mod lineage;

@@ -162,7 +162,7 @@ pub(super) async fn download_thumbnail_best_effort<R: Runtime>(
 /// returns `None`, the way the thumbnail does.
 ///
 /// It runs once the media is already in the library. Failing the whole creation over it (a replay
-/// past the decompression ceiling, a full disk) used to leave a download of hours in `video/` with
+/// past the decompression ceiling, a full disk) would leave a download of hours in `video/` with
 /// no row and no crash marker to clean it up, and the user with an error for a video that had
 /// arrived. The replay is the smaller loss of the two.
 pub(super) async fn store_live_chat_best_effort<R: Runtime>(

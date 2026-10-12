@@ -544,7 +544,7 @@ function buildIssuesFromChecks(
     }
 
     // Nothing was read from an unreachable folder, so every rule that compares the database with
-    // its contents would report against zeros. Those used to say the library was empty and its
+    // its contents would report against zeros. Those would say the library was empty and its
     // media missing, when the drive was simply not connected. One issue names the real cause.
     if (input.libraryUnreachable) {
         return sortDiagnosticsIssues([

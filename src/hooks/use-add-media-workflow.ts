@@ -203,7 +203,7 @@ export function useAddMediaWorkflow({
 
                 // Generated for both modes. A local import registers it in the same backend
                 // registry a download does, which is what lets cancelMediaDownload reach the file
-                // copy. The one long operation in this app that used to have no way out but
+                // copy. Without it, the one long operation in this app would have no way out but
                 // killing the process. The field keeps its yt-dlp name because that is what the
                 // wire contract calls it; only its scope widened.
                 const ytDlpRunId = generateYtDlpRunId();

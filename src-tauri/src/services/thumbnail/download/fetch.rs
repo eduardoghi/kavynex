@@ -198,8 +198,8 @@ impl Service<Name> for PublicOnlyResolver {
 /// request and the body; it makes no redirect decision of its own, which is what lets that decision
 /// be mutation-tested while the network code around it cannot be.
 ///
-/// That host gate is per hop and not only per fetch, which it was not at first. The caller checks
-/// where the fetch *starts*, so a `302` out of an allowed CDN used to be followed anywhere public.
+/// That host gate is per hop and not only per fetch. The caller checks where the fetch *starts*,
+/// so without the per-hop gate a `302` out of an allowed CDN would be followed anywhere public.
 /// Everything else here constrains the *response* (the size cap, the content type, the magic-byte
 /// sniff) and the SSRF guard constrains the *address*; none of the four stops the request itself
 /// from reaching a host of the redirecting server's choosing, which is the outbound channel
@@ -446,9 +446,9 @@ mod tests {
             .is_ok());
     }
 
-    // The redirect resolution these tests used to cover moved with the decision, to
-    // `services::thumbnail::redirect`, which is under the mutation gate, unlike this file. See that
-    // module's header for why the extraction was worth making.
+    // The redirect resolution is covered with the decision, in `services::thumbnail::redirect`,
+    // which is under the mutation gate, unlike this file. See that module's header for why the
+    // extraction was worth making.
 
     #[tokio::test]
     async fn http_get_image_refuses_an_internal_address_without_dialing_it() {

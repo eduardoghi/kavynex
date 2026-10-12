@@ -425,10 +425,10 @@ const HEALTH_CHECK_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 /// health check, whose entire job is to survive a misbehaving binary, is the last place that should
 /// block a worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
 ///
-/// Both pipes are drained on threads while the child runs. They used to be read only after it
-/// exited, which a version banner was assumed to be short enough for, but a Windows pipe buffer is
-/// a few kilobytes and a full FFmpeg build prints about that much for `-version`. Past it the
-/// child blocked on the write and the probe reported a working FFmpeg as timed out.
+/// Both pipes are drained on threads while the child runs. Reading them only after it exited
+/// would assume a version banner is short, but a Windows pipe buffer is a few kilobytes and a full
+/// FFmpeg build prints about that much for `-version`. Past it the child blocks on the write and
+/// the probe would report a working FFmpeg as timed out.
 fn run_command_capturing_first_line_within(
     binary_path: &str,
     args: &[&str],

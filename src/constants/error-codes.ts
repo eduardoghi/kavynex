@@ -92,7 +92,7 @@ export const YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE = "YT_DLP_RUN_ALREADY_ACTIVE" 
 // The comment backup failures. They only reach the user through the player's manual refresh (the
 // import path logs them and continues without comments), and there the fetch runs before anything
 // is written, so the comments already saved are always intact. That is the part worth saying, and
-// the generic fallback these used to take could not say it.
+// the generic fallback could not say it.
 export const YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE = "YT_DLP_COMMENTS_TIMEOUT" as const;
 export const YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE = "YT_DLP_COMMENTS_EXEC_FAILED" as const;
 export const YT_DLP_COMMENTS_FAILED_ERROR_CODE = "YT_DLP_COMMENTS_FAILED" as const;

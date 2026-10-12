@@ -58,8 +58,8 @@ where
     let absolute =
         absolute_path_from_relative(library_dir, relative_path, ManagedSubtree::LiveChat)?;
 
-    // The existence check runs before the file is opened, so its generic PathNotFound is what a
-    // missing replay used to come back as, and the player showed "the operation could not be
+    // The existence check runs before the file is opened, so its generic PathNotFound would be
+    // what a missing replay comes back as, and the player would show "the operation could not be
     // completed" for a file the user can put back. Reported under the code that says that.
     ensure_existing_path_inside_dir(&absolute, library_dir).map_err(|error| {
         if error.code == AppErrorCode::PathNotFound.as_str() {

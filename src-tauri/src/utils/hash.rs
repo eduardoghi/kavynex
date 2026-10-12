@@ -22,8 +22,8 @@ const HASH_CHUNK_BYTES: usize = 1024 * 1024;
 /// archive and then proves that archive decompresses back to the source's exact bytes. The
 /// compression side hands this a gzip encoder, the verification side hands it [`std::io::sink`]
 /// because it wants the digest alone, and neither ever holds more than one chunk. That bound is the
-/// point. A replay of a long stream runs to hundreds of megabytes, and that module used to keep
-/// three copies of one alive at once.
+/// point. A replay of a long stream runs to hundreds of megabytes, and holding the source, the
+/// archive and the restored copy at once would keep three copies of one alive.
 ///
 /// It lives here rather than beside its caller for the reason its shape makes obvious. It is a
 /// hashing primitive, and [`file_hash_cancellable`] below is the same loop with a cancel flag. There

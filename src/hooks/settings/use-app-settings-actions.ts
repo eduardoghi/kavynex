@@ -108,10 +108,10 @@ export function useAppSettingsActions({
                 // must already hold the value before that effect can fire.
                 //
                 // Not when the folder is unreachable. Then the stored path is what the database
-                // already holds, and leaving it untouched is the point. It used to be cleared and
-                // written back empty, so reconnecting the drive and restarting found nothing to
-                // reconnect to, and the next folder picked was taken as a first library instead of
-                // a switch the backend asks about.
+                // already holds, and leaving it untouched is the point. Clearing it and writing it
+                // back empty would leave reconnecting the drive and restarting with nothing to
+                // reconnect to, and the next folder picked would be taken as a first library
+                // instead of a switch the backend asks about.
                 if (!result.libraryUnreachable) {
                     await persistSettings(result.settings);
                 }
@@ -167,8 +167,8 @@ export function useAppSettingsActions({
 
     // Choosing a folder only plans the change. A first library is applied at once, and a move of an
     // existing one becomes pendingLibraryMove, which the library section shows with what is about
-    // to be copied and where. It used to start copying the whole library the moment the folder
-    // dialog closed, with no way to back out of a misclick.
+    // to be copied and where. Copying the whole library the moment the folder dialog closed would
+    // leave no way to back out of a misclick.
     const changeLibraryPath = useCallback(
         async (currentLibraryPath: string): Promise<void> => {
             // Without the stored settings, an empty current path is not "no library yet", and a

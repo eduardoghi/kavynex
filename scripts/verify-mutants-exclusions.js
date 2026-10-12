@@ -2,7 +2,7 @@
 // mutant cargo-mutants would generate.
 //
 // An exclusion that stops matching is silent in both directions, and both are bad. The mutant it
-// used to suppress comes back and the weekly run turns red for a reason that has nothing to do with
+// suppressed comes back and the weekly run turns red for a reason that has nothing to do with
 // the tests, or, worse, the function it named was renamed and its *real* mutant is now unexcluded
 // and unnoticed among the survivors, with nothing in the config to suggest the entry rather than the
 // tests had gone stale.

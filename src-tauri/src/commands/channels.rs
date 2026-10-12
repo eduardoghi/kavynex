@@ -50,7 +50,7 @@ pub async fn get_channel_by_id(
 /// nothing else references it.
 ///
 /// The frontend writes the avatar into the library before calling this, so a refusal here (a handle
-/// that already exists, a name that fails validation) used to leave that file behind with no row
+/// that already exists, a name that fails validation) would leave that file behind with no row
 /// pointing at it. The removal goes through the reference-counted cleanup, so an avatar that is
 /// content-addressed onto a file another channel or a media thumbnail already uses is kept.
 #[tauri::command]

@@ -5,11 +5,11 @@ import type { FolderPurpose } from "../types/generated/FolderPurpose";
 
 export type { FileDialogFilter, FolderPurpose };
 
-// The native pickers, opened by the backend (commands/dialog.rs). They used to come from the dialog
-// plugin straight from the renderer, and the plugin adds whatever the user picks to the asset
-// protocol's scope for the rest of the session, a library folder's whole root included. Going
-// through the backend keeps the scope to what commands/security.rs grants, and leaves the renderer
-// with no dialog permission of its own.
+// The native pickers, opened by the backend (commands/dialog.rs). The dialog plugin called from
+// the renderer would add whatever the user picks to the asset protocol's scope for the rest of
+// the session, a library folder's whole root included. Going through the backend keeps the scope
+// to what commands/security.rs grants, and leaves the renderer with no dialog permission of its
+// own.
 //
 // Each resolves to the chosen path trimmed, or null when the dialog was cancelled.
 

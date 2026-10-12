@@ -98,9 +98,9 @@ pub struct DiagnosticsMediaTarget {
 /// The two are returned together rather than as two commands because they are one question asked
 /// of one snapshot of the database. Resolving the targets here is also what keeps this cheap. The
 /// report caps every example list at five entries, so the map holds at most a handful of rows no
-/// matter how large the library is. The renderer used to build it by pulling every media row over
-/// IPC and sending three arrays of every stored path back, which made an operation whose output is
-/// bounded cost time proportional to the whole library, twice.
+/// matter how large the library is. Building it in the renderer would mean pulling every media row
+/// over IPC and sending three arrays of every stored path back, which makes an operation whose
+/// output is bounded cost time proportional to the whole library, twice.
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

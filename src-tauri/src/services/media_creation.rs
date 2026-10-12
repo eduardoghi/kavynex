@@ -346,8 +346,7 @@ pub(crate) fn normalize_create_media_request(
 /// Turns a classified thumbnail source into a stored, library-relative path.
 ///
 /// `Managed` is returned untouched. It already names a file in the library, and re-persisting it
-/// would copy a file onto itself. The other two go through the same persist/download the renderer
-/// used to call directly.
+/// would copy a file onto itself. The other two go through the persist/download functions.
 async fn store_thumbnail_source<R: Runtime>(
     app: &AppHandle<R>,
     source: ThumbnailSource,
@@ -1147,8 +1146,8 @@ async fn insert_prepared_media<R: Runtime>(
         // Left unset on purpose. The duration is probed by the renderer once the row exists, through
         // the media element that can actually decode the file, and written back with
         // `update_media_duration`. Probing it here would mean an FFmpeg run per import, and probing
-        // it *before* the insert (which is where it used to happen), put an un-timeout-ed promise
-        // inside the window this function exists to keep short.
+        // it *before* the insert would put an un-timeout-ed promise inside the window this
+        // function exists to keep short.
         None,
         prepared.is_live,
         prepared.live_chat_file_path.as_deref(),

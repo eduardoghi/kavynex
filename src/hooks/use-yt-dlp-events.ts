@@ -35,8 +35,8 @@ export type YtDlpLogLevel = DownloadLogLevel;
 // id never changes once assigned, so React reuses each row and only the genuinely new one mounts.
 //
 // `level` is the backend's own classification, carried through rather than re-derived. The log
-// event already validates it (`ipc-schemas.ts`), and the terminal used to ignore it and sniff the
-// text for an `ERROR:` prefix instead.
+// event already validates it (`ipc-schemas.ts`), so the terminal does not sniff the text for an
+// `ERROR:` prefix.
 export type YtDlpLogLine = { id: number; text: string; level: YtDlpLogLevel };
 
 type UseYtDlpEventsReturn = {
@@ -281,8 +281,8 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         let isDisposed = false;
         const unlisteners: UnlistenFn[] = [];
 
-        // Each listener is registered on its own and the results are collected with allSettled. They
-        // used to be awaited one after another inside a single try, so the first one to fail left
+        // Each listener is registered on its own and the results are collected with allSettled.
+        // Awaiting them one after another inside a single try would let the first one to fail leave
         // every later one unregistered (a terminal that never hears "finished"), with nothing but a
         // log line to say so.
         const registrations: [string, () => Promise<UnlistenFn>][] = [

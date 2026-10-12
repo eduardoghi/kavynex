@@ -84,10 +84,10 @@ export async function updateMediaTitle(mediaId: number, title: string): Promise<
 // after the fact. The probe decodes the file through a media element, so it can only run here, and
 // a media whose duration cannot be read is a card without a runtime rather than a failed import.
 //
-// It used to run *inside* the creation, between the crash marker and the insert. Besides putting a
-// renderer step in the middle of a backend transaction, that placement carried a real hazard. The
-// probe settles on `loadedmetadata` or `error`, and a source that fires neither left the promise
-// pending forever with the marker on disk and the row never inserted.
+// It does not run *inside* the creation, between the crash marker and the insert. Besides putting
+// a renderer step in the middle of a backend transaction, that placement carries a real hazard.
+// The probe settles on `loadedmetadata` or `error`, and a source that fires neither leaves the
+// promise pending forever with the marker on disk and the row never inserted.
 async function tryStoreMeasuredDuration(
     created: CreatedMedia,
     libraryPath: string
@@ -244,7 +244,7 @@ export async function createMedia(
 
     await emitProgress(options.onProgress, "Registering media in local library...");
 
-    // One call, and everything that used to be sequenced here is inside it. The duplicate
+    // One call, and everything that would otherwise be sequenced here is inside it. The duplicate
     // pre-check, the download or import, the thumbnail, the crash marker, the insert and the
     // marker's removal. What that buys is not fewer lines but a window that no longer crosses the
     // process boundary, and an exclusion against a concurrent cleanup that is a backend lock rather

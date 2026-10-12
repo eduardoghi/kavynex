@@ -120,7 +120,7 @@ fn dedupe_comments_by_id(comments: Vec<YtDlpComment>) -> Vec<YtDlpComment> {
 // Comments are written in multi-row batches instead of one INSERT per row. Each row binds 16
 // columns, so 50 rows is 800 bound parameters (comfortably under SQLite's default variable
 // limit (999 on older builds)), while collapsing the thousands of round-trips a heavily
-// commented video used to hold the transaction open for into a handful.
+// commented video would otherwise hold the transaction open for into a handful.
 const COMMENT_INSERT_CHUNK_SIZE: usize = 50;
 
 /// One comment row, already normalized into the exact column order the INSERT below binds.
@@ -233,8 +233,8 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
 ///
 /// Nothing stored is ever removed. A comment that left YouTube since the last fetch is exactly what
 /// this app exists to keep, and a later fetch always misses some of them, since authors, channels
-/// and YouTube itself delete comments over time. Replacing the stored set with the fetched one, as
-/// this used to, made a refresh of an old video quietly destroy that part of the archive.
+/// and YouTube itself delete comments over time. Replacing the stored set with the fetched one
+/// would make a refresh of an old video quietly destroy that part of the archive.
 ///
 /// A comment with an id is matched on `(video_id, comment_id)`, the partial unique index v10
 /// created, and updated in place, so a refresh still picks up edits and new like counts, with the

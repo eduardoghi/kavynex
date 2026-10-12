@@ -123,10 +123,10 @@ pub struct MediaRepositoryStats {
 
 /// The stored paths of one media row, plus what a reported path needs to resolve back to it.
 ///
-/// Backend-only, and deliberately not `ts(export)`ed. It used to cross the IPC boundary so the
-/// renderer could assemble the integrity check's inputs, and that resolution now happens in
-/// `library::integrity` on this side. Nothing in `src/` names this shape any more. What the
-/// frontend receives is `LibraryIntegrityCheck`, which is bounded by what the report named.
+/// Backend-only, and deliberately not `ts(export)`ed. The integrity check's inputs are resolved
+/// in `library::integrity` on this side, so the shape never crosses the IPC boundary and nothing
+/// in `src/` names it. What the frontend receives is `LibraryIntegrityCheck`, which is bounded by
+/// what the report named.
 #[derive(Debug, sqlx::FromRow)]
 pub struct MediaIntegrityReference {
     pub id: i64,
@@ -302,14 +302,13 @@ pub async fn media_exists_for_channel_and_youtube_id(
 ///
 /// # The write boundary is here
 ///
-/// The validation below used to live one layer up, in the `insert_media` Tauri command, which made
-/// it a property of *arriving over IPC* rather than of writing a row. That was the wrong place for
-/// it twice over. The command has since been removed from the IPC surface (a media is created
-/// through `create_media`, which exposes an operation rather than its steps), and the remaining
-/// caller (`services::media_creation`) would then have been trusted to have done it itself.
-/// It mostly had, but not entirely. The `media_type` a yt-dlp download reports is the download's
-/// own, never the normalized request's, so it reached the row with nothing but the table's `CHECK`
-/// behind it.
+/// The validation lives here and not one layer up in a Tauri command, which would make it a
+/// property of *arriving over IPC* rather than of writing a row. That is the wrong place twice
+/// over. There is no `insert_media` command on the IPC surface (a media is created through
+/// `create_media`, which exposes an operation rather than its steps), so the remaining caller
+/// (`services::media_creation`) would be trusted to have done it itself. It mostly would have,
+/// but not entirely. The `media_type` a yt-dlp download reports is the download's own, never the
+/// normalized request's, so it would reach the row with nothing but the table's `CHECK` behind it.
 ///
 /// So the rule the rest of the backend follows applies here too. Every write boundary calls the
 /// shared validators. The paths must be managed and library-relative, because the deletion path acts
@@ -456,9 +455,9 @@ struct CommentLoadLimits {
 /// The comment load, with its caps as parameters so the tests can reach them with a few rows.
 ///
 /// Pages by `id` (`id > last id seen`), which `idx_video_comments_video_id` serves directly, and
-/// counts the text in Rust. The text cap used to be a `SUM(LENGTH(text)) OVER (ORDER BY id)` in the
-/// query, which made SQLite read the text of every comment the media has before the `LIMIT` could
-/// stop anything. `LENGTH` counts characters on TEXT, and so does `chars().count()` here.
+/// counts the text in Rust. A `SUM(LENGTH(text)) OVER (ORDER BY id)` in the query would make SQLite
+/// read the text of every comment the media has before the `LIMIT` could stop anything. `LENGTH`
+/// counts characters on TEXT, and so does `chars().count()` here.
 ///
 /// The pages are separate statements, so a merge that commits between two of them can add rows to
 /// the result. Those get higher ids and land at the end, which is where a later read would put them
