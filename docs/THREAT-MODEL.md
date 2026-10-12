@@ -693,7 +693,9 @@ question (may this fetch start at all) about a URI no redirect produced.
 A URL that is not a direct image goes to the yt-dlp fallback, which takes YouTube hosts only. That
 allow-list runs before the address guard, because the address guard resolves the name, and a lookup
 of an arbitrary name already reaches whoever serves that domain's DNS. A renderer that sends
-`https://<data>.attacker.example/page` is refused with nothing resolved.
+`https://<data>.attacker.example/page` is refused with nothing resolved. The fallback also takes only a link to one
+video, the rule the download and the format probe apply, so a channel or playlist URL cannot make
+yt-dlp extract every entry for one image.
 
 ## External binary resolution (no working-directory hijack)
 

@@ -321,6 +321,15 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             ));
         }
 
+        // One video, as the download and the format probe require. A channel, playlist or feed URL
+        // makes yt-dlp extract every entry under the minute this run gets, for one image.
+        if !crate::services::yt_dlp::url::names_one_video(&normalized_url) {
+            return Err(AppError::from_code(
+                AppErrorCode::InvalidUrl,
+                "generic thumbnail extraction needs the link of a single video",
+            ));
+        }
+
         // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
         // fallback has none, so validate the host here too. Reject URLs that resolve to
         // loopback/private/link-local/reserved addresses before handing the URL to yt-dlp.
@@ -872,6 +881,32 @@ mod tests {
             "{}",
             error.message
         );
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_fallback_url_that_is_not_one_video_is_refused_before_yt_dlp_runs() {
+        // A channel page passes the host allow-list, and yt-dlp would extract every video on it for
+        // one thumbnail. Refused before any binary is resolved, so the test needs no yt-dlp.
+        let app = tauri::test::mock_builder()
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let library = std::env::temp_dir().join(format!(
+            "kavynex_thumb_fallback_channel_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&library).unwrap();
+
+        let error = tauri::async_runtime::block_on(download_thumbnail_from_url_async(
+            app.handle(),
+            "https://www.youtube.com/@somechannel/videos",
+            &library.to_string_lossy(),
+        ))
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidUrl.as_str());
+        assert!(error.message.contains("single video"), "{}", error.message);
 
         let _ = std::fs::remove_dir_all(&library);
     }
