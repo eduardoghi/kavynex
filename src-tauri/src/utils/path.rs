@@ -241,6 +241,14 @@ pub fn sanitize_relative_path_strict(value: &str) -> AppResult<PathBuf> {
         ));
     }
 
+    // A `.` segment dropped from either end shields the whitespace next to it from the trim above
+    // (`./ a` comes out as ` a`), and that result would sanitize to something else the next time
+    // it is read. Running it again trims it and checks what is left.
+    let text = sanitized.to_str().unwrap_or_default();
+    if text.trim() != text {
+        return sanitize_relative_path_strict(text);
+    }
+
     Ok(sanitized)
 }
 
@@ -691,6 +699,18 @@ mod tests {
                 "{raw:?}"
             );
         }
+    }
+
+    #[test]
+    fn sanitize_relative_path_trims_whitespace_a_dot_segment_hid() {
+        assert_eq!(
+            sanitize_relative_path_strict("./ video/a.mp4").unwrap(),
+            sanitize_relative_path_strict("video/a.mp4").unwrap()
+        );
+        assert_eq!(
+            sanitize_relative_path_strict("video/a.mp4\t/.").unwrap(),
+            sanitize_relative_path_strict("video/a.mp4").unwrap()
+        );
     }
 
     #[test]

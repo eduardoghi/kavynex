@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 37177e8a6242edf6c4d54a01bd3966a9140bdf68c516d938ed638cee43614d9d # shrinks to raw = "a \\"
+cc 10ba0c7181d6885bf32942763cab021a2a78409af90060a775042e46c5029100 # shrinks to raw = ".\\ A"
