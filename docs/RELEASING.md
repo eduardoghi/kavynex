@@ -27,8 +27,11 @@ actually act on what it says.
    version that skipped ahead would keep the updater from ever offering the one that was meant.
 2. Commit the version bump, push to `main`, and wait for `ci.yml` and `codeql.yml` to finish green
    on that commit. The release's first job (`ci-passed`) refuses to go on otherwise.
-   If `release.yml` changed since the last release, dispatch `release-rehearsal.yml` first and
-   wait for it to pass. It runs the same build and checks on one leg per OS with a throwaway
+   If `release.yml` changed since the last release, or anything only a packaged build exercises
+   (`src-tauri/src/commands/webview_check.rs`, `src/lib/webview-check.ts`, `src-tauri/capabilities/`,
+   or the CSP in `src-tauri/tauri.conf.json`), dispatch `release-rehearsal.yml` first and wait for
+   it to pass. `--webview-check` runs only in those two workflows, so a change there is otherwise
+   first tested by the release itself. It runs the same build and checks on one leg per OS with a throwaway
    signing key and no environment, so it cannot publish anything, and it also installs and starts
    the artifacts themselves (the `.deb` on `ubuntu:24.04`, the AppImage, the NSIS installer and the
    `.app`), which the release does not.
@@ -106,8 +109,7 @@ grants, the asset protocol and the player's `kvxmedia` protocol work in the pack
 
 Neither reaches the plugin grants, and the reason is that exercising one has a side effect no
 unattended run may take, whether a file picker, a browser launch, a network call or a process
-restart. So they are checked by hand, here, once per release. This list is what "review the draft"
-in step 7 means for them.
+restart. So they are checked by hand, here, once per release, in step 6.
 
 Run it against the **installed artifact from the draft**, not `pnpm tauri dev`. The ACL itself is the
 same in dev (the capabilities are compiled into the binary either way), so a missing grant is

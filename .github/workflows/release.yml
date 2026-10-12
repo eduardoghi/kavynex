@@ -689,8 +689,8 @@ jobs:
             #
             # `--webview-check` (src-tauri/src/commands/webview_check.rs) lets the launch proceed
             # normally, has the renderer drive one call of each family (getVersion, listen/unlisten,
-            # and an image served through convertFileSrc out of the granted cache directory), and
-            # exits 0 or 1. A renderer that never loads reports nothing, which a watchdog turns into
+            # an image served through convertFileSrc out of the granted cache directory, and a media
+            # element pointed at the player's kvxmedia protocol), and exits 0 or 1. A renderer that never loads reports nothing, which a watchdog turns into
             # a non-zero exit with a message rather than a hang.
             #
             # What it deliberately does not cover, since none of them can run without a side effect:
