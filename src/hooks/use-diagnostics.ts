@@ -77,6 +77,8 @@ export function useDiagnostics({
     const removeOrphansFlag = useAsyncFlag();
     const keptFolderFlag = useAsyncFlag();
     const hasLoadedSinceOpenRef = useRef(false);
+    // Bumped by every close, so an action that outlives the dialog can tell it was closed meanwhile.
+    const closeCountRef = useRef(0);
     const previousLibraryPathRef = useRef(libraryPath);
     const previousImportModeRef = useRef(importMode);
 
@@ -126,6 +128,7 @@ export function useDiagnostics({
 
     const closeDiagnostics = useCallback((): void => {
         requestGuard.invalidate();
+        closeCountRef.current += 1;
         hasLoadedSinceOpenRef.current = false;
         setDiagnosticsOpen(false);
         setIsLoadingDiagnostics(false);
@@ -193,6 +196,7 @@ export function useDiagnostics({
     );
 
     const removeOrphanFiles = useCallback(async (): Promise<void> => {
+        const closesBefore = closeCountRef.current;
         const ran = await removeOrphansFlag.runWithFlag(async () => {
             try {
                 const report = await removeOrphanLibraryFiles();
@@ -212,8 +216,10 @@ export function useDiagnostics({
         });
 
         // The report is stale either way once the removal ran, so it is reloaded even after a
-        // failure, which may have removed some of the files.
-        if (ran) {
+        // failure, which may have removed some of the files. Not once the dialog was closed, though.
+        // The load would run with nothing to show it, and its own failure would open the error
+        // dialog for a report nobody asked to see.
+        if (ran && closeCountRef.current === closesBefore) {
             await loadDiagnostics();
         }
     }, [loadDiagnostics, onError, removeOrphansFlag]);

@@ -815,5 +815,37 @@ describe("useDiagnostics", () => {
             expect(onError).toHaveBeenCalledWith("Failed to remove the orphan files.");
             expect(getDiagnosticsSummaryMock).toHaveBeenCalled();
         });
+
+        it("does not reload the report once the dialog was closed during the removal", async () => {
+            const onError = vi.fn();
+            let finishRemoval!: () => void;
+            vi.mocked(removeOrphanLibraryFiles).mockReturnValueOnce(
+                new Promise((resolve) => {
+                    finishRemoval = () =>
+                        resolve({ deleted_paths: [], skipped_shared_paths: [], failed_paths: [] });
+                })
+            );
+
+            const { result } = renderHook(() =>
+                useDiagnostics({ libraryPath: "/library", importMode: "copy", onError })
+            );
+
+            let removal: Promise<void> | null = null;
+
+            act(() => {
+                removal = result.current.removeOrphanFiles();
+            });
+
+            act(() => {
+                result.current.closeDiagnostics();
+            });
+
+            await act(async () => {
+                finishRemoval();
+                await removal;
+            });
+
+            expect(getDiagnosticsSummaryMock).not.toHaveBeenCalled();
+        });
     });
 });
