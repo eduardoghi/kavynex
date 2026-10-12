@@ -1,5 +1,4 @@
-import { Group, Radio, Stack, Text, Title } from "@mantine/core";
-import { useId } from "react";
+import { Group, Radio, Stack, Text, Title, VisuallyHidden } from "@mantine/core";
 import { Accessibility } from "lucide-react";
 import { MOTION_PREFERENCES, type MotionPreference } from "../../../utils/motion-preference";
 import { toUnionValue } from "../../../utils/guards";
@@ -16,13 +15,11 @@ export function MotionSection({
     motionPreference,
     onChangeMotionPreference,
 }: MotionSectionProps): JSX.Element {
-    const titleId = useId();
-
     return (
         <Stack gap="xs">
             <Group gap="sm">
                 <Accessibility size={18} />
-                <Title id={titleId} order={3} size="h4">
+                <Title order={3} size="h4">
                     Motion
                 </Title>
             </Group>
@@ -34,8 +31,9 @@ export function MotionSection({
 
             <Radio.Group
                 // Names the group after the visible title. See ImportBehaviorSection for why this
-                // goes through labelProps rather than aria-label or aria-labelledby.
-                labelProps={{ id: titleId }}
+                // is a hidden label rather than aria-label or aria-labelledby.
+                label={<VisuallyHidden>Motion</VisuallyHidden>}
+                labelProps={{ style: { display: "contents" } }}
                 value={motionPreference}
                 onChange={(value) =>
                     onChangeMotionPreference(

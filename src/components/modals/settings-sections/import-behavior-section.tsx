@@ -1,6 +1,5 @@
-import { Group, Radio, Stack, Title } from "@mantine/core";
+import { Group, Radio, Stack, Title, VisuallyHidden } from "@mantine/core";
 import { Settings2 } from "lucide-react";
-import { useId } from "react";
 import type { ImportMode } from "../../../types/settings";
 import { toUnionValue } from "../../../utils/guards";
 
@@ -17,24 +16,24 @@ export function ImportBehaviorSection({
     onChangeImportMode,
     isMigratingLibraryPath,
 }: ImportBehaviorSectionProps): JSX.Element {
-    const titleId = useId();
-
     return (
         <Stack gap="xs">
             <Group gap="sm">
                 <Settings2 size={18} />
-                <Title id={titleId} order={3} size="h4">
+                <Title order={3} size="h4">
                     Import behavior
                 </Title>
             </Group>
 
             <Radio.Group
                 // Mantine puts aria-label and aria-labelledby on its Input.Wrapper root, not on the
-                // inner element with role="radiogroup", so neither names the group. That element
-                // does take aria-labelledby from the wrapper's label id, and labelProps.id sets it,
-                // so pointing it at the visible title names the group without rendering a second
-                // label.
-                labelProps={{ id: titleId }}
+                // inner element with role="radiogroup", so neither names the group. That element is
+                // labelled by the wrapper's own label, and only when one is rendered (since Mantine
+                // 9.7, a label id alone no longer reaches it). So the label is the title's text,
+                // visually hidden, with `display: contents` so its box takes no space under the
+                // visible title above.
+                label={<VisuallyHidden>Import behavior</VisuallyHidden>}
+                labelProps={{ style: { display: "contents" } }}
                 value={importMode}
                 onChange={(value) =>
                     onChangeImportMode(toUnionValue(value, IMPORT_MODES, importMode))
