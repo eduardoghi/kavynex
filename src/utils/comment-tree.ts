@@ -39,16 +39,30 @@ export function normalizeSearchValue(value: string): string {
     return value.trim().toLocaleLowerCase();
 }
 
+// The lowercased text a search runs against, built once per comment. A search runs over every
+// comment on each debounced keystroke, and with up to 100,000 of them rebuilding this each time was
+// the whole cost of the query. Weak, so it goes with the comments it was built for.
+const searchHaystacks = new WeakMap<MediaCommentRow, string>();
+
+function searchHaystack(comment: MediaCommentRow): string {
+    let haystack = searchHaystacks.get(comment);
+
+    if (haystack === undefined) {
+        haystack = [comment.author_name, comment.author_handle ?? "", comment.text]
+            .join(" ")
+            .toLocaleLowerCase();
+        searchHaystacks.set(comment, haystack);
+    }
+
+    return haystack;
+}
+
 export function matchesCommentSearch(comment: MediaCommentRow, query: string): boolean {
     if (!query) {
         return true;
     }
 
-    const haystack = [comment.author_name, comment.author_handle ?? "", comment.text]
-        .join(" ")
-        .toLocaleLowerCase();
-
-    return haystack.includes(query);
+    return searchHaystack(comment).includes(query);
 }
 
 export function parseCommentTimestamp(comment: MediaCommentRow): number {
