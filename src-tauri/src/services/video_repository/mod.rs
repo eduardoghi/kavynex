@@ -209,6 +209,12 @@ pub use media_page::list_media_page;
 #[cfg(test)]
 use media_page::resolve_order_by;
 
+/// The refusal of an update whose media row is gone (deleted from another view, or by a restore),
+/// under the code the frontend words as "this media no longer exists".
+fn media_not_found() -> AppError {
+    AppError::from_code(AppErrorCode::MediaNotFound, "the media no longer exists")
+}
+
 pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -> AppResult<()> {
     // Keep title_normalized in step with title so the server-side search/sort stays correct after
     // a rename (see utils::text::normalize_search_text).
@@ -221,7 +227,7 @@ pub async fn update_media_title(pool: &SqlitePool, media_id: i64, title: &str) -
         .map_err(|error| db_error("failed to update media title", error))?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::invalid_input("media not found"));
+        return Err(media_not_found());
     }
 
     Ok(())
@@ -521,7 +527,7 @@ pub async fn mark_media_as_watched(pool: &SqlitePool, media_id: i64) -> AppResul
     .map_err(|error| db_error("failed to mark media as watched", error))?;
 
     row.map(|(watched_at,)| watched_at)
-        .ok_or_else(|| AppError::invalid_input("media not found"))
+        .ok_or_else(media_not_found)
 }
 
 pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppResult<()> {
@@ -532,7 +538,7 @@ pub async fn mark_media_as_unwatched(pool: &SqlitePool, media_id: i64) -> AppRes
         .map_err(|error| db_error("failed to mark media as unwatched", error))?;
 
     if result.rows_affected() == 0 {
-        return Err(AppError::invalid_input("media not found"));
+        return Err(media_not_found());
     }
 
     Ok(())

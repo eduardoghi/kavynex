@@ -187,7 +187,10 @@ pub async fn update_channel_name_and_handle(
             ));
         }
 
-        return Err(AppError::invalid_input("channel not found"));
+        return Err(AppError::from_code(
+            AppErrorCode::ChannelNotFound,
+            "the channel no longer exists",
+        ));
     }
 
     Ok(())

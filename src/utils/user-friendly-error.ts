@@ -212,7 +212,7 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     [VIDEO_ALREADY_EXISTS_FOR_CHANNEL_ERROR_CODE]:
         "This media is already registered for the selected channel.",
     [CHANNEL_NOT_FOUND_ERROR_CODE]:
-        "The channel no longer exists. It may have been removed while the media was being added.",
+        "The channel no longer exists. It may have been removed while the operation was running.",
     [MEDIA_NOT_FOUND_ERROR_CODE]:
         "This media no longer exists. It may have been removed while the operation was running.",
 

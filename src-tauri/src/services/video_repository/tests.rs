@@ -270,7 +270,7 @@ async fn update_media_title_errors_when_the_media_is_missing() {
     let error = update_media_title(&pool, 999, "New title")
         .await
         .unwrap_err();
-    assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+    assert_eq!(error.code, AppErrorCode::MediaNotFound.as_str());
 }
 
 #[tokio::test]
@@ -278,7 +278,7 @@ async fn mark_media_as_unwatched_errors_when_the_media_is_missing() {
     let pool = create_test_pool().await;
 
     let error = mark_media_as_unwatched(&pool, 999).await.unwrap_err();
-    assert_eq!(error.code, AppErrorCode::InvalidInput.as_str());
+    assert_eq!(error.code, AppErrorCode::MediaNotFound.as_str());
 }
 
 /// A pool whose `videos.channel_id` actually references a `channels` table, so the
