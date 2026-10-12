@@ -466,12 +466,15 @@ new value. That order is required, not stylistic. The state change is what fires
 request against the persisted library path. Persisting second would make a legitimate
 registration fail.
 
-Two outcomes surface to the user rather than only to the log. `oldDirectoryRetained` means the
+A few outcomes surface to the user rather than only to the log. `oldDirectoryRetained` means the
 copy succeeded but the old folder, or part of it, could not be removed (the commit marker could
-not be written, or a removal failed on a locked file), so media are still on the old volume. And moving *back* to a folder released earlier in the same session
-fails with `ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE` (the asset scope cannot un-forbid a
-directory), which is the one asset-scope failure worth interrupting the user for, because the
-fix is a restart and nothing would suggest it.
+not be written, or a removal failed on a locked file), so media are still on the old volume. A move
+that finished but whose new path could not be stored says so and asks for a restart, since the
+commit marker is what points the next start at the new folder. A cancelled move is a notice, not an
+error. And moving *back* to a folder released earlier in the same session fails with
+`ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE` (the asset scope cannot un-forbid a directory), which is
+the one asset-scope failure worth interrupting the user for, because the fix is a restart and
+nothing would suggest it.
 
 ### Database recovery at startup
 

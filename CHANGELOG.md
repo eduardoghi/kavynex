@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A library move that finished but could not save the new folder says so and asks for a restart,
+  instead of reporting that the move failed. A cancelled move is shown as a notice.
 - Diagnostics no longer reports problems worked out from a check that could not run. A missing
   yt-dlp no longer reads as a missing FFmpeg too, and a library summary that failed no longer reads as
   an empty library.

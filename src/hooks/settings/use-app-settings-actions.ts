@@ -17,7 +17,10 @@ import {
 import { displayWindowsPath } from "../../utils/paths";
 import type { LibraryMigrationProgress } from "../../types/generated/LibraryMigrationProgress";
 import { parseAppError } from "../../utils/app-error";
-import { LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE } from "../../constants/error-codes";
+import {
+    LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE,
+    LIBRARY_MIGRATION_CANCELLED_ERROR_CODE,
+} from "../../constants/error-codes";
 import { useAsyncFlag } from "../use-async-flag";
 import { useMemoObject } from "../use-memo-object";
 import {
@@ -33,6 +36,8 @@ import { logError } from "../../utils/app-logger";
 
 type UseAppSettingsActionsOptions = {
     onError: (message: string) => void;
+    // For an outcome that is not a failure, such as a move the user cancelled.
+    onNotice?: (message: string) => void;
     setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
 };
 
@@ -67,6 +72,7 @@ type UseAppSettingsActionsReturn = {
 
 export function useAppSettingsActions({
     onError,
+    onNotice = onError,
     setSettings,
 }: UseAppSettingsActionsOptions): UseAppSettingsActionsReturn {
     const { isRunning: isPreparingSettings, runWithFlag: runPrepareSettings } = useAsyncFlag();
@@ -259,7 +265,21 @@ export function useAppSettingsActions({
                     return;
                 }
 
-                const nextSettings = await updateStoredLibraryPath(result.finalLibraryPath);
+                // The move is done and the old folder may already be gone, so a failure to store the
+                // new path is not "the move failed". The backend's commit marker points the next
+                // start at the new folder, which is what the user is told to do.
+                let nextSettings: AppSettings;
+
+                try {
+                    nextSettings = await updateStoredLibraryPath(result.finalLibraryPath);
+                } catch (error) {
+                    logError("settings", "The library was moved, but its new path was not saved.", error);
+                    onError(
+                        "Your library was moved to the new folder, but the setting pointing at it could not be saved. Restart Kavynex, and it picks the new folder up."
+                    );
+                    return;
+                }
+
                 setSettings(nextSettings);
                 setIsLibraryUnreachable(false);
 
@@ -289,13 +309,20 @@ export function useAppSettingsActions({
                 }
 
                 setPendingLibraryMove(null);
+
+                // What the user clicked for. The message still says where the partial copy is.
+                if (parseAppError(error).code === LIBRARY_MIGRATION_CANCELLED_ERROR_CODE) {
+                    onNotice(resolveErrorMessage(error, "The move was cancelled."));
+                    return;
+                }
+
                 logError("settings", "Failed to change library folder.", error, {
                     currentLibraryPath: move.currentLibraryPath,
                 });
                 onError(resolveErrorMessage(error, "Failed to change library folder."));
             }
         });
-    }, [onError, pendingLibraryMove, runLibraryPathChange, setSettings]);
+    }, [onError, onNotice, pendingLibraryMove, runLibraryPathChange, setSettings]);
 
     const cancelRunningLibraryMove = useCallback(async (): Promise<void> => {
         try {

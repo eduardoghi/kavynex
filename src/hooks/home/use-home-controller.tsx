@@ -28,6 +28,7 @@ export function useHomeController(): HomeController {
 
     const settingsState = useAppSettings({
         onError: errorState.showError,
+        onNotice: errorState.showNotice,
     });
 
     const libraryPath = settingsState.settings.libraryPath;

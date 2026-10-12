@@ -14,6 +14,7 @@ import type { LibraryMigrationProgress } from "../../types/generated/LibraryMigr
 
 type UseAppSettingsOptions = {
     onError: (message: string) => void;
+    onNotice?: (message: string) => void;
 };
 
 export type AppSettingsController = {
@@ -47,12 +48,14 @@ export type AppSettingsController = {
 
 export function useAppSettings({
     onError,
+    onNotice,
 }: UseAppSettingsOptions): AppSettingsController {
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [settings, setSettings] = useState<AppSettings>(getDefaultAppSettings());
 
     const settingsActions = useAppSettingsActions({
         onError,
+        onNotice,
         setSettings,
     });
 

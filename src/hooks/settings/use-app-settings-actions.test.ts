@@ -60,14 +60,20 @@ describe("useAppSettingsActions", () => {
 
     // The settings as read at startup. changeLibraryPath refuses to run before they are, so every
     // test of it starts from here.
-    async function renderLoaded(onError = vi.fn(), setSettings = vi.fn()) {
+    async function renderLoaded(
+        onError = vi.fn(),
+        setSettings = vi.fn(),
+        onNotice?: (message: string) => void
+    ) {
         vi.mocked(initializeAppSettings).mockResolvedValueOnce({
             settings: { ...NEW_SETTINGS, libraryPath: "/library" },
             libraryUnreachable: false,
         });
         vi.mocked(persistSettings).mockResolvedValueOnce(undefined);
 
-        const rendered = renderHook(() => useAppSettingsActions({ onError, setSettings }));
+        const rendered = renderHook(() =>
+            useAppSettingsActions({ onError, onNotice, setSettings })
+        );
 
         await act(async () => {
             await rendered.result.current.prepareSettings();
@@ -332,7 +338,11 @@ describe("useAppSettingsActions", () => {
         thumbnail_files: 4,
     };
 
-    async function renderWithPendingMove(onError = vi.fn(), setSettings = vi.fn()) {
+    async function renderWithPendingMove(
+        onError = vi.fn(),
+        setSettings = vi.fn(),
+        onNotice?: (message: string) => void
+    ) {
         vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({
             kind: "move",
             currentLibraryPath: "/library",
@@ -340,7 +350,7 @@ describe("useAppSettingsActions", () => {
         });
         vi.mocked(getLibrarySummary).mockResolvedValueOnce(SUMMARY);
 
-        const rendered = await renderLoaded(onError, setSettings);
+        const rendered = await renderLoaded(onError, setSettings, onNotice);
 
         await act(async () => {
             await rendered.result.current.changeLibraryPath("/library");
@@ -534,6 +544,44 @@ describe("useAppSettingsActions", () => {
         expect(onError).toHaveBeenCalledWith(
             expect.stringContaining("old folder could not be removed completely")
         );
+    });
+
+    it("tells the user to restart when the move finished but its path could not be saved", async () => {
+        // The library is in the new folder and the old one may be gone. "Failed to change library
+        // folder" sent the user to retry a move that had already happened.
+        const { result, onError, setSettings } = await renderWithPendingMove();
+
+        vi.mocked(moveLibrary).mockResolvedValueOnce({
+            changed: true,
+            finalLibraryPath: "/new-library",
+            oldDirectoryRetained: false,
+        });
+        vi.mocked(updateStoredLibraryPath).mockRejectedValueOnce(new Error("database is busy"));
+
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(onError).toHaveBeenCalledWith(expect.stringContaining("Restart Kavynex"));
+        expect(onError).not.toHaveBeenCalledWith("Failed to change library folder.");
+        expect(setSettings).not.toHaveBeenCalled();
+    });
+
+    it("reports a cancelled move as a notice", async () => {
+        const onNotice = vi.fn();
+        const { result, onError } = await renderWithPendingMove(vi.fn(), vi.fn(), onNotice);
+
+        vi.mocked(moveLibrary).mockRejectedValueOnce({
+            code: "LIBRARY_MIGRATION_CANCELLED",
+            message: "cancelled",
+        });
+
+        await act(async () => {
+            await result.current.confirmLibraryMove();
+        });
+
+        expect(onNotice).toHaveBeenCalledWith(expect.stringContaining("The move was cancelled"));
+        expect(onError).not.toHaveBeenCalled();
     });
 
     it("logs and reports an error when the move fails", async () => {
