@@ -613,6 +613,7 @@ fn managed_database_paths_names_every_file_this_module_writes() {
             "kavynex.db.corrupt.tmp",
             "kavynex.db.corrupt-wal",
             "kavynex.db.restore.tmp",
+            "kavynex.db.restore.partial",
             "kavynex.db.pre-import",
             "kavynex.db.pre-import-wal",
             "kavynex.db.import-staged",
@@ -1139,6 +1140,24 @@ async fn resume_sets_aside_the_damaged_databases_log_before_renaming_the_snapsho
         b"frames of the damaged database"
     );
     assert_eq!(read_single_value(&db).await, "hello");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_copy_cut_short_is_never_resumed_into_the_database() {
+    // A restore offered for a missing database died while copying the snapshot. Under the staging
+    // name, the next launch would have renamed the partial copy in as the database.
+    let dir = temp_dir("resume-partial");
+    let db = dir.join("kavynex.db");
+    std::fs::write(
+        restore::restore_partial_path(&db),
+        b"the first half of a snapshot",
+    )
+    .unwrap();
+
+    assert!(!resume_interrupted_restore(&db).unwrap());
+    assert!(!db.exists());
 
     let _ = std::fs::remove_dir_all(&dir);
 }

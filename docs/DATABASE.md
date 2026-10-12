@@ -546,9 +546,11 @@ slot), and a rename that then failed would leave that loss with nothing put in i
 rotation itself stops short, `.corrupt` is still occupied, so the database just set aside keeps the
 `.corrupt.tmp` name and the restore goes on.
 
-The chosen backup is copied to a `.restore.tmp` staging file first and only renamed into place
-after the corrupt database has been moved aside, so a failure partway through never leaves the
-app without a database file. There is a window of two renames where the database is
+The chosen backup is copied to a `.restore.partial` file first, flushed, given this machine's
+folders, and only then renamed to `.restore.tmp`, the name the next launch resumes from. A copy cut
+short therefore never becomes the database. `.restore.tmp` is renamed into place after the corrupt
+database has been moved aside, so a failure partway through never leaves the app without a database
+file. There is a window of two renames where the database is
 transiently absent; `resume_interrupted_restore` (called from `setup()` before the pool opens)
 is what covers a crash inside it, finishing the rename rather than letting the next launch
 create an empty database beside the staged one. The caller must ensure the connection pool is

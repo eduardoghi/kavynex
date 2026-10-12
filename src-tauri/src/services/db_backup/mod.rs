@@ -339,6 +339,7 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
 
     paths.extend([
         restore::restore_staging_path(db_path),
+        restore::restore_partial_path(db_path),
         import::pre_import_path(db_path),
         // The undo copy's write-ahead log, when the database it was taken from had one.
         sibling(db_path, ".pre-import-wal"),

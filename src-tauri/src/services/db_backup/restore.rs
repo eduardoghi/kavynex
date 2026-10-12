@@ -93,6 +93,15 @@ pub(super) fn restore_staging_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".restore.tmp")
 }
 
+/// Where the snapshot is copied and prepared before it takes [`restore_staging_path`]'s name.
+///
+/// That name is what tells the next launch the staging finished (see
+/// [`resume_interrupted_restore`]), so nothing is written under it. A copy cut short, or a
+/// settings write that left a hot journal behind, stays under this name, which nothing resumes.
+pub(super) fn restore_partial_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".restore.partial")
+}
+
 /// Finishes a restore that was interrupted between moving the old database aside and renaming the
 /// staged snapshot into place.
 ///
@@ -235,31 +244,46 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     // copy is a full-file read/write of a possibly large database; run it off the async runtime so
     // a slow disk (a network share, a cloud-synced folder) never stalls a Tokio worker thread.
     let staged = restore_staging_path(db_path);
+    let partial = restore_partial_path(db_path);
     let _ = std::fs::remove_file(&staged);
     super::remove_stale_sidecars(&staged);
+    let _ = std::fs::remove_file(&partial);
+    super::remove_stale_sidecars(&partial);
     {
         let copy_source = backup.clone();
-        let copy_dest = staged.clone();
+        let copy_dest = partial.clone();
         run_blocking(move || {
             std::fs::copy(&copy_source, &copy_dest)
                 .map_err(|error| backup_error("failed to stage restored database", error))?;
-            // Flush the staged bytes to disk before the rename below. The rename is atomic against a
-            // process crash, but without this a power loss could leave a truncated staged file that
-            // the rename then makes the live database, and resume_interrupted_restore would finish
-            // that rename on the next launch, trusting the staged file. This matches copy_file_atomic.
+            // Flush the staged bytes to disk before the renames below. Without this a power loss
+            // could leave a truncated file under the staging name, and resume_interrupted_restore
+            // would make it the live database on the next launch. This matches copy_file_atomic.
             crate::services::filesystem::fsync_file(&copy_dest)
         })
         .await?;
     }
 
     if let Some(paths) = machine_paths.as_ref() {
-        if let Err(error) = super::import::prepare_staged_database(&staged, Some(paths)).await {
+        if let Err(error) = super::import::prepare_staged_database(&partial, Some(paths)).await {
             logger::warn(
                 "db_backup",
                 format!("the restored database keeps the snapshot's folders: {error}"),
             );
         }
-        crate::services::filesystem::fsync_file(&staged)?;
+        crate::services::filesystem::fsync_file(&partial)?;
+    }
+
+    // Only a copy that is complete and prepared takes the name the next launch resumes from.
+    {
+        let partial = partial.clone();
+        let staged = staged.clone();
+        run_blocking(move || {
+            crate::services::filesystem::rename_retrying(&partial, &staged)
+                .map_err(|error| backup_error("failed to stage restored database", error))?;
+            crate::services::filesystem::fsync_parent_dir(&staged);
+            Ok(())
+        })
+        .await?;
     }
 
     // Move the corrupt database aside and drop its sidecar WAL files. Rotate rather than

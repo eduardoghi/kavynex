@@ -77,7 +77,8 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   (the snapshot being vacuumed, before it is promoted to `.bak`), `.after-damage.tmp` (the same for
   `.after-damage`), `.import-staged` /
   `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
-  below), `.restore.tmp` (a snapshot being restored), `.corrupt.tmp` (a database being moved
+  below), `.restore.partial` (a snapshot being copied for a restore, renamed to `.restore.tmp` once
+  it is complete), `.restore.tmp` (a snapshot ready to be restored), `.corrupt.tmp` (a database being moved
   aside), and `.export-staging` next to a chosen *export* destination rather than here.
 
 `.import-applying` is written once an import has moved the current database aside into
