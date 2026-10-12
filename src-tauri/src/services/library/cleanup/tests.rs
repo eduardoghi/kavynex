@@ -220,6 +220,39 @@ async fn media_plan_skips_artifacts_shared_with_other_media() {
 }
 
 #[tokio::test]
+async fn media_plan_keeps_a_file_another_row_names_with_backslashes() {
+    // A row from an older or imported database can spell the same file with `\`. Counted by the
+    // exact string, the other row's file read as unreferenced and was removed under it.
+    let pool = create_test_pool().await;
+    let channel_a = insert_channel(&pool, "@a", None).await;
+    let channel_b = insert_channel(&pool, "@b", None).await;
+
+    let media_id = insert_media(
+        &pool,
+        channel_a,
+        "video/shared.mp4",
+        Some("thumbnails/shared.jpg"),
+        Some("live_chat/shared.json.gz"),
+    )
+    .await;
+    insert_media(
+        &pool,
+        channel_b,
+        "video\\shared.mp4",
+        Some("thumbnails\\shared.jpg"),
+        Some("live_chat\\shared.json.gz"),
+    )
+    .await;
+
+    let plan = delete_media_row_and_plan_cleanup(&pool, media_id, true)
+        .await
+        .unwrap()
+        .expect("media exists");
+
+    assert!(plan.deletable.is_empty());
+}
+
+#[tokio::test]
 async fn media_plan_skips_thumbnail_used_as_channel_avatar() {
     let pool = create_test_pool().await;
     let channel_id = insert_channel(&pool, "@one", Some("thumbnails/avatar.jpg")).await;

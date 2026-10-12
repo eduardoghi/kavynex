@@ -80,9 +80,22 @@ fn normalized(value: Option<String>) -> Option<String> {
         .filter(|item| !item.is_empty())
 }
 
+/// Both spellings of a library-relative path. The app writes `/`, but a row from an older database
+/// or an imported one can hold `video\media_x.mp4` for the same file, and a count that saw only one
+/// spelling would read the other row's file as unreferenced and remove it. An `IN` over the indexed
+/// column, so the lookup stays an index search.
+fn path_spellings(path: &str) -> (String, String) {
+    let forward = path.replace('\\', "/");
+    let backward = forward.replace('/', "\\");
+
+    (forward, backward)
+}
+
 async fn count_media_files_referencing(conn: &mut SqliteConnection, path: &str) -> AppResult<i64> {
-    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos WHERE file_path = ?")
-        .bind(path)
+    let (forward, backward) = path_spellings(path);
+    let (total,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM videos WHERE file_path IN (?, ?)")
+        .bind(forward)
+        .bind(backward)
         .fetch_one(conn)
         .await
         .map_err(|error| db_error("failed to count media file references", error))?;
@@ -93,12 +106,15 @@ async fn count_media_files_referencing(conn: &mut SqliteConnection, path: &str) 
 /// A thumbnail is referenced both by video rows and by channel avatars, so a single count
 /// covers every surviving use regardless of which side the deletion came from.
 async fn count_thumbnails_referencing(conn: &mut SqliteConnection, path: &str) -> AppResult<i64> {
+    let (forward, backward) = path_spellings(path);
     let (total,): (i64,) = sqlx::query_as(
-        "SELECT (SELECT COUNT(*) FROM videos WHERE thumbnail_path = ?)
-              + (SELECT COUNT(*) FROM channels WHERE avatar_path = ?)",
+        "SELECT (SELECT COUNT(*) FROM videos WHERE thumbnail_path IN (?, ?))
+              + (SELECT COUNT(*) FROM channels WHERE avatar_path IN (?, ?))",
     )
-    .bind(path)
-    .bind(path)
+    .bind(&forward)
+    .bind(&backward)
+    .bind(&forward)
+    .bind(&backward)
     .fetch_one(conn)
     .await
     .map_err(|error| db_error("failed to count thumbnail references", error))?;
@@ -107,9 +123,11 @@ async fn count_thumbnails_referencing(conn: &mut SqliteConnection, path: &str) -
 }
 
 async fn count_live_chats_referencing(conn: &mut SqliteConnection, path: &str) -> AppResult<i64> {
+    let (forward, backward) = path_spellings(path);
     let (total,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM videos WHERE live_chat_file_path = ?")
-            .bind(path)
+        sqlx::query_as("SELECT COUNT(*) FROM videos WHERE live_chat_file_path IN (?, ?)")
+            .bind(forward)
+            .bind(backward)
             .fetch_one(conn)
             .await
             .map_err(|error| db_error("failed to count live chat references", error))?;
