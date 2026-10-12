@@ -103,9 +103,9 @@ jobs:
             # Nothing in this pipeline evaluates the ACL: `cargo test` never initializes the Tauri
             # runtime, `pnpm build` only emits the bundle, and `--smoke-test` exits inside `setup()`.
             # `--webview-check` (release.yml) closes the runtime half for the three grants it can
-            # exercise without a side effect, but it only runs on a release, and the four plugin
-            # grants cannot be probed that way at all: a file picker, a browser launch, a network
-            # call, a restart.
+            # exercise without a side effect, but it only runs on a release, and the three plugin
+            # grants (the updater's check and install, and the restart) cannot be probed that way
+            # at all, since each one has a side effect no unattended run may take.
             #
             # So this gates the declaration half, which is where the drift actually happens, on every
             # push. Both directions: an API added to a seam fails until its permission is decided,
@@ -219,8 +219,8 @@ jobs:
             # advisories and says nothing about licensing. For an MIT-licensed public project
             # that asymmetry is the gap a copyleft transitive would slip through, the more so
             # now that Dependabot groups routine bumps into a single PR. Gated rather than
-            # informational because the tree was measured first: 94 production packages, 7
-            # distinct licenses, every one already permissive.
+            # informational because every production package already carries a permissive
+            # license, so a failure here is always a new dependency and never the existing tree.
             - name: Check production JS licenses
               run: pnpm licenses:check
 

@@ -102,12 +102,12 @@ permission that is missing, misspelled, or scoped too narrowly compiles, passes 
 `pnpm build`, and fails on the first click a user makes. Two checks already cover part of that.
 `scripts/verify-capability-surface.js` (every push) proves the granted list and the two seam files in
 `src/lib/` cannot drift apart, and `--webview-check` (every release leg) proves the three `core:*`
-grants and the asset protocol work in the packaged build.
+grants, the asset protocol and the player's `kvxmedia` protocol work in the packaged build.
 
 Neither reaches the plugin grants, and the reason is that exercising one has a side effect no
 unattended run may take, whether a file picker, a browser launch, a network call or a process
-restart. So they are checked by hand, here, once per release. This list is what "review the draft" in step 7 means for
-them.
+restart. So they are checked by hand, here, once per release. This list is what "review the draft"
+in step 7 means for them.
 
 Run it against the **installed artifact from the draft**, not `pnpm tauri dev`. The ACL itself is the
 same in dev (the capabilities are compiled into the binary either way), so a missing grant is

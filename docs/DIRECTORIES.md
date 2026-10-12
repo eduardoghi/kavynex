@@ -73,17 +73,18 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   path and, on a second line, the folder the move left, written once a library move has copied
   everything and before the old folder is removed. A launch that still has the folder the move left
   stored, and finds this one populated, adopts it, so a move cut short does not look like a lost
-  library (`library/recovery.rs`). Once another library is stored, the file is ignored and removed. It is removed once the new path
-  is stored, and choosing another library in Settings removes it too.
-- Short-lived scratch files, present only during the corresponding operation: `.bak.tmp`
-  (the snapshot being vacuumed, before it is promoted to `.bak`), `.bak.rotating` and
-  `.corrupt.rotating` (the newest generation parked while the older ones shift, put back by the next
-  run when one died midway, with `kavynex-backup.db.rotating` the same in the external folder), `.after-damage.tmp` (the same for
-  `.after-damage`), `.import-staged` /
-  `.import-staged.tmp` (an import waiting for the next startup), `.import-applying` (see
-  below), `.restore.partial` (a snapshot being copied for a restore, renamed to `.restore.tmp` once
-  it is complete), `.restore.tmp` (a snapshot ready to be restored), `.corrupt.tmp` (a database being moved
-  aside), and `.export-staging` next to a chosen *export* destination rather than here.
+  library (`library/recovery.rs`). Once another library is stored, the file is ignored and removed.
+  It is removed once the new path is stored, and choosing another library in Settings removes it
+  too.
+- Short-lived scratch files, present only during the corresponding operation: `.bak.tmp` (the
+  snapshot being vacuumed, before it is promoted to `.bak`), `.bak.rotating` and `.corrupt.rotating`
+  (the newest generation parked while the older ones shift, put back by the next run when one died
+  midway, with `kavynex-backup.db.rotating` the same in the external folder), `.after-damage.tmp`
+  (the same for `.after-damage`), `.import-staged` / `.import-staged.tmp` (an import waiting for the
+  next startup), `.import-applying` (see below), `.restore.partial` (a snapshot being copied for a
+  restore, renamed to `.restore.tmp` once it is complete), `.restore.tmp` (a snapshot ready to be
+  restored), `.corrupt.tmp` (a database being moved aside), and `.export-staging` next to a chosen
+  *export* destination rather than here.
 
 `.import-applying` is written once an import has moved the current database aside into
 `.pre-import`, and removed once the swap (or its rollback) has put a database back in place, so it
@@ -147,8 +148,9 @@ default folder and nothing prompts for one, so a fresh install has no off-volume
 is worth stating plainly because the paragraph above otherwise reads as though the problem were
 already solved. When a folder *is* configured (Settings > Database, stored as `external_backup_dir`
 in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir` writes
-`kavynex-backup.db` there once a day, the first time as soon as the folder is chosen, rotated as `kavynex-backup.db.1` / `kavynex-backup.db.2`
-(`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the same atomic `export_database`. Only the
+`kavynex-backup.db` there once a day, the first time as soon as the folder is chosen, rotated as
+`kavynex-backup.db.1` / `kavynex-backup.db.2` (`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the
+same atomic `export_database`. Only the
 database is mirrored (the media files are not), and the folder is left untouched when it is
 unreachable (an unplugged drive) rather than recreated. Next to the copies sits
 `kavynex-backup.lineage`, naming the database they were made from, and copies an earlier database
@@ -216,11 +218,11 @@ alone whatever its age, and one that does not is trimmed oldest-first until it f
 
 `child-cwd/` is an empty folder made at startup (`utils::process::init_private_child_working_dir`)
 for the yt-dlp and FFmpeg runs that have no directory of their own (the format listing, the
-comment fetch, the version checks) to start in. It holds nothing. It exists so those runs do not
+comment fetch, the version checks, and a thumbnail FFmpeg run that was given none) to start in. It holds nothing. It exists so those runs do not
 start in the shared temp directory, where any program can leave an executable that a lookup by
 bare name would find.
 
-A fifth, `pending-media/`, is created by `services/pending_media.rs` rather than
+Another one, `pending-media/`, is created by `services/pending_media.rs` rather than
 `temp_paths.rs`, and holds something different again, one `pending-*.json`
 marker per media creation that has already written its artifacts into the library but has
 not yet inserted the row. Adding media is not a single call, and between those two steps

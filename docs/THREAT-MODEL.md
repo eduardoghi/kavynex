@@ -232,9 +232,10 @@ case has limited blast radius:
 
 `get_library_summary`, `check_library_integrity`, `verify_library_content` and `open_path_in_system`
 read the library from the settings, like `persist_thumbnail_file`,
-`download_channel_avatar_from_handle`, `resolve_display_thumbnails` and `create_media`. Until
-2026-10 each took a `library_path` and checked it against the setting, which made the backend police
-a value it already had. The renderer still sends one where an old caller does, and it is ignored.
+`download_channel_avatar_from_handle`, `resolve_display_thumbnails` and `create_media`. None of
+them takes a `library_path` from the renderer, so the backend does not police a value it already
+has. `create_media`'s request keeps the field for the backend's own use, filled from the settings
+and never read from IPC (`#[serde(skip_deserializing)]`).
 
 The first three were once an exception even to that check, on the grounds that onboarding and the
 change-library flow needed them to act on a candidate folder before it was persisted. No caller ever
@@ -446,7 +447,7 @@ artifacts the startup sweep will act on. The eight commands this removed, and wh
 **The write validation lives at the write boundary**, in `video_repository::insert_media`, rather
 than on a command. That distinction is the reason it is mentioned here at all. As a command-layer
 check it would be a property of *arriving over IPC*, which leaves an internal caller trusted to have
-validated on its own. `media_creation` mostly does, with one gap that made the point. the
+validated on its own. `media_creation` mostly does, with one gap. The
 `media_type` a yt-dlp creation stores is the download's own value and never passes through
 `normalize_create_media_request`, so nothing but the table's `CHECK` would stand behind it.
 

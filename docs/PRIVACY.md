@@ -104,8 +104,10 @@ share has to be copied to a local folder first (a share mounted as a drive lette
 Pointing the new install at the same folder first is safe too. Its first copy renames the old ones
 to `kavynex-backup-previous-<time>.db` instead of replacing them, and those import the same way.
 
-To remove everything, delete the library folder plus the three app directories (config, cache and
-logs). The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the
-per-OS paths of the other three and what each one holds. Note that the config directory is the one
+To remove everything, delete the library folder plus the app's own directories (config, cache,
+logs, and the local data folder that keeps recovered downloads). On Linux the config and data
+directories are separate (`~/.config/...` and `~/.local/share/...`), so there is one more to
+delete there. The Diagnostics dialog shows the resolved library folder; `DIRECTORIES.md` lists the
+per-OS paths of the others and what each one holds. Note that the config directory is the one
 holding the database and its automatic backups, so deleting it discards the channel/watched/comment
 data even though the media files live elsewhere.

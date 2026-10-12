@@ -243,8 +243,9 @@ against a Rust constant, `SCHEMA_VERSION` (currently `17`), in `db_schema/mod.rs
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
-- **Baseline (versions 0..=6 -> 7).** Every database that predates versioned migrations (including a brand-new, empty database) is below `BASELINE_SCHEMA_VERSION` (7) and goes
-  through `apply_baseline_schema` exactly once. It drops the legacy
+- **Baseline (versions 0..=6 -> 7).** Every database that predates versioned migrations (including a
+  brand-new, empty database) is below `BASELINE_SCHEMA_VERSION` (7) and goes through
+  `apply_baseline_schema` exactly once. It drops the legacy
   `video_live_chat_messages` table, creates all four tables with `CREATE TABLE IF NOT
   EXISTS`, adds any missing additive `videos` columns (`is_live`, `has_live_chat`,
   `live_chat_file_path`, `title_normalized`) with guarded `ALTER TABLE ... ADD COLUMN`,
@@ -492,9 +493,9 @@ A generation that cannot be moved (a file another program holds open, a read-onl
 rotation where it is, and `.bak` is then still in its slot. The fresh snapshot is not promoted over
 it. It stays in `.bak.tmp`, already flushed and checked, where a restore still finds it, the run
 reports an error, and the next one tries the rotation again. Promoting anyway would discard the
-previous snapshot every day the file stays held. `.bak` itself is moved first, to `.bak.rotating`, before the older generations shift, so
-when it is the held file nothing above it moves either. A `.bak.rotating` left by a run that died
-midway is put back by the next one.
+previous snapshot every day the file stays held. `.bak` itself is moved first, to `.bak.rotating`,
+before the older generations shift, so when it is the held file nothing above it moves either. A
+`.bak.rotating` left by a run that died midway is put back by the next one.
 
 A database whose `user_version` is above this build's `SCHEMA_VERSION` (an older version installed
 over a newer one) is not snapshotted at all. This build can neither open it nor restore a copy of
