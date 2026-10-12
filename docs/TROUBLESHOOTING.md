@@ -160,8 +160,12 @@ Ubuntu 22.04 and Debian 12 are the oldest releases carrying the 4.1 series, but 
 more than that. The binary is linked against glibc 2.39, so the oldest systems that run it are
 Ubuntu 24.04, Debian 13 and Fedora 40. The `.deb` and `.rpm` declare it, so the package manager
 refuses the install on an older system instead of the app failing to start with
-`GLIBC_2.39 not found`. The AppImage carries its own WebKitGTK but uses the system's glibc, so it
-has the same floor. The release workflow checks the binary against it on every build.
+`GLIBC_2.39 not found`. The release workflow checks the binary against it on every build.
+
+The AppImage uses the system's glibc but carries its own WebKitGTK, GLib and GnuTLS, built on
+Ubuntu 26.04, and those need glibc 2.43. On an older system it fails at launch with
+`GLIBC_2.43 not found`, and the `.deb` or `.rpm` is the one to install there. The release workflow
+checks every file the AppImage carries against that floor too.
 
 **The GPU driver and WebKitGTK's compositing disagree.** On some setups, most often the proprietary
 NVIDIA driver, the window opens and stays blank, or the process dies at launch. Two environment

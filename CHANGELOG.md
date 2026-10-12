@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   again.
 - The database import confirmation shows the picked file's name and takes keyboard focus.
 - Two unused comment indexes are dropped from the database, which speeds up saving comments.
+- The Linux install notes say the AppImage needs glibc 2.43 (Ubuntu 26.04 or later). Its bundled
+  WebKitGTK has needed that since 1.7.0, while the notes gave it the 2.39 of the `.deb` and `.rpm`.
 
 ### Fixed
 

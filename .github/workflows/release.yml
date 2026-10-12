@@ -576,11 +576,11 @@ jobs:
                   echo "Smoke-testing $binary"
                   xvfb-run -a "$binary" --smoke-test
 
-            # The .deb and .rpm declare the glibc they need (bundle.linux in tauri.conf.json), and
-            # the AppImage carries no glibc of its own, so all three need the version the binary
-            # actually links against to be no newer than that. It is decided by the build image,
-            # not by anything in the code, so a newer runner can raise it silently. A binary that
-            # needs more than the declared floor fails here instead of on a user's older system.
+            # The .deb and .rpm declare the glibc they need (bundle.linux in tauri.conf.json), so the
+            # version the binary actually links against must be no newer than that. It is decided by
+            # the build image, not by anything in the code, so a newer runner can raise it silently.
+            # A binary that needs more than the declared floor fails here instead of on a user's
+            # older system.
             #
             # pipefail and the two empty checks, because the comparison below passes on an empty
             # value. `sort -V` puts the empty line first and returns the floor, so an objdump that
@@ -608,10 +608,13 @@ jobs:
 
             # The AppImage brings its own copies of WebKitGTK and the libraries under it, taken from the
             # build image, and those can need a newer glibc than the binary does. The step above reads
-            # the binary alone, so this one reads every file the AppImage carries. README.md promises
-            # the same floor for all three Linux packages.
+            # the binary alone, so this one reads every file the AppImage carries. Built on
+            # ubuntu-26.04, the bundled WebKitGTK, GLib and GnuTLS need glibc 2.43, so the AppImage
+            # has a floor of its own, the one README.md and docs/TROUBLESHOOTING.md give for it.
             - name: Check the glibc the AppImage's bundled libraries need (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
+              env:
+                  APPIMAGE_GLIBC_FLOOR: "2.43"
               run: |
                   appimage=$(find "$GITHUB_WORKSPACE/src-tauri/target" -type f -path '*/bundle/appimage/*.AppImage' | head -n1)
 
@@ -620,7 +623,7 @@ jobs:
                       exit 1
                   fi
 
-                  floor=$(jq -r '.bundle.linux.deb.depends[] | select(startswith("libc6")) | capture("(?<v>[0-9]+[.][0-9]+)").v' src-tauri/tauri.conf.json)
+                  floor="$APPIMAGE_GLIBC_FLOOR"
                   workdir="$RUNNER_TEMP/appimage-glibc"
                   rm -rf "$workdir"
                   mkdir -p "$workdir"
@@ -636,10 +639,10 @@ jobs:
                       exit 1
                   fi
 
-                  echo "The AppImage's files need glibc $needed, and the packages declare $floor."
+                  echo "The AppImage's files need glibc $needed, and its documented floor is $floor."
 
                   if [ "$(printf '%s\n%s\n' "$floor" "$needed" | sort -V | tail -n1)" != "$floor" ]; then
-                      echo "::error::the AppImage carries files that need glibc $needed, newer than the $floor README.md promises for it. Raise the floor there and in docs/TROUBLESHOOTING.md, or build on an older image." >&2
+                      echo "::error::the AppImage carries files that need glibc $needed, newer than the $floor README.md promises for it. Raise APPIMAGE_GLIBC_FLOOR here and the floor in README.md and docs/TROUBLESHOOTING.md, or build on an older image." >&2
                       exit 1
                   fi
 

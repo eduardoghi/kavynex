@@ -83,7 +83,9 @@ Choose the package according to your distribution, in the build matching your pr
 - Debian/Ubuntu: `kavynex_*_amd64.deb` / `kavynex_*_arm64.deb`
 - Fedora/RHEL/openSUSE: `kavynex-*.x86_64.rpm` / `kavynex-*.aarch64.rpm`
 
-All three need glibc 2.39 or newer, which means Ubuntu 24.04, Debian 13, Fedora 40 or later.
+The `.deb` and `.rpm` need glibc 2.39 or newer, which means Ubuntu 24.04, Debian 13, Fedora 40 or
+later. The AppImage carries its own WebKitGTK and the libraries under it, built on Ubuntu 26.04, and
+those need glibc 2.43 or newer (Ubuntu 26.04 or later). On an older system, use the `.deb` or `.rpm`.
 
 (The architecture is spelled differently by each packaging format. That is the format's convention,
 not an inconsistency in the build.)
