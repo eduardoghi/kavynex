@@ -12,9 +12,11 @@ import {
 export function DiagnosticsDatabaseSection({
     stats,
     onCompactingChange,
+    onRebuildingIndexesChange,
 }: {
     stats: MediaRepositoryStats;
     onCompactingChange?: (busy: boolean) => void;
+    onRebuildingIndexesChange?: (busy: boolean) => void;
 }): JSX.Element {
     return (
         <Stack gap="sm">
@@ -33,7 +35,7 @@ export function DiagnosticsDatabaseSection({
                 <DiagnosticsMetric label="Unwatched" value={stats.total_unwatched} />
             </DiagnosticsMetricGrid>
 
-            <DiagnosticsDatabaseIntegrityCheck />
+            <DiagnosticsDatabaseIntegrityCheck onRebuildingChange={onRebuildingIndexesChange} />
 
             <DiagnosticsDatabaseCompaction onBusyChange={onCompactingChange} />
         </Stack>

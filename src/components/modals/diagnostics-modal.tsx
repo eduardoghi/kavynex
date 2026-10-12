@@ -54,8 +54,10 @@ export function DiagnosticsModal({
     onOpenKeptFolder,
 }: DiagnosticsModalProps): JSX.Element {
     const [confirmRemoveOrphansOpen, setConfirmRemoveOrphansOpen] = useState(false);
+    // The two database writes the report can start. Either holds the modal open until it ends.
     const [isCompacting, setIsCompacting] = useState(false);
-    const modalLock = useModalLock(isCompacting, onClose);
+    const [isRebuildingIndexes, setIsRebuildingIndexes] = useState(false);
+    const modalLock = useModalLock(isCompacting || isRebuildingIndexes, onClose);
     const showInitialLoading = loading && !summary;
     const showRefreshingState = loading && !!summary;
     const orphanRemoval = summary?.diagnostics.orphanRemoval ?? null;
@@ -179,6 +181,7 @@ export function DiagnosticsModal({
                                     <DiagnosticsSummarySections
                                         summary={summary}
                                         onCompactingChange={setIsCompacting}
+                                        onRebuildingIndexesChange={setIsRebuildingIndexes}
                                     />
                                     <DiagnosticsIssuesSection
                                         issues={summary.issues}

@@ -11,6 +11,7 @@ import { DiagnosticsToolsAndLibrarySection } from "./diagnostics-tools-and-libra
 type DiagnosticsSummarySectionsProps = {
     summary: DiagnosticsSummary;
     onCompactingChange?: (busy: boolean) => void;
+    onRebuildingIndexesChange?: (busy: boolean) => void;
 };
 
 // The report, in reading order. Each section is its own module and takes only the slice of the
@@ -20,6 +21,7 @@ type DiagnosticsSummarySectionsProps = {
 export function DiagnosticsSummarySections({
     summary,
     onCompactingChange,
+    onRebuildingIndexesChange,
 }: DiagnosticsSummarySectionsProps): JSX.Element {
     const diagnostics = summary.diagnostics;
 
@@ -49,6 +51,7 @@ export function DiagnosticsSummarySections({
             <DiagnosticsDatabaseSection
                 stats={diagnostics.mediaRepositoryStats}
                 onCompactingChange={onCompactingChange}
+                onRebuildingIndexesChange={onRebuildingIndexesChange}
             />
 
             <Divider />

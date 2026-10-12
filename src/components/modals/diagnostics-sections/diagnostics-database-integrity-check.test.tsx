@@ -77,6 +77,34 @@ describe("DiagnosticsDatabaseIntegrityCheck", () => {
         });
     });
 
+    it("reports itself busy while the rebuild writes, so the modal can stay open", async () => {
+        vi.mocked(checkDatabaseIntegrity).mockResolvedValueOnce({
+            ok: false,
+            problems: ["row 3 missing from index idx_videos_channel_id"],
+            truncated: false,
+        });
+        let finish: () => void = () => {};
+        vi.mocked(rebuildDatabaseIndexes).mockReturnValueOnce(
+            new Promise((resolve) => {
+                finish = () => resolve({ ok: true, problems: [], truncated: false });
+            })
+        );
+        const onRebuildingChange = vi.fn();
+
+        renderWithMantine(
+            <DiagnosticsDatabaseIntegrityCheck onRebuildingChange={onRebuildingChange} />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "Run full integrity check" }));
+        fireEvent.click(await screen.findByRole("button", { name: "Rebuild indexes" }));
+
+        await waitFor(() => expect(onRebuildingChange).toHaveBeenLastCalledWith(true));
+
+        finish();
+
+        await waitFor(() => expect(onRebuildingChange).toHaveBeenLastCalledWith(false));
+    });
+
     it("points to a backup restore when a rebuild leaves damage behind", async () => {
         vi.mocked(checkDatabaseIntegrity).mockResolvedValueOnce({
             ok: false,

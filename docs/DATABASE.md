@@ -418,7 +418,8 @@ Damage limited to an index ("row N missing from index", "wrong # of entries in i
 it, with nothing lost, so a pass clears `.integrity-failed` and the daily backups rotate again. Damage
 to a table is not repaired, and a `REINDEX` that SQLite stops with `SQLITE_CORRUPT` is reported
 through the check that follows rather than as an error. Diagnostics then points to restoring a backup
-by hand (`TROUBLESHOOTING.md`).
+by hand (`TROUBLESHOOTING.md`). Diagnostics stays open while the rebuild runs, as it does for a
+compaction.
 
 The app does not run `PRAGMA optimize`. On a database that was never analyzed it runs `ANALYZE`,
 and the statistics that leaves behind change what the query planner picks. Every index choice

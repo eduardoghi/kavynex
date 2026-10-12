@@ -1,11 +1,26 @@
 import { Box, Code, Group, Stack, Text } from "@mantine/core";
+import { useEffect } from "react";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useDatabaseIntegrityCheck } from "../../../hooks/use-database-integrity-check";
 import { AppButton } from "../../ui/app-button";
 
-export function DiagnosticsDatabaseIntegrityCheck(): JSX.Element {
+// `onRebuildingChange` holds the modal open while the index rebuild writes, for the reason the
+// compaction section gives. Closed mid-rebuild, the modal would drop its result, and reopened it
+// would let a check or a compaction start on top of the rebuild.
+export function DiagnosticsDatabaseIntegrityCheck({
+    onRebuildingChange,
+}: {
+    onRebuildingChange?: (busy: boolean) => void;
+}): JSX.Element {
     const { loading, rebuilding, result, runCheck, rebuildIndexes } =
         useDatabaseIntegrityCheck();
+
+    useEffect(() => {
+        onRebuildingChange?.(rebuilding);
+    }, [rebuilding, onRebuildingChange]);
+
+    // A section that goes away while busy must not leave the modal locked for good.
+    useEffect(() => () => onRebuildingChange?.(false), [onRebuildingChange]);
 
     return (
         <Stack gap="xs">
