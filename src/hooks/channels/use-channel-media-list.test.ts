@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
+import { createElement, useEffect } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MediaRow } from "../../types/media";
 import type { MediaPage } from "../../types/generated/MediaPage";
@@ -974,5 +975,51 @@ describe("useChannelMediaList", () => {
         expect(result.current.mediaItems).toEqual([]);
         expect(result.current.total).toBe(0);
         expect(result.current.hasMore).toBe(false);
+    });
+
+    it("lets a child's effect load the next page in the commit that lands the first one", async () => {
+        // The grid asks for the next page from an effect, and a child's effects run before the
+        // hook's own. A total kept in an effect-updated ref still said 0 there, so that first ask
+        // was refused and the grid had no reason to ask again.
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(page([createMediaRow({ id: 1 })], 2))
+            .mockResolvedValueOnce(page([createMediaRow({ id: 2 })], 2));
+
+        let list: ReturnType<typeof useChannelMediaList> | null = null;
+
+        function Grid({ hasMore, onLoadMore }: { hasMore: boolean; onLoadMore: () => Promise<void> }) {
+            useEffect(() => {
+                if (hasMore) {
+                    void onLoadMore();
+                }
+            }, [hasMore, onLoadMore]);
+
+            return null;
+        }
+
+        function Library() {
+            const current = useChannelMediaList({ selectedChannelId: 10, onError });
+            list = current;
+
+            return createElement(Grid, {
+                hasMore: current.hasMore,
+                // The hook's own stable callback, so the effect runs only when `hasMore` changes.
+                onLoadMore: current.loadMore,
+            });
+        }
+
+        render(createElement(Library));
+
+        await act(async () => {
+            await list!.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        await waitFor(() => {
+            expect(list!.mediaItems.map((item) => item.id)).toEqual([1, 2]);
+        });
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 1 })
+        );
     });
 });

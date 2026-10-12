@@ -112,24 +112,19 @@ export function useChannelMediaList({
     const loadedCountRef = useRef(0);
     const totalRef = useRef(0);
 
-    // Track the selected channel synchronously during render, not in an effect. On a channel
-    // switch the library section is remounted, and a child's mount effect (its applyQuery call)
-    // runs before this hook's own effects flush, so an effect-updated ref would still hold the
-    // previous channel and load the wrong channel's first page. Writing it during render keeps it
-    // current for any effect that fires afterwards.
-    selectedChannelIdRef.current = selectedChannelId;
-
-    useEffect(() => {
-        totalRef.current = total;
-    }, [total]);
-
     // Read by `handleWatchedChanged`, which adjusts the counts only for a row that is loaded and
     // cannot find that out inside a state updater (React may run one twice).
     const mediaItemsRef = useRef(mediaItems);
 
-    useEffect(() => {
-        mediaItemsRef.current = mediaItems;
-    }, [mediaItems]);
+    // These refs are written during render, not in an effect. A child's effects run before this
+    // hook's own in the same commit, and the grid's ask for the next page is one of them. On a
+    // channel switch the library section is remounted and its mount effect calls applyQuery, which
+    // would read the previous channel from an effect-updated ref and load the wrong channel's first
+    // page. Once a first page lands, the grid's effect calls loadMore, which would read the total of
+    // the query before it and refuse the page.
+    selectedChannelIdRef.current = selectedChannelId;
+    totalRef.current = total;
+    mediaItemsRef.current = mediaItems;
 
     // Derived from the rows handed out rather than from the rows kept, for the reason above. A
     // deduplicated append leaves the list shorter than the cursor, and reading `mediaItems.length`
