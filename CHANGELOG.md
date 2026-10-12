@@ -4,6 +4,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+## [1.8.0] (2026-10-12)
+
 ### Added
 
 - The library search has a button to clear it, like the comments search.
