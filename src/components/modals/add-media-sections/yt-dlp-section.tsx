@@ -1,3 +1,4 @@
+import { memo } from "react";
 import {
     ActionIcon,
     Box,
@@ -37,7 +38,7 @@ type YtDlpSectionProps = {
 };
 
 
-export function YtDlpSection({
+function YtDlpSectionView({
     mediaUrl,
     cookiesBrowser,
     cookiesBrowserProfile,
@@ -216,3 +217,7 @@ export function YtDlpSection({
         </Stack>
     );
 }
+
+// Memoized because the modal re-renders on every yt-dlp log line (the terminal it holds), and
+// none of this section's props change with the log.
+export const YtDlpSection = memo(YtDlpSectionView);

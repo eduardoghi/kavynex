@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Box, Group, Text, Tooltip } from "@mantine/core";
 import { Headphones, Upload, Video } from "lucide-react";
 import type { MediaType } from "../../../types/media";
@@ -20,7 +21,7 @@ type LocalMediaSectionProps = {
     onPickMedia: () => void;
 };
 
-export function LocalMediaSection({
+function LocalMediaSectionView({
     mediaPath,
     mediaType,
     importMode,
@@ -131,3 +132,7 @@ export function LocalMediaSection({
         </Box>
     );
 }
+
+// Memoized because the modal re-renders on every yt-dlp log line (the terminal it holds), and
+// none of this section's props change with the log.
+export const LocalMediaSection = memo(LocalMediaSectionView);

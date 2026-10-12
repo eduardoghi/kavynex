@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Badge, Box, Group, Paper, Text, Tooltip, rem } from "@mantine/core";
 import { Image as ImageIcon } from "lucide-react";
 import type { MediaType } from "../../../types/media";
@@ -19,7 +20,7 @@ type ThumbnailSectionProps = {
     onPickThumb: () => void;
 };
 
-export function ThumbnailSection({
+function ThumbnailSectionView({
     thumbPath,
     mediaType,
     isGeneratingThumb,
@@ -157,3 +158,7 @@ export function ThumbnailSection({
         </Paper>
     );
 }
+
+// Memoized because the modal re-renders on every yt-dlp log line (the terminal it holds), and
+// none of this section's props change with the log.
+export const ThumbnailSection = memo(ThumbnailSectionView);
