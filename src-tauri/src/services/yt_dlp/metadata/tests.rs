@@ -142,6 +142,31 @@ async fn run_and_capture_kills_the_child_and_reports_cancellation_when_flagged()
 }
 
 #[tokio::test]
+async fn a_run_cancelled_before_it_gets_a_slot_never_starts() {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    // A binary that does not exist. Reaching the spawn would report an exec failure, so the
+    // cancellation is what shows the run stopped at the semaphore, where a queued run waits.
+    let error = run_yt_dlp_and_capture_json(
+        "kavynex-no-such-binary",
+        &[],
+        30,
+        AppErrorCode::YtDlpMetadataTimeout,
+        AppErrorCode::YtDlpMetadataExecFailed,
+        AppErrorCode::YtDlpMetadataFailed,
+        "timed out",
+        "exec failed",
+        "failed",
+        Some(Arc::new(AtomicBool::new(true))),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::YtDlpDownloadCancelled.as_str());
+}
+
+#[tokio::test]
 async fn read_capped_json_stdout_flags_overflow() {
     // A single JSON line larger than the cap is flagged as overflowed.
     let big = format!("{{\"x\":\"{}\"}}", "a".repeat(200));

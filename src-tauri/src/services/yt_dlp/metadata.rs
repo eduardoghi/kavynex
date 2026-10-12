@@ -540,9 +540,20 @@ async fn run_yt_dlp_and_capture_json(
     // (spawn through wait), so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers
     // queue here rather than each spawning a process and buffering up to 128 MiB, and a queue
     // deeper than the in-flight ceiling is refused up front rather than enqueued without limit.
-    let _permit = STANDALONE_RUN_SEMAPHORE
-        .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
-        .await?;
+    // A cancel reaches a run still queued here too, as it does a download waiting for its slot,
+    // rather than only once a permit frees and the run starts.
+    let _permit = tokio::select! {
+        // Checked first, so a run cancelled before it got a slot never starts.
+        biased;
+
+        () = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadCancelled,
+                "yt-dlp download cancelled",
+            ));
+        }
+        permit = STANDALONE_RUN_SEMAPHORE.acquire(AppErrorCode::TooManyConcurrentYtDlpRuns) => permit?,
+    };
 
     let mut command = Command::new(yt_dlp);
     command

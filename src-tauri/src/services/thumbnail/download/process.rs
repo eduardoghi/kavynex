@@ -110,10 +110,20 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
 ) -> AppResult<std::process::Output> {
     // Bound concurrent thumbnail/avatar runs (see THUMBNAIL_RUN_SEMAPHORE). Held for the whole
     // function (spawn through wait), so a burst queues here rather than each spawning a yt-dlp +
-    // ffmpeg tree at once, and a queue deeper than the in-flight ceiling is refused up front.
-    let _permit = THUMBNAIL_RUN_SEMAPHORE
-        .acquire(AppErrorCode::TooManyConcurrentYtDlpRuns)
-        .await?;
+    // ffmpeg tree at once, and a queue deeper than the in-flight ceiling is refused up front. A
+    // cancel reaches a run still queued here, rather than only once a permit frees.
+    let _permit = tokio::select! {
+        // Checked first, so a run cancelled before it got a slot never starts.
+        biased;
+
+        () = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
+            return Err(AppError::from_code(
+                AppErrorCode::YtDlpDownloadCancelled,
+                "yt-dlp download cancelled",
+            ));
+        }
+        permit = THUMBNAIL_RUN_SEMAPHORE.acquire(AppErrorCode::TooManyConcurrentYtDlpRuns) => permit?,
+    };
 
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     crate::utils::process::configure_child_async(&mut command);
