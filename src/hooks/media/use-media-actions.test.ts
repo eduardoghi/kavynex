@@ -468,7 +468,7 @@ describe("useMediaActions", () => {
             ...mediaPlayer.activeMedia,
             has_comments: 1,
             comments_count: 12,
-            comments_state: "unknown",
+            comments_state: "available",
         });
     });
 
@@ -848,7 +848,7 @@ describe("useMediaActions", () => {
             id: 1,
             has_comments: 1,
             comments_count: 5,
-            comments_state: "unknown",
+            comments_state: "available",
         });
     });
 
@@ -888,7 +888,7 @@ describe("useMediaActions", () => {
             ...mediaPlayer.activeMedia,
             has_comments: 0,
             comments_count: 0,
-            comments_state: "unknown",
+            comments_state: "none",
         });
 
         const updater = vi.mocked(setMediaItems).mock.calls[0]![0] as (
@@ -956,9 +956,12 @@ describe("useMediaActions", () => {
             "No comments were found for this media. Your saved comments were kept."
         );
         expect(onError).not.toHaveBeenCalled();
-        // Saved comment counts must be left untouched, not reset to zero.
-        expect(setMediaItems).not.toHaveBeenCalled();
-        expect(mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
+        // Saved comment counts must be left untouched, not reset to zero. What changes is the
+        // state, which the backend has just recorded, so Fetch is no longer offered.
+        expect(mediaPlayer.setActiveMedia).toHaveBeenCalledWith({
+            ...mediaPlayer.activeMedia,
+            comments_state: mediaPlayer.activeMedia!.comments_count > 0 ? "available" : "none",
+        });
     });
 
     it("updates only the targeted item when editing title", async () => {

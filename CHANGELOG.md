@@ -62,6 +62,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- After Fetch comments finds nothing, the button is no longer offered again for the same media, and
+  Refresh comments is no longer in the player menu for a media without a YouTube source.
 - A library move that finished but could not save the new folder says so and asks for a restart,
   instead of reporting that the move failed. A cancelled move is shown as a notice.
 - Diagnostics no longer reports problems worked out from a check that could not run. A missing

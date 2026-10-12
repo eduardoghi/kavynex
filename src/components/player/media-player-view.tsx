@@ -304,7 +304,11 @@ export function MediaPlayerView({
                     isLive={isLive}
                     onOpenInYoutube={onOpenInYoutube}
                     onOpenFileLocation={onOpenFileLocation}
-                    onRefreshComments={onRefreshComments}
+                    // Only a media with a YouTube source has comments to fetch, the same rule the
+                    // comments panel applies to its own Fetch button.
+                    onRefreshComments={
+                        media?.youtube_video_id?.trim() ? onRefreshComments : undefined
+                    }
                     onCancelRefreshComments={onCancelRefreshComments}
                     isRefreshingComments={isRefreshingComments}
                     isUpdatingWatchedStatus={isUpdatingWatchedStatus}

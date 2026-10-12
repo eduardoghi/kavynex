@@ -41,6 +41,35 @@ describe("MediaPlayerView", () => {
         expect(screen.getByText("Unable to open media")).toBeInTheDocument();
     });
 
+    it("does not offer Refresh comments for a media without a YouTube source", async () => {
+        // The menu item used to show for every media and then fail in an error modal. The comments
+        // panel already hid its own Fetch button by the same rule.
+        renderWithMantine(
+            <MediaPlayerView
+                media={createMedia({ youtube_video_id: null })}
+                mediaSrc="file:///media/test.mp4"
+                thumbnailSrc=""
+                isAudio={false}
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                libraryPath="/library"
+                onOpenInYoutube={vi.fn()}
+                onOpenFileLocation={vi.fn()}
+                onRefreshComments={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onSaveProgress={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+
+        expect(await screen.findByRole("menuitem", { name: "Open file location" })).toBeInTheDocument();
+        expect(screen.queryByRole("menuitem", { name: "Refresh comments" })).not.toBeInTheDocument();
+    });
+
     it("passes the live and chat replay state through to the header", async () => {
         // The regression this pins was in the wiring, not the header. The header rendered both
         // badges correctly all along, but MediaPlayerView never passed the props, so they silently

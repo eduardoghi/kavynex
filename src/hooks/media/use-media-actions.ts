@@ -282,31 +282,40 @@ export function useMediaActions({
                     // untouched. This is not a failure (a real extraction problem surfaces as
                     // a thrown error). Tell the user with a neutral notice and leave the
                     // stored counts alone.
-                    if (!result.updated) {
-                        onNotice(
-                            "No comments were found for this media. Your saved comments were kept."
-                        );
-                        return;
-                    }
+                    // The backend records what the fetch concluded (`available` while any comment
+                    // is stored, `none` otherwise), and the panel offers Fetch again only while
+                    // that is unknown, so the copy in memory follows it. Left as it was, a fetch
+                    // that found nothing kept offering itself.
+                    const applyFetchResult = (currentItem: MediaRow): MediaRow => {
+                        const commentsCount = result.updated
+                            ? result.totalComments
+                            : currentItem.comments_count;
+
+                        return {
+                            ...currentItem,
+                            has_comments: commentsCount > 0 ? 1 : 0,
+                            comments_count: commentsCount,
+                            comments_state: commentsCount > 0 ? "available" : "none",
+                        };
+                    };
 
                     setMediaItems((currentItems) =>
                         currentItems.map((item) =>
-                            updateItemById(item, media.id, (currentItem) => ({
-                                ...currentItem,
-                                has_comments: result.totalComments > 0 ? 1 : 0,
-                                comments_count: result.totalComments,
-                            }))
+                            updateItemById(item, media.id, applyFetchResult)
                         )
                     );
 
                     const active = activeMediaRef.current;
 
                     if (active?.id === media.id) {
-                        setActiveMedia({
-                            ...active,
-                            has_comments: result.totalComments > 0 ? 1 : 0,
-                            comments_count: result.totalComments,
-                        });
+                        setActiveMedia(applyFetchResult(active));
+                    }
+
+                    if (!result.updated) {
+                        onNotice(
+                            "No comments were found for this media. Your saved comments were kept."
+                        );
+                        return;
                     }
                 } catch (error) {
                     logError("media-actions", "Failed to refresh comments.", error, {
