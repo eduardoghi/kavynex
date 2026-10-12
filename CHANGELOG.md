@@ -62,6 +62,20 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- The sort button shows the arrows that match the sort, not the A to Z ones for every sort.
+- The library grid keeps its rows while it reloads, so adding a media or typing in the search no
+  longer sends it back to the top.
+- The yt-dlp terminal badge shows "failed" in red or "stopped" in gray for a run that failed or was
+  cancelled, instead of "ready".
+- Diagnostics counts live chat files whose path points outside the library with the other invalid
+  paths. They were reported nowhere.
+- Replacing or removing a channel avatar says when the old file could not be deleted.
+- Choosing the external backup folder makes the first copy right away instead of waiting for the
+  next pass of the backup loop, up to six hours later.
+- A library move that could not remove all of the old folder says the media may still be there,
+  instead of reporting plain success.
+- A download whose comments could not be saved says so once the import closes. It used to look
+  fully backed up.
 - A channel URL pasted from a channel tab or a share link (`/videos`, `?si=...`) is stored as
   the channel's handle without the extra path or query. The `@` form of such a URL is no longer
   refused as invalid.
