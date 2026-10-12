@@ -69,9 +69,25 @@ describe("youtube utils", () => {
         expect(normalizeYoutubeHandle("user/abc")).toBe("user/abc");
     });
 
-    it("trims the identifier and keeps nested path segments", () => {
+    it("trims the identifier and drops the path after it", () => {
         expect(normalizeYoutubeHandle("channel/ abc")).toBe("channel/abc");
-        expect(normalizeYoutubeHandle("channel/a/b")).toBe("channel/a/b");
+        expect(normalizeYoutubeHandle("channel/a/b")).toBe("channel/a");
+    });
+
+    it("keeps only the identifier of a pasted channel tab or share link, in every form", () => {
+        expect(normalizeYoutubeHandle("https://www.youtube.com/channel/UC123/videos")).toBe(
+            "channel/UC123"
+        );
+        expect(normalizeYoutubeHandle("https://www.youtube.com/c/name?si=abc")).toBe("c/name");
+        expect(normalizeYoutubeHandle("https://www.youtube.com/@name/videos")).toBe("@name");
+        expect(normalizeYoutubeHandle("@name?si=abc#top")).toBe("@name");
+    });
+
+    it("keeps the slashes of a bare value, so another site's url is not shrunk into a handle", () => {
+        expect(normalizeYoutubeHandle("m.youtube.com/@abc")).toBe("@m.youtube.com/@abc");
+        expect(isValidNormalizedYoutubeHandle(normalizeYoutubeHandle("m.youtube.com/@abc"))).toBe(
+            false
+        );
     });
 
     it("returns empty when the path identifier is only whitespace", () => {

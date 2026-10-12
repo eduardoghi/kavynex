@@ -62,6 +62,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A channel URL pasted from a channel tab or a share link (`/videos`, `?si=...`) is stored as
+  the channel's handle without the extra path or query. The `@` form of such a URL is no longer
+  refused as invalid.
 - A database that does not open at startup no longer queues "Failed to load channels" and
   "Failed to prepare app settings" around the message or the recovery dialog that explains it.
 - Channel avatars no longer stay blank when the sidebar draws them before the library folder is

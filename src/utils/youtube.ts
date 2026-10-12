@@ -1,3 +1,13 @@
+/**
+ * Reduces what the user typed or pasted for a channel to the stored handle, which is `@name` or
+ * `channel/`, `c/` or `user/` followed by the identifier.
+ *
+ * A pasted channel URL keeps only the identifier. The query and fragment (`?si=...` from a share
+ * link) and any path after the identifier (the `/videos` of a channel tab) are dropped, the same
+ * for the `@` form and the prefixed ones. A bare value with no `@` keeps its slashes, so something
+ * that is not a channel at all (another site's URL) still fails validation instead of shrinking to
+ * a valid-looking handle. Returns "" when nothing usable is left.
+ */
 export function normalizeYoutubeHandle(value: string): string {
     const trimmed = value.trim();
 
@@ -8,6 +18,7 @@ export function normalizeYoutubeHandle(value: string): string {
     const withoutUrl = trimmed
         .replace(/^https?:\/\/(www\.)?youtube\.com\//i, "")
         .replace(/^youtube\.com\//i, "")
+        .replace(/[?#].*$/s, "")
         .trim();
 
     if (!withoutUrl) {
@@ -25,8 +36,8 @@ export function normalizeYoutubeHandle(value: string): string {
         normalizedPathValue.startsWith("c/") ||
         normalizedPathValue.startsWith("user/")
     ) {
-        const [prefix, ...rest] = normalizedPathValue.split("/");
-        const identifier = rest.join("/").trim();
+        const [prefix, identifierSegment] = normalizedPathValue.split("/");
+        const identifier = (identifierSegment ?? "").trim();
 
         if (!identifier) {
             return "";
@@ -44,7 +55,7 @@ export function normalizeYoutubeHandle(value: string): string {
     }
 
     const baseHandle = normalizedPathValue.startsWith("@")
-        ? normalizedPathValue.slice(1).trim()
+        ? (normalizedPathValue.split("/")[0] ?? "").slice(1).trim()
         : normalizedPathValue.trim();
 
     if (!baseHandle) {
