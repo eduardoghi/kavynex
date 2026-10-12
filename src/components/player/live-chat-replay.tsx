@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
     extractLiveChatPins,
     getActiveLiveChatPinFromPins,
-    getVisibleLiveChatMessages,
+    visibleLiveChatWindow,
     type LiveChatMessageItem,
 } from "../../services/live-chat-service";
 import { LiveChatPanel } from "./live-chat-panel";
@@ -135,9 +135,12 @@ export function LiveChatReplay({
         };
     }, [playerElement]);
 
+    // Keyed on the window's bounds rather than on the time, so a tick that reaches no new message
+    // keeps the same array and the panel below does not render, re-filter and re-scroll for it.
+    const visibleWindow = visibleLiveChatWindow(liveChatMessages, currentPlaybackTime);
     const visibleLiveChatMessages = useMemo(
-        () => getVisibleLiveChatMessages(liveChatMessages, currentPlaybackTime),
-        [liveChatMessages, currentPlaybackTime]
+        () => liveChatMessages.slice(visibleWindow.start, visibleWindow.end),
+        [liveChatMessages, visibleWindow.start, visibleWindow.end]
     );
 
     // The pins are extracted once per message list (not per playback tick), so the active-pin

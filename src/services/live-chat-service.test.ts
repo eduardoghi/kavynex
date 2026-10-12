@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     getActiveLiveChatPin,
-    getVisibleLiveChatMessages,
+    visibleLiveChatWindow,
     readLiveChatMessagesFromFile,
     type LiveChatMessageItem,
 } from "./live-chat-service";
@@ -13,6 +13,15 @@ vi.mock("../lib/tauri-client", () => ({
     invokeVoid: vi.fn(),
     streamLiveChatFile: vi.fn(),
 }));
+
+// The window the player shows, as the slice it takes of the list.
+function getVisibleLiveChatMessages(
+    list: LiveChatMessageItem[],
+    seconds: number
+): LiveChatMessageItem[] {
+    const { start, end } = visibleLiveChatWindow(list, seconds);
+    return list.slice(start, end);
+}
 
 vi.mock("../utils/app-logger", () => ({
     logInfo: vi.fn(),
@@ -464,7 +473,7 @@ describe("readLiveChatMessagesFromFile", () => {
     });
 });
 
-describe("getVisibleLiveChatMessages", () => {
+describe("visibleLiveChatWindow", () => {
     function messageAtOffset(offsetMs: number): LiveChatMessageItem {
         return {
             kind: "message",

@@ -183,15 +183,17 @@ function countMessagesUpToOffset(messages: LiveChatMessageItem[], playbackMs: nu
     return low;
 }
 
-export function getVisibleLiveChatMessages(
+// The bounds of the visible window, `[start, end)` into `messages`. Separate from the slice so the
+// player can keep the same array while the playhead moves without reaching a new message, which is
+// most ticks of a quiet chat.
+export function visibleLiveChatWindow(
     messages: LiveChatMessageItem[],
     playbackSeconds: number
-): LiveChatMessageItem[] {
+): { start: number; end: number } {
     const playbackMs = Math.max(0, Math.floor(playbackSeconds * 1000));
-    const upperBound = countMessagesUpToOffset(messages, playbackMs);
-    const start = Math.max(0, upperBound - MAX_VISIBLE_LIVE_CHAT_MESSAGES);
+    const end = countMessagesUpToOffset(messages, playbackMs);
 
-    return messages.slice(start, upperBound);
+    return { start: Math.max(0, end - MAX_VISIBLE_LIVE_CHAT_MESSAGES), end };
 }
 
 // The pinned messages only, keeping their ascending-offset order (a filtered subset of the

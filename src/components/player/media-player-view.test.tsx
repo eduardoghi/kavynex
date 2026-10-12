@@ -11,7 +11,7 @@ vi.mock("../../services/media-service", () => ({
 }));
 
 vi.mock("../../services/live-chat-service", () => ({
-    getVisibleLiveChatMessages: vi.fn(() => []),
+    visibleLiveChatWindow: vi.fn(() => ({ start: 0, end: 0 })),
     getActiveLiveChatPin: vi.fn(() => null),
     extractLiveChatPins: vi.fn(() => []),
     getActiveLiveChatPinFromPins: vi.fn(() => null),
