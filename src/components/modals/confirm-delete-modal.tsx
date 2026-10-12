@@ -1,6 +1,6 @@
 import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { Trash2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useModalLock } from "../../hooks/use-modal-lock";
 import { MODAL_CLOSE_BUTTON_STYLE } from "../ui/modal-chrome";
 
@@ -43,6 +43,15 @@ export function ConfirmDeleteModal({
 }: ConfirmDeleteModalProps): JSX.Element {
     const modalLock = useModalLock(loading || requireExplicitChoice, onClose);
 
+    // What the modal keeps showing while it fades out. The caller clears its target in the same
+    // tick it closes the modal after a delete, so the live props would turn "Delete **My video**?"
+    // into "Delete **this item**?" during the exit transition.
+    const shown = useRef({ message, description });
+
+    if (opened) {
+        shown.current = { message, description };
+    }
+
     return (
         <Modal
             opened={opened}
@@ -68,11 +77,11 @@ export function ConfirmDeleteModal({
                 }}
             >
                 <Stack>
-                    <Text aria-live="polite">{message}</Text>
+                    <Text aria-live="polite">{shown.current.message}</Text>
 
-                    {description && (
+                    {shown.current.description && (
                         <Text c="dimmed" size="sm">
-                            {description}
+                            {shown.current.description}
                         </Text>
                     )}
 

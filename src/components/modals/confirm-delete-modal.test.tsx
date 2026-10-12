@@ -22,6 +22,21 @@ describe("ConfirmDeleteModal", () => {
         expect(screen.getByText("This action cannot be undone.")).toBeInTheDocument();
     });
 
+    it("keeps the message it showed while it closes", () => {
+        // The target is cleared in the same tick the modal closes after a delete, and the closing
+        // transition would otherwise show the fallback wording.
+        const props = { onClose: vi.fn(), onConfirm: vi.fn() };
+        const { rerender } = renderWithMantine(
+            <ConfirmDeleteModal {...props} opened message="Delete My video?" />
+        );
+
+        rerender(<ConfirmDeleteModal {...props} opened={false} message="Delete this item?" />);
+
+        // Still mounted for the exit transition, and still saying what it said.
+        expect(screen.getByText("Delete My video?")).toBeInTheDocument();
+        expect(screen.queryByText("Delete this item?")).not.toBeInTheDocument();
+    });
+
     it("uses default button labels", () => {
         renderWithMantine(
             <ConfirmDeleteModal
