@@ -70,9 +70,19 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 
     // Reject any other scheme (file://, ftp://, etc.)
     if location.contains("://") {
+        // Only the scheme is named. The rest of the value comes from a remote server and can carry
+        // a token or a local path, and this message reaches the log.
+        let scheme: String = location
+            .split("://")
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(16)
+            .collect();
+
         return Err(AppError::from_code(
             AppErrorCode::YtDlpThumbnailFailed,
-            format!("redirect to non-http scheme rejected: {location}"),
+            format!("redirect to non-http scheme rejected: {scheme}"),
         ));
     }
 
@@ -260,10 +270,12 @@ mod tests {
             "file:///etc/passwd",
         );
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("non-http scheme rejected"));
+
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("non-http scheme rejected: file"));
+        // The value comes from a remote server and the message reaches the log, so only the
+        // scheme is named.
+        assert!(!message.contains("/etc/passwd"), "{message}");
     }
 
     #[test]
