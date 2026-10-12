@@ -633,6 +633,61 @@ describe("useChannelMediaList", () => {
         );
     });
 
+    it("does not overwrite the cursor a removal corrected while a page was loading", async () => {
+        // The page in flight was asked for at offset 3. The delete moves the cursor to 2, and
+        // writing back 3 plus the page's rows would skip the row that slid into the boundary.
+        let resolvePage: (value: MediaPage) => void = () => {};
+
+        vi.mocked(listChannelMediaPage)
+            .mockResolvedValueOnce(
+                page(
+                    [createMediaRow({ id: 1 }), createMediaRow({ id: 2 }), createMediaRow({ id: 3 })],
+                    6
+                )
+            )
+            .mockImplementationOnce(
+                () =>
+                    new Promise((resolve) => {
+                        resolvePage = resolve;
+                    })
+            )
+            .mockResolvedValueOnce(page([createMediaRow({ id: 4 })], 5));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        let pending: Promise<void> = Promise.resolve();
+
+        act(() => {
+            pending = result.current.loadMore();
+        });
+
+        act(() => {
+            result.current.setMediaItems((items) => items.filter((item) => item.id !== 2));
+            result.current.handleItemsRemoved(1);
+        });
+
+        await act(async () => {
+            resolvePage(page([createMediaRow({ id: 4 }), createMediaRow({ id: 5 })], 5));
+            await pending;
+        });
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 2 })
+        );
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 3, 4, 5]);
+    });
+
     it("drops a row marked watched under the unwatched filter and keeps the channel total", async () => {
         const unwatchedQuery: MediaQueryFilters = {
             ...DEFAULT_MEDIA_QUERY_FILTERS,

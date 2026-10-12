@@ -281,7 +281,15 @@ export function useChannelMediaList({
             // The cursor advances by what the backend returned, before the append decides what to
             // keep. See `loadedCountRef`. Doing it the other way round makes a page whose rows were
             // all dropped as duplicates re-request the same offset on every scroll.
-            setLoadedRows(offset + page.items.length);
+            //
+            // Unless a row left the list while this page was in flight (a delete, a watched change
+            // under a watched filter). Whether the page was read before or after that commit is not
+            // known here, so the cursor stays where the removal put it and the next page reads the
+            // boundary again. Its repeats are dropped below, and a row is never skipped.
+            const removedMeanwhile = loadedCountRef.current !== offset;
+            setLoadedRows(
+                removedMeanwhile ? loadedCountRef.current : offset + page.items.length
+            );
 
             // Append only the rows this list does not already hold. A row can arrive twice when the
             // sort key of an already-loaded row changed under the window (a rename moves a media in
