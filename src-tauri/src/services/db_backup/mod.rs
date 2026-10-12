@@ -484,6 +484,20 @@ pub(crate) async fn database_schema_version(db_path: &Path) -> Option<i64> {
     version.ok().map(|(value,)| value)
 }
 
+/// Whether the database file opens and holds no schema object at all, which is what a first open
+/// cut short before creating the tables leaves behind. `false` when the file cannot be opened or
+/// read, so a database this cannot inspect is treated as holding data.
+pub(crate) async fn database_has_no_schema(db_path: &Path) -> bool {
+    let Ok(pool) = open(db_path).await else {
+        return false;
+    };
+    let objects: Result<(i64,), _> = sqlx::query_as("SELECT COUNT(*) FROM sqlite_master")
+        .fetch_one(&pool)
+        .await;
+    pool.close().await;
+    matches!(objects, Ok((0,)))
+}
+
 /// Whether opening the database will run a schema migration, which is when the file is missing
 /// (the schema is created on first open) or its `user_version` is below the version this
 /// build ships. Callers use this to decide whether the pre-migration snapshot must block

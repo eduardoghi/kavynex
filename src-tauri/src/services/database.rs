@@ -372,12 +372,11 @@ fn database_unavailable(detail: String) -> AppError {
 /// damaged database, plus the choice of starting empty.
 ///
 /// A file of zero bytes counts as missing too. That is what a quarantine or a sync client can leave
-/// behind instead of removing the file, and SQLite opens it as an empty database just the same.
-fn missing_database_error(path: &Path, allow_create: bool) -> Option<AppError> {
-    if allow_create
-        || database_file_holds_data(path)
-        || !crate::services::db_backup::has_backup_candidates(path)
-    {
+/// behind instead of removing the file, and SQLite opens it as an empty database just the same. So
+/// does a file with no schema in it (see [`database_holds_data`]). `holds_data` is that answer,
+/// read by the caller before anything opens the file.
+fn missing_database_error(path: &Path, allow_create: bool, holds_data: bool) -> Option<AppError> {
+    if allow_create || holds_data || !crate::services::db_backup::has_backup_candidates(path) {
         return None;
     }
 
@@ -398,14 +397,26 @@ fn database_file_holds_data(path: &Path) -> bool {
     non_empty(path) || (path.exists() && non_empty(Path::new(&wal)))
 }
 
+/// Whether the database at `path` holds anything worth keeping, which is data SQLite can open
+/// with at least one schema object in it. A file with no schema is what a first open cut short
+/// leaves behind (the app quit, or `--smoke-test` exited, while a startup task was creating the
+/// database), and it counts the same as no file.
+async fn database_holds_data(path: &Path) -> bool {
+    database_file_holds_data(path)
+        && !crate::services::db_backup::database_has_no_schema(path).await
+}
+
 async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool> {
-    if let Some(error) = missing_database_error(path, allow_create) {
+    // Read before the open, which creates the file. A database made from nothing gets a new lineage
+    // id once its schema is in place (see db_backup::lineage), and has no pre-migration snapshot to
+    // take.
+    let holds_data = database_holds_data(path).await;
+
+    if let Some(error) = missing_database_error(path, allow_create, holds_data) {
         return Err(error);
     }
 
-    // Read before the open, which creates the file. A database made from nothing gets a new lineage
-    // id once its schema is in place (see db_backup::lineage).
-    let created_from_nothing = !database_file_holds_data(path);
+    let created_from_nothing = !holds_data;
 
     // The pre-migration snapshot only matters when a migration will actually run (so a bad
     // migration or corruption can be rolled back). When one is pending, snapshot
@@ -449,7 +460,17 @@ async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool>
         // Its own code, because the database is fine. The startup recovery offers a restore for a
         // failed open, and a restore here would replace a healthy database with a snapshot up to a
         // day old over what is usually a full disk.
-        if let Err(error) = snapshot_before_migration(path).await {
+        //
+        // A database made from nothing is skipped. A schema-less file left by a first open that
+        // did not finish has nothing to roll back to, and its snapshot would be kept as
+        // `.pre-migration-v0` beside the real ones.
+        let snapshot = if created_from_nothing {
+            Ok(())
+        } else {
+            snapshot_before_migration(path).await
+        };
+
+        if let Err(error) = snapshot {
             return Err(AppError::from_code_with_details(
                 AppErrorCode::DatabaseMigrationBlocked,
                 "could not snapshot the database before a pending schema migration, so free up disk \
@@ -1178,6 +1199,63 @@ mod tests {
 
         assert_eq!(error.code, AppErrorCode::DatabaseMissing.as_str());
         assert_eq!(std::fs::metadata(&path).unwrap().len(), 0);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // What a first open cut short leaves behind. SQLite has written its header, so the file is not
+    // empty, but no table was created yet.
+    async fn write_schema_less_database(path: &Path) {
+        let pool = SqlitePool::connect_with(
+            SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true)
+                .journal_mode(SqliteJournalMode::Wal),
+        )
+        .await
+        .unwrap();
+        pool.close().await;
+        assert!(database_file_holds_data(path), "the header must be on disk");
+    }
+
+    #[tokio::test]
+    async fn a_schema_less_database_from_a_cut_short_first_open_is_treated_as_new() {
+        // `--smoke-test` exiting while the startup integrity check opens the database for the first
+        // time leaves this file. Read as an existing database, it would get a pre-migration
+        // snapshot of nothing and the new library no lineage id.
+        let dir = missing_database_dir("db-schema-less");
+        let path = dir.join("kavynex.db");
+        write_schema_less_database(&path).await;
+
+        let pool = build_pool_at(&path, false)
+            .await
+            .expect("an empty first database opens");
+        pool.close().await;
+
+        assert!(
+            !dir.join("kavynex.db.pre-migration-v0").exists(),
+            "an empty file has nothing to roll back to"
+        );
+        assert!(
+            dir.join("kavynex.db.lineage").is_file(),
+            "it is a database made from nothing"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_schema_less_database_with_backups_beside_it_counts_as_missing() {
+        let dir = missing_database_dir("db-schema-less-backups");
+        let path = dir.join("kavynex.db");
+        write_schema_less_database(&path).await;
+        std::fs::write(dir.join("kavynex.db.bak"), b"a snapshot").unwrap();
+
+        let error = build_pool_at(&path, false)
+            .await
+            .expect_err("opening it would start an empty library over the backups");
+
+        assert_eq!(error.code, AppErrorCode::DatabaseMissing.as_str());
 
         let _ = std::fs::remove_dir_all(&dir);
     }

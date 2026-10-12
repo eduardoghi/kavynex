@@ -63,6 +63,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- A first launch that was closed while the database was being created no longer leaves an empty
+  file that the next launch treats as an existing database. It used to take a pre-migration
+  snapshot of it and give the new library no id for its external backups.
 - When only a pinned message falls in the live chat's current window, the list says no messages
   are visible instead of staying blank, and the count leaves out the pin shown above it.
 - In the light theme, warnings, load errors and member names in the live chat are dark enough to

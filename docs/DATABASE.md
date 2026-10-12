@@ -475,7 +475,9 @@ index does not carry over. It is never a restore candidate, since it is a copy o
 to be damaged, and nothing removes it. A database with no channel and no media is skipped too while
 any daily generation still holds a library, since the daily snapshot of a database recreated empty
 would otherwise push out one good generation a day. For the same reason, a database file that is
-missing while snapshots of it are still on disk is not created on open (`DatabaseMissing`). The
+missing while snapshots of it are still on disk is not created on open (`DatabaseMissing`). A file
+of zero bytes counts as missing, and so does one with no schema object in it, which is what a first
+open cut short leaves behind (`database::database_holds_data`). The
 startup recovery offers the restore, or starting with an empty library (`start_with_empty_database`,
 refused once the database opened or its file is back).
 
@@ -510,7 +512,8 @@ DDL runs. Unlike `backup_database` this is never throttled, so the rollback poin
 as it was a moment before the upgrade, and it is outside the `.bak` rotation, so the daily snapshot
 does not push it out. Two are kept, the one just taken and the highest other version, so the
 snapshot of an older database (an imported export, a restored old backup) is not pruned by its own
-write. A failure to take it blocks the migration with
+write. A database made from nothing has none, and that includes a file with no schema left by a
+first open that did not finish. A failure to take it blocks the migration with
 `DatabaseMigrationBlocked`, and so does a migration that fails (it rolls back to the version it
 started from). The database is not damaged in either case, so the frontend shows what to do instead
 of offering the restore below, which would bring back an older snapshot that fails the same way.
@@ -597,7 +600,8 @@ up separately.
   `kavynex-backup.after-damage.db` beside the copies instead, at most once a day, like
   `kavynex.db.after-damage`.
 - **Copies of an earlier database are set aside, not rotated out.** A database created from nothing
-  (a first run, a reinstall, Start empty) or put in place by an import gets a new lineage id in
+  (a first run, a reinstall, Start empty, or a file with no schema left by a first open that did not
+  finish) or put in place by an import gets a new lineage id in
   `kavynex.db.lineage`, and the mirror writes the same id to `kavynex-backup.lineage` next to its
   copies. When the database has an id and the folder holds copies with another id or none, and any of
   them holds a library, they are renamed to `kavynex-backup-previous-<UTC time>[-N].db` and kept. That
