@@ -5,6 +5,6 @@
  * into a jump-to-the-media action.
  *
  * camelCase on the wire because the frontend consumed a hand-written type of this shape long
- * before the resolution moved here; exporting it means the two can no longer drift.
+ * before the resolution moved here. Exporting it means the two can no longer drift.
  */
 export type DiagnosticsMediaTarget = { channelId: number, mediaId: number, };
