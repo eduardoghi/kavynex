@@ -666,7 +666,7 @@ jobs:
               # Pinned like every other tool install (ci.yml/release.yml/mutation.yml). An
               # unpinned `cargo install` builds whatever released today, so the measurement could
               # move because the tool changed rather than because the tests did.
-              run: cargo install cargo-llvm-cov@0.8.7 --locked
+              run: cargo install cargo-llvm-cov@0.9.1 --locked
 
             - name: Measure coverage and enforce the floor
               # The instrumented suite runs once (`--no-report`), then both reports are rendered
