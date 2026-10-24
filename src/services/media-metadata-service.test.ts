@@ -105,7 +105,7 @@ describe("readMediaDurationInSeconds", () => {
     });
 
     it("gives up with null when the element never reports, instead of staying pending", async () => {
-        // The case that used to hang createMedia. No `loadedmetadata`, no `error`, nothing. The
+        // The case that would hang createMedia. No `loadedmetadata`, no `error`, nothing. The
         // probe has to settle on its own, and clean the element up as it does on any other exit.
         vi.useFakeTimers();
 

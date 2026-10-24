@@ -464,7 +464,7 @@ describe("useAddMediaWorkflow", () => {
 
     it("asks once more when a cancel arrives before the backend registered the run", async () => {
         // The creation registers its run id a moment after the click that starts it. A Cancel in
-        // that moment used to find nothing and do nothing.
+        // that moment must not find nothing and do nothing.
         mockYtDlpEvents.isYtDlpRunning = false;
 
         let finishImport: (() => void) | undefined;

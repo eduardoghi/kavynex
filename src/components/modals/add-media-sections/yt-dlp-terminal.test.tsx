@@ -324,8 +324,8 @@ describe("YtDlpTerminal", () => {
 
     it("stays running while the import continues past yt-dlp", () => {
         // yt-dlp exits well before the import does. Registering the media, fetching comments
-        // and fetching live chat all run after it, and the panel used to go green on ready
-        // while the log under it was still printing those steps.
+        // and fetching live chat all run after it, so the panel must not go green on ready
+        // while the log under it is still printing those steps.
         renderWithMantine(
             <YtDlpTerminal
                 opened

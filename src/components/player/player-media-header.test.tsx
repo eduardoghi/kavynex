@@ -196,12 +196,11 @@ describe("PlayerMediaHeader", () => {
 // role-by-name assertions pin *which* name each control carries, which is what a rename or a
 // copy-paste between two icon buttons changes without axe having anything to say about it.
 //
-// This block used to claim the project could not run axe at all, because axe-core is MPL-2.0 and
-// that license is not in the allow-list in scripts/check-js-licenses.js. Both halves are true and
-// the conclusion was not. That gate reads `pnpm licenses list --prod`, and axe-core is a dev
-// dependency, so it is never in the tree the gate inspects. It was already installed and already
-// running on five other screens. Written down because the note read as a constraint, and the screen
-// it kept out of the pass is the one this file opens by calling the densest in the app.
+// axe-core is MPL-2.0 and that license is not in the allow-list in scripts/check-js-licenses.js,
+// but that does not stop the project from running axe. The gate reads
+// `pnpm licenses list --prod`, and axe-core is a dev dependency, so it is never in the tree the
+// gate inspects. It is already installed and already running on five other screens. Skipping it
+// here would leave out the screen this file opens by calling the densest in the app.
 describe("PlayerMediaHeader accessibility", () => {
     it("exposes an accessible name for every interactive control", () => {
         renderWithMantine(

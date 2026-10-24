@@ -301,10 +301,10 @@ describe("toUserFriendlyError", () => {
 
     it("tells the user there is nothing to restore rather than to restart, for DATABASE_ALREADY_OPEN", () => {
         // The recovery modal is the only place a restore is offered, so this refusal can only mean
-        // the database opened on its own after the failed startup check. The message used to say
+        // the database opened on its own after the failed startup check. The message must not say
         // "Restart Kavynex and try the restore again", which sends the user to replace a working
         // database with an older snapshot. Asserted on the substance, so rewording stays free while
-        // reinstating the restart instruction does not.
+        // a restart instruction does not.
         const message = toUserFriendlyError({
             code: DATABASE_ALREADY_OPEN_ERROR_CODE,
             message: "the database opened successfully after the failed startup attempt",

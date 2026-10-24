@@ -97,8 +97,8 @@ describe("useChannelMediaList", () => {
         // display-thumbnail command's per-call budgets from the same number (see
         // the_generation_budget_covers_a_full_page_of_the_grid in
         // src-tauri/src/services/thumbnail/display.rs). Changing the page size on this side alone
-        // used to leave those budgets calibrated for the old one, which is how a generation budget
-        // of 64 ended up serving a page of 100.
+        // would leave those budgets calibrated for the old size, which is how a generation budget
+        // of 64 can end up serving a page of 100.
         expect(listChannelMediaPage).toHaveBeenCalledWith(
             10,
             expect.objectContaining({ limit: SHARED_MEDIA_PAGE_SIZE, offset: 0 })
@@ -176,8 +176,8 @@ describe("useChannelMediaList", () => {
     });
 
     it("keeps the loaded rows when a reload fails, and stops paging them", async () => {
-        // The reload after adding a media, with the database busy, used to swap a full channel for
-        // the "No media yet" state.
+        // The reload after adding a media, with the database busy, must not swap a full channel
+        // for the "No media yet" state.
         vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
             page([createMediaRow({ id: 1 }), createMediaRow({ id: 2 })], 250)
         );

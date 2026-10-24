@@ -107,11 +107,11 @@ describe("media-service", () => {
         vi.mocked(readMediaDurationInSeconds).mockResolvedValue(null);
     });
 
-    // The orchestration these tests used to cover (the duplicate pre-check, the artifact
-    // preparation, the crash marker, the insert and the failure cleanup) is not in this module any
-    // more. It runs in `services::media_creation` on the Rust side, and its ordering and refusals are
-    // tested there. What is left here is the request this module hands over and the best-effort steps
-    // it runs afterwards, so that is what is asserted.
+    // The orchestration (the duplicate pre-check, the artifact preparation, the crash marker, the
+    // insert and the failure cleanup) is not in this module. It runs in `services::media_creation`
+    // on the Rust side, and its ordering and refusals are tested there. What is here is the
+    // request this module hands over and the best-effort steps it runs afterwards, so that is what
+    // is asserted.
 
     it("hands the whole request to the backend in one call", async () => {
         const input = ytDlpInput();

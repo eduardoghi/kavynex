@@ -588,8 +588,8 @@ fn real_yt_dlp_output_omits_comments_and_the_model_tolerates_it() {
 ///
 /// Ignored by default because it needs the network and a real `yt-dlp` on PATH, neither of
 /// which a unit-test run may assume. Not because it spawns a process. The yt-dlp
-/// process-kill/timeout/cancel tests in this file used to be `#[ignore]`d for that reason and no
-/// longer are, since the hang was specific to the ubuntu-22.04 runner (see the note beside
+/// process-kill/timeout/cancel tests in this file spawn processes too and are not `#[ignore]`d,
+/// since the hang was specific to the ubuntu-22.04 runner (see the note beside
 /// `release.yml`'s "Run Rust tests" step). Run it deliberately:
 ///
 /// ```text

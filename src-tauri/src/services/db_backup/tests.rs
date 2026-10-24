@@ -956,9 +956,9 @@ fn rotation_stops_instead_of_overwriting_a_generation_it_could_not_promote() {
 
 #[test]
 fn a_held_newest_generation_leaves_the_older_ones_where_they_are() {
-    // Generation 0 is the file a sync client or a backup tool holds. The rotation used to shift
-    // every older generation first, so each day of the hold moved them up one slot and dropped the
-    // oldest, until only the held file was left.
+    // Generation 0 is the file a sync client or a backup tool holds. Shifting every older
+    // generation first would move them up one slot each day of the hold and drop the oldest,
+    // until only the held file was left.
     let dir = temp_dir("rotate-held-newest");
     let db = dir.join("kavynex.db");
     std::fs::create_dir_all(&dir).unwrap();

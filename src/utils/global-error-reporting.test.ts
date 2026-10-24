@@ -169,10 +169,10 @@ describe("installGlobalErrorHandlers", () => {
         // because `installed` makes the setup a one-shot: a second test calling it again would get
         // a no-op and read the registrations as missing.
         //
-        // Every `logWarn`/`logError` in the app used to stop at the devtools console, which a
-        // packaged build never opens, so a caught-and-logged failure left nothing in the file the
-        // README asks a bug report to carry. The sink is what closes that, and it lives here rather
-        // than inside app-logger so that module never imports the IPC seam.
+        // Without a sink, every `logWarn`/`logError` in the app stops at the devtools console,
+        // which a packaged build never opens, so a caught-and-logged failure leaves nothing in the
+        // file the README asks a bug report to carry. The sink is what closes that, and it lives
+        // here rather than inside app-logger so that module never imports the IPC seam.
         expect(setLogSink).toHaveBeenCalledTimes(1);
 
         const sink = vi.mocked(setLogSink).mock.calls[0]![0] as (

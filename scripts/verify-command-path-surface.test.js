@@ -503,7 +503,7 @@ describe("verifyNetworkRefusalSites", () => {
     });
 
     it("fails when a new refusal site is added without declaring it", () => {
-        // The direction that closes the drift this check was written for. A guard added to a
+        // The direction that closes the drift this check exists for. A guard added to a
         // command has to reach docs/THREAT-MODEL.md's enumeration before it reaches this list.
         const sources = [
             {

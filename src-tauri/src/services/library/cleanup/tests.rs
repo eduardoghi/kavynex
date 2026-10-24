@@ -109,9 +109,9 @@ async fn drop_paths_referenced_again_keeps_a_genuinely_unreferenced_path() {
 
 #[tokio::test]
 async fn execute_plan_waits_for_a_media_registration_holding_the_lock() {
-    // The regression this pins. The three delete paths reached this function with no exclusion
-    // against a creation at all, relying on `drop_paths_referenced_again` above and nothing
-    // else. A recount is not exclusion. It answers "is this referenced *now*", and a creation
+    // The three delete paths reach this function, so it has to exclude a creation itself instead
+    // of relying on `drop_paths_referenced_again` above and nothing else. A recount is not
+    // exclusion. It answers "is this referenced *now*", and a creation
     // that inserts a moment later makes that answer stale between the recount and the unlink,
     // which is the window that strands a row on a file that has been removed.
     //

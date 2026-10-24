@@ -558,8 +558,8 @@ describe("useMediaActions", () => {
             await result.current.cancelRefreshComments(1);
         });
 
-        // A real failure to cancel used to be swallowed silently (only logged), leaving the user
-        // to believe Cancel worked while the backup kept running. It must not become a blocking
+        // A real failure to cancel must reach the user. Only logging it would leave them
+        // believing Cancel worked while the backup kept running. It must not become a blocking
         // error either. This is a notice, not onError.
         expect(onNotice).toHaveBeenCalledWith(
             "Could not confirm the comment refresh was cancelled. It may still be running in the background."
@@ -714,9 +714,9 @@ describe("useMediaActions", () => {
     });
 
     it("refreshes a second media while the first refresh is still in flight", async () => {
-        // The guard used to be one shared flag, which returned undefined without throwing when it
-        // was already running, so the second refresh vanished with no error and no refreshed
-        // comments, and nothing rendered a busy state to hint at why. The player's Back button is
+        // A single shared guard flag would return undefined without throwing when already
+        // running, so the second refresh would vanish with no error and no refreshed comments,
+        // and nothing would render a busy state to hint at why. The player's Back button is
         // live during a refresh, so "refresh A, go back, open B, refresh B" is an ordinary
         // sequence rather than a race the user has to engineer.
         const mediaPlayer = createMediaPlayer();
@@ -747,7 +747,7 @@ describe("useMediaActions", () => {
         const first = createMediaRow({ id: 1 });
         const second = createMediaRow({ id: 2 });
 
-        // Left in flight on purpose. This is the state that used to swallow the next refresh.
+        // Left in flight on purpose. A shared guard would swallow the next refresh in this state.
         let firstRefresh: Promise<void>;
         act(() => {
             firstRefresh = result.current.refreshComments(first);

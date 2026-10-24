@@ -234,9 +234,9 @@ describe("LiveChatPanel", () => {
     });
 
     it("carries the header in one line, with the count and the sync note reachable", () => {
-        // The header lost its icon tile and its subtitle. What has to survive that is the
+        // The header has no icon tile and no subtitle. What has to be there regardless is the
         // title, which is the only thing telling this panel apart from Saved comments, the
-        // count, and the explanation the subtitle used to carry. The count reads as a bare
+        // count, and the sync explanation a subtitle would carry. The count reads as a bare
         // number on screen, so the accessible name is the part worth pinning. lucide sets
         // aria-hidden on its glyphs, which would silently swallow the sync label.
         const message = makeChatMessage();

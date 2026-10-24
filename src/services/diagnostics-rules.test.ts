@@ -134,8 +134,8 @@ describe("buildDiagnosticsIssues", () => {
     });
 
     it("names an unreachable library folder instead of reporting it as empty", () => {
-        // Nothing is read from the folder then, so the summary is all zeros. That used to raise
-        // "Library is empty" and "Database has media, but library files were not found".
+        // Nothing is read from the folder then, so the summary is all zeros. That must not raise
+        // "Library is empty" or "Database has media, but library files were not found".
         const input = baseDiagnostics();
         input.libraryUnreachable = true;
         input.librarySummary.total_bytes = 0;

@@ -328,8 +328,8 @@ describe("countCommentsInTree", () => {
 
     it("excludes context-only parents retained by filterCommentTree from the count", () => {
         // Only c2 matches "reply"; c1 is retained solely as thread context and must not be
-        // counted as a search result (the bug. A search that surfaced one match used to report
-        // "Showing 2 results").
+        // counted as a search result. Counting it would make a search that surfaced one match
+        // report "Showing 2 results".
         const tree = buildCommentTree(
             [
                 comment({ id: 1, comment_id: "c1", text: "hello world" }),

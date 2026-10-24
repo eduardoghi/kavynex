@@ -224,9 +224,8 @@ fn a_blank_optional_value_normalizes_to_absent_rather_than_an_empty_string() {
 
 #[test]
 fn a_request_is_refused_before_anything_is_written() {
-    // Each of these used to be checked by the frontend alone. They run here now, and they run
-    // first. A rejected request must produce nothing to clean up, which is only true while no
-    // download or import has started.
+    // Each of these is checked here, and checked first. A rejected request must produce nothing
+    // to clean up, which is only true while no download or import has started.
     let empty_title = CreateMediaRequest {
         title: "   ".to_string(),
         ..request(MediaSourceMode::Local)
@@ -1476,7 +1475,7 @@ mod registration {
     async fn a_chosen_thumbnail_that_cannot_be_stored_leaves_the_download_in_place() {
         // The media is already in the library when the chosen thumbnail is stored, so a thumbnail
         // that fails (here, a file that no longer exists) must cost the media its image and nothing
-        // more. It used to fail the creation and clean the download up with it.
+        // more. It must not fail the creation and clean the download up with it.
         let (app, library) = app_with_library("thumb-best-effort").await;
         let placed = artifacts_on_disk(&library, "downloaded");
         let missing_thumbnail = library.join("gone").join("picked.jpg");

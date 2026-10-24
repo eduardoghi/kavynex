@@ -311,8 +311,8 @@ describe("MediaCard", () => {
         );
 
         expect(screen.getByRole("img", { name: "Audio" })).toBeInTheDocument();
-        // The icon replaced the word, so the word being gone is the change itself. Without this
-        // the test still passes on a badge that renders both.
+        // The icon stands in for the word, so the word must not render. Without this the test
+        // still passes on a badge that renders both.
         expect(screen.queryByText("Audio")).not.toBeInTheDocument();
     });
 
@@ -430,8 +430,8 @@ describe("MediaCard", () => {
     });
 
     it("marks an archived live with one badge in the metadata row", () => {
-        // LIVE used to be an overlay on the thumbnail and CHAT a second badge below it, so a
-        // live with a saved replay carried two marks in two places for one origin.
+        // A live with a saved replay carries a single mark. LIVE as an overlay on the thumbnail
+        // plus CHAT as a second badge below it would be two marks in two places for one origin.
         renderWithMantine(
             <MediaCard
                 media={createMedia({

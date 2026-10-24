@@ -840,8 +840,8 @@ describe("useYtDlpEvents", () => {
                 );
             });
 
-            // The first registration failed and the four after it still went through. They used to
-            // be awaited in series, so one failure left the rest unregistered.
+            // The first registration failed and the four after it still went through. They are not
+            // awaited in series, so one failure does not leave the rest unregistered.
             expect(listenValidated).toHaveBeenCalledTimes(5);
 
             act(() => {

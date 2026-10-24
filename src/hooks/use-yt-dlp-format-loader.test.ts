@@ -1468,7 +1468,7 @@ describe("useYtDlpFormatLoader: error handling", () => {
 
         // A real backend AppError arrives as a structured object. resolveErrorMessage already
         // folds its `details` into the message via the "Details:" block. The loader must not
-        // append them a second time (the regression this guards).
+        // append them a second time.
         vi.mocked(listYtDlpFormats).mockRejectedValueOnce({
             code: "YT_DLP_METADATA_FAILED",
             message: "yt-dlp: unable to extract",

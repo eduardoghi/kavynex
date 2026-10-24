@@ -149,7 +149,7 @@ describe("DiagnosticsContentVerification", () => {
 
     it("never presents a run whose files could not be read as a clean result", () => {
         // A drive that drops mid-run turns every remaining file into "unreadable". With nothing
-        // corrupt and nothing unverifiable, this used to read "All 0 checked file(s) match".
+        // corrupt and nothing unverifiable, this must not read "All 0 checked file(s) match".
         hookState = {
             running: false,
             progress: null,

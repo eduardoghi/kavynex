@@ -45,8 +45,8 @@ describe("MediaPlayerView", () => {
     });
 
     it("does not offer Refresh comments for a media without a YouTube source", async () => {
-        // The menu item used to show for every media and then fail in an error modal. The comments
-        // panel already hid its own Fetch button by the same rule.
+        // The menu item must not show for every media only to fail in an error modal. The comments
+        // panel already hides its own Fetch button by the same rule.
         renderWithMantine(
             <MediaPlayerView
                 media={createMedia({ youtube_video_id: null })}
@@ -74,9 +74,9 @@ describe("MediaPlayerView", () => {
     });
 
     it("passes the live and chat replay state through to the header", async () => {
-        // The regression this pins was in the wiring, not the header. The header rendered both
-        // badges correctly all along, but MediaPlayerView never passed the props, so they silently
-        // defaulted to false and neither badge ever appeared. A header-only test cannot see that.
+        // This pins the wiring, not the header. The header renders both badges correctly on its
+        // own, but if MediaPlayerView does not pass the props they silently default to false and
+        // neither badge appears. A header-only test cannot see that.
         renderWithMantine(
             <MediaPlayerView
                 media={createMedia({
@@ -103,7 +103,7 @@ describe("MediaPlayerView", () => {
         expect(screen.getByText("LIVE")).toBeInTheDocument();
         // The replay panel is code-split, so it arrives a microtask after the first commit.
         // `find*` waits for its chunk. The badge above is in the header and is there immediately,
-        // which is what keeps this test still covering the wiring it was written for.
+        // which is what keeps this test covering the wiring.
         //
         // The explicit timeout is the part worth keeping. What is being waited on is a dynamic
         // import, and how long that takes has nothing to do with this component. Run alone it
@@ -516,8 +516,8 @@ describe("MediaPlayerView", () => {
         });
 
         it("puts focus on the media right after opening, so the shortcuts act", () => {
-            // The player used to open with the back button focused, where the shortcuts do not
-            // act, so Space pressed the button and closed the player.
+            // Opening with the back button focused is wrong, because the shortcuts do not act
+            // there and Space would press the button and close the player.
             //
             // jsdom does not treat a <video controls> as focusable the way the webview does, so the
             // focus call is observed rather than `document.activeElement`.

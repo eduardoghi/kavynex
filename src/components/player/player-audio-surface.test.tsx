@@ -24,7 +24,7 @@ describe("PlayerAudioSurface", () => {
     });
 
     it("leaves the title and both dates to the header instead of printing them again", () => {
-        // The surface used to repeat the title, Published and Added to Kavynex directly under the
+        // The surface must not repeat the title, Published and Added to Kavynex directly under the
         // header that already carries all three. The title stays as a prop because the cover image
         // and the audio element still need it for their accessible names, which is why this checks
         // for rendered text rather than for the prop being gone.

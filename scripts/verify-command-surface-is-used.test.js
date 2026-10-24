@@ -227,7 +227,7 @@ describe("verifyCommandSurfaceIsUsed", () => {
     });
 
     it("refuses a registered command whose wrapper nothing calls", () => {
-        // This is the defect the gate was written for, in the exact shape it shipped in twice.
+        // This is the defect the gate exists for, in the exact shape it has shipped in twice.
         // `cleanup_unreferenced_media_artifacts` and `delete_live_chat_file` were registered, had a
         // constant, had a wrapper, and had no caller anywhere in the app. Both unlinked files.
         const input = passingInput();

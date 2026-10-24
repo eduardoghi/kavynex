@@ -247,9 +247,9 @@ describe("DiagnosticsModal", () => {
             />
         );
 
-        // The Issues section does not render at all without issues, so neither does the
-        // card that used to say the environment looks healthy. The status line at the top
-        // is what reports a clean run now.
+        // The Issues section does not render at all without issues, so there is no card saying
+        // the environment looks healthy either. The status line at the top is what reports a
+        // clean run.
         expect(screen.queryByText("No issues detected")).not.toBeInTheDocument();
         expect(screen.getByText("Everything looks good")).toBeInTheDocument();
     });

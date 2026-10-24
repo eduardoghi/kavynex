@@ -61,9 +61,9 @@ fn a_refused_call_answers_every_path_as_retryable() {
 
 #[test]
 fn a_refused_call_is_bounded_by_the_same_ceiling_as_a_resolved_one() {
-    // This exit used to allocate straight from the caller's own count, which is the one thing
-    // MAX_RESOLVED_PER_CALL exists to stop the module doing, and it sat in the file whose
-    // comments state that rule for every other bound. Answering short costs nothing. The caller
+    // This exit must not allocate straight from the caller's own count, which is the one thing
+    // MAX_RESOLVED_PER_CALL exists to stop the module doing, in the file whose comments state
+    // that rule for every other bound. Answering short costs nothing. The caller
     // reads by position and treats a missing answer exactly as BudgetSpent, i.e. as "ask again".
     assert_eq!(
         all_retryable(MAX_RESOLVED_PER_CALL * 10).len(),
@@ -97,9 +97,9 @@ fn both_ceilings_are_the_same_number() {
 
 #[test]
 fn a_cache_within_its_budget_is_never_touched() {
-    // The property the previous age sweep did not have, and the whole reason this replaced it. A
-    // cache that fits keeps every entry no matter how old, so a thumbnail the grid has drawn for
-    // a year is not discarded and re-encoded for having been written a week ago.
+    // Unlike an age sweep, a cache that fits keeps every entry no matter how old, so a thumbnail
+    // the grid has drawn for a year is not discarded and re-encoded for having been written a
+    // week ago.
     let entries = vec![
         derivative("a.jpg", 40, Duration::from_secs(60 * 60 * 24 * 365)),
         derivative("b.jpg", 40, Duration::from_secs(0)),

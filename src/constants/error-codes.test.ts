@@ -22,8 +22,8 @@ const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
 // Client-side-only codes. Validated in the frontend before a backend call is made, so they
 // are never returned by src-tauri/src/error.rs and have no backend code to mirror.
 //
-// Several codes that used to be frontend-only are NOT listed here because the backend now
-// emits them too, so they must mirror a real backend code (validated by the check below):
+// Codes the backend also emits are NOT listed here. They have to mirror a real backend code,
+// which the check below validates:
 // - CHANNEL_ALREADY_EXISTS / VIDEO_ALREADY_EXISTS_FOR_CHANNEL: frontend pre-check AND a
 //   backend constraint violation (the duplicate-insert race).
 // - INVALID_CHANNEL_NAME / INVALID_YOUTUBE_HANDLE / INVALID_MEDIA_TITLE /
@@ -89,10 +89,10 @@ describe("error codes stay in sync with the backend", () => {
 // Every code error.rs emits is either catalogued with a message of its own, or named below as one
 // that falls back on purpose. There is no third outcome, and that is the whole point.
 //
-// It replaced a hand-listed USER_FACING_BACKEND_CODES. Thirty codes asserted not to reach the
-// generic line. That list was opt-in on precisely the act it existed to protect. A code added to
-// error.rs for a new user-facing refusal was only checked once someone remembered to list it, and
-// forgetting to list it degrades in silence exactly the way forgetting the message does. A
+// A hand-listed set of user-facing codes would be opt-in on precisely the act it exists to
+// protect. A code added to error.rs for a new user-facing refusal would only be checked once
+// someone remembered to list it, and forgetting to list it degrades in silence exactly the way
+// forgetting the message does. A
 // partition has nothing to remember. A new Rust code fails this file until it is classified, and
 // classifying it means reading the generic line and deciding whether it is the right answer.
 //

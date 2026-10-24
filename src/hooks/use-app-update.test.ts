@@ -89,7 +89,8 @@ describe("useAppUpdate", () => {
 
     it("starts on the update the startup check already found", () => {
         // Settings has its own instance of this hook. Opening it right under the startup notice
-        // used to show "idle" and make the user check again to reach the install button.
+        // must not show "idle", which would make the user check again to reach the install
+        // button.
         const update = createUpdate();
         const updateInfo = createUpdateInfo();
         vi.mocked(lastCheckedUpdate).mockReturnValue(update);
@@ -421,8 +422,8 @@ describe("useAppUpdate", () => {
 
     it("keeps the settings modal's in-progress check true through a successful install", async () => {
         // settings-modal.tsx locks the modal while `appUpdateStatus` is "checking" or "downloading",
-        // so the relaunch is never a surprise. A terminal success state used to break that in the
-        // one window where it mattered. The modal unlocked between the install finishing and the
+        // so the relaunch is never a surprise. A terminal success state would break that in the
+        // one window where it matters, unlocking the modal between the install finishing and the
         // process being replaced. This pins the status against the exact set that lock reads, so
         // reintroducing such a state fails here rather than as a modal that closes on its own.
         const update = createUpdate();

@@ -185,8 +185,8 @@ describe("useAppSettingsActions", () => {
     }
 
     it("keeps an unreachable library configured and writes nothing", async () => {
-        // The drive is not connected. The path used to be cleared and written back empty, so
-        // reconnecting and restarting found nothing to reconnect to.
+        // The drive is not connected. The path must not be cleared and written back empty,
+        // because reconnecting and restarting would then find nothing to reconnect to.
         const { result, onError, setSettings } = await renderWithUnreachableLibrary();
 
         expect(persistSettings).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ describe("useAppSettingsActions", () => {
 
     it("asks to switch without moving when another folder is chosen for an unreachable one", async () => {
         // The question the backend would raise (LIBRARY_FOLDER_UNREACHABLE), asked up front. With
-        // the path cleared this used to be a first library, applied without asking anything.
+        // the path cleared this would be a first library, applied without asking anything.
         const { result, setSettings } = await renderWithUnreachableLibrary();
         vi.mocked(planChangeLibraryPath).mockResolvedValueOnce({
             kind: "move",

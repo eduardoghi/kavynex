@@ -342,8 +342,8 @@ describe("useTempThumbnail", () => {
 
     it("drops a generated thumbnail when a reset lands while the previous one is deleted", async () => {
         // The window is the delete of the previous thumbnail, after the guard was last checked. A
-        // reset there (the modal closing) used to be undone by the adoption that followed it, and
-        // the closed form tracked a file nothing would show.
+        // reset there (the modal closing) must not be undone by the adoption that follows it,
+        // which would leave the closed form tracking a file nothing would show.
         vi.mocked(generateTemporaryThumbnail)
             .mockResolvedValueOnce("/tmp/one.jpg")
             .mockResolvedValueOnce("/tmp/two.jpg");

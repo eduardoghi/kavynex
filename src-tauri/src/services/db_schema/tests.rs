@@ -66,8 +66,8 @@ async fn videos_check_rejects_a_live_chat_flag_without_a_path() {
         .await
         .unwrap();
 
-    // Flag set with no stored path. The state insert_media can never produce and the library
-    // diagnostics used to only count is now refused by the schema itself.
+    // Flag set with no stored path. The state insert_media can never produce is refused by the
+    // schema itself, rather than only counted by the library diagnostics.
     let rejected = sqlx::query(
         "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, has_live_chat, live_chat_file_path) \
          VALUES (1, 'T', 't', 'video/a.mp4', 'video', 1, NULL)",
@@ -377,7 +377,7 @@ async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_data
 /// Two historical eras are what make this worth seeding by hand rather than reusing the current
 /// DDL. `title_normalized` only entered `VIDEOS_ADDITIVE_COLUMNS` with v11, so a database
 /// stamped 7..=10 by the build of its day carries every other additive column and not that one,
-/// exactly the shape whose `CREATE INDEX ... ON videos(title_normalized)` used to fail. Below
+/// exactly the shape on which `CREATE INDEX ... ON videos(title_normalized)` fails. Below
 /// the baseline (0..=6) none of the additive columns are there either, since the baseline is
 /// what adds them. Column types are kept loose on purpose. This models what an older build
 /// actually wrote, not what the current DDL declares.
@@ -509,9 +509,9 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     .await
     .unwrap();
 
-    // The indexes a real database of this era carries. Seeding none at all (which this used to
-    // do) makes the fixture a shape no build ever produced, and hides a skipped index migration
-    // behind a database that never had the index either. A database below the baseline is the
+    // The indexes a real database of this era carries. Seeding none at all would make the
+    // fixture a shape no build ever produced, and would hide a skipped index migration behind a
+    // database that never had the index either. A database below the baseline is the
     // one case that legitimately has none. `apply_baseline_schema` is what first creates them.
     //
     // Building each index on a table shaped like its own era is also what checks the `since`
@@ -761,8 +761,8 @@ async fn migrates_a_v9_database_that_predates_title_normalized() {
     // Reproduces the real upgrade failure a database stamped at v9 by a build that predated the
     // v11 `title_normalized` column hit. ensure_schema skips the baseline (9 >= 7) and the
     // v8/v9 migrations, so the column is not there when apply_migration_10 builds its indexes.
-    // v10 used to run the whole index list, which includes indexes ON title_normalized, and the
-    // CREATE INDEX failed with "no such column: title_normalized", leaving the database unopenable.
+    // The whole index list includes indexes ON title_normalized, so running all of it in v10
+    // fails with "no such column: title_normalized" and leaves the database unopenable.
     // The tables carry every column the migration's indexes reference (minus title_normalized),
     // matching what a v9 build actually left on disk.
     let pool = memory_pool().await;
@@ -830,7 +830,7 @@ async fn migrates_a_v9_database_that_predates_title_normalized() {
         .await
         .unwrap();
 
-    // The upgrade that used to fail at "no such column: title_normalized".
+    // The upgrade must not fail at "no such column: title_normalized".
     ensure_schema(&pool).await.unwrap();
     assert_eq!(read_user_version(&pool).await.unwrap(), SCHEMA_VERSION);
 

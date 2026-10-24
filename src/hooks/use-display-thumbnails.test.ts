@@ -68,8 +68,8 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("keeps earlier pages resolved when a new page is appended", async () => {
-        // The regression this guards is visible and ugly. The grid paginates, so replacing the map
-        // per page would swap every already-resolved card back to its full-size thumbnail mid-scroll
+        // Replacing the map per page would be visible and ugly. The grid paginates, so it would
+        // swap every already-resolved card back to its full-size thumbnail mid-scroll
         // (the opposite of what the hook is for).
         vi.mocked(resolveDisplayThumbnails)
             .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
@@ -117,9 +117,10 @@ describe("useDisplayThumbnails", () => {
     });
 
     it("asks only about the paths that are not settled yet", async () => {
-        // Every request used to carry every loaded path, so appending page k re-asked about all k
-        // pages and the backend paid a stat per entry to answer "already cached". Quadratic in the
-        // number of pages, for an answer this side already had. Only the new page is unsettled.
+        // A request carrying every loaded path would make appending page k re-ask about all k
+        // pages, and the backend would pay a stat per entry to answer "already cached". That is
+        // quadratic in the number of pages, for an answer this side already has. Only the new page
+        // is unsettled.
         vi.mocked(resolveDisplayThumbnails)
             .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_a.jpg": "/cache/a.jpg" }))
             .mockResolvedValueOnce(resolvedAll({ "thumbnails/thumb_b.jpg": "/cache/b.jpg" }));
@@ -175,8 +176,8 @@ describe("useDisplayThumbnails", () => {
 
     it("asks again on its own when a request settled nothing and the item list will not change", async () => {
         // The gap this closes. The backend admits one resolve call at a time and answers a refused
-        // one entirely "retryable", and its note on that says the caller already re-asks, which was
-        // true of the case it was written for and not of the case that produces it. The request key
+        // one entirely "retryable", and its note on that says the caller already re-asks, which
+        // does not hold for the case that produces it. The request key
         // is derived from the items, so a re-ask otherwise needs a page to be appended, and the last
         // page of a channel has no later append behind it. Without a timer of its own, that page
         // would keep decoding full-resolution stored files for the rest of the session.
@@ -194,7 +195,7 @@ describe("useDisplayThumbnails", () => {
                 expect(resolveDisplayThumbnails).toHaveBeenCalledTimes(1);
             });
 
-            // Nothing about the props changed, so the old behavior would stop here forever.
+            // Nothing about the props changed, so without the timer it would stop here forever.
             await act(async () => {
                 await vi.advanceTimersByTimeAsync(2000);
             });

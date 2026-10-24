@@ -1371,10 +1371,8 @@ async fn stored_youtube_video_id(pool: &SqlitePool, media_id: i64) -> Option<Str
         .0
 }
 
-// The five tests below moved here with the validation they pin, from the `insert_media` Tauri
-// command that used to perform it and has since been removed from the IPC surface. They assert
-// the same behaviors against the function that performs them now, which is also the function
-// every caller reaches, where the command was only one of them.
+// The five tests below pin the validation that `insert_media` performs. They assert it against
+// the function itself, which is the one every caller reaches.
 
 #[tokio::test]
 async fn insert_media_stores_a_trimmed_youtube_video_id() {
