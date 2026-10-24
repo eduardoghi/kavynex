@@ -13,8 +13,8 @@ type YtDlpTerminalProps = {
     isYtDlpRunning: boolean;
     // The whole import, not just the yt-dlp process. yt-dlp exits well before the import
     // does, and registering the media, fetching comments and fetching live chat all run
-    // after it. Reporting only the process meant the panel went green on READY while the
-    // log underneath was still printing "Fetching YouTube comments...".
+    // after it. Going by the process alone, the panel would show READY while the log
+    // underneath still prints "Fetching YouTube comments...".
     isImporting?: boolean;
     ytDlpProgress: YtDlpProgress | null;
     ytDlpOutcome?: YtDlpRunOutcome | null;
@@ -44,10 +44,8 @@ const STICK_TO_BOTTOM_THRESHOLD_PX = 24;
 // added on the Rust side (the union is generated from `DownloadLogLevel`) fails to compile here
 // instead of silently falling through to the default.
 //
-// This replaced `line.text.startsWith("ERROR:")`. That sniff matched exactly one of the lines it
-// was meant to catch, the yt-dlp error event, whose text happens to carry the prefix, and missed
-// the terminal-failed line entirely; it also had no way at all to show a warning, which is the
-// level that now actually arrives (yt-dlp warnings are no longer suppressed on a download).
+// The level comes with each line from the backend. Matching on the text would miss the line that
+// reports a failed run, which has no `ERROR:` prefix, and every warning.
 const LINE_COLOR: Record<YtDlpLogLevel, string> = {
     info: "gray.3",
     warn: "yellow.4",
@@ -70,8 +68,8 @@ function latestAnnouncedLine(logs: YtDlpLogLine[]): string {
     return "";
 }
 
-// The badge's word and colour. A failed run used to read "ready" in green, since the badge only
-// knew whether the log had lines, and the error under it said the opposite.
+// The badge's word and colour. It goes by the run's outcome as well as by whether the log has
+// lines, so a failed run does not read "ready" in green above its own error.
 function terminalBadge(
     isRunning: boolean,
     outcome: YtDlpRunOutcome | null,

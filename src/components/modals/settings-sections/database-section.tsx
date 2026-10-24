@@ -118,10 +118,8 @@ export function DatabaseSection({
 
     const isBusy = databaseBusy !== "idle";
 
-    // The two halves of this section used to sit in their own bordered cards, inside a modal that
-    // is already a card, under a heading that already groups them. Import behavior and Privacy
-    // carry no card at all, so the borders were making Database look like a different kind of
-    // thing rather than marking anything. A divider is enough to say where the backup half starts.
+    // No card around either half. The modal is already a card, the heading already groups them,
+    // and Import behavior and Privacy carry none. A divider says where the backup half starts.
     return (
         <Stack gap="xs">
             <Group gap="sm">

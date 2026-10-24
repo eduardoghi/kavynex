@@ -8,7 +8,7 @@ import type {
 import { formatCount } from "../../../utils/pluralize";
 import { SectionHeading, StatusBadge } from "./diagnostics-summary-primitives";
 
-// Left rule on an external tool, standing in for the tinted card the tool used to sit in.
+// The colour of the rule left of an external tool, by its health.
 const TOOL_ACCENT_COLOR = {
     healthy: "light-dark(rgba(34,197,94,0.55), rgba(34,197,94,0.45))",
     unhealthy: "light-dark(rgba(239,68,68,0.60), rgba(239,68,68,0.50))",

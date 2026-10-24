@@ -25,8 +25,8 @@ type SectionHeadingProps = {
     title: string;
 };
 
-// A heading is a glyph and a word. It used to be a word behind a 34px violet gradient tile with a
-// shadow, repeated five times down a dialog meant to be read rather than admired.
+// A heading is a glyph and a word, with no tile or shadow. It repeats five times down a dialog
+// meant to be read.
 export function SectionHeading({ icon, title }: SectionHeadingProps): JSX.Element {
     return (
         <Group gap={8} wrap="nowrap" align="center">
@@ -47,8 +47,8 @@ type DiagnosticsMetricProps = {
 };
 
 // Label directly above its value, no box. Reading down a column of these is faster than reading
-// across a row with the label at one edge and the number at the other, and it drops the card the
-// value used to sit in without spreading the pair apart to compensate.
+// across a row with the label at one edge and the number at the other, and the pair stays
+// together without a card around it.
 export function DiagnosticsMetric({ label, value }: DiagnosticsMetricProps): JSX.Element {
     return (
         <Box style={{ minWidth: 0 }}>

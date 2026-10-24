@@ -28,8 +28,8 @@ export function ImportBehaviorSection({
             <Radio.Group
                 // Mantine puts aria-label and aria-labelledby on its Input.Wrapper root, not on the
                 // inner element with role="radiogroup", so neither names the group. That element is
-                // labelled by the wrapper's own label, and only when one is rendered (since Mantine
-                // 9.7, a label id alone no longer reaches it). So the label is the title's text,
+                // labelled by the wrapper's own label, and only when one is rendered (from Mantine
+                // 9.7 on, a label id alone does not reach it). So the label is the title's text,
                 // visually hidden, with `display: contents` so its box takes no space under the
                 // visible title above.
                 label={<VisuallyHidden>Import behavior</VisuallyHidden>}

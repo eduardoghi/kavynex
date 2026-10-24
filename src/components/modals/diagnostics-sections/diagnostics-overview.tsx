@@ -4,8 +4,7 @@ import type { DiagnosticsOverview, DiagnosticsOverviewStatus } from "../../../ty
 import { formatCount } from "../../../utils/pluralize";
 import { StatusBadge } from "./diagnostics-summary-primitives";
 
-// The status colours the overview icon used to carry inside a tinted circle. The circle went, the
-// colour did not, since it is the only thing distinguishing the three states at a glance.
+// The overview icon's colour per status, which is what tells the three states apart at a glance.
 const OVERVIEW_ICON_COLOR: Record<DiagnosticsOverviewStatus, string> = {
     healthy: "light-dark(#15803D, rgb(134,239,172))",
     warning: "light-dark(#A16207, rgb(253,224,71))",

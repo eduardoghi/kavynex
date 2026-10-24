@@ -189,11 +189,11 @@ export function CreateChannelModal({
                                 carrying a bigger gap, since the gap would also push the
                                 Channel avatar label away from the control. */}
                             {avatarMode === "manual" && (
-                                // A read-only TextInput read as a field you could type a
-                                // path into, and it spent a full input's height on a value
-                                // only the picker can set. Status text and the picker share
-                                // a row instead. Clear is rendered only when there is
-                                // something to clear, where it used to sit there disabled.
+                                // Status text and the picker share a row. A read-only
+                                // TextInput reads as a field you could type a path into,
+                                // and spends a full input's height on a value only the
+                                // picker sets. Clear is rendered only when there is
+                                // something to clear.
                                 <Stack gap={4} mt={4}>
                                     <Text fw={700} size="sm">
                                         Avatar file

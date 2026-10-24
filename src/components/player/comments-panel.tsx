@@ -58,8 +58,8 @@ type CommentsPanelProps = {
     canFetchComments?: boolean;
     // What a fetch last concluded for this media. `hasComments` cannot answer this. It is derived
     // from the stored count, so 0 means both "nothing was ever fetched" and "a fetch ran and found
-    // nothing", and the Fetch button used to be offered on both. A user could therefore re-run an
-    // operation that could never return anything, with the screen unchanged each time.
+    // nothing". Offering the Fetch button on both would let a user re-run a fetch that can never
+    // return anything, with the screen unchanged each time.
     commentsState?: MediaRow["comments_state"];
     isFetchingComments?: boolean;
     onFetchComments?: () => void | Promise<void>;

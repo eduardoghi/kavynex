@@ -27,8 +27,9 @@ type MediaGridProps = {
     hasMore?: boolean;
     isLoadingMore?: boolean;
     onLoadMore?: () => void;
-    // A page after the first failed. Scrolling no longer asks for it (that retried in a loop), so a
-    // row at the end of the list offers to, and the list counts as incomplete until it loads.
+    // A page after the first failed. Scrolling does not ask for it again, which would retry in a
+    // loop, so a row at the end of the list offers to, and the list counts as incomplete until it
+    // loads.
     loadMoreFailed?: boolean;
     // The first page of the current query failed, with the reason to show. The grid keeps the rows
     // it has (none after a channel switch) and offers onRetryLoad instead of the empty state, which
@@ -201,7 +202,7 @@ export function MediaGrid({
     // rather than the stored file's full resolution. Resolved for every loaded item rather than only
     // the virtualized window. The window changes on every scroll tick, and asking per tick would
     // turn a scroll into a stream of IPC calls. Purely an optimization. A path with no entry here
-    // renders the stored thumbnail, which is what every card did before this existed.
+    // renders the stored thumbnail.
     const displayThumbnails = useDisplayThumbnails(
         useMemo(() => items.map((item) => item.thumbnail_path), [items]),
         libraryPath

@@ -18,13 +18,12 @@ type RemoteImageProps = {
  *
  * The privacy setting behind it ("Load comment and live chat images from Google",
  * `load_remote_images`, off by default) is a promise the README states plainly. With it off,
- * viewing saved media makes no network requests at all. That promise used to rest on every call
- * site remembering to consult `useRemoteImagesEnabled` before rendering an `<img>`. A convention,
- * not a barrier, and one a component added later would silently break while the setting still read
- * as "off" in Settings.
+ * viewing saved media makes no network requests at all.
  *
- * Consolidating the check here (and in `SafeAvatar`, the other leaf that can hold a remote src)
- * makes the gate structural. A caller cannot forget it, because a caller no longer performs it.
+ * The check lives here and in `SafeAvatar`, the other leaf that can hold a remote src, so no call
+ * site has to remember to consult `useRemoteImagesEnabled` before rendering an `<img>`. A component
+ * added later cannot forget it while the setting still reads "off" in Settings, because a caller
+ * never performs it.
  * `remote-images-context` defaults to `false`, so a consumer rendered outside the provider fails
  * closed rather than leaking a load.
  */
