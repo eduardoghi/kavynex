@@ -95,7 +95,7 @@ export type DiagnosticsIssue = {
     description: string;
     // A few concrete example paths for issues that reference specific files (missing/orphan/
     // invalid), so the user can see and act on them manually. Capped by the backend/service
-    // that produced them; omitted when there are none to show.
+    // that produced them, and omitted when there are none to show.
     examples?: DiagnosticsIssueExample[];
     // True when those example paths name files that are really in the library, which is what lets
     // the UI offer to reveal one in the file manager. Absent for the missing and invalid issues,

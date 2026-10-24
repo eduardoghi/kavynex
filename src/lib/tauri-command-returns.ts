@@ -63,7 +63,7 @@ export type TauriCommandReturns = {
     // The report plus the media row behind each path it named. One command rather than two,
     // because both are answered from one snapshot of the database (see the Rust struct).
     check_library_integrity: LibraryIntegrityCheck;
-    // Resolves when the run ends; the report itself arrives on the progress channel's
+    // Resolves when the run ends. The report itself arrives on the progress channel's
     // terminal `done` message, not here.
     verify_library_content: void;
     cancel_library_verification: void;
@@ -134,7 +134,7 @@ export type TauriCommandReturns = {
 // every command in TAURI_COMMANDS has an entry above and no entry names something that is not a
 // command. If either drifts, the type becomes `false`, the `= true` assignment fails to compile, and
 // the build points here instead of failing at some unrelated call site. Exported so `noUnusedLocals`
-// does not report it; the value itself is never read.
+// does not report it. The value itself is never read.
 export const COMMAND_MAP_IS_EXHAUSTIVE: Exclude<
     TauriCommandName,
     keyof TauriCommandReturns

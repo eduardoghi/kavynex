@@ -146,7 +146,7 @@ describe("PlayerMediaHeader", () => {
     });
 
     it("shows the live badge only for a live media", () => {
-        // The badge renders nothing unless the caller passes isLive; pin both states so a caller
+        // The badge renders nothing unless the caller passes isLive. Pin both states so a caller
         // that forgets it is caught rather than silently rendering nothing.
         const { unmount } = renderWithMantine(
             <PlayerMediaHeader

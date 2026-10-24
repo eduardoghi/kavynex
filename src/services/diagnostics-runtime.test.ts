@@ -25,7 +25,7 @@ describe("getRuntimeDiagnosticsInfo", () => {
     afterEach(() => {
         vi.restoreAllMocks();
         // `userAgentData` is defined on the instance by the stub above, so restoreAllMocks does not
-        // remove it; delete it explicitly or it leaks into the next test's platform lookup.
+        // remove it. Delete it explicitly or it leaks into the next test's platform lookup.
         delete (navigator as { userAgentData?: unknown }).userAgentData;
     });
 

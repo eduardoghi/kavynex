@@ -20,7 +20,7 @@ import { DISPLAY_FONT_FAMILY } from "../../constants/fonts";
 import type { Channel, ViewMode } from "../../types/media";
 
 // Row-height estimate for the virtualized channel list. Each row is a fixed-layout avatar plus
-// two truncated text lines, so heights are near-uniform; measureElement corrects any drift.
+// two truncated text lines, so heights are near-uniform, and measureElement corrects any drift.
 const CHANNEL_ROW_ESTIMATE = 72;
 // Matches the "xs" Stack gap the list used before virtualization, applied as per-row bottom
 // padding since absolutely positioned virtual rows do not receive the flex gap.
@@ -37,8 +37,8 @@ type ChannelSidebarProps = {
     libraryPath: string;
     // See ChannelListItem. A folder can be configured while `libraryPath` is still handed empty.
     hasLibraryFolder?: boolean;
-    // Branding and the app-level actions the sidebar now hosts (the top bar was removed). Optional so
-    // the component still renders bare in isolation tests; the app always supplies them.
+    // Branding and the app-level actions the sidebar hosts in place of the top bar. Optional so
+    // the component still renders bare in isolation tests, and the app always supplies them.
     appIconSrc?: string;
     onOpenCreateChannel?: () => void;
     onOpenSettings?: () => void;
@@ -230,7 +230,7 @@ export function ChannelSidebar({
                                     const channel = channels[virtualRow.index];
 
                                     // The virtualizer only yields in-range indices, so this is
-                                    // never null in practice; the guard satisfies the checked-index
+                                    // never null in practice. The guard satisfies the checked-index
                                     // type and renders nothing rather than crashing if it ever were.
                                     if (!channel) {
                                         return null;

@@ -115,7 +115,7 @@ const INTERNAL_BACKEND_CODES = new Set([
 
     // Creating and canonicalizing directories. The user-facing refusals of the library folder
     // (INVALID_LIBRARY_PATH, INVALID_LIBRARY_MIGRATION, LIBRARY_MIGRATION_ALREADY_RUNNING) are
-    // catalogued; these are the failures underneath them, where the path was already accepted.
+    // catalogued. These are the failures underneath them, where the path was already accepted.
     "CREATE_LIBRARY_DIR_FAILED",
     "CREATE_NEW_LIBRARY_DIR_FAILED",
     "CANONICALIZE_LIBRARY_PATH_FAILED",
@@ -125,7 +125,7 @@ const INTERNAL_BACKEND_CODES = new Set([
     "INVALID_SOURCE_DIRECTORY",
 
     // The containment primitives in utils/path.rs. PATH_OUTSIDE_BASE_DIR is catalogued because a
-    // user reaches it by picking a file outside the library; the rest are the internal steps of
+    // user reaches it by picking a file outside the library. The rest are the internal steps of
     // that same check and say nothing actionable on their own.
     "INVALID_RELATIVE_PATH",
     "PATH_NOT_FOUND",
@@ -159,7 +159,7 @@ const INTERNAL_BACKEND_CODES = new Set([
     "REMOVE_THUMBNAIL_FAILED",
     // The compression step itself. The two live chat failures a user meets while opening a replay
     // (LIVE_CHAT_FILE_NOT_FOUND / _UNREADABLE) were split out of this code precisely so they could
-    // be catalogued; what is left runs during the startup migration, where nothing is watching.
+    // be catalogued. What is left runs during the startup migration, where nothing is watching.
     "LIVE_CHAT_COMPRESS_FAILED",
 
     // The app cache directory and its scratch subdirectories. Regenerable by construction, so a
@@ -176,7 +176,7 @@ const INTERNAL_BACKEND_CODES = new Set([
 
     // Driving the yt-dlp child process. The outcomes a user asked about (not found, cancelled,
     // failed, timed out, format gone, metadata unreadable, could not start, finished without a
-    // usable file) are catalogued; these are the mechanics of reading its pipes once it runs.
+    // usable file) are catalogued. These are the mechanics of reading its pipes once it runs.
     "YT_DLP_INVALID_METADATA",
     "YT_DLP_STDOUT_CAPTURE_FAILED",
     "YT_DLP_STDERR_CAPTURE_FAILED",

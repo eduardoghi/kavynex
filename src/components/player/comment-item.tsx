@@ -5,7 +5,7 @@ import { UI_TEXT } from "../../constants/ui-text";
 import { CommentContent } from "./comment-content";
 import { type CommentTreeNode } from "../../utils/comment-tree";
 
-// A single comment can have hundreds of replies; cap how many are mounted at once, mirroring the
+// A single comment can have hundreds of replies. Cap how many are mounted at once, mirroring the
 // top-level thread cap in comments-panel, so expanding one thread does not build an unbounded DOM.
 // More replies are revealed on demand. This is the browse view; the search view renders a flat,
 // virtualized list instead (see CommentSearchResults), so it has no equivalent cap.

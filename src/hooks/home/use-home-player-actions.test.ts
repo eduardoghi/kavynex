@@ -179,7 +179,7 @@ describe("useHomePlayerActions", () => {
             await result.current.markActiveAsUnwatched();
         });
 
-        // markAsUnwatched owns the active-media update; this hook only delegates to it.
+        // markAsUnwatched owns the active-media update. This hook only delegates to it.
         expect(options.homeMediaActions.markAsUnwatched).toHaveBeenCalledWith(77);
         expect(options.mediaPlayer.setActiveMedia).not.toHaveBeenCalled();
     });
@@ -297,7 +297,7 @@ describe("useHomePlayerActions", () => {
     });
 
     it("does not save progress when closing without an explicit position", async () => {
-        // Switching channels from the sidebar closes the player with no argument; it must not
+        // Switching channels from the sidebar closes the player with no argument. It must not
         // overwrite the saved position with 0. The player view persists the real position on
         // unmount instead.
         const activeMedia = createMediaRow({

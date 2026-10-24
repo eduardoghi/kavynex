@@ -155,7 +155,7 @@ describe("MediaGrid", () => {
             />
         );
 
-        // The skeleton grid is decorative; the status region wrapping it carries the
+        // The skeleton grid is decorative. The status region wrapping it carries the
         // visually-hidden "Loading media" text so a screen reader still announces the load.
         expect(screen.getByRole("status")).toBeInTheDocument();
         expect(screen.getByText("Loading media")).toBeInTheDocument();
@@ -490,7 +490,7 @@ describe("MediaGrid", () => {
             // A `//` comment written in JSX children position is a text node, not a comment. It
             // ships as visible page text. The spot that invites the mistake is the scroll
             // container that wraps the list, so assert on structure rather than on any one
-            // phrase, neither it nor the list itself may contribute text of its own; every
+            // phrase, neither it nor the list itself may contribute text of its own. Every
             // string on screen has to come from a card.
             const list = screen.getByRole("list");
             const containers = [list, list.parentElement].filter(

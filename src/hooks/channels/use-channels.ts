@@ -88,7 +88,7 @@ export type ChannelsController = {
 // Composition root for the channel sidebar. It owns the channel list, the selection and the
 // delete flow, and composes the create- and edit-channel form state from useCreateChannelForm /
 // useEditChannelForm rather than flattening every field into this one hook. The create/save/delete
-// calls stay here because they need the channel actions (useChannelActions); the forms own only
+// calls stay here because they need the channel actions (useChannelActions). The forms own only
 // their own fields. The returned shape stays flat so consumers are unchanged.
 export function useChannels({
     libraryPath,
@@ -143,7 +143,7 @@ export function useChannels({
         loadChannels,
     } = channelActions;
 
-    // The form fields and controls the callbacks/effects below and the return object read; pulled off
+    // Form fields and controls the callbacks/effects below and the return object read, pulled off
     // the two composed form controllers here so the rest of the hook is agnostic to where they live.
     const {
         resetCreateChannelForm,
@@ -216,7 +216,7 @@ export function useChannels({
             setConfirmDeleteChannelOpen(true);
 
             // The confirmation opens at once, on its generic wording, and the count lands under
-            // it when the query answers. A failure is logged and leaves the wording generic; the
+            // it when the query answers. A failure is logged and leaves the wording generic. The
             // delete never waits on this number and never depends on it.
             const requestId = deleteCountGuard.begin();
 

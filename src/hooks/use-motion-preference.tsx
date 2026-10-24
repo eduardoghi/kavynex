@@ -42,7 +42,7 @@ function readStoredPreference(): MotionPreference {
     try {
         return parseMotionPreference(window.localStorage.getItem(MOTION_PREFERENCE_STORAGE_KEY));
     } catch {
-        // localStorage can throw (disabled storage, a webview profile that refuses it); the
+        // localStorage can throw (disabled storage, a webview profile that refuses it). The
         // preference then lives for the session only, which is the only fallback that keeps the
         // control working at all.
         return "system";

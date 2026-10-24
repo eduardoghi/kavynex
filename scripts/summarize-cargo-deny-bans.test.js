@@ -44,7 +44,7 @@ describe("parseBanDiagnostics", () => {
     });
 
     it("takes the crate from the label span rather than from the diagnostic message", () => {
-        // The message is English prose and is free to be reworded upstream; the span is the data
+        // The message is English prose and is free to be reworded upstream. The span is the data
         // being reported. Making the two disagree is the only way to prove which one is read. A
         // parser that scraped the message would answer "somethingelse" here.
         const { duplicates } = parseBanDiagnostics(
@@ -114,7 +114,7 @@ describe("parseBanDiagnostics", () => {
     });
 
     it("skips a duplicate diagnostic whose labels carry no lock entries", () => {
-        // Better to under-report one finding than to put a nameless row in the table; the
+        // Better to under-report one finding than to put a nameless row in the table. The
         // summary-count cross-check is what surfaces that something went unread.
         const { duplicates } = parseBanDiagnostics(
             JSON.stringify({

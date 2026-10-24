@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENT_DATABASE_INTEGRITY_FAILED } from "../constants/events";
 import { useDatabaseIntegrityAlert } from "./use-database-integrity-alert";
 
-// The hook subscribes through listenValidated(eventName, schema, handler); the schema itself is
+// The hook subscribes through listenValidated(eventName, schema, handler). The schema itself is
 // covered by the ipc-schemas tests, so this mock ignores it and captures the handler so a test can
 // fire the event by hand. The returned unlisten is a shared spy so the cleanup path is observable.
 let capturedHandler: ((payload: unknown) => void) | null = null;

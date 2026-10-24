@@ -126,7 +126,7 @@ export function CommentsPanel({
     // While searching, every match is shown (no thread/reply caps), so the tree is flattened and
     // handed to the virtualized results list, which mounts only the rows near the viewport, so a
     // broad query matching thousands of comments never builds them all at once. Only computed when a
-    // search is active; the browse view keeps its capped, recursive rendering below.
+    // search is active. The browse view keeps its capped, recursive rendering below.
     const searchResultRows = useMemo(
         () => (normalizedCommentSearch ? flattenCommentTree(filteredCommentTree) : []),
         [normalizedCommentSearch, filteredCommentTree]

@@ -6,14 +6,14 @@ name: release-rehearsal
 #
 # It builds the bundles the way release.yml does (the frontend, a compile without the signing key,
 # then the signed bundle build) and runs the same smoke test and webview check, then goes one step
-# further and runs the *installed* artifacts, which release.yml does not: the .deb inside a plain
-# ubuntu:24.04 (the oldest system the declared glibc floor promises), the extracted AppImage, the NSIS
-# and MSI installers run silently, and the binary inside the macOS .app. release.yml smoke-tests the
-# binary in target/release, which is not what a user runs. It also checks that the signed build
-# compiles nothing, which is what keeps the signing key away from third-party build code, and
-# generates the frontend SBOM with release.yml's command.
+# further and runs the *installed* artifacts, which release.yml does not. These are the .deb
+# inside a plain ubuntu:24.04 (the oldest system the declared glibc floor promises), the
+# extracted AppImage, the NSIS and MSI installers run silently, and the binary inside the macOS
+# .app. release.yml smoke-tests the binary in target/release, which is not what a user runs. It
+# also checks that the signed build compiles nothing, which is what keeps the signing key away
+# from third-party build code, and generates the frontend SBOM with release.yml's command.
 #
-# What it does not rehearse: the arm64 legs, tauri-action and the draft upload, the latest.json
+# It does not rehearse the arm64 legs, tauri-action and the draft upload, the latest.json
 # rewrite and its gate, the attestations, and the version and tag guards. Those need a real draft.
 #
 # Nothing here can publish. No environment, so the real signing key is never in scope, no release is

@@ -15,7 +15,7 @@
 // the command map ties every result type to its command, so the runtime schemas cannot silently
 // drift from the shapes they validate.
 //
-// Only structured results (objects, and arrays of them) are registered; a command that returns a
+// Only structured results (objects, and arrays of them) are registered. A command that returns a
 // bare string/number/boolean or `void` is not, since there is no shape for a wrong value to hide
 // inside. Objects are parsed non-strictly (zod's default strips unknown keys), so a backend that
 // adds a new field ships before the schema learns about it rather than breaking every call.
@@ -332,7 +332,7 @@ type IpcResultSchemas = {
 
 const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     check_external_tools: externalToolsStatusSchema satisfies z.ZodType<ExternalToolsStatus>,
-    // Nullable because a normal launch answers null; only a `--webview-check` run gets a plan.
+    // Nullable because a normal launch answers null. Only a `--webview-check` run gets a plan.
     begin_webview_check: webviewCheckPlanSchema.nullable() satisfies z.ZodType<WebviewCheckPlan | null>,
     get_library_summary: librarySummaryInfoSchema satisfies z.ZodType<LibrarySummaryInfo>,
     remove_orphan_library_files:
@@ -350,7 +350,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     // steps later as a probe against nothing or a comment fetch for the wrong video.
     create_media: createdMediaSchema satisfies z.ZodType<CreatedMedia>,
     // Positional. Entry i answers requested path i, so a shorter or reordered array would silently
-    // map a derivative onto the wrong media. The array shape is what this pins; the caller zips it
+    // map a derivative onto the wrong media. The array shape is what this pins. The caller zips it
     // back against the paths it sent.
     resolve_display_thumbnails: z.array(
         displayThumbnailSchema
@@ -414,7 +414,7 @@ const ytDlpTerminalEventSchema = z.object({
 
 // Payload of the database-integrity-failed event. This is a frontend-owned contract (the backend
 // emits a plain serde struct, not a ts-rs-exported type), so there is no generated type to tie it
-// to with `satisfies`; the shape is trivial and validated here all the same.
+// to with `satisfies`. The shape is trivial and validated here all the same.
 const databaseIntegrityFailedEventSchema = z.object({
     problems: z.array(z.string()),
 });

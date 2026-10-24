@@ -36,7 +36,7 @@ describe("YtDlpProgressBar", () => {
 
     it("names the merge in words a user can act on, and shows no percentage for it", () => {
         // The stage this whole bar exists for. yt-dlp writes one `[Merger]` line and then works
-        // silently for minutes on a large file, which reads as a freeze; the terminal below shows
+        // silently for minutes on a large file, which reads as a freeze. The terminal below shows
         // that raw line and nothing else.
         renderWithMantine(
             <YtDlpProgressBar progress={{ phase: "merging", percent: null }} isRunning />
@@ -50,7 +50,7 @@ describe("YtDlpProgressBar", () => {
     it("does not claim a measurement it does not have", () => {
         // Mantine's Progress always emits aria-valuenow from `value`, so filling the bar to 100 to
         // get the animation would announce a finished stage to a screen reader while FFmpeg is
-        // still muxing. The bar is decoration here and is out of the accessibility tree; the text
+        // still muxing. The bar is decoration here and is out of the accessibility tree. The text
         // is what carries the state.
         renderWithMantine(
             <YtDlpProgressBar progress={{ phase: "writing-metadata", percent: null }} isRunning />

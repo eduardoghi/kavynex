@@ -101,7 +101,7 @@ function sessionLines(header: string, listenerFailed: boolean): YtDlpLogLine[] {
 }
 
 // The next id to assign. Ids are monotonic and only ever appended at the tail, so the last line
-// carries the highest one; deriving from it (rather than a mutable counter) keeps this function
+// carries the highest one. Deriving from it (rather than a mutable counter) keeps this function
 // pure (safe to re-run under StrictMode), and survives the front-trim below, since a line's id
 // never changes once assigned.
 function nextLogId(lines: YtDlpLogLine[]): number {
@@ -271,11 +271,11 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     );
 
     // Registers the yt-dlp event listeners once. The dependencies are stable (appendLogs is
-    // useCallback([]); finalizeRun only depends on it), so this effect runs on mount and cleans up on
-    // unmount, never re-running in between. React always runs the cleanup before re-running an effect
-    // (including StrictMode's mount/unmount/mount in dev), and `isDisposed` plus the unlisteners list
-    // are what make that safe. A listener whose async registration resolves after disposal is
-    // unlistened immediately, so no duplicate registration outlives a remount.
+    // useCallback([]) and finalizeRun only depends on it), so this effect runs on mount and cleans
+    // up on unmount, never re-running in between. React always runs the cleanup before re-running
+    // an effect (including StrictMode's mount/unmount/mount in dev), and `isDisposed` plus the
+    // unlisteners list are what make that safe. A listener whose async registration resolves after
+    // disposal is unlistened immediately, so no duplicate registration outlives a remount.
     useEffect(() => {
         let isDisposed = false;
         const unlisteners: UnlistenFn[] = [];

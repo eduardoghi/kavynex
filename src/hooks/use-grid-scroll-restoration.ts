@@ -8,7 +8,7 @@ type UseGridScrollRestorationResult = {
 };
 
 // Preserves and restores the media grid's scroll position across visibility toggles. The grid is
-// hidden (not unmounted) while the player is open so its scroll position survives; this hook saves
+// hidden (not unmounted) while the player is open so its scroll position survives. This hook saves
 // the position when it hides and restores it when it shows again. The restore is deferred to two
 // animation frames so the virtualizer has laid out its rows before the scrollTop is reapplied, and
 // the `isRestoringScroll` guard keeps that programmatic scroll from being mistaken for a real user

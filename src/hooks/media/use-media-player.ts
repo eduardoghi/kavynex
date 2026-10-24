@@ -52,7 +52,7 @@ export function useMediaPlayer({
     // affect what any consumer observes, so it is left out to keep the derivations uniform.
     const activeIsAudio = activeMedia?.media_type === "audio";
     // The media file goes through the app's own scheme, not the asset protocol. The thumbnail below
-    // stays on the asset protocol on purpose: only the media is large enough for Tauri's 1 MB range
+    // stays on the asset protocol on purpose. Only the media is large enough for Tauri's 1 MB range
     // cap to matter. See `mediaSrcFromAbsolutePath`.
     const activeSrc = mediaSrcFromAbsolutePath(
         resolveStoredPath(activeMedia?.file_path ?? null, libraryPath)

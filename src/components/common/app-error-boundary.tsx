@@ -62,7 +62,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
     handleRestart = (): void => {
         void relaunch().catch(() => {
-            // Relaunch needs the Tauri process plugin; if it fails, reloading the webview
+            // Relaunch needs the Tauri process plugin. If it fails, reloading the webview
             // is the closest recovery available.
             window.location.reload();
         });

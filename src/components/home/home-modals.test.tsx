@@ -383,7 +383,7 @@ describe("HomeModals", () => {
 
     it("says how many files the channel deletion takes once the count is known", () => {
         // The count arrives after the confirmation opens (see useChannels.requestDeleteChannel).
-        // The generic line above is what shows until then; this is what replaces it.
+        // The generic line above is what shows until then. This is what replaces it.
         const props = createProps();
         props.channels = { ...props.channels, channelToDeleteMediaCount: 27 };
 

@@ -32,7 +32,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            # No version input: the pnpm version comes from package.json's packageManager field, so
+            # No version input. The pnpm version comes from package.json's packageManager field, so
             # this and local Corepack install the same pinned pnpm.
             - name: Setup pnpm
               uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -40,14 +40,14 @@ jobs:
             - name: Setup Node.js
               uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  # Kept in sync with ci.yml: the Node major @types/node targets (26).
+                  # Kept in sync with ci.yml (the Node major @types/node targets, 26).
                   node-version: 26.5.0
                   cache: pnpm
 
             - name: Install dependencies
               run: pnpm install --frozen-lockfile
 
-            # Same gate as ci.yml: fail on a high/critical advisory in the production tree, queried
+            # Same gate as ci.yml. Fails on a high/critical advisory in the production tree, queried
             # against osv.dev (see scripts/check-js-advisories.js).
             - name: Audit production JS dependencies
               run: pnpm run advisories:check
@@ -58,7 +58,7 @@ jobs:
             - name: Check production JS licenses
               run: pnpm licenses:check
 
-            # Dev tree too, non-blocking, exactly as in ci.yml: a dev-only advisory should surface
+            # Dev tree too, non-blocking, exactly as in ci.yml. A dev-only advisory should surface
             # in the logs without gating, since it never ships in a release artifact.
             - name: Audit dev JS dependencies (non-blocking)
               continue-on-error: true
@@ -75,7 +75,7 @@ jobs:
                   persist-credentials: false
 
             # Runs the duplicate-version report at the end of this job. Pinned like every other
-            # toolchain here. No pnpm setup or install: the report script is dependency-free.
+            # toolchain here. No pnpm setup or install. The report script is dependency-free.
             - name: Setup Node.js
               uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
@@ -113,7 +113,7 @@ jobs:
 
             # The duplicate-version count on this run's summary page. See ci.yml's step of the same
             # name for why it is a second cargo-deny invocation and why it never fails the job. It
-            # belongs here as much as there: this workflow's whole purpose is surfacing what decays
+            # belongs here as much as there. This workflow's whole purpose is surfacing what decays
             # while nothing changes in the repository, and dependency bloat is exactly that. A
             # Dependabot bump can add a duplicate without a single line of this project's code
             # moving, so a weekly reading is the one that shows the drift.
@@ -126,19 +126,19 @@ jobs:
     # The third thing that decays while nothing in this repository changes is yt-dlp's output
     # format, which the two jobs above cannot see.
     #
-    # Every other external input here is pinned: the toolchain, Node, the runner images, every
-    # action by SHA, every `cargo install` by version. yt-dlp is the structural exception and cannot
-    # be pinned: it is a system binary resolved from PATH (services/binaries.rs), whatever version
-    # the user's package manager last installed. `models/yt_dlp.rs` deserializes its
+    # Every other external input here is pinned (the toolchain, Node, the runner images, every
+    # action by SHA, every `cargo install` by version). yt-dlp is the structural exception and
+    # cannot be pinned. It is a system binary resolved from PATH (services/binaries.rs), whatever
+    # version the user's package manager last installed. `models/yt_dlp.rs` deserializes its
     # `--dump-single-json`, and every test covering that reads a committed fixture, which passes
     # forever no matter what upstream does.
     #
     # WHAT THIS JOB DOES NOT DO, since the obvious reading of its name is the wrong one. It does not
-    # check the contract. That needs a real YouTube fetch, and it was tried here first: the test
-    # already exists (`live_yt_dlp_output_still_matches_the_committed_fixture`) and is already
-    # written to run unattended. On a GitHub runner YouTube answers "Sign in to confirm you're not a
-    # bot", because runners are datacenter IPs, so the test skipped and the job went green having
-    # verified nothing. Measured, not assumed: run 31979578316.
+    # check the contract. That needs a real YouTube fetch. The test for it already exists
+    # (`live_yt_dlp_output_still_matches_the_committed_fixture`) and is written to run unattended,
+    # but on a GitHub runner YouTube answers "Sign in to confirm you're not a bot", because
+    # runners are datacenter IPs, so the test skips and the job goes green having verified
+    # nothing. Measured, not assumed, in run 31979578316.
     #
     # A non-YouTube extractor was the next idea and does not work either. The fields that break the
     # app (`vcodec`, `acodec`, `height`, `resolution`, `comment_count`) are generic InfoDict *keys*
@@ -157,7 +157,7 @@ jobs:
         timeout-minutes: 10
         permissions:
             contents: read
-            # Self-contained on purpose: it opens and closes its own tracker rather than routing
+            # Self-contained on purpose. It opens and closes its own tracker rather than routing
             # through the shared alert/close jobs below. Those key off a job *failing*, and a new
             # yt-dlp release is not a failure of anything. Wiring it in would have meant either a red
             # run every couple of weeks until the fixture is refreshed (the "trains you to ignore
@@ -176,7 +176,7 @@ jobs:
             # today". Any difference means refresh it, which sidesteps date parsing entirely.
             #
             # The version is read from `_captured_from_yt_dlp` in the fixture rather than from the
-            # prose in its `_comment`, which states the same fact in a sentence: a reworded comment
+            # prose in its `_comment`, which states the same fact in a sentence. A reworded comment
             # would break this silently, and this file already carries two other gates whose whole
             # reason for existing is that a prose-and-code pair drifted.
             - name: Compare the fixture's yt-dlp version against the latest release
@@ -455,7 +455,7 @@ jobs:
                   fi
 
     # GitHub emails the maintainer when a scheduled run fails, but that is an easily-missed inbox
-    # signal: the header of this file frames the workflow's whole job as "surfacing" a new
+    # signal. The header of this file frames the workflow's whole job as "surfacing" a new
     # advisory, and an email alone barely does that. Open (or comment on) a tracking issue so a
     # failing audit is visible in the repository itself. Runs only when a gate above did not
     # succeed, and only on the schedule/dispatch this workflow already runs on.
@@ -519,7 +519,7 @@ jobs:
     # arrives as a comment on an issue that already reads as known.
     #
     # Kept identical in shape to mutation.yml's, which is where the full reasoning lives, and for the
-    # same reason the two alert conditions are kept identical: these must not drift again.
+    # same reason the two alert conditions are kept identical. These must not drift again.
     close-on-success:
         name: Close the tracking issue on a green run
         needs: [js-advisories, rust-advisories, yt-dlp-fixture-freshness, sqlite-freshness, cargo-tool-pins]

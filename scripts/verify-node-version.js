@@ -1,7 +1,7 @@
 // CI gate. Fails when the Node version pinned in .nvmrc and the `node-version:` values declared in
 // the GitHub workflows disagree, so a bump that touches one but not the others can never silently
 // build/test against a different Node than local development uses. The app version already has
-// verify-release-version.js for exactly this reason; this closes the equivalent gap for the Node
+// verify-release-version.js for exactly this reason. This closes the equivalent gap for the Node
 // pin, which is otherwise duplicated across .nvmrc and every workflow with only a "keep in sync"
 // comment holding it together.
 
@@ -18,7 +18,7 @@ function normalizeVersion(value) {
 }
 
 // Every `node-version:` value declared in one workflow file, in document order. A workflow that sets
-// Node up in several jobs yields one entry per declaration; a workflow that never uses Node yields
+// Node up in several jobs yields one entry per declaration. A workflow that never uses Node yields
 // none. Comment lines are skipped so a `node-version:` mentioned in prose is not read as a real
 // declaration.
 export function extractNodeVersions(workflowContent) {

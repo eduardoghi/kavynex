@@ -3,7 +3,7 @@ import { logError } from "../../utils/app-logger";
 
 // True when no other element has a claim on the key. Focus is on the player itself, or on nothing,
 // which is the body (where focus lands after a click on content that cannot take it). Anything else
-// focused keeps its own keys: a field types, a button presses, a slider moves, and a focusable
+// focused keeps its own keys, so a field types, a button presses, a slider moves, and a focusable
 // scroll area (the comments, the live chat replay) scrolls with Space and the arrows.
 function isPlayerShortcutTarget(
     target: EventTarget | null,
@@ -32,7 +32,7 @@ function isPlayerShortcutTarget(
 // nothing, a right arrow moved 5s plus the native percent, up moved the volume by 0.10, and holding
 // an arrow scrubbed at the native step while this hook ignored the repeats. Measured on a headless
 // Edge 152 (the WebView2 engine) with trusted key events over CDP, against a bubble listener that
-// prevented the default: every native action still happened. In capture, none did. So a
+// prevented the default. Every native action still happened. In capture, none did. So a
 // preventDefault here reaches the native handler in time, and it is issued on every key this hook
 // owns, repeats included, so holding a key is inert everywhere rather than native-only while the
 // player has focus.
@@ -162,7 +162,7 @@ export function usePlayerKeyboardShortcuts(
                 return;
             }
 
-            // Claimed before the repeat check on purpose. See the capture note above: the native
+            // Claimed before the repeat check on purpose. See the capture note above. The native
             // handler would otherwise act on every repeat this hook declines to.
             event.preventDefault();
 

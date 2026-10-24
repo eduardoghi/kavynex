@@ -90,7 +90,7 @@ describe("bumpVersion", () => {
 
     it("returns 1 when the Cargo.toml version line is missing, and leaves the other two files untouched", () => {
         const files = baseFiles();
-        // src-tauri/Cargo.toml is checked out CRLF in the real repo; use \r\n here too so the
+        // src-tauri/Cargo.toml is checked out CRLF in the real repo. Use \r\n here too so the
         // regex is exercised against the same line endings the script actually reads on disk.
         files["Cargo.toml"] = `[package]\r\nname = "kavynex"\r\nedition = "2021"\r\n`;
         const cargoTomlBefore = files["Cargo.toml"];
@@ -116,7 +116,7 @@ describe("bumpVersion", () => {
 
         expect(exitCode).toBe(1);
         expect(error).toHaveBeenCalledWith(expect.stringContaining("Cargo.lock was NOT updated"));
-        // The manifests were still rewritten; only the lockfile step failed.
+        // The manifests were still rewritten. Only the lockfile step failed.
         expect(JSON.parse(files["package.json"]).version).toBe("1.2.0");
     });
 

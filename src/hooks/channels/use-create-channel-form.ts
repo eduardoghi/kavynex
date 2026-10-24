@@ -8,7 +8,7 @@ type UseCreateChannelFormOptions = {
 
 export type CreateChannelFormController = {
     createChannelOpen: boolean;
-    // Sets the modal open flag; closing (false) also clears the fields.
+    // Sets the modal open flag. Closing (false) also clears the fields.
     setCreateChannelOpen: (value: boolean) => void;
     // Closes the modal WITHOUT clearing the fields, for the post-create-success path where the
     // channel action has already reset them (the wrapper above would redundantly reset again).
@@ -28,8 +28,8 @@ export type CreateChannelFormController = {
 
 // The create-channel modal's form state, extracted from useChannels so that hook composes focused
 // slices instead of flattening every channel concern into one. Owns only the new-channel fields, the
-// modal open flag and the avatar picker; the actual create call stays in useChannels, which holds the
-// channel actions.
+// modal open flag and the avatar picker. The actual create call stays in useChannels, which holds
+// the channel actions.
 export function useCreateChannelForm({
     onError,
 }: UseCreateChannelFormOptions): CreateChannelFormController {

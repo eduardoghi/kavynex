@@ -345,7 +345,7 @@ describe("use-app-settings-storage", () => {
             externalBackupDir: "/mnt/backups",
         });
 
-        // It goes through the dedicated command; the whole-row settings write is never touched.
+        // It goes through the dedicated command. The whole-row settings write is never touched.
         expect(setExternalBackupDir).toHaveBeenCalledWith("/mnt/backups");
         expect(setStoredAppSettings).not.toHaveBeenCalled();
     });

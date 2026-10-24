@@ -8,7 +8,7 @@ import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow } from "../../types/media";
 
 // The search view (CommentSearchResults) virtualizes its rows. jsdom gives the scroll container no
-// height, so the real virtualizer would render nothing; mock it to yield every row (as the media
+// height, so the real virtualizer would render nothing. Mock it to yield every row (as the media
 // grid test does) so search assertions can see the matches.
 vi.mock("@tanstack/react-virtual", () => ({
     useVirtualizer: vi.fn(({ count }: { count: number }) => ({
@@ -158,8 +158,8 @@ describe("CommentsPanel", () => {
     it("shows every match when searching, past the browse thread cap and with no load-more", () => {
         // 35 matching top-level threads. More than the browse view's 30-thread cap. Search must
         // surface all of them (the point of searching the whole comment set), so the 35th is present
-        // and there is no "load more" gate; the virtualized results list is what makes rendering all
-        // of them safe.
+        // and there is no "load more" gate. The virtualized results list is what makes rendering
+        // all of them safe.
         const comments = Array.from({ length: 35 }, (_, index) =>
             comment({
                 id: index + 1,
@@ -197,7 +197,7 @@ describe("CommentsPanel", () => {
     });
 
     it("excludes context-only thread parents from the results count and marks them in the list", () => {
-        // "needle" only matches the reply; the root is retained purely as thread context and must
+        // "needle" only matches the reply. The root is retained purely as thread context and must
         // not inflate "Showing N results" or read as an unmarked match in the list.
         renderWithMantine(
             <CommentsPanel
@@ -462,8 +462,8 @@ describe("CommentsPanel", () => {
         // Populated one past the browse cap, with a reply thread on the first comment, so the sort
         // select, the search field, the per-comment controls and the load-more button are all in
         // the tree. Then the empty state that offers the fetch, which is the other set of controls
-        // this panel has. Kept small on purpose: axe over a hundred comment rows in jsdom ran past
-        // the test timeout, and the rows are all the same shape.
+        // this panel has. Kept small on purpose, because axe over a hundred comment rows in jsdom
+        // ran past the test timeout, and the rows are all the same shape.
         const threads = Array.from({ length: 31 }, (_, index) =>
             comment({
                 id: index + 1,

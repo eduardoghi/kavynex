@@ -18,7 +18,7 @@ function logTexts(logs: readonly { text: string }[]): string[] {
 const eventHandlers = new Map<string, (payload: any) => void>();
 const unlistenMocks = new Map<string, ReturnType<typeof vi.fn>>();
 
-// The hook subscribes through listenValidated (eventName, schema, handler); the schema is exercised
+// The hook subscribes through listenValidated (eventName, schema, handler). The schema is exercised
 // by the ipc-schemas tests, so this mock ignores it and hands the payload straight to the handler.
 vi.mock("../lib/tauri-client", () => ({
     listenValidated: vi.fn(

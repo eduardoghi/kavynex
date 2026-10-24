@@ -147,7 +147,7 @@ describe("isBlockingAdvisory", () => {
     });
 
     it("fails closed on an advisory whose severity cannot be determined", () => {
-        // The whole point of the fix: a live advisory with no usable severity signal must block
+        // The whole point of the fix. A live advisory with no usable severity signal must block
         // (surface for a human) rather than pass silently the way a bare database_specific lookup
         // would let it.
         expect(isBlockingAdvisory({})).toBe(true);
@@ -155,7 +155,7 @@ describe("isBlockingAdvisory", () => {
     });
 
     it("never blocks a withdrawn advisory, even a critical one", () => {
-        // A withdrawn advisory was retracted by its publisher; it must not gate a release.
+        // A withdrawn advisory was retracted by its publisher, so it must not gate a release.
         expect(
             isBlockingAdvisory({
                 withdrawn: "2026-01-01T00:00:00Z",

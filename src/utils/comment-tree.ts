@@ -214,7 +214,7 @@ function chainEndsAtARoot(
 // overall via the shared cache) depends only on the comments, not on the sort order. Splitting
 // them lets the caller memoize the structure on `comments` alone, so toggling the sort re-sorts
 // without re-linking the whole tree. `sortMode` is optional and, when given, sorts in place for
-// callers (and tests) that want a one-shot sorted tree; the panel passes it through `sortCommentTree`.
+// callers (and tests) that want a one-shot sorted tree. The panel passes it via `sortCommentTree`.
 export function buildCommentTree(
     comments: MediaCommentRow[],
     sortMode?: CommentSortMode

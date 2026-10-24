@@ -119,7 +119,7 @@ describe("advanceYtDlpProgress", () => {
 
     it("follows a second file back down from 100", () => {
         // A video+audio selection downloads two files, so the percentage legitimately restarts. The
-        // phase label is what carries that; the number is per file and says so in its doc comment.
+        // phase label is what carries that. The number is per file and says so in its doc comment.
         const done: YtDlpProgress = { phase: "downloading", percent: 100 };
 
         expect(advanceYtDlpProgress(done, "[download]   0.4% of  9.00MiB")?.percent).toBe(0.4);

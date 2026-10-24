@@ -18,7 +18,7 @@ export function parseMotionPreference(raw: unknown): MotionPreference {
 }
 
 // Whether motion should be reduced right now, given the stored preference and what the operating
-// system reports. "system" defers entirely; the other two override it in their direction.
+// system reports. "system" defers entirely. The other two override it in their direction.
 export function resolveReduceMotion(
     preference: MotionPreference,
     systemPrefersReducedMotion: boolean

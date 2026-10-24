@@ -110,7 +110,7 @@ export function SelectedChannelLibrarySection({
     const avatarSrc = fileSrcFromStoredPath(selectedChannel.avatar_path, libraryPath);
 
     // Filter/sort/search state and the backend query it drives live in a dedicated hook so this
-    // component stays presentational; see use-channel-library-filters for the debounce and the
+    // component stays presentational. See use-channel-library-filters for the debounce and the
     // focus-jump reset behavior.
     const {
         searchValue,
@@ -129,7 +129,7 @@ export function SelectedChannelLibrarySection({
     } = useChannelLibraryFilters({ focusMediaId, onApplyQuery });
 
     // "showing <loaded> of <total matching the filters>". With no filter active, total is the
-    // whole channel; with a filter, it is the filtered match count.
+    // whole channel, and with a filter, it is the filtered match count.
     const filteredCountLabel = `${UI_TEXT.library.showing} ${mediaItems.length} ${UI_TEXT.library.of} ${formatCount(total, "item")}`;
     // What a screen reader is told. The match count, which changes with a search or a filter, and
     // not the loaded count, which grows with every page the grid fetches while scrolling and had the

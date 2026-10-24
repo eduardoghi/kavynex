@@ -166,7 +166,7 @@ describe("installGlobalErrorHandlers", () => {
         );
 
         // The other half of what this function installs, asserted here rather than in its own test
-        // because `installed` makes the setup a one-shot: a second test calling it again would get
+        // because `installed` makes the setup a one-shot. A second test calling it again would get
         // a no-op and read the registrations as missing.
         //
         // Without a sink, every `logWarn`/`logError` in the app stops at the devtools console,

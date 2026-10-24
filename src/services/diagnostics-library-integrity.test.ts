@@ -11,7 +11,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 const invokeCommandMock = vi.mocked(invokeCommand);
 
 /// The command's answer, with only the fields a test cares about set. The real report carries
-/// every counter; the service passes it straight through, so the shape it forwards is what
+/// every counter. The service passes it straight through, so the shape it forwards is what
 /// matters here rather than the values.
 function checkResult(overrides: Record<string, unknown> = {}) {
     return {

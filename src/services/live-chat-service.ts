@@ -30,7 +30,7 @@ export async function listLiveChatFiles(): Promise<string[]> {
 
 /**
  * Moves any live chat files still in the old app-data location into the library and
- * compresses legacy files. Idempotent; called once the library path is known.
+ * compresses legacy files. Idempotent, called once the library path is known.
  */
 export async function migrateLiveChatToLibrary(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.MIGRATE_LIVE_CHAT_TO_LIBRARY);
@@ -105,7 +105,7 @@ export class LiveChatInterner {
 // the read goes through a backend command rather than the plugin-fs (whose scope is fixed to app
 // data at build time). The replay is streamed line by line (see streamLiveChatFile) and parsed
 // incrementally here, so a long dense stream is never held as one giant decompressed string on
-// either side of the IPC boundary; only the compact parsed messages below are retained (they must
+// either side of the IPC boundary. Only the compact parsed messages below are retained (they must
 // be, so the playback-time window can seek anywhere in the timeline).
 export async function readLiveChatMessagesFromFile(
     relativePath: string,

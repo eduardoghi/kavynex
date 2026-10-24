@@ -73,8 +73,8 @@ describe("useStartupUpdateCheck", () => {
 
         await waitFor(() => expect(checkAppUpdateMock).toHaveBeenCalledTimes(1));
 
-        // A fresh callback identity re-runs the effect; the ref guard must still keep it to a single
-        // check for the whole session rather than one per render.
+        // A fresh callback identity re-runs the effect. The ref guard must still keep it to a
+        // single check for the whole session rather than one per render.
         rerender({ onUpdateAvailable: vi.fn() });
         rerender({ onUpdateAvailable: vi.fn() });
 

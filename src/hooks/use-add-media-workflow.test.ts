@@ -194,7 +194,7 @@ describe("useAddMediaWorkflow", () => {
             })
         );
 
-        // reloadMedia reloads the currently selected channel from its own ref; it is called with
+        // reloadMedia reloads the currently selected channel from its own ref. It is called with
         // no argument.
         expect(onReloadMedia).toHaveBeenCalledWith();
         expect(mockResetForm).toHaveBeenCalled();

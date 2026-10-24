@@ -5,15 +5,15 @@ export type ViewMode = "library" | "player";
 export type ChannelAvatarMode = "none" | "manual" | "youtube";
 
 // Generated from the Rust `MediaRow` struct by ts-rs (see src-tauri/.../video_repository.rs).
-// Do not hand-edit the shape here; change the Rust struct and regenerate.
+// Do not hand-edit the shape here. Change the Rust struct and regenerate.
 export type { MediaRow } from "./generated/MediaRow";
 
 // Generated from the Rust `MediaCommentRow` struct by ts-rs. Change the Rust struct and
-// regenerate; do not hand-edit the shape here.
+// regenerate. Do not hand-edit the shape here.
 export type { MediaCommentRow } from "./generated/MediaCommentRow";
 
 // Generated from the Rust structs by ts-rs (YtDlpFormat comes from `YtDlpFormatOption`).
-// Change the Rust struct and regenerate; do not hand-edit the shapes here.
+// Change the Rust struct and regenerate. Do not hand-edit the shapes here.
 export type { YtDlpComment } from "./generated/YtDlpComment";
 export type { YtDlpFormat } from "./generated/YtDlpFormat";
 export type { YtDlpFormatsResult } from "./generated/YtDlpFormatsResult";
@@ -39,8 +39,8 @@ export type YtDlpFormatOption = import("./generated/YtDlpFormat").YtDlpFormat & 
     display_name: string;
 };
 
-// Generated yt-dlp event payload types (from models/yt_dlp.rs). These were previously
-// duplicated here and in use-yt-dlp-events.ts; both now share the generated types.
+// Generated yt-dlp event payload types (from models/yt_dlp.rs), shared here and in
+// use-yt-dlp-events.ts rather than duplicated.
 export type { YtDlpLogEvent } from "./generated/YtDlpLogEvent";
 export type { YtDlpFinishedEvent } from "./generated/YtDlpFinishedEvent";
 export type { YtDlpFailedEvent } from "./generated/YtDlpFailedEvent";

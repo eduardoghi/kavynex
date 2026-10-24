@@ -119,7 +119,7 @@ describe("parameterType", () => {
     });
 
     it("splits at the annotation colon, not at a path type's own", () => {
-        // `library::migration::Report` carries four colons; taking the first would yield a type of
+        // `library::migration::Report` carries four colons. Taking the first would yield a type of
         // `:library::migration::Report`, which no struct lookup could match.
         expect(parameterType("report: library::migration::Report")).toBe(
             "library::migration::Report"
@@ -460,7 +460,7 @@ describe("extractNetworkRefusalSites", () => {
     });
 
     it("reports a function calling the predicate twice only once", () => {
-        // `paths_refer_to_same_location` tests both sides in one expression; the inventory is about
+        // `paths_refer_to_same_location` tests both sides in one expression. The inventory is about
         // which functions enforce the rule, not how many times each mentions it.
         const source = `fn both() {\n    if is_network_path(a) && !is_network_path(b) {\n        return false;\n    }\n}\n`;
 
@@ -556,7 +556,7 @@ describe("the declared network-refusal sites", () => {
 
 describe("the declared inventory", () => {
     it("is sorted by command name and free of duplicates", () => {
-        // The inventory is regenerated from `--print`, which sorts; a hand edit that broke either
+        // The inventory is regenerated from `--print`, which sorts. A hand edit that broke either
         // property would make the next regeneration a confusing diff.
         const names = DECLARED_PATH_SURFACE.map((entry) => entry.command);
 
@@ -572,7 +572,7 @@ describe("the declared inventory", () => {
 
     it("classifies every path in the real inventory", () => {
         // The gate against itself. Everything below drives collectGuardProblems with crafted
-        // entries; this is the one case that runs it over the inventory the repository ships.
+        // entries. This is the one case that runs it over the inventory the repository ships.
         const actual = DECLARED_PATH_SURFACE.map(({ command, parameters }) => ({
             command,
             parameters,

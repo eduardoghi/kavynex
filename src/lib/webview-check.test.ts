@@ -50,7 +50,7 @@ function stubImage(outcome: AssetOutcome): void {
                 return;
             }
 
-            // A real image settles asynchronously; resolving in a microtask keeps the probe's
+            // A real image settles asynchronously. Resolving in a microtask keeps the probe's
             // settle-once guard exercised rather than short-circuited.
             queueMicrotask(() => {
                 if (outcome === "load") {
@@ -295,7 +295,7 @@ describe("runWebviewCheckIfRequested", () => {
     });
 
     it("never throws when the report itself cannot be delivered", async () => {
-        // The backend watchdog is what covers this case; here the contract is only that nothing
+        // The backend watchdog is what covers this case. Here the contract is only that nothing
         // escapes into the caller.
         invokeCommandMock.mockImplementation((command: string) => {
             if (command === TAURI_COMMANDS.BEGIN_WEBVIEW_CHECK) {

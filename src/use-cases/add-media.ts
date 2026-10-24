@@ -118,7 +118,7 @@ export function validateAddMediaForm(
 // Resolves the cookies source the format loader also uses. "manual" selects the user-picked .txt
 // file and is never a real --cookies-from-browser value, so it must not be sent as one. A browser
 // is sent with the optional profile appended (`browser:profile`), which is the selector yt-dlp
-// reads; see composeCookiesBrowserSelector.
+// reads. See composeCookiesBrowserSelector.
 export function resolveCookiesSource(
     cookiesBrowser: string,
     cookiesPath: string,

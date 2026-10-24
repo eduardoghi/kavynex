@@ -12,7 +12,7 @@ export type ModalLockProps = {
 // operation is in flight. When `locked`, every dismissal path (Esc, click-outside, close button) is
 // disabled and onClose becomes a stable no-op, so the user cannot close the modal mid-flight and
 // lose visibility into the operation (or, for an app update, close it and be surprised by a relaunch
-// when the download finishes). Each caller decides its own `locked` condition; this centralizes how
+// when the download finishes). Each caller decides its own `locked` condition. This centralizes how
 // that condition maps onto the Modal so the four props cannot drift apart across modals.
 export function useModalLock(locked: boolean, onClose: () => void): ModalLockProps {
     return useMemo(

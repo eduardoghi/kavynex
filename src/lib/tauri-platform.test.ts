@@ -10,8 +10,8 @@ import { describe, expect, it } from "vitest";
 // in the CSP or the WebView refuses to load them.
 //
 // This is pinned in a test rather than left to review because nothing else can catch it. A unit
-// test only ever sees a mocked convertFileSrc; `pnpm tauri dev` serves the page from the Vite
-// origin, where Tauri injects no CSP header at all; and Tauri does not add these tokens for you
+// test only ever sees a mocked convertFileSrc. `pnpm tauri dev` serves the page from the Vite
+// origin, where Tauri injects no CSP header at all. Tauri does not add these tokens for you
 // (its set_csp only touches script-src/style-src and the isolation schema). The first thing to
 // exercise the real CSP is a packaged build, which is exactly where dropping a token would show
 // up as a library with no thumbnails and a player that cannot start.

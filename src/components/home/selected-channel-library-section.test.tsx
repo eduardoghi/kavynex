@@ -194,7 +194,7 @@ describe("SelectedChannelLibrarySection", () => {
             <SelectedChannelLibrarySection {...makeProps({ onApplyQuery })} />
         );
 
-        // The default direction is descending; toggling it asks the backend for ascending.
+        // The default direction is descending, and toggling it asks the backend for ascending.
         fireEvent.click(screen.getByRole("button", { name: /sort descending/i }));
 
         expect(onApplyQuery).toHaveBeenLastCalledWith(

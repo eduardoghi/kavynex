@@ -82,7 +82,7 @@ export function AppButton({
     ...props
 }: AppButtonProps): JSX.Element {
     const buttonStyle = BUTTON_STYLES[appVariant];
-    // Loading keeps the active look (the spinner already signals progress); only a truly disabled
+    // Loading keeps the active look (the spinner already signals progress). Only a truly disabled
     // button gets the muted treatment.
     const isDisabled = props.disabled === true && props.loading !== true;
 

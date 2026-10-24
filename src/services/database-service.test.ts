@@ -47,8 +47,8 @@ describe("checkDatabaseIntegrity", () => {
     });
 });
 
-// Each wrapper is one call, and what can go wrong in it is the wire contract: the command name and
-// the argument keys. The backend reads `destinationPath`/`sourcePath` by those exact camelCase
+// Each wrapper is one call, and what can go wrong in it is the wire contract (the command name and
+// the argument keys). The backend reads `destinationPath`/`sourcePath` by those exact camelCase
 // names, so a renamed key is a refused export or import that no type check catches.
 describe("database command wrappers", () => {
     beforeEach(() => {

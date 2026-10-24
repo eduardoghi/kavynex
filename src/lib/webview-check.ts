@@ -51,7 +51,7 @@ async function probeAppVersion(failures: string[]): Promise<string | null> {
 // Probes `core:event:allow-listen` and `core:event:allow-unlisten`. Both halves matter and they are
 // separate grants, so the unsubscribe is called inside the same `try` rather than left dangling. A
 // build that granted only the first would otherwise pass. `UnlistenFn` returns void (it hands the
-// removal to the backend without waiting), so there is nothing to await here; what is being tested
+// removal to the backend without waiting), so there is nothing to await here. What is being tested
 // is that the call is permitted at all.
 async function probeEventListen(failures: string[]): Promise<boolean> {
     try {
@@ -171,7 +171,7 @@ async function collectReport(assetPath: string, mediaPath: string): Promise<Webv
 
 /**
  * Asks the backend whether this launch is a webview check and, if it is, runs the probes and
- * reports the outcome. Resolves to whether a check ran, which is what the tests assert on; the
+ * reports the outcome. Resolves to whether a check ran, which is what the tests assert on. The
  * process itself is terminated by the backend once the report lands.
  *
  * Never throws. A normal launch must not be affected by anything here, so a failure to even ask is

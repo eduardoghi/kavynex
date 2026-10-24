@@ -118,7 +118,7 @@ export function useMediaActions({
         activeMediaRef.current = mediaPlayer.activeMedia;
     }, [mediaPlayer.activeMedia]);
 
-    // activeMedia and closePlayer are plain/stable fields off useMediaPlayer; setActiveMedia is
+    // activeMedia and closePlayer are plain/stable fields off useMediaPlayer, and setActiveMedia is
     // stable there too (useCallback []). Pull them out so the callbacks below can depend on
     // them directly instead of on the per-render mediaPlayer object.
     const { activeMedia, setActiveMedia, closePlayer } = mediaPlayer;

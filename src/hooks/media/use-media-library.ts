@@ -188,7 +188,7 @@ export function useMediaLibrary({
                 // every ~10s save. That changed its identity and re-ran the (hidden) library
                 // grid's O(n log n) filter+sort every few seconds during playback. The latest
                 // position is stashed and reconciled into the list once the player closes (the
-                // effect below); the database is written on every save above, so nothing is lost
+                // effect below). The database is written on every save above, so nothing is lost
                 // if the app quits mid-playback.
                 syncActiveMediaProgress(mediaId, safeProgressSeconds);
                 pendingProgressRef.current.set(mediaId, safeProgressSeconds);

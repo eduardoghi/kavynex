@@ -72,7 +72,7 @@ describe("useMemoObject", () => {
     });
 
     it("returns the object it was handed, not a copy", () => {
-        // The helper memoizes an identity; it must never clone. A copy would silently detach any
+        // The helper memoizes an identity. It must never clone. A copy would silently detach any
         // consumer that compares a field by reference against the source it came from.
         const source = { value: 1 };
 

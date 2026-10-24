@@ -34,7 +34,7 @@ type VoidCommandName = {
     [K in TauriCommandName]: TauriCommandReturns[K] extends void ? K : never;
 }[TauriCommandName];
 
-// The result type is not chosen by the caller; it follows from the command via TauriCommandReturns.
+// The result type is not chosen by the caller. It follows from the command via TauriCommandReturns.
 // This is what keeps a wrong `invokeCommand<Foo>(SOME_COMMAND)` from compiling.
 export async function invokeCommand<K extends TauriCommandName>(
     command: K,
@@ -211,7 +211,7 @@ export async function streamLibraryVerification(
         if (!event) {
             // Unlike the live chat stream, a message this seam cannot validate ends the run here
             // rather than being dropped and logged. There the dropped message is one batch of lines
-            // out of many; here it may be the terminal `done`, which is the only thing that carries
+            // out of many. Here it may be the terminal `done`, which is the only thing that carries
             // the report and the only thing that settles the promise below. Dropping it silently
             // would leave the caller awaiting forever, which reaches the user as a dialog stuck on
             // "verifying" with no error and no way back.

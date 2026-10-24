@@ -115,7 +115,7 @@ function renderMediaLibrary(selectedChannelId: number | null) {
     );
 }
 
-// The library section drives the actual load; in these hook-level tests we call applyMediaQuery
+// The library section drives the actual load. In these hook-level tests we call applyMediaQuery
 // directly (the same thing the section's effect does) to populate the media list.
 async function loadInto(
     result: { current: ReturnType<typeof useMediaLibrary> },

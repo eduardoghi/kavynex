@@ -7,7 +7,7 @@ import {
 } from "../../services/live-chat-service";
 import { LiveChatPanel } from "./live-chat-panel";
 
-// timeupdate fires ~4x/second during playback; collapsing it to at most one update per this
+// timeupdate fires ~4x/second during playback. Collapsing it to at most one update per this
 // window keeps the replay in sync without re-rendering the chat list on every tick.
 const PLAYBACK_SYNC_THROTTLE_MS = 300;
 
@@ -31,7 +31,7 @@ export function LiveChatReplay({
 }: LiveChatReplayProps): JSX.Element {
     const [currentPlaybackTime, setCurrentPlaybackTime] = useState(0);
     // Whether the chat live region should announce newly revealed messages to a screen reader.
-    // On during ordinary playback; turned off across a seek / new-video load, where the whole
+    // On during ordinary playback and turned off across a seek / new-video load, where the whole
     // visible window is replaced at once (see the handlers below).
     const [announceAdditions, setAnnounceAdditions] = useState(true);
     // True from a "seeking" event until its matching "seeked" fires. Some engines emit a

@@ -2,7 +2,7 @@
  * Helpers for the optional "published date" field in the add-media modal. Kept free of React
  * so the masking and ISO<->display conversion can be unit-tested directly.
  *
- * The field is displayed and typed as `dd/mm/yyyy`; it is stored as an ISO `yyyy-mm-dd`.
+ * The field is displayed and typed as `dd/mm/yyyy`. It is stored as an ISO `yyyy-mm-dd`.
  */
 
 /** Turns a stored ISO date (`yyyy-mm-dd`) into the `dd/mm/yyyy` display form. */

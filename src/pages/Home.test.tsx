@@ -9,7 +9,7 @@ import { UI_TEXT } from "../constants/ui-text";
 // Home is presentation plus wiring. Every hook it composes and every section it renders has a
 // test of its own. What nothing else pins is the page itself, which is why the children are
 // replaced with stubs that record the props they were handed. A stub that rendered the real
-// component would re-test the component; a stub that records the props tests the page.
+// component would re-test the component, while a stub that records the props tests the page.
 vi.mock("../hooks/home/use-home-controller", () => ({
     useHomeController: vi.fn(),
 }));
@@ -108,7 +108,7 @@ type ViewStateOverrides = Partial<HomeController["viewState"]>;
 const channel = { id: 7, name: "Channel", youtube_handle: "@channel", avatar_path: null };
 const item = createMedia({ id: 42, channel_id: 7, title: "Clip" });
 
-// Only the fields Home reads are given real values; everything else is the minimum that keeps
+// Only the fields Home reads are given real values. Everything else is the minimum that keeps
 // the stubbed children satisfied. The cast is deliberate. Building every nested controller in
 // full would be a page of mocks for fields the page never touches, and the children that would
 // read them are stubs.

@@ -295,7 +295,7 @@ export function useAddMediaForm({
                 logError("add-media-form", "Failed to stage the thumbnail preview.", error);
             }
 
-            // Only a staged copy is ours to delete later; the fallback is the user's own file.
+            // Only a staged copy is ours to delete later. The fallback is the user's own file.
             await setManualThumbPath(previewPath, staged);
         },
         [setManualThumbPath]

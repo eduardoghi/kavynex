@@ -214,7 +214,7 @@ describe("buildDiagnosticsIssues", () => {
     });
 
     it("does not call an unavailable yt-dlp outdated as well", () => {
-        // An unhealthy tool already has its own issue; adding "may be out of date" on top would
+        // An unhealthy tool already has its own issue. Adding "may be out of date" on top would
         // point at the wrong fix, since there is no working copy to update in the first place.
         const input = baseDiagnostics();
         input.externalTools.yt_dlp.healthy = false;

@@ -518,7 +518,7 @@ describe("useAddMediaForm", () => {
 
     it("hands the format loader the browser with the profile appended", () => {
         // The combo keeps the bare browser (it renders that value) and the profile lives in its
-        // own field; what the loader and the download receive is the composed selector yt-dlp
+        // own field. What the loader and the download receive is the composed selector yt-dlp
         // reads, so a typed profile has to show up here or the probe runs on the default profile.
         const { result } = renderHook(() => useAddMediaForm());
 
@@ -552,7 +552,7 @@ describe("useAddMediaForm", () => {
             result.current.setCookiesBrowserProfile("Work");
         });
 
-        // Switching browsers keeps the profile: a user comparing two browsers with a profile of
+        // Switching browsers keeps the profile. A user comparing two browsers with a profile of
         // the same name should not have to retype it.
         act(() => {
             result.current.setCookiesBrowser("edge");

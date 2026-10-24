@@ -287,7 +287,7 @@ describe("DiagnosticsModal", () => {
     });
 
     it("omits the log folder button when no handler is supplied", () => {
-        // The prop is optional so the modal renders bare in isolation; rendering a dead button in
+        // The prop is optional so the modal renders bare in isolation. Rendering a dead button in
         // that case would be worse than rendering none.
         renderWithMantine(
             <DiagnosticsModal

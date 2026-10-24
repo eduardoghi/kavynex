@@ -140,7 +140,7 @@ describe("media-service", () => {
     });
 
     it("sends the normalized input rather than the raw one", async () => {
-        // validateCreateMediaInput trims and normalizes; sending the caller's object instead would
+        // validateCreateMediaInput trims and normalizes. Sending the caller's object instead would
         // put padded values on the wire, where they would be validated in one form and stored in
         // another.
         const raw = localInput({ title: "  Video A  " });

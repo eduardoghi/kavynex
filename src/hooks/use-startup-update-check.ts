@@ -40,7 +40,7 @@ export function useStartupUpdateCheck({
                     );
                 }
             } catch (error) {
-                // A failed passive check must never interrupt startup; log it and stay quiet.
+                // A failed passive check must never interrupt startup. Log it and stay quiet.
                 // Usually no network at startup, which is not a fault of the app.
                 logWarn("app-update", "Passive startup update check failed.", {
                     reason: resolveErrorMessage(error, "unknown error"),

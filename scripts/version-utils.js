@@ -7,7 +7,7 @@
 // then the `version = "X.Y.Z"` line. Scoping it to that table (rather than a bare `^version`
 // anywhere) is what stops it reading or rewriting a dependency's own version line, including a
 // `[dependencies.foo]` sub-table that puts one at the start of a line above or below [package]. The
-// old bare-`^version` form only worked because [package] happens to be the first table; a reorder
+// old bare-`^version` form only worked because [package] happens to be the first table. A reorder
 // would have silently made it target the wrong line. The three capture groups let
 // replaceCargoVersion swap only the version while preserving the [package] prefix and closing quote.
 export const CARGO_PACKAGE_VERSION_REGEX = /(^\[package\][^[]*?^version = ")(\d+\.\d+\.\d+)(")/m;

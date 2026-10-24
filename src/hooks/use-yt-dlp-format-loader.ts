@@ -140,7 +140,7 @@ export function useYtDlpFormatLoader({
             // still passed to listYtDlpFormats below.
             commandParts.push("--cookies", "<redacted>");
         } else if (cookiesBrowser) {
-            // The browser name stays; a profile after it is often a path under the user's home
+            // The browser name stays. A profile after it is often a path under the user's home
             // directory, so it is redacted like the cookies path above. The real selector is still
             // passed to listYtDlpFormats below.
             commandParts.push(
@@ -166,7 +166,7 @@ export function useYtDlpFormatLoader({
                 FORMAT_LOADER_RUN_ID
             );
 
-            // A newer request (or a reset from a URL change) superseded this one; discard the
+            // A newer request (or a reset from a URL change) superseded this one. Discard the
             // stale response instead of overwriting the current formats/selection.
             if (!requestGuard.isCurrent(requestId)) {
                 return;

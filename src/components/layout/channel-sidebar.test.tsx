@@ -48,7 +48,7 @@ describe("ChannelSidebar", () => {
             { withAppShell: true }
         );
 
-        // The skeleton rows are decorative; the status region carries the visually-hidden
+        // The skeleton rows are decorative. The status region carries the visually-hidden
         // "Loading channels" text so a screen reader still announces the load.
         expect(screen.getByRole("status")).toBeInTheDocument();
         expect(screen.getByText("Loading channels")).toBeInTheDocument();
@@ -406,7 +406,7 @@ describe("ChannelSidebar", () => {
 
     it("exposes each channel as a positioned item of a list", () => {
         // Virtualization keeps only the rows near the viewport in the DOM, so a screen reader
-        // cannot count the channels by walking it; the roles and set/position hints carry that.
+        // cannot count the channels by walking it. The roles and set/position hints carry that.
         renderWithMantine(
             <ChannelSidebar
                 channels={[

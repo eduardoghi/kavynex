@@ -109,7 +109,7 @@ jobs:
             # at all, since each one has a side effect no unattended run may take.
             #
             # So this gates the declaration half, which is where the drift actually happens, on every
-            # push. Both directions: an API added to a seam fails until its permission is decided,
+            # push. Both ways, an API added to a seam fails until its permission is decided,
             # and a permission granted for nothing fails too. That second one is not hypothetical.
             # The list was the scaffolded `core:default` (92 individual permissions) through four
             # rounds of capability hardening, because nothing compared it against those two files.
@@ -154,8 +154,8 @@ jobs:
             # needs enforcing rather than remembering. A convention with no gate behind it drifts
             # back, and this one already had. There is a `chore: use a plain hyphen in a migration
             # test comment` in the history, and dashes had reappeared in three places by the time
-            # the next sweep looked: a loading placeholder rendered in Settings, and the separator
-            # between a membership announcement and the member's own message.
+            # the next sweep looked (a loading placeholder rendered in Settings, and the separator
+            # between a membership announcement and the member's own message).
             #
             # Scoped to the source trees, not the whole repository. The rule is about code, so the
             # markdown is deliberately left alone. All four unicode dashes are matched, not just the
@@ -236,7 +236,7 @@ jobs:
 
             # The one-file summary vitest's json-summary reporter writes. Uploaded on failure too,
             # since a threshold failure is exactly when the numbers are wanted. The HTML report is
-            # deliberately not uploaded: it is several hundred files for a question the summary
+            # deliberately not uploaded. It is several hundred files for a question the summary
             # answers in one.
             - name: Upload the coverage summary
               if: always()
@@ -304,7 +304,7 @@ jobs:
                 # first time inside a release run.
                 platform: [ubuntu-26.04, ubuntu-26.04-arm, windows-2025, windows-11-arm, macos-26]
         runs-on: ${{ matrix.platform }}
-        # Never let a job run toward the 6h default: a hang fails in bounded time.
+        # Never let a job run toward the 6h default. A hang fails in bounded time.
         timeout-minutes: 30
         # Trim debuginfo (and, on ubuntu below, link with lld). CI never needs full debuginfo, and
         # this keeps the cold ubuntu compile/link on the slow 2-vCPU runner fast. A panic still
@@ -491,7 +491,7 @@ jobs:
             # Node runs the duplicate-version report at the end of this job. Pinned like every
             # other toolchain here rather than left to whatever the runner image preinstalls.
             # "This job ships nothing" is not the reason the frontend job gives for pinning either.
-            # No pnpm setup or install: the report script is deliberately dependency-free.
+            # No pnpm setup or install, because the report script is deliberately dependency-free.
             - name: Setup Node.js
               uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
@@ -552,11 +552,11 @@ jobs:
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked
 
-            # cargo-audit covers advisories. cargo-deny adds the checks it does not: license
+            # cargo-audit covers advisories. cargo-deny adds the checks it does not, namely license
             # compliance (no copyleft license in an MIT-licensed app), dependency source trust
             # (crates.io only), wildcard version requirements, and advisories with per-crate
             # exceptions, so a newly unmaintained direct dependency or a newly yanked crate fails
-            # while the known transitive ones stay allowed. Config: src-tauri/deny.toml.
+            # while the known transitive ones stay allowed. Config is in src-tauri/deny.toml.
             - name: Check licenses, sources, bans and advisories
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources advisories
 
@@ -567,7 +567,7 @@ jobs:
             # log of a job that passes, and nobody opens the log of a green job. This puts the number
             # on the run's summary page instead, which is where it can actually be noticed.
             #
-            # A second cargo-deny invocation rather than parsing the gate above, for two reasons: the
+            # A second cargo-deny invocation instead of parsing the gate above, for two reasons. The
             # gate's human-readable output is what a maintainer reads when it fails, and a combined
             # run mixes in licenses/sources diagnostics this report would only have to filter back
             # out. It re-resolves Cargo.lock without compiling anything, so it costs seconds.
@@ -578,7 +578,7 @@ jobs:
             # worse than the log line it replaces. Placed after the gate so a `bans` *error* fails
             # there first and this never runs against a tree the gate rejected.
             #
-            # `2>` is not a typo: cargo-deny writes its JSON diagnostics to stderr and leaves stdout
+            # `2>` is not a typo. cargo-deny writes its JSON diagnostics to stderr and leaves stdout
             # empty.
             - name: Report duplicate dependency versions
               run: |
@@ -668,9 +668,9 @@ jobs:
 
             - name: Measure coverage and enforce the floor
               # The instrumented suite runs once (`--no-report`), then both reports are rendered
-              # from that one profile: the browsable HTML uploaded below, and the summary this step
-              # gates on. Rendering twice costs nothing: a second `cargo llvm-cov` run would
-              # re-execute every test.
+              # from that one profile (the browsable HTML uploaded below, and the summary this step
+              # gates on). Rendering twice costs nothing, because a second `cargo llvm-cov` run
+              # would re-execute every test.
               #
               # `--fail-under-lines` prints the summary and then exits non-zero when line coverage
               # is under the floor. Capture that output (stdout+stderr) first and publish it to the
@@ -716,7 +716,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            # Static-check the workflow YAML themselves: actionlint validates syntax, ${{ }}
+            # Static-check the workflow YAML themselves, since actionlint validates syntax, ${{ }}
             # expression types and undefined contexts, matrix/glob shapes and deprecated features,
             # and runs shellcheck over every `run:` script. That is the class of mistake these large,
             # hand-maintained workflows (release.yml is mostly bash-in-YAML) would otherwise
@@ -727,7 +727,7 @@ jobs:
             # Installed at a pinned version via `go install` (Go ships on the image) rather than a
             # curl|bash bootstrap or an unpinned marketplace wrapper, matching the repo-wide rule
             # that the tool executing here is a version this project chose, not whatever released
-            # today. No extra token permissions are needed: it reads files and exits non-zero.
+            # today. No extra token permissions are needed. It reads files and exits non-zero.
             #
             # A tag is enough here, unlike the `uses:` lines above, which are pinned by commit SHA
             # because a git tag can be moved. `go install` fetches through the module proxy and

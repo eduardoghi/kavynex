@@ -17,7 +17,7 @@ const INTEGRITY_FAILURE_MESSAGE =
     "reports a corrupted database\" in the troubleshooting guide to restore an automatic backup.";
 
 // Surfaces a failed background integrity check. The check runs off the startup critical path and
-// only logs on failure; this is what turns that log line into something the user actually sees (a
+// only logs on failure. This is what turns that log line into something the user actually sees (a
 // banner/modal) instead of having to know to open Settings and run the manual check.
 export function useDatabaseIntegrityAlert({
     onIntegrityFailure,

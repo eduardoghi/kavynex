@@ -142,7 +142,7 @@ function selectorToArgument(selector: CookiesBrowserSelector): string {
 
 /**
  * Normalizes a cookies-from-browser selector to the form handed to yt-dlp, or null. Note the
- * UI-only "manual" option is not a browser and is intentionally rejected here; the add-media
+ * UI-only "manual" option is not a browser and is intentionally rejected here. The add-media
  * form resolves that separately into a cookies file path.
  */
 export function normalizeCookiesBrowser(value: string | null | undefined): string | null {

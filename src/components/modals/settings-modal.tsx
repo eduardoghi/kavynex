@@ -165,7 +165,7 @@ export function SettingsModal({
             centered
             // Cap the modal to the viewport and scroll the body *inside* it, mirroring the
             // diagnostics modal. Without a bounded height the whole viewport-height wrapper scrolls,
-            // so the scrollbar lands at the window edge; and a scrollbar flush to the content box is
+            // so the scrollbar lands at the window edge, and one flush to the content box is
             // clipped by the modal's rounded (radius "xl") corners. A fixed-height flex column with
             // an offset-scrollbar ScrollArea keeps the header fixed and the scrollbar inset from the
             // corners.

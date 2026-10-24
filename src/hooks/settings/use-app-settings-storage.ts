@@ -61,7 +61,7 @@ function normalizeCheckUpdatesOnStartup(value: string | null | undefined): boole
 }
 
 // An absent key (older databases, a fresh install) or a blank value means the external backup is
-// off; a stored path is trimmed the same way the library path is.
+// off. A stored path is trimmed the same way the library path is.
 function normalizeExternalBackupDir(value: string | null | undefined): string {
     return typeof value === "string" ? value.trim() : "";
 }
@@ -100,7 +100,7 @@ export async function persistSettings(settings: AppSettings): Promise<void> {
 // fire-and-forget (nothing awaits them, so nothing else orders the writes). One of the fields at
 // risk is `loadRemoteImages`, which decides whether the player talks to Google's CDNs at all.
 //
-// Chaining is enough because these run in one webview against a single-writer database; the point
+// Chaining is enough because these run in one webview against a single-writer database. The point
 // is only that each update reads what the previous one wrote.
 let settingsUpdateQueue: Promise<unknown> = Promise.resolve();
 

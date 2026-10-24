@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { EVENT_PENDING_MEDIA_ABANDONED } from "../constants/events";
 import { usePendingMediaAlert } from "./use-pending-media-alert";
 
-// The hook subscribes through listenValidated(eventName, schema, handler); the schema itself is
+// The hook subscribes through listenValidated(eventName, schema, handler). The schema itself is
 // covered by the ipc-schemas tests, so this mock ignores it and captures the handler so a test can
 // fire the event by hand. The returned unlisten is a shared spy so the cleanup path is observable.
 let capturedHandler: ((payload: unknown) => void) | null = null;
@@ -82,7 +82,7 @@ describe("usePendingMediaAlert", () => {
         const message = onArtifactsAbandoned.mock.calls[0]?.[0] as string;
 
         expect(message).toContain("2 unfinished media imports");
-        // The point of the notice is the next step; a message without it is just an alarm.
+        // The point of the notice is the next step. A message without it is just an alarm.
         expect(message).toContain("Diagnostics");
         // And the next steps have to be the ones that exist. Diagnostics removes the orphans and
         // reveals each one in the file manager.

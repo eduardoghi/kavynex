@@ -15,7 +15,7 @@ import {
 const LIBRARY_SEARCH_DEBOUNCE_MS = 200;
 
 type UseChannelLibraryFiltersOptions = {
-    // A Diagnostics jump names one specific media; when it changes, the active filters are cleared
+    // A Diagnostics jump names one specific media. When it changes, the active filters are cleared
     // so the target is guaranteed to be in the result set (see the effect below).
     focusMediaId: number | null;
     // Pushes the built filters to the backend, which returns the matching page (and total). A

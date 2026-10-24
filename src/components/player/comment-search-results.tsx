@@ -16,7 +16,7 @@ const CONTEXT_ONLY_OPACITY = 0.55;
 const SEARCH_RESULTS_HEIGHT = 600;
 // Per-level indent, matching the browse view's reply indentation closely enough to read as a thread.
 const LEVEL_INDENT_PX = 24;
-// A rough first guess at a row's height; real heights are measured after mount (measureElement), so
+// A rough first guess at a row's height. Real heights are measured after mount (measureElement), so
 // this only affects the very first paint's scrollbar estimate, never final layout.
 const ESTIMATED_ROW_HEIGHT = 140;
 const ROW_GAP_PX = 16;
@@ -28,7 +28,7 @@ type CommentSearchResultsProps = {
 
 // Renders every comment matching the current search as a flat, virtualized list. Search deliberately
 // shows all matches (the whole point of searching the full comment set), so it cannot lean on the
-// browse view's thread/reply caps; virtualization is what keeps a broad query that matches thousands
+// browse view's thread/reply caps. Virtualization keeps a broad query that matches thousands
 // of comments from mounting them all at once. Each row is indented by its depth so the reply
 // hierarchy still reads.
 export function CommentSearchResults({
@@ -86,7 +86,7 @@ export function CommentSearchResults({
                     const row = rows[virtualRow.index];
 
                     // The virtualizer only yields in-range indices, so this is never null in
-                    // practice; the guard satisfies the checked-index type.
+                    // practice. The guard satisfies the checked-index type.
                     if (!row) {
                         return null;
                     }

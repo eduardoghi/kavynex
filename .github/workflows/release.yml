@@ -4,7 +4,7 @@ on:
     workflow_dispatch:
 
 # Least-privilege default for the whole workflow, matching ci.yml/mutation.yml. The jobs that need
-# more escalate in their own `permissions:` block: publish-tauri and sbom-upload get contents write,
+# more escalate in their own `permissions:` block. publish-tauri and sbom-upload get contents write,
 # attest-installers and checksums get id-token/attestations write (checksums also contents write).
 # Nothing that compiles third-party code holds id-token. The audit and sbom jobs, which compile
 # third-party tools, stay read-only. Declaring the read-only default here means a job added later
@@ -113,9 +113,9 @@ jobs:
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked
 
-            # cargo-audit covers advisories. cargo-deny adds the checks it does not: license
+            # cargo-audit covers advisories. cargo-deny adds the checks it does not, namely license
             # compliance, dependency source trust (crates.io only), wildcard requirements, and
-            # advisories with per-crate exceptions. Config: src-tauri/deny.toml.
+            # advisories with per-crate exceptions. Config is in src-tauri/deny.toml.
             - name: Check licenses, sources, bans and advisories
               run: cargo deny --manifest-path src-tauri/Cargo.toml check licenses bans sources advisories
 
@@ -186,7 +186,7 @@ jobs:
             matrix:
                 # Pinned images, like ubuntu-26.04 already was, rather than the `-latest` aliases.
                 # `-latest` moves to a new major OS whenever GitHub decides, which is not a
-                # theoretical worry here: the 2026-07-14 run resolved `macos-latest` to
+                # theoretical worry here. The 2026-07-14 run resolved `macos-latest` to
                 # macos-26-arm64 while the runner-images README still documented it as macOS 15.
                 # The Rust toolchain and Node are pinned to the version, so leaving the OS itself
                 # free is the one thing that could still change what a release is built on between
@@ -260,7 +260,7 @@ jobs:
                   # tauri-action copies the whole release body into latest.json's `notes`, where
                   # the app renders it unscrolled, so the body is one line (see docs/RELEASING.md).
                   #
-                  # Nothing left in this job walks history: the tag guard uses `git ls-remote`
+                  # Nothing left in this job walks history. The tag guard uses `git ls-remote`
                   # (which queries the remote, not the local clone), the bindings check diffs the
                   # working tree against HEAD, and tauri-action creates the release through the
                   # GitHub REST API (`repos.createRelease` with `target_commitish` defaulting to
@@ -680,7 +680,7 @@ jobs:
             # window.
             #
             # `--smoke-test` above exits inside `setup()`, before the event loop, so everything the
-            # user actually meets is still unverified at that point: the frontend bundle loading,
+            # user meets is still unverified at that point, namely the frontend bundle loading,
             # the CSP Tauri injects only into a *packaged* app (`pnpm tauri dev` serves the page
             # from the Vite origin with no CSP header at all), and every permission in
             # `src-tauri/capabilities/`, which the ACL evaluates at runtime and nowhere else. That
@@ -701,7 +701,7 @@ jobs:
             #
             # It cannot live in ci.yml. That workflow never builds a bundle, and the CSP and the
             # embedded frontend only exist in one. Placed beside the smoke test for the same reason
-            # that one is here: after the build so the real artifact is what runs, and before the
+            # that one is here, after the build so the real artifact is what runs, and before the
             # installers are handed over for attestation, so a broken binary is never attested.
             - name: Webview check on the built binary (Linux)
               if: startsWith(matrix.platform, 'ubuntu-')
@@ -775,7 +775,7 @@ jobs:
                   retention-days: 1
 
     # Records a signed, keyless (Sigstore) statement that each installer's exact bytes were built by
-    # this workflow, from this commit. Independent of the minisign updater signature: users run
+    # this workflow, from this commit. Independent of the minisign updater signature. Users run
     # `gh attestation verify` on a downloaded installer to confirm its provenance
     # (docs/RELEASE-SECURITY.md has the command).
     #
@@ -813,7 +813,7 @@ jobs:
 
     # A CycloneDX SBOM (Software Bill of Materials) of the Rust dependency tree that goes into the
     # shipped binary, published as a release asset. It is generated from the committed Cargo.lock, so
-    # it lists the exact crate versions a downloader received: the machine-readable answer to "does
+    # it lists the exact crate versions a downloader received, the machine-readable answer to "does
     # this release contain crate X at version Y?" when an advisory lands later. The production npm
     # packages the frontend bundle carries get an SBOM of their own beside it. The JS build-time tree
     # stays out of both, since it never reaches a user, and is advisory/license-gated by the
@@ -972,7 +972,7 @@ jobs:
         permissions:
             contents: write
             # For the attestation step at the end of this job, same pair attest-installers holds and
-            # for the same reason: id-token mints the OIDC token Sigstore signs with, attestations
+            # for the same reason. id-token mints the OIDC token Sigstore signs with, attestations
             # lets the statement be stored against the repository.
             id-token: write
             attestations: write
@@ -1184,7 +1184,7 @@ jobs:
             # Checked against the assets the release actually carries rather than against the list
             # above, so a release where both lists drifted together (the case a cross-check between
             # them would pass) still fails here. Runs after the completeness check because that one
-            # is the stronger signal: when installers are missing, the README is not the problem to
+            # is the stronger signal. When installers are missing, the README is not the problem to
             # report first.
             - name: Verify the README documents this release's installers
               env:
@@ -1216,7 +1216,7 @@ jobs:
                   KAVYNEX_UPDATER_SIGNING_PUBKEY: ${{ vars.UPDATER_SIGNING_PUBKEY_OVERRIDE }}
               run: node scripts/verify-latest-json.js assets/latest.json
 
-            # The installers are attested by attest-installers; the files this job and
+            # The installers are attested by attest-installers. The files this job and
             # the SBOM job add afterwards are not, and one of them is the file the README tells a
             # manual downloader to check their installer against. A SHA256SUMS.txt with no
             # provenance is a hash list anyone could have written. Runs last, after every gate

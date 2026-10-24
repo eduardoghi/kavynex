@@ -9,7 +9,7 @@ import { isMainModule } from "./script-entry.js";
 
 // Decides the release-version gate from the raw file contents, returning `{ ok, message }` rather
 // than reading files or exiting itself. Exported so the glue (the null-cargo branch, the mismatch
-// wiring, the success message) is unit-tested without touching the filesystem; version-utils.js
+// wiring, the success message) is unit-tested without touching the filesystem, and version-utils.js
 // already covers the parsing/comparison primitives this composes.
 export function verifyReleaseVersion({ packageJson, tauriConfJson, cargoToml }) {
     const packageVersion = JSON.parse(packageJson).version;

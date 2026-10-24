@@ -9,7 +9,7 @@
 //
 // Two commands outlived their callers. `cleanup_unreferenced_media_artifacts` lost its last one in
 // `eed1ea6`, the commit that moved the creation sequence into the backend and carefully listed which
-// steps it was deregistering; this one was in neither list. `delete_live_chat_file` was never wired
+// steps it was deregistering. This one was in neither list. `delete_live_chat_file` was never wired
 // to a UI at all. Both stayed registered for weeks, and one of them was *hardened* five days before
 // it was removed. See docs/decisions/2026-08-16-no-command-without-a-caller.md.
 //
@@ -110,7 +110,7 @@ export function stripReExports(content) {
 //
 // A word-boundary match on the identifier, not an import parse. The question this answers is the
 // loose one on purpose. Does anything at all mention this name in a position that could be a call.
-// A wrapper with zero such mentions anywhere is the defect; anything more is out of scope.
+// A wrapper with zero such mentions anywhere is the defect. Anything more is out of scope.
 export function findCallers(fn, definitionFile, sources) {
     const identifier = new RegExp(`\\b${fn}\\b`);
 

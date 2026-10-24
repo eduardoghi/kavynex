@@ -30,7 +30,7 @@ export function reportFatalError(scope: string, message: string, error: unknown)
         scope,
         message: `${message} ${describeError(error)}`,
     }).catch(() => {
-        // Already logged to the console above; nothing else can be done.
+        // Already logged to the console above, and nothing else can be done.
     });
 }
 

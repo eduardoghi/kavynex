@@ -100,7 +100,7 @@ describe("invokeCommand", () => {
 
     it("normalizes a non-AppError rejection rather than leaking the raw value", async () => {
         // A thrown string is the shape that would otherwise reach a caller doing
-        // `error.code` and get `undefined`; the seam exists so it never does.
+        // `error.code` and get `undefined`. The seam exists so it never does.
         invokeMock.mockRejectedValue("something went sideways");
 
         const error = await invokeCommand(TAURI_COMMANDS.LIST_CHANNELS).catch(
@@ -158,7 +158,7 @@ describe("listenValidated", () => {
 
         const result = await listenValidated("yt-dlp-log", IPC_EVENT_SCHEMAS.ytDlpLog, handler);
 
-        // listenValidated wraps the handler; drive the wrapper the way `listen` would.
+        // listenValidated wraps the handler. Drive the wrapper the way `listen` would.
         const wrapped = listenMock.mock.calls[0]?.[1] as (event: { payload: unknown }) => void;
         wrapped({
             payload: { run_id: "r1", line: "hello", stream: "stdout", level: "info" },

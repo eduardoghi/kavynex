@@ -86,8 +86,8 @@ describe("liveChatAnnouncement", () => {
     });
 
     it("falls back to just the author when there is no amount or text", () => {
-        // A sticker carries no message text and may have no parsed amount; the announcement is still
-        // meaningful (who it was from) rather than an empty string.
+        // A sticker carries no message text and may have no parsed amount. The announcement is
+        // still meaningful (who it was from) rather than an empty string.
         const sticker = makeChatMessage({
             author_name: "Buyer",
             amount_text: null,
@@ -163,7 +163,7 @@ describe("LiveChatPanel", () => {
             />
         );
 
-        // During a seek the whole visible window is replaced at once; the region must go silent so
+        // During a seek the whole visible window is replaced at once. The region must go silent so
         // a screen reader is not flooded with up to 200 "new" messages that are really a jump.
         expect(screen.getByRole("log", { name: "Live chat messages" })).toHaveAttribute(
             "aria-live",

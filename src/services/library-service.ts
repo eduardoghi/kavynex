@@ -105,7 +105,7 @@ export async function migrateLibraryDirectory(
     }
 
     // The command returns the full MigrateLibraryDirectoryResult (final path, whether anything
-    // changed, and whether the old directory was retained); return it as-is rather than rebuilding
+    // changed, and whether the old directory was retained). Return it as-is rather than rebuilding
     // it. It is validated against migrateLibraryDirectoryResultSchema in invokeCommand.
     return migrateLibraryWithProgress(
         {

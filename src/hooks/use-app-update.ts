@@ -16,12 +16,12 @@ import { logError } from "../utils/app-logger";
 // There is deliberately no terminal success state. `installAppUpdate` ends by relaunching, which
 // replaces the process on every platform, so nothing observes a status set after it, and on
 // Windows the installer can end the process from inside `downloadAndInstall`, before the relaunch is
-// even reached. An `"installed"` member existed here and was set on success; it was rendered
-// nowhere, and the two places that read this status both behaved *worse* for it in the one window
-// where it was reachable. The "Download and install" button sprang back to enabled as though
-// nothing had happened, and settings-modal.tsx's `isUpdateInProgress` went false, unlocking the
-// modal in the moment before the relaunch. The exact surprise that lock's comment says it exists to
-// prevent. Staying on "downloading" until the process is gone is what both of them want.
+// even reached. A status like `"installed"`, set on success, would be rendered nowhere, and the
+// two places that read this status would both behave *worse* for it in the moment before the
+// relaunch. The "Download and install" button would spring back to enabled as though nothing had
+// happened, and settings-modal.tsx's `isUpdateInProgress` would go false and unlock the modal,
+// which is the exact surprise that lock's comment says it exists to prevent. Staying on
+// "downloading" until the process is gone is what both of them want.
 export type AppUpdateStatus =
     | "idle"
     | "checking"

@@ -20,7 +20,7 @@ import { FolderOpen, Plus } from "lucide-react";
 //
 // The padding around the mark is deliberate and belongs to the asset rather than to CSS, the way an
 // icon normally carries its own safe area. The old SVG's tile filled only part of its oversized
-// canvas, so it drew at about 23px inside the 32px box; dropping in the app icon unchanged would
+// canvas, so it drew at about 23px inside the 32px box. Dropping in the app icon unchanged would
 // have drawn it at 29px, which reads as oversized next to a 20px wordmark. The artwork is inset to
 // keep the lockup's original weight (23.5px against the old 23.4px) while losing the distortion, and
 // centered, since the shipped icon sits 5px high in its own canvas.

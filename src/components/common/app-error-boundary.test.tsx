@@ -27,7 +27,7 @@ describe("AppErrorBoundary", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        // React logs caught render errors to console.error; keep test output clean.
+        // React logs caught render errors to console.error. Keep test output clean.
         consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     });
 

@@ -203,7 +203,7 @@ describe("sortCommentTree", () => {
         const beforeOrder = structure.map((node) => node.id);
         sortCommentTree(structure, "likes");
 
-        // The input keeps its original (insertion) order; the sort returned a new tree.
+        // The input keeps its original (insertion) order. The sort returned a new tree.
         expect(structure.map((node) => node.id)).toEqual(beforeOrder);
     });
 });
@@ -327,7 +327,7 @@ describe("countCommentsInTree", () => {
     });
 
     it("excludes context-only parents retained by filterCommentTree from the count", () => {
-        // Only c2 matches "reply"; c1 is retained solely as thread context and must not be
+        // Only c2 matches "reply", and c1 is retained solely as thread context and must not be
         // counted as a search result. Counting it would make a search that surfaced one match
         // report "Showing 2 results".
         const tree = buildCommentTree(

@@ -367,7 +367,7 @@ export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormatOption[] 
                   const videoFormatId = normalizeFormatId(videoFormat.format_id);
 
                   return {
-                      // The `+` selector is a contract re-validated by the backend; see the
+                      // The `+` selector is a contract re-validated by the backend. See the
                       // module header for is_valid_format_id / resolve_format_has_video.
                       format_id: `${videoFormatId}+${preferredAudioId}`,
                       display_name: buildCompactLabel("merged", videoFormat, preferredAudioExt),

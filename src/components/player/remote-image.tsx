@@ -9,7 +9,7 @@ type RemoteImageProps = {
     title?: string;
     style?: CSSProperties;
     // Rendered instead of the image when remote images are disabled, the src is unusable, or the
-    // load failed. Nothing by default (the sticker case); the emoji case passes its shortcut text.
+    // load failed. Nothing by default (the sticker case). The emoji case passes its shortcut text.
     fallback?: ReactNode;
 };
 

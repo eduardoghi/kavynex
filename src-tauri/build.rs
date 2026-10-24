@@ -12,8 +12,7 @@ fn main() {
     // v5.82, which does not export TaskDialogIndirect, and the process aborts with
     // STATUS_ENTRYPOINT_NOT_FOUND the moment a native task dialog is shown. Embedding it here
     // unconditionally is what makes normal `cargo run`/`tauri build`/`cargo test` produce a
-    // manifested binary; an earlier version gated this on an env var and so shipped test
-    // binaries with no manifest at all.
+    // manifested binary. Gating this on an env var leaves test binaries with no manifest at all.
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = std::env::var("CARGO_CFG_TARGET_ENV");
 

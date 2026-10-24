@@ -53,8 +53,8 @@ describe("validateIpcResult", () => {
         // The user-facing message is generic (an internal contract violation is not user-actionable);
         // the specific failing field is logged for a bug report, not shown.
         expect(thrown?.message).toContain("get_channel_by_id");
-        // Routed through `logError` now rather than a bare `console.error`, so it reaches the
-        // backend log file too (that is the whole point: the console is unreadable in a packaged
+        // Routed through `logError` rather than a bare `console.error`, so it reaches the
+        // backend log file too (the whole point, since the console is unreadable in a packaged
         // build). The console call it still makes carries the prefix, the message and the issue
         // detail as separate arguments. Asserting the failing field name is what pins the value of
         // the line, since a message naming only the command would not identify anything.

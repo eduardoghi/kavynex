@@ -266,7 +266,7 @@ export function useDisplayThumbnails(
         return () => {
             disposed = true;
 
-            // A pending retry belongs to the request that scheduled it; a new request supersedes it
+            // A pending retry belongs to the request that scheduled it. A new request supersedes it
             // rather than running alongside it, and an unmount must not leave a timer setting state.
             if (retryTimerRef.current !== null) {
                 window.clearTimeout(retryTimerRef.current);

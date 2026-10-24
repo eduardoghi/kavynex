@@ -63,7 +63,7 @@ export function useHomeViewState({
         !isPreparingSettings &&
         mediaPlayer.viewMode === "library";
 
-    // Only the true "no channels at all" case is onboarding; a selected-channel-less
+    // Only the true "no channels at all" case is onboarding. A selected-channel-less
     // state with channels already created gets the neutral prompt below instead.
     const showEmpty = !hasChannels && isLibraryReady && !channelsLoadFailed;
     const showChannelsLoadError = !hasChannels && isLibraryReady && channelsLoadFailed;

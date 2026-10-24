@@ -9,11 +9,11 @@ type LogMeta = Record<string, unknown>;
 type LogSink = (level: LogLevel, scope: string, line: string) => void;
 
 // The backend log file is the only sink that survives the window closing, and it is what
-// `README.md` and `TROUBLESHOOTING.md` ask a user to attach to a bug report. Until this existed
-// `logError` and `logWarn` reached neither: every one of their call sites wrote to a devtools
-// console that a packaged build never opens, so a whole class of caught-and-logged failures left no
-// trace anywhere. That cost a live diagnosis, where the one line explaining why the asset scope had
-// failed existed and could not be read.
+// `README.md` and `TROUBLESHOOTING.md` ask a user to attach to a bug report. Without this sink
+// `logError` and `logWarn` reach neither, because every one of their call sites writes to a
+// devtools console that a packaged build never opens, so a whole class of caught-and-logged
+// failures leaves no trace anywhere. That cost a live diagnosis, where the one line explaining why
+// the asset scope had failed existed and could not be read.
 //
 // Installed by `installGlobalErrorHandlers` rather than imported here, and that indirection is the
 // point. Importing the IPC seam from this module would close a cycle, since `tauri-client` pulls in
@@ -125,7 +125,7 @@ function writeLog(
 
     if (level === "error") {
         // parseAppError always returns a shape for any defined error, so this is the sole
-        // normalization step; there is no separate fallback path.
+        // normalization step. There is no separate fallback path.
         const normalizedError = error !== undefined ? parseAppError(error) : undefined;
 
         if (normalizedMeta && normalizedError) {

@@ -26,7 +26,7 @@ jobs:
             # aborted before producing one. The alert job turns the two into differently-titled
             # issues. See the step that sets this for why the distinction is not cosmetic.
             verdict: ${{ steps.stryker.outputs.verdict }}
-        # Generous timeout: a full mutation run is long, and this is a weekly scheduled run rather
+        # Generous timeout. A full mutation run is long, and this is a weekly scheduled run rather
         # than a per-PR gate, so a longer wall-clock is fine. A too-tight timeout would also report
         # as a failure indistinguishable from a real mutation-score regression.
         timeout-minutes: 120
@@ -36,7 +36,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            # No version input: the pnpm version comes from package.json's packageManager
+            # No version input. The pnpm version comes from package.json's packageManager
             # field, so CI and local Corepack install the same pinned pnpm.
             - name: Setup pnpm
               uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -62,7 +62,7 @@ jobs:
             #
             # So the outcome is classified rather than inferred. A run that reported a score leaves a
             # report behind, one that aborted does not. The step still exits with Stryker's own
-            # status, so the job's pass/fail is unchanged: this only records *which* kind of
+            # status, so the job's pass/fail is unchanged, and this only records *which* kind of
             # non-zero it was. Written before the exit so the output survives a failing step.
             - name: Run mutation testing
               id: stryker
@@ -128,7 +128,7 @@ jobs:
               with:
                   toolchain: 1.99.1
 
-            # Pinned like every other tool install in this repository: an unpinned `cargo install`
+            # Pinned like every other tool install in this repository. An unpinned `cargo install`
             # builds whatever released today, and this must be the same tool the shards below run.
             - name: Install cargo-mutants
               run: cargo install cargo-mutants@27.1.0 --locked
@@ -147,7 +147,7 @@ jobs:
             # so the scope is passed back in as `--file` arguments generated from that same list,
             # which is why the script emits them rather than the workflow restating them.
             #
-            # Read into an array rather than interpolated: two of those globs are directory globs
+            # Read into an array rather than interpolated. Two of those globs are directory globs
             # (`db_backup/*.rs`), and an unquoted expansion would have the shell resolve them into
             # several paths, which cargo-mutants rejects because `--file` takes one value.
             #
@@ -181,9 +181,9 @@ jobs:
 
                   node scripts/verify-mutants-exclusions.js mutants-list.txt
 
-            # Uploaded whether or not the check passed: a green run's listing is the baseline the
+            # Uploaded whether or not the check passed. A green run's listing is the baseline the
             # next red one is read against, and a red run's is the evidence. Small (a line per
-            # mutant) and cheap: the job builds nothing.
+            # mutant) and cheap, since the job builds nothing.
             - name: Upload the mutant listing
               if: always()
               uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -208,7 +208,7 @@ jobs:
             # which is what it is.
             shard-total: ${{ strategy.job-total }}
         strategy:
-            # One shard failing must not cancel the others: each covers a distinct slice of the
+            # One shard failing must not cancel the others. Each covers a distinct slice of the
             # mutant list, so the surviving shards still produce a usable verdict for their slice.
             fail-fast: false
             matrix:
@@ -253,7 +253,7 @@ jobs:
         # (4621 on 2026-10-11). It gives a rough sense of how much of the tree this gate covers and
         # is an input to nothing here.
         timeout-minutes: 90
-        # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
+        # Trim debuginfo like ci.yml's Rust job. cargo-mutants rebuilds the tree once per mutant, so
         # keeping the per-build cost down matters more here than anywhere else.
         env:
             CARGO_PROFILE_DEV_DEBUG: "0"
@@ -270,7 +270,7 @@ jobs:
               with:
                   toolchain: 1.99.1
 
-            # These apt packages are intentionally unpinned, like ci.yml/release.yml: exact pins on
+            # These apt packages are intentionally unpinned, like ci.yml/release.yml. Exact pins on
             # a hosted image go stale as the archive drops old versions and break the build for a
             # reason unrelated to this project. They are dev headers, not shipped in any bundle.
             - name: Install Linux dependencies
@@ -287,7 +287,7 @@ jobs:
             # rebuild the changed files next run, but not persisting a failure-run cache removes the
             # question entirely. A successful run still caches normally.
             #
-            # No per-shard cache key: every shard builds the same unmutated tree, so they share one
+            # No per-shard cache key. Every shard builds the same unmutated tree, so they share one
             # entry rather than storing three near-identical copies against the repository's cache
             # quota. They race to save it and all but one log a benign "already exists".
             - name: Cache Rust build
@@ -296,7 +296,7 @@ jobs:
                   workspaces: src-tauri
                   cache-on-failure: "false"
 
-            # Pin the tool version, like ci.yml/release.yml do for cargo-audit and cargo-deny: an
+            # Pin the tool version, like ci.yml/release.yml do for cargo-audit and cargo-deny. An
             # unpinned `cargo install` builds whatever the latest release happens to be on the day
             # the schedule fires, so a mutation score could move because the tool changed rather
             # than because the tests did.
@@ -310,7 +310,7 @@ jobs:
             # counterpart to Stryker for the frontend. The generous per-mutant timeout keeps a
             # mutation-induced infinite loop from being misreported instead of caught.
             #
-            # `--in-place` is required, not a preference: cargo-mutants' default copies only the
+            # `--in-place` is required, not a preference. cargo-mutants' default copies only the
             # `src-tauri` package into a scratch dir, but the youtube-handle parity test
             # (utils/validation.rs) `include_str!`s `../shared/youtube-handle-cases.json` from the
             # repo root, a fixture deliberately shared with the TypeScript side. The copy leaves
@@ -319,7 +319,7 @@ jobs:
             # `../shared` path resolvable. The CI checkout is disposable, so the in-place caveats
             # (no parallel copies, and a killed run leaves the tree mutated) do not apply here.
             #
-            # No explicit `--locked` here, unlike every other cargo invocation in this repo: it is
+            # No explicit `--locked` here, unlike every other cargo invocation in this repo. It is
             # already covered by `additional_cargo_args = ["--locked"]` in
             # src-tauri/.cargo/mutants.toml, which cargo-mutants applies to every cargo check/test
             # invocation it runs. Verified locally (cargo-mutants 27.1.0, the version pinned
@@ -355,7 +355,7 @@ jobs:
                   --sharding round-robin
                   --shard ${{ strategy.job-index }}/${{ strategy.job-total }}
 
-            # Same reasoning as the Stryker upload above, and it matters more here: a cargo-mutants
+            # Same reasoning as the Stryker upload above, and it matters more here. A cargo-mutants
             # run rebuilds and tests the tree once per mutant, so reproducing one locally to find out
             # which mutant survived costs far more than reading `missed.txt` from the artifact.
             # mutants.out/ also carries outcomes.json, caught/unviable lists and the debug log.
@@ -408,13 +408,13 @@ jobs:
                   # This job has no checkout step, and `gh issue` resolves the repository from the
                   # git remote of the working directory, so without this it dies with "fatal: not a
                   # git repository" before it can open anything. That was latent for as long as the
-                  # job existed: `if: failure()` never matched a timeout, so it had never actually
+                  # job existed. `if: failure()` never matched a timeout, so it had never actually
                   # run. Setting GH_REPO is what a checkout would otherwise be needed for, minus the
                   # clone.
                   GH_REPO: ${{ github.repository }}
                   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
                   # Read through `env:` rather than interpolated into the script body, matching
-                  # release.yml's non-main guard: a `${{ }}` expansion is substituted into the shell
+                  # release.yml's non-main guard. A `${{ }}` expansion is substituted into the shell
                   # source before it runs, so anything that could ever carry an unexpected character
                   # belongs in a variable the shell reads instead.
                   MUTATION_RESULT: ${{ needs.mutation.result }}
@@ -433,14 +433,14 @@ jobs:
                   # separate tracking issues so neither is read as the other, and so closing one does
                   # not silence the next occurrence of the other.
                   #
-                  # A third owner joined that split when the exclusion check became a job of its own,
-                  # and it is worth separating for the same reason the other two were: a stale
+                  # The exclusion check is a job of its own and a third owner of that split,
+                  # and worth separating for the same reason the other two were. A stale
                   # `exclude_re` is neither a missing test nor a broken runner. It is a line in
                   # `src-tauri/.cargo/mutants.toml` naming a mutant that no longer exists, and the
                   # fix is to that file. Reported first, because it is also the finding that makes
                   # the rest of the run's verdict untrustworthy for the file the entry covers.
                   #
-                  # No verdict means: a shard was killed by its own timeout-minutes (GitHub marks
+                  # No verdict means a shard was killed by its own timeout-minutes (GitHub marks
                   # that *cancelled*, not failed), or Stryker aborted before reporting a score (a
                   # dry-run timeout is the observed case. See the classification step above).
                   NO_VERDICT=""
@@ -507,11 +507,11 @@ jobs:
                   # holds without any state of our own. When it is reached the issue is opened as
                   # before, now describing a run that tried and still could not answer.
                   #
-                  # The re-run itself is not triggered here, and the first version of this did try.
-                  # A run cannot be re-run from inside itself: this job is part of the run, so the
-                  # run is still in progress when it would ask, and the API refuses. `retry-mutation.yml`
-                  # does it on `workflow_run`, once the run has actually completed. All this does is
-                  # stay quiet so the retry gets its turn before an issue is opened.
+                  # No re-run is triggered here, because a run cannot be re-run from inside itself.
+                  # This job is part of the run, so the run is still in progress when it would ask,
+                  # and the API refuses. `retry-mutation.yml` does it on `workflow_run`, once the
+                  # run has actually completed. All this does is stay quiet so the retry gets its
+                  # turn before an issue is opened.
                   if [ -n "$SILENT_SHARDS" ] && [ "$VERIFY_EXCLUSIONS_RESULT" != "failure" ] \
                       && [ "$RUN_ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
                       echo "$SILENT_SHARDS did not report. Attempt $RUN_ATTEMPT of $MAX_ATTEMPTS, so retry-mutation.yml will re-run the failed jobs and no issue is opened yet."
@@ -558,7 +558,7 @@ jobs:
     close-on-success:
         name: Close the tracking issues on a green run
         needs: [mutation, verify-exclusions, rust-mutation]
-        # Every job, not just the one whose title matches: a run is only evidence that a gate is
+        # Every job, not just the one whose title matches. A run is only evidence that a gate is
         # answering again if the whole gate ran. `success()` would be equivalent today, but naming
         # the dependencies keeps this in step with the condition above, which cannot use it.
         if: >

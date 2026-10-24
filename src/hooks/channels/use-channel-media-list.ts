@@ -11,7 +11,7 @@ import { logError } from "../../utils/app-logger";
 import { useRequestGuard } from "../use-request-guard";
 import { useMemoObject } from "../use-memo-object";
 
-// One page of media requested at a time. The backend clamps to its own max; this is the browse
+// One page of media requested at a time. The backend clamps to its own max. This is the browse
 // chunk the grid appends as the user scrolls.
 //
 // Kept in step with `shared/media-page-size.json`, which the display-thumbnail command sizes its
@@ -410,7 +410,7 @@ export function useChannelMediaList({
         [setLoadedRows]
     );
 
-    // Clear when no channel is selected; the section (which drives applyQuery) is unmounted then.
+    // Clear when no channel is selected. The section (which drives applyQuery) is unmounted then.
     useEffect(() => {
         if (selectedChannelId === null) {
             clearMedia();

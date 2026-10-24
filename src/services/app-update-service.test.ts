@@ -129,7 +129,7 @@ describe("toAppUpdateInfo", () => {
 
     it("does not confuse the current version with the available one", () => {
         // The two are adjacent strings of the same shape on the same object, and the notice reads
-        // "1.3.0 -> 1.4.0" off them; swapped, it tells the user to downgrade.
+        // "1.3.0 -> 1.4.0" off them. Swapped, it tells the user to downgrade.
         const info = toAppUpdateInfo(
             createUpdate(() => {}, { currentVersion: "1.0.0", version: "9.9.9" })
         );
@@ -198,7 +198,7 @@ describe("installAppUpdate", () => {
     });
 
     it("reports no percentage when the server did not send a content length", async () => {
-        // A download with no known size still has to report progress; what it cannot report is how
+        // A download with no known size still has to report progress. What it cannot report is how
         // far along it is. `total: null` is what the UI switches to an indeterminate bar on.
         const progress = await collectProgress([
             { event: "Started", data: {} },

@@ -40,7 +40,7 @@ type UseHomePlayerActionsOptions = {
     // notice, and the media-list/active-media updates) lives in the media-library action;
     // the player only adapts it to the active media, so the two cannot apply different rules.
     refreshComments: (media: MediaRow) => Promise<void>;
-    // Cancels an in-flight comment backup for a media id (see use-media-actions); the player adapts
+    // Cancels an in-flight comment backup for a media id (see use-media-actions). The player adapts
     // it to the active media so the header's Cancel targets the media on screen.
     cancelRefreshComments: (mediaId: number) => Promise<void>;
     // The ids being refreshed, not a shared "something is refreshing" flag. The player resolves it
@@ -100,7 +100,7 @@ export function useHomePlayerActions({
         }
 
         // The button is shown for every media, but only YouTube-sourced media can refresh
-        // comments; guard here with a clear message. Everything else (result handling, the
+        // comments. Guard here with a clear message. Everything else (result handling, the
         // neutral "kept your comments" notice, the concurrency flag, and the media-list and
         // active-media updates) is delegated to the media-library action so that rule has a
         // single implementation.
@@ -147,7 +147,7 @@ export function useHomePlayerActions({
         }
 
         // markAsUnwatchedAction already clears watched_at on the media list and the active
-        // media; no second, stale-closure update is needed here.
+        // media. No second, stale-closure update is needed here.
         await markAsUnwatchedAction(activeId);
     }, [markAsUnwatchedAction, activeMedia?.id]);
 

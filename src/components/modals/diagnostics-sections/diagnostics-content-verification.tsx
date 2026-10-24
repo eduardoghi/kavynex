@@ -92,7 +92,7 @@ function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element
  * name.
  *
  * Separate from the rest of Diagnostics, and behind a button, because it costs a full read of the
- * library. The summary above it is built from `stat` and opens instantly; this one can take as long
+ * library. The summary above it is built from `stat` and opens instantly. This one can take as long
  * as reading every byte takes, which is why it reports progress and can be stopped.
  */
 export function DiagnosticsContentVerification({

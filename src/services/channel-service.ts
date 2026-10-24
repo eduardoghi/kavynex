@@ -24,8 +24,8 @@ export async function listAllChannels(): Promise<Channel[]> {
 }
 
 /**
- * Refuses a channel that createChannel would refuse: an invalid name or handle, or a handle that is
- * already registered.
+ * Refuses a channel that createChannel would refuse (an invalid name or handle, or a handle that
+ * is already registered).
  *
  * Separate so a caller can ask before doing the expensive part. Creating a channel with an avatar
  * writes or downloads that avatar first, and a refusal after that left the file in the library with
@@ -128,7 +128,7 @@ export async function updateChannelAvatarWithCleanup(
     // The backend updates the avatar and, in the same transaction, decides whether the
     // previous avatar file became unreferenced (across both video thumbnails and other
     // channel avatars) before removing it. Doing the row write and the reference decision
-    // atomically closes the check-then-act race the old two-call sequence had; the old file
+    // atomically closes the check-then-act race the old two-call sequence had. The old file
     // removal is best-effort, so files it could not delete are reported back as orphans.
     const report = await replaceChannelAvatar(channelId, nextAvatarPath);
 
@@ -145,7 +145,7 @@ export async function updateChannelAvatarWithCleanup(
 }
 
 // The backend deletes the channel row (media and comments cascade) and its
-// now-unreferenced files atomically; files it could not remove are reported back so an
+// now-unreferenced files atomically. Files it could not remove are reported back so an
 // orphaned file left in the library stays visible. Resolves with how many of them stayed behind.
 export async function deleteChannelWithThumbnailCleanup(channelId: number): Promise<number> {
     validateChannelId(channelId);

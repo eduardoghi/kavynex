@@ -53,7 +53,7 @@ describe("readMediaDurationInSeconds", () => {
         vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
             const stub = makeStub();
             created.push(stub);
-            // Only video/audio are ever requested by the service; the tag is carried through so a
+            // Only video/audio are ever requested by the service. The tag is carried through so a
             // test can assert the right element type was created.
             (stub as unknown as { tagName: string }).tagName = tag.toUpperCase();
             return stub as unknown as HTMLElement;

@@ -309,7 +309,7 @@ export async function createMedia(
     };
 }
 
-// The backend deletes the row and its now-unreferenced files atomically; files it could
+// The backend deletes the row and its now-unreferenced files atomically. Files it could
 // not remove are reported back so an orphaned file left in the library stays visible. Resolves
 // with how many of them stayed behind.
 export async function deleteMediaWithFileCleanup(mediaId: number): Promise<number> {

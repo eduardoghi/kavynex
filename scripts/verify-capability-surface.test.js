@@ -69,7 +69,7 @@ describe("extractTauriBindings", () => {
     });
 
     it("records a renamed binding under its original name", () => {
-        // The alias is a readability choice at the seam; the permission is about what the API is.
+        // The alias is a readability choice at the seam. The permission is about what the API is.
         // Matching on the alias would let a rename silently move a binding out of the declaration.
         const bindings = extractTauriBindings(
             'export { open as openFileDialog, save as saveFileDialog } from "@tauri-apps/plugin-dialog";'

@@ -2,16 +2,16 @@
 // in. Pure, so the parsing is testable without a download, and separate from `use-yt-dlp-events`
 // because that hook's job is buffering the scrollback, not interpreting it.
 //
-// This exists because the terminal was the only progress the app offered. A download is the longest
-// operation Kavynex performs (the backend bounds one at twelve hours), and the stage that most looks
-// like a freeze is the one where yt-dlp is working correctly. The merge prints nothing for minutes
-// while FFmpeg muxes a multi-gigabyte file. The backend already knows the difference (its stall
-// watchdog checks whether the temp files are still growing before killing anything); nothing of that
-// reached the screen, so the reasonable read of a silent terminal was "it hung", and cancelling a
-// download at 90% is the action that follows.
+// This exists because the terminal is otherwise the only progress the app offers. A download is
+// the longest operation Kavynex performs (the backend bounds one at twelve hours), and the stage
+// that most looks like a freeze is the one where yt-dlp is working correctly. The merge prints
+// nothing for minutes while FFmpeg muxes a multi-gigabyte file. The backend already knows the
+// difference (its stall watchdog checks whether the temp files are still growing before killing
+// anything). Without a stage name, none of that reaches the screen, so the reasonable read of a
+// silent terminal is "it hung", and cancelling a download at 90% is the action that follows.
 
 // The stages a run passes through, in the order yt-dlp reports them. `downloading` is the only one
-// that carries a percentage; the rest are post-processing steps that print once and then work
+// that carries a percentage. The rest are post-processing steps that print once and then work
 // silently, which is exactly why naming them is worth doing.
 export type YtDlpPhase =
     | "downloading"

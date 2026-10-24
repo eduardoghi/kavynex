@@ -25,7 +25,7 @@ import axe, { type AxeResults, type RunOptions } from "axe-core";
 // Rules that cannot produce a meaningful verdict in jsdom, so leaving them on would report
 // violations that say nothing about the component under test.
 //
-// - `color-contrast` needs computed colours from a real rendering engine; jsdom returns none, and
+// - `color-contrast` needs computed colours from a real rendering engine. jsdom returns none, and
 //   axe either skips it or guesses.
 // - `region` wants every node inside a landmark, which is a property of the whole page. These
 //   components are rendered in isolation, so the landmark that holds them in the app is absent by

@@ -29,7 +29,7 @@ type UseLibraryVerificationReturn = {
 //
 // The cancel is a separate backend call rather than an aborted promise, because the work happens on
 // the blocking pool inside one command. Dropping the promise here would leave that sweep reading the
-// whole library with nobody listening. `cancel` asks it to stop; the run still resolves normally,
+// whole library with nobody listening. `cancel` asks it to stop. The run still resolves normally,
 // with a report that says it was cancelled.
 export function useLibraryVerification(): UseLibraryVerificationReturn {
     const [running, setRunning] = useState(false);

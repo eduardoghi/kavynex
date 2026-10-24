@@ -306,7 +306,7 @@ describe("validateCreateMediaInput", () => {
     });
 
     it("keeps a browser selector with a profile, in the spelling yt-dlp reads", () => {
-        // The profile is appended by the form; this is the last frontend gate before the
+        // The profile is appended by the form. This is the last frontend gate before the
         // round trip, and it must not flatten the selector back to the bare browser.
         const result = validateCreateMediaInput({
             channelId: 10,

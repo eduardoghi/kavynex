@@ -108,7 +108,7 @@ describe("useMediaPlayer", () => {
         expect(result.current.activeMedia).toEqual(media);
         expect(result.current.activeIsAudio).toBe(false);
         // Two different schemes, and the pairing is the point. The media file goes through the
-        // app's own protocol because Tauri's asset protocol truncates range responses; the
+        // app's own protocol because Tauri's asset protocol truncates range responses. The
         // thumbnail stays on the asset protocol because it is far too small for that to matter.
         expect(result.current.activeSrc).toBe("kvxmedia://localhost/library/video/a.mp4");
         expect(result.current.activeThumbSrc).toBe("file:///library/thumbnails/a.jpg");

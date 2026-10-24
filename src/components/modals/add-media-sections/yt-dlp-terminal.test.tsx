@@ -22,9 +22,9 @@ vi.mock("@tanstack/react-virtual", () => ({
     })),
 }));
 
-// The terminal keys rows on a stable per-line id (see YtDlpLogLine); the ids are arbitrary here, so
+// The terminal keys rows on a stable per-line id (see YtDlpLogLine). The ids are arbitrary here, so
 // number them positionally. The level defaults to "info" because most of these cases are about
-// layout and virtualization rather than colour; the ones that are about colour use `leveledLogs`.
+// layout and virtualization rather than colour. The ones that are about colour use `leveledLogs`.
 function logs(...texts: string[]): YtDlpLogLine[] {
     return texts.map((text, index) => ({ id: index, text, level: "info" }));
 }

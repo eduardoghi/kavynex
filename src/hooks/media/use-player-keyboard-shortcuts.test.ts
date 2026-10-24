@@ -209,11 +209,11 @@ describe("usePlayerKeyboardShortcuts", () => {
     // The three below pin the capture-phase subscription and what it is for. A real
     // `<video controls>` that has focus handles Space and the arrows itself, at the target, and
     // skips that only when the event is already defaultPrevented by the time it looks. jsdom has
-    // no media controls, so what can be asserted here is the mechanism: the listener runs in
+    // no media controls, so what can be asserted here is the mechanism. The listener runs in
     // capture, it prevents the default on the player element itself, and it keeps preventing on
     // repeats it otherwise ignores. The end-to-end effect (one toggle, a 5s seek, a 0.05 volume
     // step, with the player element focused) was measured in a Chromium build with trusted key
-    // events; see the hook's comment.
+    // events. See the hook's comment.
     it("subscribes in the capture phase, so it runs before the player's own handling", () => {
         const addSpy = vi.spyOn(document, "addEventListener");
         const removeSpy = vi.spyOn(document, "removeEventListener");

@@ -84,7 +84,7 @@ export function useTempThumbnail(): UseTempThumbnailReturn {
     // `tracksTempFile` says whether `nextPath` is a file this app wrote into the preview directory
     // and is therefore ours to delete. A manually picked thumbnail is staged there (so it can be
     // previewed without widening the asset scope to the user's own file), which makes it a temp file
-    // with the same lifecycle as a generated one; if that staging failed the caller falls back to
+    // with the same lifecycle as a generated one. If that staging fails, the caller falls back to
     // the path the user picked, which is *not* ours and must never be handed to the delete command.
     //
     // The pick takes a request id of its own, which supersedes a generation still in flight.

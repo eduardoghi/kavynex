@@ -117,8 +117,9 @@ describe("MediaPlayerView", () => {
     });
 
     // A longer timeout than the suite default, and this is the one place that needs it. This is the
-    // largest tree the app renders, and axe walks every node against every enabled rule in jsdom (// which has no layout engine to short-circuit anything), so it runs several times longer here
-    // than over the grid or the sidebar. The default 5s is what it exceeded; this is well clear of
+    // largest tree the app renders, and axe walks every node against every enabled rule in jsdom
+    // (which has no layout engine to short-circuit anything), so it runs several times longer here
+    // than over the grid or the sidebar. The default 5s is what it exceeded. This is well clear of
     // the measured time rather than just above it.
     it("has no detectable accessibility violations", { timeout: 30_000 }, async () => {
         // The largest surface in the app and the one with the most controls. Transport buttons, the

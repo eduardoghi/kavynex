@@ -20,14 +20,15 @@ type YtDlpTerminalProps = {
     ytDlpOutcome?: YtDlpRunOutcome | null;
 };
 
-// Height of the scrollback viewport. Previously a Mantine ScrollArea `h`; the virtualizer needs a
-// plain scrolling element it owns, so this is applied to that element directly.
+// Height of the scrollback viewport. The virtualizer needs a
+// plain scrolling element it owns, so this is applied to that element directly instead of through
+// a Mantine ScrollArea `h`.
 //
 // Scales with the viewport rather than sitting at a fixed 320px. The modal around it is now sized
 // off the viewport too, and this is the element that actually wants the extra room. It is what the
 // user watches for the minutes a download runs. `clamp` keeps it a definite computed height, which
 // is what the virtualizer measures the scroll element for, so virtualization is unaffected. The
-// lower bound keeps it usable on a short window; the upper one stops it from crowding out the form
+// lower bound keeps it usable on a short window. The upper one stops it from crowding out the form
 // controls above it on a tall one.
 const TERMINAL_HEIGHT = "clamp(220px, 32vh, 460px)";
 
@@ -250,7 +251,7 @@ export function YtDlpTerminal({
                                     const line = ytDlpLogs[virtualRow.index];
 
                                     // The virtualizer only yields in-range indices, so this is never
-                                    // null in practice; the guard satisfies the checked-index type.
+                                    // null in practice. The guard satisfies the checked-index type.
                                     if (!line) {
                                         return null;
                                     }

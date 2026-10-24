@@ -158,7 +158,7 @@ export function useDiagnostics({
 
     // Reveals one of the report's example files in the OS file manager, given its library-relative
     // path. Only offered for the issues whose paths name a file that is on disk (see
-    // ISSUE_CODES_WITH_FILES_ON_DISK in diagnostics-rules.ts); the containment is still enforced on
+    // ISSUE_CODES_WITH_FILES_ON_DISK in diagnostics-rules.ts). The containment is still enforced on
     // the backend, which resolves the path against the configured library and refuses anything
     // outside it, so this hook passing a path it was handed is not what makes it safe.
     //

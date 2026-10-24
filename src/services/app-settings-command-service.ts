@@ -2,7 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 
-// Generated from the Rust `StoredAppSettings` struct by ts-rs; re-exported for callers.
+// Generated from the Rust `StoredAppSettings` struct by ts-rs and re-exported for callers.
 export type { StoredAppSettingsPayload };
 
 /**

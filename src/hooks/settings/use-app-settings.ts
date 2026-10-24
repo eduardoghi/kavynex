@@ -26,7 +26,7 @@ export type AppSettingsController = {
     isMigratingLibraryPath: boolean;
     isSavingExternalBackupDir: boolean;
     // The configured library folder could not be reached at startup. The path is still in
-    // `settings.libraryPath`; see initializeAppSettings.
+    // `settings.libraryPath`. See initializeAppSettings.
     isLibraryUnreachable: boolean;
     // True once the asset scope registration for the current library folder has settled. Until
     // then an image pointed at the library is refused by the protocol and is not requested again,

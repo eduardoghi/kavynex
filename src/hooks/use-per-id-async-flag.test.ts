@@ -133,7 +133,7 @@ describe("usePerIdAsyncFlag", () => {
     });
 
     it("keeps runFor stable across rerenders", () => {
-        // Consumers thread this into memoized rows; a new identity per render would re-render the
+        // Consumers thread this into memoized rows. A new identity per render would re-render the
         // virtualized grid this hook is used from.
         const { result, rerender } = renderHook(() => usePerIdAsyncFlag());
 

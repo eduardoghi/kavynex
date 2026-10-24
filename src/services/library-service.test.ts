@@ -82,7 +82,7 @@ describe("openLogDirectory", () => {
     it("sends no arguments at all", async () => {
         // The security property of this command, asserted rather than left to the signature. The
         // backend resolves the log directory from `app_log_dir()` precisely so there is no path for
-        // a caller to redirect; a second argument appearing here would mean a path had been
+        // a caller to redirect. A second argument appearing here would mean a path had been
         // reintroduced on the way in, which is the change that should have to delete this test.
         await openLogDirectory();
 
@@ -93,7 +93,7 @@ describe("openLogDirectory", () => {
     });
 
     it("propagates a failure to the caller", async () => {
-        // The hook above it turns this into a user-facing notice; swallowing it here would leave a
+        // The hook above it turns this into a user-facing notice. Swallowing it here would leave a
         // button that silently does nothing, which is the whole failure mode worth avoiding.
         invokeVoidMock.mockRejectedValueOnce(new Error("no file manager"));
 

@@ -105,7 +105,7 @@ export function useAppBootstrap({
                 }
 
                 // The database could not be opened, or is missing with backups beside it. Offer
-                // to restore from the last backup if one exists; otherwise surface the raw
+                // to restore from the last backup if one exists. Otherwise surface the raw
                 // initialization error.
                 try {
                     const status = await getDatabaseBackupStatus();

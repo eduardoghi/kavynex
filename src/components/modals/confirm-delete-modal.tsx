@@ -18,7 +18,7 @@ type ConfirmDeleteModalProps = {
     confirmColor?: string;
     confirmIcon?: ReactNode;
     loading?: boolean;
-    // Only the Cancel button dismisses it: no Esc, no click outside, no close button. For a prompt
+    // Only the Cancel button dismisses it (no Esc, no click outside, no close button). For a prompt
     // that does not come back once dismissed, so a stray key cannot be the decision.
     requireExplicitChoice?: boolean;
     // Which button takes focus when the modal opens. Cancel by default, so Enter on a destructive

@@ -3,7 +3,7 @@ import type { MediaRow } from "../../types/media";
 import { isMediaWatched } from "../../utils/media-utils";
 import { logError } from "../../utils/app-logger";
 
-// timeupdate fires ~4x/second; persist at most this often so a crash, a force-close, or the
+// timeupdate fires ~4x/second. Persist at most this often so a crash, a force-close, or the
 // updater relaunch never loses more than a few seconds of watch position. The exact position
 // is also flushed on pause/seek/ended, when the window is hidden, and when the player closes.
 export const PROGRESS_SAVE_THROTTLE_MS = 10_000;
@@ -94,7 +94,7 @@ export function useMediaProgressPersistence(
             return;
         }
 
-        // Negative infinity so the first timeupdate persists right away; later ones are
+        // Negative infinity so the first timeupdate persists right away. Later ones are
         // throttled relative to it.
         let lastSavedAt = Number.NEGATIVE_INFINITY;
 
@@ -190,7 +190,7 @@ export function useMediaProgressPersistence(
     // Persist the final position when the player unmounts. The Back button, switching
     // channels from the sidebar, or the active media being deleted all land here. Empty deps so the
     // cleanup fires exactly once, on the real unmount, and never mid-session when persistProgress
-    // changes identity; it reads the latest persistProgress through the ref above.
+    // changes identity. It reads the latest persistProgress through the ref above.
     useEffect(() => {
         return () => {
             persistProgressRef.current();

@@ -41,7 +41,7 @@ const MEDIA_FOOTER_HEIGHT = 28;
 // Style values that never depend on the card's props or state, hoisted to module scope so they
 // are built once instead of on every render. Truly only the delta that reacts to state stays
 // inline below. The media-type badge reacts only to isAudio (a boolean), so both of its variants
-// are fully hoisted and picked between; the root card keeps its static base here
+// are fully hoisted and picked between. The root card keeps its static base here
 // (ROOT_CARD_BASE_STYLE) and spreads only the few properties that react to isActive/isWatched/
 // shellBorder over it. This component is memoized and re-renders whenever its own primitive props
 // flip (e.g. the active-media id changes), so avoiding the per-render work compounds across a

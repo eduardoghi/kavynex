@@ -87,7 +87,7 @@ describe("buildMergedFormats", () => {
             format({ format_id: "c", height: 1080, has_video: true, has_audio: false }),
         ]);
 
-        // No audio means no merged entries; video-only ranked by resolution desc.
+        // No audio means no merged entries, with video-only ranked by resolution desc.
         expect(merged.map((f) => f.height)).toEqual([2160, 1080, 720]);
     });
 
@@ -216,7 +216,7 @@ describe("isValidYtDlpFormatId shared parity fixture", () => {
 describe("buildMergedFormats produces backend-valid format ids", () => {
     it("every synthesized selector passes isValidYtDlpFormatId", () => {
         // Real yt-dlp format ids (alphanumeric plus `.`/`_`/`-`). buildMergedFormats joins a
-        // video-only id and the preferred audio id with `+`; this pins that whatever it builds is a
+        // video-only id and the preferred audio id with `+`. This pins that whatever it builds is a
         // selector the backend's is_valid_format_id accepts, so a change to the construction that
         // produced an invalid id would fail here instead of after the IPC round trip.
         const formats = [
@@ -224,7 +224,7 @@ describe("buildMergedFormats produces backend-valid format ids", () => {
             format({ format_id: "hls_1080", has_video: true, has_audio: false }),
             format({ format_id: "248", has_video: true, has_audio: false, ext: "webm" }),
             format({ format_id: "233-drc", has_video: false, has_audio: true, ext: "m4a" }),
-            // A native (already-muxed) format is passed through unchanged; it must be valid too.
+            // A native (already-muxed) format is passed through unchanged. It must be valid too.
             format({ format_id: "18", has_video: true, has_audio: true }),
         ];
 

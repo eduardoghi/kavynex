@@ -27,7 +27,7 @@ describe("AsyncStatusRegion", () => {
     });
 
     it("renders children even alongside an error so a panel can keep an action visible", () => {
-        // The comments panel shows its "fetch comments" action even when a read errored; the shell
+        // The comments panel shows its "fetch comments" action even when a read errored. The shell
         // must never gate children on !error, or that behavior would silently disappear. Each panel
         // keeps its own showing conditions on its children rather than relying on the shell to hide
         // them.

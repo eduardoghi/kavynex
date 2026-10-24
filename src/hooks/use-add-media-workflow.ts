@@ -103,7 +103,7 @@ export function useAddMediaWorkflow({
 
     // The run id of a local import currently in flight, or "" when none is. A yt-dlp run already
     // has somewhere to keep this (useYtDlpEvents.currentRunIdRef, set by startRun) because it also
-    // needs it to correlate the log stream; a local import emits no events, so it needs its own.
+    // needs it to correlate the log stream. A local import emits no events, so it needs its own.
     // A ref rather than state on purpose. The cancel callback reads it at click time and must not
     // be recreated when an import starts, which would churn every consumer of the controller.
     const localImportRunIdRef = useRef("");
@@ -205,7 +205,7 @@ export function useAddMediaWorkflow({
                 // registry a download does, which is what lets cancelMediaDownload reach the file
                 // copy. Without it, the one long operation in this app would have no way out but
                 // killing the process. The field keeps its yt-dlp name because that is what the
-                // wire contract calls it; only its scope widened.
+                // wire contract calls it. Only its scope widened.
                 const ytDlpRunId = generateYtDlpRunId();
                 // Its own id rather than the download's, so a Cancel meant for the download that
                 // lands after it ended cannot skip the comments too.
@@ -422,7 +422,7 @@ export function useAddMediaWorkflow({
         setAddMediaOpen(false);
         // Note: isGeneratingThumb/isLoadingYtDlpFormats/isYtDlpRunning are deliberately read
         // live off addMediaForm/ytDlpEvents below (not destructured). This guard has to see a
-        // flag flip that can happen without a re-render in between; see the comment above the
+        // flag flip that can happen without a re-render in between. See the comment above the
         // addMediaForm/ytDlpEvents destructuring further up.
     }, [
         addMediaForm.isGeneratingThumb,

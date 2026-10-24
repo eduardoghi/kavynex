@@ -30,7 +30,7 @@ type CommentContentProps = {
     // A reply sits one level down and gets a slightly smaller avatar, matching the browse view.
     compact?: boolean;
     // Rendered in the like-count row. The browse view (`CommentItem`) passes its show/hide-replies
-    // toggle here; the search view passes nothing, because there replies are their own flat rows.
+    // toggle here. The search view passes nothing, because there replies are their own flat rows.
     actions?: ReactNode;
 };
 

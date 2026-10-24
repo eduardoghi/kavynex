@@ -1,18 +1,19 @@
 # cargo-mutants configuration.
 #
-# Mutation testing for the modules whose regression cost is highest: cargo-mutants rewrites their
+# Mutation testing for the modules whose regression cost is highest. cargo-mutants rewrites their
 # logic (an inverted `starts_with`, a dropped `!`, an off-by-one, a swapped return) and fails if the
-# tests still pass. Coverage on these files is already high; this is what proves the tests kill a
+# tests still pass. Coverage on these files is already high. This is what proves the tests kill a
 # logic mutant rather than merely executing the line.
 #
-# This file is the configuration. The reasoning is in `docs/MUTATION-TESTING.md`: how to widen the
-# scope, the measured pass behind every glob below, and the full triage behind every exclusion. Each
-# exclusion here carries a one-line reason and a category (equivalent / boundary / cfg-split /
-# AppHandle glue / caught-only-as-a-hang); the argument for it is in that document.
+# This file is the configuration. The reasoning is in `docs/MUTATION-TESTING.md`, which covers
+# how to widen the scope, the measured pass behind every glob below and the full triage behind
+# every exclusion. Each exclusion here carries a one-line reason and a category (equivalent /
+# boundary / cfg-split / AppHandle glue / caught-only-as-a-hang), and the argument for it is in
+# that document.
 #
 # Run locally (`--in-place` is required, see the doc):
 #     cargo mutants --manifest-path src-tauri/Cargo.toml --in-place
-# CI runs it weekly (.github/workflows/mutation.yml); a surviving mutant exits 2 and fails the run.
+# CI runs it weekly (.github/workflows/mutation.yml). A surviving mutant exits 2 and fails the run.
 #
 # `scripts/verify-mutants-exclusions.js` fails CI when an `exclude_re` entry below stops matching
 # any mutant. Two entries have already died silently after a pure extraction renamed the mutant they
@@ -58,9 +59,9 @@ examine_globs = [
     "src/error.rs",
 ]
 
-# The one file the directory globs above pull in that this gate has nothing to say about: it holds
+# The one file the directory globs above pull in that this gate has nothing to say about. It holds
 # the db_backup family's test fixtures, so a mutant in it can only make a fixture wrong, which is a
-# red suite rather than the undetected regression this gate looks for. NOT MEASURED; see the doc.
+# red suite rather than the undetected regression this gate looks for. NOT MEASURED. See the doc.
 exclude_globs = ["src/services/db_backup/test_support.rs"]
 
 # Build and test against the committed Cargo.lock, matching every other cargo invocation in the
@@ -69,14 +70,14 @@ exclude_globs = ["src/services/db_backup/test_support.rs"]
 additional_cargo_args = ["--locked"]
 
 # Mutants no unit test can deterministically kill, so the gate stays meaningful (a red run means a
-# real gap) instead of perpetually red on things nothing can pin. Four categories, one reason each;
-# the argument behind every entry is in docs/MUTATION-TESTING.md under "Exclusions".
+# real gap) instead of perpetually red on things nothing can pin. Four categories, one reason each.
+# The argument behind every entry is in docs/MUTATION-TESTING.md under "Exclusions".
 #
-# What stays in scope regardless is the security logic itself: sanitize_relative_path_strict,
+# What stays in scope regardless is the security logic itself, namely sanitize_relative_path_strict,
 # ensure_managed_library_relative_path and the containment helpers, is_allowed_youtube_url /
 # is_allowed_youtube_host, paths_refer_to_same_location and network_paths_name_the_same_share.
 exclude_re = [
-    # Equivalent: gates only a logger::warn naming the leftovers; the removal already happened.
+    # Equivalent: gates only a logger::warn naming the leftovers. The removal already happened.
     'delete ! in remove_old_library_contents',
     # AppHandle glue: needs a live handle for the pool, the library and the cache directory. The
     # decisions were extracted into pure functions that are in scope and covered.
@@ -87,28 +88,30 @@ exclude_re = [
     # mutant and the failed_paths guard mutants, which are the same argument twice.
     'report_cleanup_outcome',
     # Equivalent: the `report.corrupt > 0` guard in front of a logger::warn. All three weakenings
-    # return a byte-identical report; only whether the line is written changes, and logger::write
-    # returns early when LOG_PATH is unset, which is every unit test. Narrow on purpose: the rest of
+    # return a byte-identical report. Only whether the line is written changes, and logger::write
+    # returns early when LOG_PATH is unset, which is every unit test. Narrow on purpose. The rest of
     # verify_library_content_sync (the two cancel checks and the loop) stays in scope and is killed.
     'replace > with (==|<|>=) in verify_library_content_sync',
     # Boundary: spawns FFmpeg and polls it to a deadline. Note that nothing is excluded for
     # resolve_display_thumbnails_sync, and the doc records why the reason once given was wrong.
     'generate_display_thumbnail',
     # Boundary: the two halves of the thumbnail spawn that need a live child process, one to take
-    # its pipes and one to kill its tree on a deadline. Narrow on purpose: read_drain_capped_async
-    # takes its cap as an argument and reads any AsyncRead, so it is tested directly against a
-    # counting reader and stays in scope, which is where the cap arithmetic and the drain-past-the-
-    # cap property actually live. build_thumbnail_command_args stays in scope too.
+    # its pipes and one to kill its tree on a deadline. Narrow on purpose, since
+    # read_drain_capped_async takes its cap as an argument and reads any AsyncRead, so it is tested
+    # directly against a counting reader and stays in scope, which is where the cap arithmetic and
+    # the drain-past-the-cap property actually live. build_thumbnail_command_args stays in scope
+    # too.
     'replace wait_with_capped_output',
     'run_thumbnail_yt_dlp_with_timeout',
     # Equivalent: with `<=`, the extra iteration it admits is the one where buffer.len() equals
     # max_bytes, and there `max_bytes - buffer.len()` is 0, so the extend_from_slice copies nothing.
     # Same buffer, same drain. The sibling mutant on the next line (`-` to `+`) is NOT excluded and
-    # is a real one: it overshoots the cap on the chunk that straddles it, which is what
+    # is a real one. It overshoots the cap on the chunk that straddles it, which is what
     # a_stream_over_the_cap_is_truncated_but_still_drained_to_the_end was rewritten to catch.
     'replace < with <= in read_drain_capped_async',
-    # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half. Narrow on
-    # purpose; prepare_cache_scope_dirs, managed_cache_scope_dirs and grant_path_with_canonical stay.
+    # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half.
+    # Narrow on purpose, and prepare_cache_scope_dirs, managed_cache_scope_dirs and
+    # grant_path_with_canonical stay.
     'replace register_cache_asset_scope with \(\)',
     # Boundary: initializes a process-global OnceLock. Any test that reads it initializes the same
     # one, and there is no second process to compare against. Unkillable in-process.
@@ -150,7 +153,7 @@ exclude_re = [
     # Equivalent: with `<=`, the extra iteration it admits is the one where buf.len() equals
     # max_bytes, and there `max_bytes - buf.len()` is 0, so the extend_from_slice copies nothing.
     # Same buffer, same line. The identical argument as the read_drain_capped_async entry above,
-    # for the identical shape. Narrow on purpose: the sibling `-` to `+` mutants on the very next
+    # for the identical shape. Narrow on purpose. The sibling `-` to `+` mutants on the very next
     # line of each branch are NOT excluded, and are what the two chunked-reader tests were written
     # to kill.
     'replace < with <= in read_lossy_line_capped',
@@ -162,7 +165,7 @@ exclude_re = [
     # Detected only as a hang, which cargo-mutants reports as a timeout rather than a kill. Each of
     # these stops the reader consuming what it just read, so `yt_dlp::metadata`'s
     # `while let Some(line) = read_lossy_line(..)` never terminates and the whole run sits until the
-    # deadline. The suite does catch them; it just has no way to say so, and paying 300s apiece for
+    # deadline. The suite does catch them. It just has no way to say so, and paying 300s apiece for
     # an answer already known is what the exclusion buys back.
     'replace read_lossy_line(_capped)? -> Option<String> with Some\(String::new\(\)\)',
     'replace \+ with [-*] in read_lossy_line_capped',
@@ -181,7 +184,7 @@ exclude_re = [
     # cfg-split: the `\\?\` rewrite is a #[cfg(windows)] body with a #[cfg(not(windows))]
     # pass-through, so whichever platform runs the gate reports the other body as missed. The
     # Windows body is pinned by three cfg(windows) tests that run in the Windows test job. Narrow
-    # on purpose: library_input_path, which calls it, and every helper built on it stay in scope.
+    # on purpose, as library_input_path, which calls it, and every helper built on it stay in scope.
     'in to_extended_length_path',
     'replace to_extended_length_path -> PathBuf with Default::default\(\)',
     # cfg-split: unix File::sync_all / windows FlushFileBuffers, best effort, and flushing a
@@ -211,8 +214,8 @@ exclude_re = [
     'replace && with \|\| in stage_database_import',
     'replace != with == in stage_database_import',
     'replace > with (==|<|>=) in stage_database_import',
-    # Equivalent against any forceable input: distinguishing these needs a corrupt database returning
-    # a controlled number of problem rows. The weekly throttle itself is NOT excluded.
+    # Equivalent against any forceable input, since distinguishing these needs a corrupt database
+    # returning a controlled number of problem rows. The weekly throttle itself is NOT excluded.
     'replace && with \|\| in run_full_integrity_check',
     'replace > with (==|<|>=) in run_full_integrity_check',
     # Equivalent: both `> 0` guards gate only a logger::warn counting repaired rows. The repair is
@@ -226,8 +229,8 @@ exclude_re = [
     # the guard's mutants name the function in their description.
     'is_held_by_another_program',
     # Equivalent: re-runs a migration the database is already at, and every migration is idempotent,
-    # so only the work is wasted. The `== N` direction is deliberately NOT excluded: that one skips a
-    # migration outright, and it survived undetected until 2026-07-28. See the doc.
+    # so only the work is wasted. The `== N` direction is deliberately NOT excluded. That one skips
+    # a migration outright, and it survived undetected until 2026-07-28. See the doc.
     'replace < with <= in needs_migration',
     # Dispatch glue. `handle` takes a UriSchemeContext and a responder, which only Tauri constructs
     # when it dispatches a request, and all it does is move the request to the blocking pool. What

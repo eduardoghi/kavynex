@@ -67,7 +67,7 @@ const GRID_SCROLLBAR_GUTTER = GRID_GAP;
 // header, the filter row and the grid's own title. Deliberately an approximation rather than a
 // measurement. Reading it would mean a layout query on a container that re-renders on every scroll
 // tick, which is the cost this file already refuses to pay for row heights (see measureFirstRow).
-// Being a little wrong costs a few pixels of outer page scroll; measuring costs a reflow per frame.
+// Being a little wrong costs a few pixels of outer page scroll. Measuring costs a reflow per frame.
 const GRID_CHROME_ABOVE = 300;
 
 // The inner scroll area the virtualizer measures against. This was a flat `70vh`, which is wrong in
@@ -392,9 +392,9 @@ export function MediaGrid({
 
     // Jump to (and briefly highlight) a media requested from elsewhere. E.g. a "missing media"
     // path clicked in Diagnostics. The target channel's media loads asynchronously, so this runs
-    // again as `items` fills in; it acts only once the target is present, then clears the request.
-    // onFocusHandled clears `focusMediaId` upstream, which re-runs this with a null id (a no-op);
-    // the scroll and the highlight timer are intentionally not tied to this effect's cleanup so
+    // again as `items` fills in. It acts only once the target is present, then clears the request.
+    // onFocusHandled clears `focusMediaId` upstream, which re-runs this with a null id (a no-op).
+    // The scroll and the highlight timer are intentionally not tied to this effect's cleanup so
     // that clear cannot cancel them.
     useEffect(() => {
         if (focusMediaId === null || !isVisible) {
@@ -605,7 +605,7 @@ export function MediaGrid({
                                 const rowItems = rows[virtualRow.index];
 
                                 // The virtualizer only yields in-range row indices, so this is
-                                // never null in practice; the guard satisfies the checked-index
+                                // never null in practice. The guard satisfies the checked-index
                                 // type and renders nothing rather than crashing if it ever were.
                                 if (!rowItems) {
                                     return null;
