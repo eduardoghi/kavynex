@@ -4,6 +4,13 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+### Security
+
+- The TLS library under the updater's connection and its certificate checks are past
+  RUSTSEC-2026-0346 to 0349, 0382 and 0383.
+- The SQLite compiled into the app moves from 3.46.0 to 3.51.3. It is what reads a database file
+  brought in by Import database or found in the external backup folder.
+
 ## [1.8.0] (2026-10-12)
 
 ### Added
