@@ -173,6 +173,11 @@ exclude_re = [
     # "the runner has received a shutdown signal" on shards 3 and 5 in every run since the
     # empty-string entry was written without this one (#55).
     'replace read_lossy_line(_capped)? -> Option<String> with Some\("xyzzy"\.into\(\)\)',
+    # Host-killing the same way, in the live chat reader. A line that always reports one byte read
+    # and no cut never reaches the end of the stream, so stream_reader_lines pushes an empty line
+    # per pass until the 512 MiB ceiling, which memory does not survive. Shard 3 lost its runner
+    # right after the mutant before it in the runs of 2026-10-12 and 2026-10-19 (#66).
+    'replace read_capped_line -> std::io::Result<\(u64, bool\)> with Ok\(\(1, false\)\)',
     # cfg-split: the `\\?\` rewrite is a #[cfg(windows)] body with a #[cfg(not(windows))]
     # pass-through, so whichever platform runs the gate reports the other body as missed. The
     # Windows body is pinned by three cfg(windows) tests that run in the Windows test job. Narrow

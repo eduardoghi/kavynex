@@ -554,6 +554,36 @@ fn a_copy_is_dated_when_it_was_made_rather_than_when_its_source_was() {
 }
 
 #[test]
+fn a_renamed_file_is_dated_when_it_arrived() {
+    // The rename branch of stage_move_cancellable runs only where hard links fail for another
+    // reason than a cross-device move (FAT32, exFAT), which no test machine has, so the helper
+    // it calls is pinned on its own.
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("moved.mp4");
+    fs::write(&file, b"video").unwrap();
+    let years_ago = std::time::SystemTime::now() - Duration::from_secs(3 * 365 * 24 * 60 * 60);
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&file)
+        .unwrap()
+        .set_modified(years_ago)
+        .unwrap();
+
+    mark_arrived_now(&file);
+
+    let age = std::time::SystemTime::now()
+        .duration_since(fs::metadata(&file).unwrap().modified().unwrap())
+        .unwrap_or_default();
+    assert!(
+        age < Duration::from_secs(60 * 60),
+        "the file reads as old: {age:?}"
+    );
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn copy_file_atomic_writes_destination_with_source_content() {
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).unwrap();
