@@ -12,7 +12,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// concurrently. This pairs the semaphore with an in-flight counter and refuses a new caller once
 /// `max_in_flight` are already holding-or-awaiting a permit, turning that unbounded backlog into an
 /// immediate, distinct error. The ceiling is set generously (well above real interactive/bulk use),
-/// so it only ever trips on abuse; a waiting caller has not spawned its process yet, so the queue it
+/// so it only ever trips on abuse. A waiting caller has not spawned its process yet, so the queue it
 /// bounds costs a parked task, not a running yt-dlp tree.
 pub struct BoundedSemaphore {
     semaphore: Semaphore,

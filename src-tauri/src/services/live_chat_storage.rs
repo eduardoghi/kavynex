@@ -67,7 +67,7 @@ fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<S
 
     let digest = hash_while_copying(&mut source, &mut encoder)?;
 
-    // `finish` writes the gzip trailer and hands the file back; without it the archive is truncated
+    // `finish` writes the gzip trailer and hands the file back. Without it the archive is truncated
     // and only the verification would notice.
     let file = encoder
         .finish()
@@ -87,22 +87,20 @@ fn compress_file_to_temp(src: &Path, temp: &Path, max_bytes: u64) -> AppResult<S
 /// Proves that `compressed` decompresses to exactly the bytes `expected_digest` was taken over,
 /// reading at most `max_bytes` of output.
 ///
-/// This is the round-trip check the buffer path performed, and it now covers strictly more. That
-/// version compared an in-memory buffer against the bytes it had just compressed and *then* wrote
-/// the result to disk, so a write that truncated or corrupted the file fell outside what the check
-/// proved. Reading the staged file back covers the write too, which is the failure the whole dance
-/// exists for. `compress_file_to`'s source is a just-downloaded replay of a finished livestream,
-/// and it may no longer be re-fetchable.
+/// Unlike a round trip over an in-memory buffer (compare against the bytes just compressed, and
+/// *then* write the result to disk), reading the staged file back also covers the write. A write
+/// that truncates or corrupts the file does not fall outside what the check proves, which is the
+/// failure the whole dance exists for. `compress_file_to`'s source is a just-downloaded replay of a
+/// finished livestream, and it may no longer be re-fetchable.
 ///
 /// The ceiling is a plain `take(max_bytes)`, and it deliberately does **not** carry the `+ 1` that
 /// `stream_reader_lines` and the old `gzip_decompress_with_limit` both do. That extra byte exists so
 /// a counter can tell "landed exactly on the limit" apart from "went past it" and raise a specific
-/// error; here the digest comparison already draws that line for free. A payload of exactly
+/// error. Here the digest comparison already draws that line for free. A payload of exactly
 /// `max_bytes` reads whole and matches, and anything larger is truncated and therefore cannot,
 /// whereas with the `+ 1` a payload one byte over the ceiling would read whole and verify, which is
-/// the opposite of what the ceiling is for. Copying the idiom without its counter was the first
-/// version of this function, and `verification_accepts_a_payload_landing_exactly_on_the_read_ceiling`
-/// is what caught it.
+/// the opposite of what the ceiling is for. Copying the idiom without its counter is the mistake to
+/// avoid, and `verification_accepts_a_payload_landing_exactly_on_the_read_ceiling` catches it.
 ///
 /// An oversized source is already refused up front by `compress_file_to_temp`, so reaching this
 /// ceiling means the source changed underneath the pass. A round-trip failure in the honest sense.
@@ -150,7 +148,7 @@ const MAX_CONCURRENT_LIVE_CHAT_READS: usize = 2;
 
 /// Ceiling on how many replay reads may be in flight (running or waiting) at once.
 ///
-/// The concurrency cap above bounds only how many run together; without this, a caller firing the
+/// The concurrency cap above bounds only how many run together. Without this, a caller firing the
 /// command in a loop queues an unbounded backlog ahead of the read the user is actually waiting on
 /// (see [`BoundedSemaphore`]). Set well above the handful a person can produce by clicking through a
 /// channel, so it only ever trips on abuse.
@@ -206,20 +204,20 @@ pub async fn acquire_read_permit() -> AppResult<BoundedSemaphorePermit> {
 
 /// Streams a stored live chat file to `emit`, one batch of lines at a time, transparently
 /// gunzipping the gzip-compressed files (older files may still be plain JSON and stream as-is).
-/// The whole decompressed payload is never held in memory. The previous read returned the entire
-/// file as one `String`, which for a long dense stream is hundreds of MB, and the frontend then
-/// held a second copy across the IPC boundary before parsing. Here only a bounded batch is alive
-/// at once, and only the compact parsed messages are retained on the frontend.
+/// The whole decompressed payload is never held in memory. Returning the entire file as
+/// one `String` would be hundreds of MB for a long dense stream, with the frontend then holding a
+/// second copy across the IPC boundary before parsing. Here only a bounded batch is alive at
+/// once, and only the compact parsed messages are retained on the frontend.
 ///
 /// The two ways this fails are told apart rather than sharing one code, because they call for
 /// opposite things from the user. A file that was moved or deleted can be put back
 /// (`LiveChatFileNotFound`), while a corrupt or oversized archive cannot and only the backup can
 /// help (`LiveChatFileUnreadable`).
 ///
-/// Enforces the same [`MAX_LIVE_CHAT_DECOMPRESSED_BYTES`] ceiling as before, counted across the
+/// Enforces the [`MAX_LIVE_CHAT_DECOMPRESSED_BYTES`] ceiling, counted across the
 /// decompressed stream via a `.take` on the reader, so a crafted tiny gzip (a decompression bomb)
 /// still cannot expand without limit even though nothing buffers it whole, including a single
-/// line that never ends. Blank lines are preserved as-is; the caller does the parsing and skips
+/// line that never ends. Blank lines are preserved as-is. The caller does the parsing and skips
 /// them, exactly as the whole-file path did.
 pub fn stream_live_chat_lines<F>(path: &Path, batch_lines: usize, emit: F) -> AppResult<()>
 where
@@ -240,7 +238,7 @@ where
     let mut magic = [0u8; 2];
     let is_compressed = match file.read_exact(&mut magic) {
         Ok(()) => is_gzip(&magic),
-        // A file shorter than two bytes cannot be gzip; stream it verbatim.
+        // A file shorter than two bytes cannot be gzip, so stream it verbatim.
         Err(_) => false,
     };
 
@@ -357,10 +355,10 @@ where
             raw.pop();
         }
 
-        // Per-line lossy UTF-8 decoding. The whole-file path used a strict `String::from_utf8`
-        // that failed the entire read on one stray byte; decoding each line lossily is a superset
-        // that keeps a single garbled line from discarding an otherwise-good replay (the parser
-        // then drops just that line and counts it), consistent with `read_lossy_line` elsewhere.
+        // Per-line lossy UTF-8 decoding. A strict `String::from_utf8` over the whole file fails the
+        // entire read on one stray byte, while decoding each line lossily is a superset that keeps
+        // a single garbled line from discarding an otherwise-good replay (the parser then drops
+        // just that line and counts it), consistent with `read_lossy_line` elsewhere.
         batch.push(String::from_utf8_lossy(&raw).into_owned());
 
         if batch.len() >= batch_lines {
@@ -422,7 +420,7 @@ pub fn migrate_live_chat_files<G>(
             .map_err(|e| compress_error("failed to create library live chat dir", e))?;
         let dest = dest_dir.join(name);
 
-        // A file already at the destination was migrated on a previous run; drop the stale
+        // A file already at the destination was migrated on a previous run. Drop the stale
         // source copy rather than clobbering it. This check is only trustworthy because the
         // cross-volume fallback below writes atomically (temp + fsync + rename), so a crash
         // mid-copy can never leave a partial `dest` here that we would mistake for a complete
@@ -432,7 +430,7 @@ pub fn migrate_live_chat_files<G>(
             continue;
         }
 
-        // Prefer a rename (fast, same volume); fall back to an atomic copy across volumes,
+        // Prefer a rename (fast, same volume), then fall back to an atomic copy across volumes,
         // which is the expected case when app data is on the SSD and the library is on the
         // HDD. `copy_file_atomic` writes to a temp file, fsyncs, then renames into place, so
         // this backup artifact is never left truncated if the process dies mid-copy.
@@ -556,20 +554,20 @@ pub fn compress_file_in_place(path: &Path) -> AppResult<bool> {
 /// Its own function for a reason that is about the mutation gate rather than about readability, and
 /// worth stating because the extraction otherwise looks gratuitous. cargo-mutants names a mutant by
 /// the function it lives in, so the five `+= 1` sites in `compress_existing_live_chat_files` all
-/// shared one description, four of them killable, this one not, since a `read_dir` entry that fails
-/// to yield cannot be produced portably. That made the file ungateable. Excluding the description
-/// would have silently dropped four working checks along with the one that needed it.
+/// share one description, four of them killable, this one not, since a `read_dir` entry that fails
+/// to yield cannot be produced portably. That made the file ungateable, since excluding the
+/// description would silently drop four working checks along with the one that needed it.
 ///
-/// The extraction was made to allow that exclusion, and then made it unnecessary, which is the part
-/// worth recording. A counter reachable only through a `read_dir` failure is unreachable; the same
+/// Extracting it makes that exclusion unnecessary, which is the part worth
+/// recording. A counter reachable only through a `read_dir` failure is unreachable. The same
 /// counter behind a named function is one call from a test, and
 /// `an_unreadable_directory_entry_is_counted_as_a_failure` kills both of its mutants directly. The
 /// lesson generalizes past this file: "no portable way to trigger the branch" is a statement about
 /// the *caller*, not about the decision, and moving the decision out is what turns an exclusion into
 /// a test.
 ///
-/// It also gained a log line it did not have. An entry that cannot even be read is the one case in
-/// this pass that left no trace anywhere. The count went up and nothing said why.
+/// It also logs a line. An entry that cannot even be read is the one case in this pass that would
+/// otherwise leave no trace anywhere, with the count going up and nothing saying why.
 fn record_unreadable_entry(summary: &mut LiveChatCompressionSummary) {
     summary.failed += 1;
 
@@ -812,8 +810,8 @@ mod tests {
 
     #[test]
     fn verification_refuses_an_archive_that_expands_past_the_read_ceiling() {
-        // The decompression-bomb half of the old ceiling test, at the layer that now enforces it.
-        // A few KB of zeros gzip to almost nothing and expand well past a small limit; the `.take`
+        // The decompression-bomb half of the ceiling test, at the layer that enforces it.
+        // A few KB of zeros gzip to almost nothing and expand well past a small limit. The `.take`
         // truncates the read, so the digest cannot match and the archive is refused rather than
         // being expanded without bound.
         let dir = temp_dir("bomb");
@@ -1312,7 +1310,7 @@ mod tests {
         assert_eq!(summary.already_compressed, 0);
     }
 
-    // The read gate. `BoundedSemaphore` has its own tests over the primitive; what is pinned here is
+    // The read gate. `BoundedSemaphore` has its own tests over the primitive. What is pinned here is
     // that *this* module reaches it. That a replay read is bounded at all, and with which code.
     //
     // The gate is a process-wide static, so these two tests share it and cannot assert an absolute

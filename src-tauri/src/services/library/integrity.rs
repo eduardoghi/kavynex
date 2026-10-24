@@ -11,13 +11,14 @@ use crate::AppResult;
 
 /// How many example paths the report carries per category (missing, corrupt, invalid, orphan).
 ///
-/// The counts in the report are complete; these are the sample the dialog shows next to each one.
+/// The counts in the report are complete. These are the sample the dialog shows next to each one.
 /// The cap is what keeps the report a fixed size. A library with fifty thousand orphans would
 /// otherwise send fifty thousand strings over IPC to fill a list nobody scrolls.
 ///
-/// Named rather than spelled `5` at each of the four sites, which is what it was. Not because four
-/// literals are untidy, but because nothing named the invariant they share, so a mutation run
-/// reported all four as separate survivors and an edit to any one of them would read as deliberate.
+/// Named rather than spelled `5` at each of the four sites. Not because four
+/// literals are untidy, but because nothing names the invariant they share, so a mutation run
+/// would report all four as separate survivors and an edit to any one of them would read as
+/// deliberate.
 ///
 /// `verification.rs` declares its own constant of the same value, and the duplication is the
 /// intended shape rather than a missed extraction. The two cap different reports, so either could
@@ -80,7 +81,7 @@ pub struct LibraryIntegrityReport {
 /// into a jump-to-the-media action.
 ///
 /// camelCase on the wire because the frontend consumed a hand-written type of this shape long
-/// before the resolution moved here; exporting it means the two can no longer drift.
+/// before the resolution moved here. Exporting it means the two can no longer drift.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -487,7 +488,7 @@ pub(crate) fn missing_file_count(report: &LibraryIntegrityReport) -> usize {
 /// paths-versus-disk comparison it has always been (every one of its tests still drives it
 /// directly), and this only supplies its inputs from the rows and folds the targets in.
 ///
-/// Blocking (it walks the library), so the caller runs it off the async runtime; the database read
+/// Blocking (it walks the library), so the caller runs it off the async runtime. The database read
 /// happens before that, on the caller's side, because it is async.
 pub fn check_library_integrity_for_references(
     library_path: &str,
@@ -875,7 +876,7 @@ mod tests {
     fn collect_missing_paths_reports_zero_length_file_as_corrupt_not_missing() {
         let library = unique_test_dir("corrupt");
         fs::create_dir_all(library.join("video")).unwrap();
-        // A present but zero-length file: a truncated/corrupted artifact, not a healthy one.
+        // A present but zero-length file is a truncated/corrupted artifact, not a healthy one.
         fs::write(library.join("video").join("empty.mp4"), b"").unwrap();
         // A healthy file alongside it must stay uncounted as corrupt.
         fs::write(library.join("video").join("ok.mp4"), b"data").unwrap();
@@ -995,7 +996,7 @@ mod tests {
 
     #[test]
     fn every_example_list_is_capped_while_its_count_stays_complete() {
-        // The report's counts are the answer; the example lists are a sample of each. Both halves
+        // The report's counts are the answer. The example lists are a sample of each. Both halves
         // are asserted here because they fail in opposite directions. A cap applied to the count
         // would under-report the damage, and a cap missing from the list would put every path in a
         // library-sized report onto the IPC boundary.

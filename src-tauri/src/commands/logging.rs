@@ -4,7 +4,7 @@ use crate::services::{file_manager, logger};
 use crate::utils::task::run_blocking;
 use crate::AppResult;
 
-// Frontend crash reports are free-form text from the webview; cap and sanitize them so a
+// Frontend crash reports are free-form text from the webview. Cap and sanitize them so a
 // runaway (or hostile) frontend cannot flood the log file or forge log lines through
 // embedded newlines.
 const MAX_SCOPE_CHARS: usize = 64;

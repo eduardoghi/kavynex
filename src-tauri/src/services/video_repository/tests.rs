@@ -907,7 +907,7 @@ async fn count_media_using_live_chat_outside_media_counts_other_rows() {
     .await
     .unwrap();
 
-    // Two rows share the live chat file; excluding `a` leaves exactly one other user.
+    // Two rows share the live chat file, so excluding `a` leaves exactly one other user.
     assert_eq!(
         count_media_using_live_chat_outside_media(&pool, "live_chat/shared.json", a)
             .await

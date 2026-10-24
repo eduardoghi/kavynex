@@ -19,7 +19,7 @@ static PENDING_WRITES: AtomicUsize = AtomicUsize::new(0);
 /// exit should not hang on.
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Enables the file sink. Called once at startup with the app log directory; until then
+/// Enables the file sink. Called once at startup with the app log directory. Until then
 /// logs only go to stderr. Failures are swallowed so logging never breaks the app.
 pub fn init(log_dir: PathBuf) {
     if fs::create_dir_all(&log_dir).is_err() {
@@ -78,7 +78,7 @@ fn rotate_if_needed(path: &Path, max_bytes: u64) {
 /// to be wrong in. The alternative is a platform-conditional split that leaves a Windows-synced
 /// path whole on Unix, i.e. exactly the username leak the whole function exists to prevent.
 /// Treating the ambiguous case as a separator therefore loses a little diagnostic detail on a rare
-/// name and never leaks; the other way round would leak on a common one.
+/// name and never leaks. The other way round would leak on a common one.
 pub fn redact_path(path: impl AsRef<Path>) -> String {
     let raw = path.as_ref().to_string_lossy();
 
@@ -88,7 +88,7 @@ pub fn redact_path(path: impl AsRef<Path>) -> String {
         .to_string()
 }
 
-/// The ways the user's home directory can be spelled in a log message: as the OS gives it, with
+/// The ways the user's home directory can be spelled in a log message, as the OS gives it, with
 /// forward slashes, with the backslashes doubled by JSON, and percent-encoded the way the webview
 /// writes a path into an `asset:` or `kvxmedia:` URL. Longest first, so a longer spelling is replaced
 /// before a shorter one inside it could be.

@@ -82,7 +82,7 @@ pub(super) fn resolve_order_by(
 }
 
 /// Pushes the shared `WHERE` conditions (channel + the active filters) onto a query builder.
-/// Only constant SQL fragments are pushed as text; every caller-supplied value is bound, so this
+/// Only constant SQL fragments are pushed as text. Every caller-supplied value is bound, so this
 /// never interpolates user input. Used for both the count and the page query so they filter
 /// identically.
 fn push_media_filters(
@@ -152,7 +152,7 @@ pub async fn list_media_page(
     let offset = query.offset.max(0);
 
     // Bound the term length before it becomes a LIKE pattern (defense in depth at the trust
-    // boundary; the frontend already sends short terms). See MAX_SEARCH_TERM_CHARS.
+    // boundary, as the frontend already sends short terms). See MAX_SEARCH_TERM_CHARS.
     let bounded_search: String = query.search.chars().take(MAX_SEARCH_TERM_CHARS).collect();
     let normalized_search = normalize_search_text(&bounded_search);
     let search_pattern = (!normalized_search.is_empty())
@@ -202,7 +202,7 @@ pub async fn list_media_page(
         .await
         .map_err(|error| db_error("failed to list channel media page", error))?;
 
-    // Nothing was written, so this only releases the snapshot; a rollback would do the same.
+    // Nothing was written, so this only releases the snapshot, and a rollback would do the same.
     tx.commit()
         .await
         .map_err(|error| db_error("failed to close the media page read transaction", error))?;

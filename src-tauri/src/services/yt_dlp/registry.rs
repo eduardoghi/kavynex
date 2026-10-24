@@ -11,7 +11,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// this full stops a burst of unique run ids (a buggy or compromised frontend firing the download or
 /// cancellable-metadata IPC command in a loop) from piling an unbounded backlog ahead of a real
 /// request. Set well above the concurrency cap and any realistic interactive use, so it only trips on
-/// abuse; standalone metadata/comment fetches that opt into cancellation share this registry too.
+/// abuse. Standalone metadata/comment fetches that opt into cancellation share this registry too.
 /// `pub(crate)` because `yt_dlp::download` passes it as its permit gate's in-flight ceiling. The
 /// registry entry is taken before that gate is awaited, so this is already the depth of the queue
 /// behind it, and naming the same constant twice would let the two drift into disagreeing about a

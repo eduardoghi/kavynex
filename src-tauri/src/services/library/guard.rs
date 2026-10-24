@@ -78,7 +78,7 @@ where
 
 /// Returns true when both strings point at the same location on disk. Each side is
 /// canonicalized so casing, trailing separators and the Windows `\\?\` extended-length
-/// prefix do not cause a false mismatch; when a path cannot be canonicalized (e.g. it
+/// prefix do not cause a false mismatch. When a path cannot be canonicalized (e.g. it
 /// does not exist), a trimmed string comparison is used as a fallback. Empty inputs
 /// never match.
 pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
@@ -159,12 +159,12 @@ pub async fn ensure_configured_library_path<R: Runtime>(
 
 /// [`ensure_configured_library_path`] against a pool the caller already holds.
 ///
-/// This is the real implementation; the `AppHandle` version above only resolves the shared pool
+/// This is the real implementation. The `AppHandle` version above only resolves the shared pool
 /// and delegates. The split exists so a command can run the guard while taking `State<'_, Db>`
-/// instead of an `AppHandle` at all (the pool-only commands do). It also predates the day the
-/// `AppHandle` version became generic over `R: Runtime`. A bare `AppHandle` parameter resolved to
-/// the concrete `AppHandle<Wry>`, which no mock-runtime test could produce, so a command taking one
-/// could not be driven through a real IPC round trip. Both shapes are registerable now, and a
+/// instead of an `AppHandle` at all (the pool-only commands do). The `AppHandle` version is generic
+/// over `R: Runtime`, while a bare `AppHandle` parameter resolves to the concrete `AppHandle<Wry>`,
+/// which no mock-runtime test can produce, so a command taking one cannot be driven through a real
+/// IPC round trip. Both shapes are registerable, and a
 /// command picks whichever matches what else it needs from the app.
 pub async fn ensure_configured_library_path_in_pool(
     pool: &SqlitePool,
@@ -202,7 +202,7 @@ pub async fn ensure_configured_library_path_in_pool(
         // path cannot be canonicalized, typically because the library lives on a drive that is
         // currently offline. That fallback grants the match without confirming canonical
         // containment, so record when acceptance rested on it. It leaves the degraded check
-        // observable in the log rather than silent; the request is still only accepted when the
+        // observable in the log rather than silent. The request is still only accepted when the
         // strings match exactly. The two paths are equal here (they just matched), so canonicalizing
         // the requested one is enough to tell the fallback branch apart from the canonical one.
         if std::fs::canonicalize(&requested).is_err() {
@@ -309,7 +309,7 @@ mod tests {
     }
 
     /// The other direction, and the one that makes the leniency above safe to have. While the
-    /// library is offline the guard cannot canonicalize anything, so it is comparing strings; a
+    /// library is offline the guard cannot canonicalize anything, so it is comparing strings. A
     /// different path must still be refused, or the degraded mode would be an open door for exactly
     /// the redirection this module exists to stop.
     #[tokio::test]
@@ -481,12 +481,12 @@ mod tests {
     #[test]
     fn a_different_share_is_refused_by_the_share_compare_itself() {
         // The other direction of the test above, and the one the gate needs. Through
-        // `paths_refer_to_same_location` a different share is refused either way: the share check
+        // `paths_refer_to_same_location` a different share is refused either way. The share check
         // says no, and if it said yes the canonicalize fallback would say no for the same input,
         // since neither UNC resolves on the runner and the strings differ. So a weakened compare
-        // (`true` in place of `requested_share == configured_share`) survived while letting the
-        // hostile share reach canonicalize, which on Windows authenticates to that host. Only the
-        // share decision's own return value can tell the two apart.
+        // (`true` in place of `requested_share == configured_share`) would survive while letting
+        // the hostile share reach canonicalize, which on Windows authenticates to that host. Only
+        // the share decision's own return value can tell the two apart.
         let configured = r"\\nas\videos";
 
         for requested in [
@@ -508,7 +508,7 @@ mod tests {
             );
         }
 
-        // Symmetric: a configured library with no share prefix matches nothing.
+        // Symmetric case. A configured library with no share prefix matches nothing.
         assert!(!network_paths_name_the_same_share(
             r"\\nas\videos",
             r"\\nas"

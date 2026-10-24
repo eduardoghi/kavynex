@@ -38,7 +38,7 @@ fn a_cancelled_copy_leaves_neither_a_destination_nor_a_staging_file() {
     // one failure that arrives while the temp file is perfectly healthy (it is simply
     // incomplete), so the branch that removes it has to fire for a cancel exactly as it does
     // for a disk-full or a permission error. Leaving a partial `.tmp-` behind would strand
-    // scratch in the user's library; leaving the destination behind would be far worse, since
+    // scratch in the user's library. Leaving the destination behind would be far worse, since
     // its name is a content hash of bytes it does not hold.
     let dir = unique_test_dir();
     std::fs::create_dir_all(&dir).unwrap();
@@ -220,7 +220,7 @@ fn verify_content_addressed_write_drops_a_mis_named_copy_when_the_correct_name_e
 
 // Symlink creation is unprivileged on Unix but needs Developer Mode/admin on Windows, so the
 // cycle-safety test runs on Unix only. The guarded code (`dir_entry_is_symlink`) is
-// platform-independent; this exercises it where a symlink can always be created.
+// platform-independent. This exercises it where a symlink can always be created.
 #[cfg(unix)]
 #[test]
 fn copy_directory_contents_does_not_follow_a_symlink_cycle() {
@@ -239,7 +239,7 @@ fn copy_directory_contents_does_not_follow_a_symlink_cycle() {
     let destination = base.join("destination");
     copy_directory_contents(&source, &destination).unwrap();
 
-    // The real file is copied; the symlink is skipped, so no `loop` entry is carried over.
+    // The real file is copied. The symlink is skipped, so no `loop` entry is carried over.
     assert!(destination.join("real.txt").is_file());
     assert!(!destination.join("nested").join("loop").exists());
 

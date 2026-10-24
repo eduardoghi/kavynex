@@ -238,7 +238,7 @@ async fn migration_13_repairs_and_fences_both_row_invariants_on_a_pre_check_data
     .execute(&pool)
     .await
     .unwrap();
-    // A real database always carries video_comments too; include it so the additive v14 migration
+    // A real database always carries video_comments too. Include it so the additive v14 migration
     // (which installs the comment-length triggers on this table) has a table to attach them to.
     sqlx::query(
         "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER NOT NULL, author_name TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE)",
@@ -579,9 +579,9 @@ fn ddl_object_name(ddl: &str) -> &str {
 
 #[test]
 fn needs_migration_is_outstanding_only_below_the_target() {
-    // A database below the target still owes that migration; one already at it does not, which
+    // A database below the target still owes that migration. One already at it does not, which
     // is what keeps ensure_schema a no-op on an up-to-date database. The at-the-target case is
-    // the boundary the whole rule turns on. re-running is harmless (every migration is
+    // the boundary the whole rule turns on. Re-running is harmless (every migration is
     // idempotent) but it is still work nobody asked for, on every startup.
     assert!(needs_migration(7, 8));
     assert!(!needs_migration(8, 8));
@@ -920,7 +920,7 @@ async fn object_exists(pool: &SqlitePool, kind: &str, name: &str) -> bool {
 }
 
 /// Regenerates the committed v1 fixture. Ignored so it never runs in CI or overwrites the
-/// fixture during a normal test run; regenerate deliberately with:
+/// fixture during a normal test run. Regenerate deliberately with:
 ///   cargo test --manifest-path src-tauri/Cargo.toml --lib regenerate_v1_migration_fixture -- --ignored
 ///
 /// The DDL and indexes below are copied verbatim from `v1.0.0:src/lib/schema.ts` (the
@@ -1381,7 +1381,7 @@ async fn legacy_upgrade_and_fresh_create_agree_on_additive_column_definitions() 
 async fn ensure_schema_upgrades_database_stamped_by_older_version() {
     let pool = memory_pool().await;
 
-    // Simulate a database left by an older build: a stale user_version marker and
+    // Simulate a database left by an older build, with a stale user_version marker and
     // no tables yet. The baseline must run because user_version < BASELINE.
     sqlx::query("PRAGMA user_version = 6")
         .execute(&pool)
@@ -1740,7 +1740,7 @@ async fn ensure_schema_recovers_a_legacy_database_with_duplicate_comments() {
     .await
     .unwrap();
 
-    // A pre-versioned database is below the baseline; this is what forces the baseline path.
+    // A pre-versioned database is below the baseline. This is what forces the baseline path.
     sqlx::query("PRAGMA user_version = 0")
         .execute(&pool)
         .await
@@ -1856,8 +1856,8 @@ async fn apply_table_rebuilds_restores_foreign_keys_after_a_failed_rebuild() {
 
 #[tokio::test]
 async fn an_unrestored_rebuild_connection_is_discarded_instead_of_returned_to_the_pool() {
-    // The last line of defense behind the rebuild: apply_table_rebuilds normally restores
-    // `PRAGMA foreign_keys = ON` itself, and the test above pins that. This covers what happens
+    // The last line of defense behind the rebuild (apply_table_rebuilds normally restores
+    // `PRAGMA foreign_keys = ON` itself, and the test above pins that). This covers what happens
     // when that restore never ran (the PRAGMA itself failed, or a panic unwound through the
     // rebuild), which leaves `restored` false. The connection then still has enforcement OFF,
     // and handing it back to the pool would silently give the next consumer a connection on

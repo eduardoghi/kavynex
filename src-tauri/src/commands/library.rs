@@ -19,7 +19,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// Withdraws the asset-protocol grant on a library directory the app no longer uses.
 ///
 /// `register_library_asset_scope` only ever *adds* the configured library directory to the
-/// asset scope; nothing removed the old one after a migration. Since the scope is a set of
+/// asset scope, and nothing removes the old one after a migration. Since the scope is a set of
 /// glob patterns where a forbid always wins over an allow, forbidding the old directory here
 /// closes the window where any file that later lands in it would still be readable through
 /// `convertFileSrc` for the rest of the session. Best effort. A failure only leaves the stale
@@ -28,9 +28,9 @@ fn revoke_directory_from_asset_scope<R: Runtime>(app: &AppHandle<R>, dir: &str) 
     // A forbid is permanent for the rest of the session (Tauri's scope checks the forbidden
     // patterns first and offers no way to withdraw one), so record what is being given up before
     // doing it. Migrating back to this library later would otherwise re-grant it to no effect and
-    // leave every thumbnail and video silently unreadable; register_library_asset_scope reads this
-    // and refuses with a "restart required" instead. Recorded first so the two cannot disagree even
-    // if a forbid below fails partway.
+    // leave every thumbnail and video silently unreadable, so register_library_asset_scope reads
+    // this and refuses with a "restart required" instead. Recorded first so the two cannot disagree
+    // even if a forbid below fails partway.
     crate::commands::security::record_forbidden_library_dirs(std::path::Path::new(dir));
 
     // register_library_asset_scope grants the media and thumbnail subdirectories, not the root, so forbid
@@ -141,7 +141,7 @@ pub async fn migrate_library_directory<R: Runtime>(
     // configured). The settings still hold the old path at this point. The frontend only
     // persists the new one after the migration succeeds. To survive a crash in that window,
     // the migration records the new path in a commit marker next to the database just before
-    // it removes the old directory; get_app_settings adopts it if the app restarts still
+    // it removes the old directory, and get_app_settings adopts it if the app restarts still
     // pointing at the emptied old library (see services::library::recovery).
     let config_dir = app.path().app_config_dir().ok();
 
@@ -160,7 +160,7 @@ pub async fn migrate_library_directory<R: Runtime>(
     // Refuse to move the library into (or under) the app config directory, where the database and
     // its backups live. It would nest the managed library tree with the database and defeat the
     // "backups off the library volume" intent. Checked before any copy/remove runs. set_app_settings
-    // enforces the same on the persistence path; this covers the destructive move flow.
+    // enforces the same on the persistence path. This covers the destructive move flow.
     if let Some(config_dir) = config_dir.as_deref() {
         if library::paths::library_path_is_inside_dir(&new_library_path, config_dir) {
             return Err(crate::AppError::from_code(
@@ -288,7 +288,7 @@ pub async fn check_library_integrity(
 ///
 /// **Separate from `check_library_integrity`, and user-triggered, because it costs a full read of
 /// the library.** That check answers whether the database and the directory agree and does it from
-/// `stat`, which is why it can run whenever Diagnostics opens; the only corruption a `stat` reveals
+/// `stat`, which is why it can run whenever Diagnostics opens. The only corruption a `stat` reveals
 /// is a zero-length file. This one catches the corruption that actually happens to a large library
 /// on an external drive. A bad sector inside a file whose size never changed, a truncated copy, a
 /// cloud-sync placeholder. See `services::library::verification`.
@@ -821,7 +821,7 @@ mod tests {
 
         let webview = test_webview(memory_db_with_library(&library));
 
-        // The command takes `libraryPath` (camelCase over IPC) and returns a struct; both the
+        // The command takes `libraryPath` (camelCase over IPC) and returns a struct. Both the
         // argument mapping and the response serialization are exercised here.
         let response = invoke(
             &webview,

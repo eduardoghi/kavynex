@@ -75,8 +75,8 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     // one on Windows makes the OS authenticate to `host` over SMB, leaking the user's NTLM hash
     // to whoever controls it, and this value arrives raw over IPC, so the check has to happen
     // here rather than resting on the picker. Same guard, for the same reason, as
-    // library::resolve_path_inside_library and thumbnail::temp::validate_source_media_path; this
-    // path was the one caller-supplied path left without it. A cookies file kept on a share
+    // library::resolve_path_inside_library and thumbnail::temp::validate_source_media_path. No
+    // caller-supplied path goes without it. A cookies file kept on a share
     // loses only the ability to be pointed at directly (copy it locally first).
     if is_network_path(normalized) {
         return None;
@@ -85,7 +85,7 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
     let path = Path::new(normalized);
 
     // Only accept an existing `.txt` file that really is a cookie jar. The extension mirrors the
-    // picker's own filter and turns a mistyped path into a clean refusal; the header check is what
+    // picker's own filter and turns a mistyped path into a clean refusal. The header check is what
     // makes the refusal a property of this app rather than of yt-dlp's parser, which matters
     // because `--cookies` is a path yt-dlp *writes back to* (see `has_cookie_file_header`).
     //
@@ -187,7 +187,7 @@ impl CookiesBrowserSelector {
     }
 
     /// The form a log line or the in-app terminal may show. The browser and the keyring say which
-    /// tool was used and reveal nothing; the profile can be a path under the user's home directory
+    /// tool was used and reveal nothing. The profile can be a path under the user's home directory
     /// (so it carries the OS username) and the container a name the user chose, so both are
     /// replaced. The separators are kept so the line still says *that* a profile was set.
     pub(crate) fn to_redacted(&self) -> String {
@@ -591,7 +591,7 @@ mod tests {
             "chromium+kwallet5:Work Profile::Work"
         );
 
-        // The first colon separates; the drive colon of a Windows path stays inside the profile.
+        // The first colon separates. The drive colon of a Windows path stays inside the profile.
         let windows = parse_cookies_browser_selector(
             r"chrome:C:\Users\me\AppData\Local\Google\Chrome\User Data\Default",
         )
@@ -864,7 +864,7 @@ mod tests {
             // Header spellings yt-dlp rejects. No space after the hash, and a lowercased form.
             b"#Netscape HTTP Cookie File\n",
             b"# netscape http cookie file\n",
-            // Empty file: nothing to match, and nothing worth overwriting either, but the answer
+            // Empty file, so nothing to match, and nothing worth overwriting either, but the answer
             // must be the same refusal rather than an accidental accept on an empty prefix.
             b"",
         ] {

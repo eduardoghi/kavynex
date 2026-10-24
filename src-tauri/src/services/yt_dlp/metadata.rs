@@ -36,7 +36,7 @@ const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
 // formats for a video, fetching its comments) never queues.
 const MAX_CONCURRENT_STANDALONE_RUNS: usize = 4;
 // Ceiling on how many standalone runs may be in flight (running or queued) at once. The concurrency
-// cap above bounds only how many spawn together; this bounds the queue behind it so a burst of IPC
+// cap above bounds only how many spawn together. This bounds the queue behind it so a burst of IPC
 // calls cannot pile up an unbounded backlog (see BoundedSemaphore). Set well above real interactive
 // use. Loading formats and comments for a video never approaches it.
 const MAX_STANDALONE_RUNS_IN_FLIGHT: usize = 32;
@@ -364,7 +364,7 @@ pub(crate) fn redact_cookies_from_line(
 
     let safe = redact_cookies_browser_selector(selector);
 
-    // A bare browser name redacts to itself; replacing it with itself would be a no-op, and a
+    // A bare browser name redacts to itself. Replacing it with itself would be a no-op, and a
     // selector with a profile is the only case where the argv echo carries something to hide. The
     // echo is a Python repr, so on Windows the selector appears there with its backslashes doubled.
     if safe != selector {
@@ -537,7 +537,7 @@ async fn run_yt_dlp_and_capture_json(
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<(String, Vec<String>, Vec<String>)> {
     // Bound concurrent standalone runs (see STANDALONE_RUN_SEMAPHORE). Held for the whole function
-    // (spawn through wait), so at most MAX_CONCURRENT_STANDALONE_RUNS run at once; excess callers
+    // (spawn through wait), so at most MAX_CONCURRENT_STANDALONE_RUNS run at once. Excess callers
     // queue here rather than each spawning a process and buffering up to 128 MiB, and a queue
     // deeper than the in-flight ceiling is refused up front rather than enqueued without limit.
     // A cancel reaches a run still queued here too, as it does a download waiting for its slot,
@@ -575,7 +575,7 @@ async fn run_yt_dlp_and_capture_json(
         .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
     let child_pid = child.id();
     // Track this yt-dlp child (metadata/comments/format listing) globally so the app-exit
-    // handler tree-kills it too; the per-download registry only knows the main download child,
+    // handler tree-kills it too. The per-download registry only knows the main download child,
     // which spawns after this phase. Unregisters when this function returns.
     let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
@@ -643,7 +643,7 @@ async fn run_yt_dlp_and_capture_json(
             // The caller signalled cancellation. Kill the whole tree immediately instead of
             // waiting out the remaining timeout, which can be up to a minute of an unresponsive
             // "cancel", and report it as a cancellation. Only ever reached when a cancel flag
-            // is supplied (the download flow); other callers pass None, so this branch pends
+            // is supplied (the download flow). Other callers pass None, so this branch pends
             // forever and the wait above drives the result.
             if let Some(pid) = child_pid {
                 crate::utils::process::kill_process_tree(pid).await;
@@ -1071,7 +1071,7 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     )
     .await?;
 
-    // These logs are returned to the frontend below (`terminal_logs`); neither the cookies file
+    // These logs are returned to the frontend below (`terminal_logs`). Neither the cookies file
     // path nor the full pasted URL may survive into them. yt-dlp's `-v` mode echoes the whole argv
     // (the `[debug] Command-line config: [...]` line), so the URL with its playlist/tracking
     // parameters would otherwise reach a log the user might paste into a public issue. Reduce it to

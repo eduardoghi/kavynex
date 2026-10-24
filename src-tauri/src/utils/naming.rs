@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A process-unique suffix (`<pid>-<nanos>-<counter>`) for temporary file and directory names.
 ///
-/// The process id separates this process's temp entries from another instance's; the
-/// high-resolution timestamp keeps them readable/orderable; and the monotonic counter guarantees
+/// The process id separates this process's temp entries from another instance's. The
+/// high-resolution timestamp keeps them readable/orderable, and the monotonic counter guarantees
 /// uniqueness *within* the process regardless of timer resolution. The timestamp alone does not.
 /// Two calls in the same clock tick (a coarse OS timer, or two threads racing) would otherwise
 /// produce the same string, so the counter is what actually makes concurrent same-process callers

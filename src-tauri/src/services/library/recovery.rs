@@ -144,9 +144,9 @@ pub enum MarkerOutcome {
     /// marker points at a populated directory (a migration that was interrupted before the new
     /// path was persisted).
     Recover(String),
-    /// The stored library is fine (or the marker points nowhere useful); drop the stale marker.
+    /// The stored library is fine (or the marker points nowhere useful). Drop the stale marker.
     ClearStale,
-    /// No marker present; nothing to do.
+    /// No marker present, so there is nothing to do.
     None,
 }
 
@@ -195,7 +195,7 @@ pub fn evaluate_recovery(stored_library_path: &str, marker_path: &Path) -> Marke
 /// library lost its content but the marker points at a populated directory, the marker path is
 /// adopted so an interrupted migration does not look like a lost library. Every failure is logged
 /// and swallowed. Recovery must never keep the settings from being read. Runs on each settings
-/// read (see `commands::settings::get_app_settings`); cheap in the common case (a single stat of a
+/// read (see `commands::settings::get_app_settings`). Cheap in the common case (a single stat of a
 /// missing marker).
 pub async fn reconcile_interrupted_migration(pool: &SqlitePool, config_dir: &Path) {
     let marker = commit_marker_path(config_dir);
@@ -210,7 +210,8 @@ pub async fn reconcile_interrupted_migration(pool: &SqlitePool, config_dir: &Pat
         Err(_) => return,
     };
 
-    // evaluate_recovery only reads the filesystem; keep those stats off the async worker threads.
+    // evaluate_recovery only reads the filesystem, so keep those stats off the async worker
+    // threads.
     let marker_for_eval = marker.clone();
     let outcome =
         run_blocking(move || Ok(evaluate_recovery(&stored_library_path, &marker_for_eval))).await;
@@ -299,7 +300,7 @@ mod tests {
         let old = base.join("old");
         let new = base.join("new");
         // The old library survives as an empty shell (its managed dirs were removed by the
-        // migration); the new library is fully populated.
+        // migration). The new library is fully populated.
         fs::create_dir_all(&old).unwrap();
         make_populated_library(&new);
 
@@ -388,9 +389,10 @@ mod tests {
     #[test]
     fn evaluate_recovery_recovers_when_the_old_library_was_only_partially_removed() {
         // The CRITICO regression. `remove_dir_all` failed partway, so the old library still holds
-        // some content while the new location holds the complete copy. The old code trusted the
-        // still-populated old directory and dropped the marker, stranding the good copy; recovery
-        // must instead adopt the marker target, which the marker guarantees is a complete copy.
+        // some content while the new location holds the complete copy. Trusting the
+        // still-populated old directory and dropping the marker would strand the good copy, so
+        // recovery must instead adopt the marker target, which the marker guarantees is a complete
+        // copy.
         let base = unique_dir("partial-removal");
         let old = base.join("old");
         let new = base.join("new");

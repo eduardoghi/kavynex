@@ -636,7 +636,7 @@ mod tests {
     // takes them as a parameter, and `cargo test`'s own argv never carries `--webview-check`. So
     // `begin_webview_check` always answers `None` below, and `report_webview_check` always takes its
     // "ignore, do not exit" branch. The `std::process::exit` branch cannot be exercised in-process at
-    // all under any argv: reaching it would end the test binary running every other test in this
+    // all under any argv. Reaching it would end the test binary running every other test in this
     // suite, which is exactly the property that makes the guard load-bearing rather than incidental.
 
     use crate::commands::test_ipc::invoke;
@@ -676,8 +676,8 @@ mod tests {
         // The trust boundary that matters here is that an ordinary IPC call cannot reach
         // std::process::exit through this command. A failing report is used, rather than a passing
         // one, because a failing report is the shape most likely to have exited if the guard were
-        // missing; a passing report exiting 0 would be much easier to mistake for the command simply
-        // having worked.
+        // missing. A passing report exiting 0 would be much easier to mistake for the command
+        // simply having worked.
         let webview = test_webview();
 
         invoke(

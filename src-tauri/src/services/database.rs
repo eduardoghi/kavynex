@@ -138,7 +138,7 @@ pub struct StoredAppSettings {
     // comment/live-chat author avatars and custom emojis from Google's CDNs.
     pub load_remote_images: Option<String>,
     // "true"/"false" (absent means never set). Controls the one passive update check the app runs
-    // on startup. Unlike `load_remote_images` above, this is opt-out: the frontend reads an absent
+    // on startup. Unlike `load_remote_images` above, this is opt-out. The frontend reads an absent
     // key as on, so only an explicit "false" disables it (see normalizeCheckUpdatesOnStartup in
     // use-app-settings-storage.ts, which owns that rule). Only the latest release gets fixes, and
     // the updater is how one reaches a user, so a default that never contacted the endpoint left
@@ -248,8 +248,8 @@ pub(crate) fn is_unique_violation(error: &sqlx::Error) -> bool {
 /// `SQLITE_NOTADB`, extended codes included).
 ///
 /// Everything else a connection can fail with is about reaching the file rather than about what is
-/// in it: a lock another process holds, a sharing violation while an antivirus scans it, a
-/// permission error, a missing directory. Restoring a backup over the file answers only the first
+/// in it (a lock another process holds, a sharing violation while an antivirus scans it, a
+/// permission error, a missing directory). Restoring a backup over the file answers only the first
 /// kind, and over a healthy file it throws away everything since that backup.
 pub(crate) fn sqlite_error_means_damage(error: &sqlx::Error) -> bool {
     use sqlx::error::DatabaseError;
@@ -352,8 +352,8 @@ async fn snapshot_before_migration(path: &Path) -> AppResult<()> {
     }
 }
 
-/// The database file is there but could not be read: a lock, a sharing violation, a permission
-/// error. A distinct code because the frontend's startup recovery offers a backup restore for a
+/// The database file is there but could not be read (a lock, a sharing violation, a permission
+/// error). A distinct code because the frontend's startup recovery offers a backup restore for a
 /// failed open, which is the wrong answer here.
 fn database_unavailable(detail: String) -> AppError {
     AppError::from_code_with_details(
@@ -601,7 +601,7 @@ pub async fn checkpoint_wal(pool: &SqlitePool) -> AppResult<()> {
 }
 
 /// How long the exit-time checkpoint may block the shutdown. A checkpoint of a few MB is
-/// milliseconds; the bound is for a stuck connection, where holding the window open is worse than
+/// milliseconds. The bound is for a stuck connection, where holding the window open is worse than
 /// leaving the sidecar.
 const EXIT_CHECKPOINT_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -821,7 +821,7 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_wal_truncates_the_sidecar_after_writes() {
         // A file-backed pool in WAL mode, the same options the app opens with. Writes land in
-        // the -wal sidecar first; the checkpoint folds them into the main file and truncates it,
+        // the -wal sidecar first. The checkpoint folds them into the main file and truncates it,
         // which is the observable the exit-time call exists for.
         let dir = std::env::temp_dir().join(format!(
             "kavynex-checkpoint-test-{}",

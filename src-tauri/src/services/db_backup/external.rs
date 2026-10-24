@@ -283,7 +283,7 @@ fn set_aside_external_generations(dir: &Path) -> AppResult<usize> {
     Ok(moved)
 }
 
-/// The current external mirror is generation 0 (`kavynex-backup.db`); older ones are
+/// The current external mirror is generation 0 (`kavynex-backup.db`), and older ones are
 /// `kavynex-backup.db.1`..`kavynex-backup.db.{EXTERNAL_BACKUP_ROTATED_GENERATIONS}`. `pub(super)`
 /// so the parent module's rotation test can reach it.
 pub(super) fn generation_external_backup_path(dir: &Path, generation: usize) -> PathBuf {
@@ -296,7 +296,7 @@ pub(super) fn generation_external_backup_path(dir: &Path, generation: usize) -> 
 
 /// Mirrors the database into a user-chosen external backup directory (Settings > Database) so a
 /// disk failure that takes the app config directory does not also take every snapshot with it.
-/// Best effort and throttled to once a day, exactly like the on-volume `.bak` snapshot; only the
+/// Best effort and throttled to once a day, exactly like the on-volume `.bak` snapshot. Only the
 /// database is copied (the media files are far larger and live under the library directory, which
 /// the user backs up separately). Returns true when a fresh mirror was written.
 ///
@@ -439,7 +439,7 @@ pub async fn mirror_database_to_external_dir(
             // replacement here would throw away the newest good copy on a failure of the exact
             // (removable/network) target this module is meant to be careful with. Nothing on the
             // restore path reads this file automatically (unlike backup_database's `.bak.tmp`,
-            // which is a last-resort restore candidate); instead, the next mirror run adopts it
+            // which is a last-resort restore candidate). Instead, the next mirror run adopts it
             // as the current mirror while the directory is still missing one.
             return Err(backup_error(
                 "failed to promote the external database backup (the fresh copy was kept)",

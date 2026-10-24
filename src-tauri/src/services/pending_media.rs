@@ -9,7 +9,7 @@
 //! hand.
 //!
 //! So the intent is recorded on disk instead. Once the artifacts exist and before the row is
-//! inserted, a marker naming them is written to the app cache directory; it is removed as soon as
+//! inserted, a marker naming them is written to the app cache directory. It is removed as soon as
 //! the row lands (or the failure path has cleaned up). A marker still present at the next startup
 //! is therefore a creation that died in exactly that window, and the sweep below hands its paths to
 //! the same reference-counting cleanup the manual path uses.
@@ -77,7 +77,7 @@ impl PendingMediaArtifacts {
 ///
 /// Applied both when recording (so a malformed value never reaches the marker) and when sweeping
 /// (so a hand-edited or corrupted marker cannot name something outside the app's own layout). The
-/// cleanup this feeds re-checks containment itself before unlinking; this is the cheaper, earlier
+/// cleanup this feeds re-checks containment itself before unlinking. This is the cheaper, earlier
 /// refusal, and it is what keeps the marker file from being a way to ask the app to delete an
 /// arbitrary path.
 fn managed_path_or_none(value: Option<String>) -> Option<String> {
@@ -515,7 +515,7 @@ fn read_pending_markers<R: Runtime>(
                     continue;
                 }
                 Ok(Some(artifacts)) => markers.push((name, artifacts)),
-                // A marker that names nothing usable has no work behind it; drop the file so it is
+                // A marker that names nothing usable has no work behind it. Drop the file so it is
                 // not re-read on every launch.
                 Ok(None) => markers.push((name, PendingMediaArtifacts::default())),
                 // Not the same thing. What it named cannot be read, so it is not known to be
@@ -545,8 +545,8 @@ fn read_pending_markers<R: Runtime>(
 /// manual path uses, which keeps any file a registered row still points at. A marker is cleared once
 /// its paths have been handled, whether or not anything was actually deleted.
 ///
-/// Generic over the runtime so the database-unavailable branch below can be driven by a test; see
-/// `library::cleanup::cleanup_unreferenced_artifacts`, which had to be widened for the same reason.
+/// Generic over the runtime so the database-unavailable branch below can be driven by a test. See
+/// `library::cleanup::cleanup_unreferenced_artifacts`, which is generic for the same reason.
 pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> AppResult<usize> {
     // Asked once, up front, and the whole sweep gives up when the answer is no.
     //
@@ -633,7 +633,7 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
             };
 
             if let Some(error) = failure {
-                // Leave the marker in place so the next launch retries; a transient failure
+                // Leave the marker in place so the next launch retries. A transient failure
                 // (the library drive not mounted yet) must not silently drop the record. What
                 // the count adds is an end to that. Nothing here can tell transient from
                 // permanent, so a failure that keeps recurring is reclassified by how often it

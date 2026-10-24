@@ -161,7 +161,7 @@ pub(crate) struct PreparedArtifacts {
 /// regexes buried in an async function.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ThumbnailSource {
-    /// Already stored in the library under `thumbnails/`; nothing to do.
+    /// Already stored in the library under `thumbnails/`, so there is nothing to do.
     Managed(String),
     /// An `http(s)` URL to fetch.
     Remote(String),
@@ -211,7 +211,7 @@ pub(crate) fn classify_thumbnail_source(value: Option<&str>) -> ThumbnailSource 
         return ThumbnailSource::Local(trimmed.to_string());
     }
 
-    // A relative value is only meaningful when it names the managed thumbnails directory; anything
+    // A relative value is only meaningful when it names the managed thumbnails directory. Anything
     // else is a value this app did not write and has no way to interpret.
     if trimmed.starts_with(&format!("{}/", crate::constants::LIBRARY_DIR_THUMBNAILS)) {
         return ThumbnailSource::Managed(trimmed.to_string());
@@ -220,8 +220,8 @@ pub(crate) fn classify_thumbnail_source(value: Option<&str>) -> ThumbnailSource 
     ThumbnailSource::Absent
 }
 
-/// Refuses a request naming a local file the backend never handed out: the media file of a local
-/// import, a thumbnail on disk, or a cookies file. See `services::chosen_files`.
+/// Refuses a request naming a local file the backend never handed out (the media file of a local
+/// import, a thumbnail on disk, or a cookies file). See `services::chosen_files`.
 ///
 /// A string comparison only, so it runs before anything stats the paths.
 pub(crate) fn ensure_request_files_were_chosen(request: &CreateMediaRequest) -> AppResult<()> {
@@ -264,7 +264,7 @@ fn normalized_optional(value: Option<String>) -> Option<String> {
 /// Validates and normalizes the request before any file is written.
 ///
 /// Runs first, and entirely, so a rejected request produces nothing to clean up. The title and media
-/// type go through the same validators every other write boundary calls; the rest is trimming, which
+/// type go through the same validators every other write boundary calls. The rest is trimming, which
 /// matters because a padded value would otherwise be validated in one form and stored in another.
 ///
 /// Pure, so every refusal is one call from a test. The request arrives over IPC, so these are the
@@ -513,7 +513,7 @@ async fn prepare_local_artifacts<R: Runtime>(
 
     // The run registered above is what `cancel_media_download(runId)` reaches, which is what gives
     // the modal's Cancel button something to do during a local add. A yt-dlp source registers
-    // inside `download_media_from_url_async`; this is the local half of the same mechanism, using
+    // inside `download_media_from_url_async`. This is the local half of the same mechanism, using
     // the same registry so the cancel command has one meaning rather than two. A cancel heard while
     // the thumbnail was made reaches the import below, which checks the flag before it reads.
     let import_mode = request.import_mode;
@@ -593,7 +593,7 @@ pub(crate) fn fetched_thumbnail_to_discard(
 ///
 /// Two cases. A thumbnail the user supplied wins over the one the download fetched, and the fetched
 /// one is used otherwise, including when there is none. The download already tried every thumbnail
-/// URL the metadata named, so a missing one is not retried here; retrying would also be the one
+/// URL the metadata named, so a missing one is not retried here. Retrying would also be the one
 /// thumbnail failure able to discard a finished download.
 ///
 /// The supplied case is the one with a loose end. The run is told to skip its own thumbnail when a
@@ -681,13 +681,13 @@ async fn prepare_yt_dlp_artifacts<R: Runtime>(
 
 /// True when no artifact was named, i.e. when there is nothing for the cleanup to do.
 ///
-/// Pure, and extracted, because weakening the original `&&` chain to `||` turned it into "return
+/// Pure, and extracted, because weakening the `&&` chain to `||` turns it into "return
 /// early if any of the three is absent", and the common shape is a creation that produced a media
 /// file and no live chat replay, so the cleanup would be skipped exactly when it has real work. The
-/// caller is `AppHandle`-bound, so nothing could observe that until the predicate moved here.
+/// caller is `AppHandle`-bound, so nothing can observe that unless the predicate lives here.
 ///
 /// Phrased negatively so the caller reads `if nothing_to_clean_up(..) { return; }` with no `!`. That
-/// is not style: a `!` at the call site is a restatement of this function's polarity, and deleting
+/// is not style. A `!` at the call site is a restatement of this function's polarity, and deleting
 /// it is a mutant that inverts the guard inside a function no unit test can drive. Removing the
 /// restatement removes the mutant, which beats excluding it. The same resolution as
 /// `thumbnail::display::take_generation_slot`.
@@ -875,7 +875,7 @@ async fn record_marker_best_effort<R: Runtime>(
         file_path,
         thumbnail_path: prepared.thumbnail_path.clone(),
         live_chat_file_path: prepared.live_chat_file_path.clone(),
-        // The sweep's own retry bookkeeping; a fresh record always starts at zero, which
+        // The sweep's own retry bookkeeping. A fresh record always starts at zero, which
         // `record_pending_media_artifacts` enforces regardless of what is passed here.
         attempts: 0,
     };
@@ -923,11 +923,11 @@ async fn clear_marker_best_effort<R: Runtime>(app: &AppHandle<R>, marker: Option
 /// otherwise be able to act in.
 ///
 /// It is deliberately short. The download and the import happen before it, so nothing a user waits
-/// on is serialized by this lock; what is inside is a marker write, one query and one insert.
+/// on is serialized by this lock. What is inside is a marker write, one query and one insert.
 /// Generic over the runtime, and `pub(crate)` rather than private, because this is the half of a
 /// creation a test can actually drive. `AppHandle` alone is `AppHandle<Wry>`, and
 /// `tauri::test::mock_builder` produces a `MockRuntime` app, so naming the bare alias anywhere in
-/// this chain put the ordering below out of reach of every test in the crate.
+/// this chain puts the ordering below out of reach of every test in the crate.
 ///
 /// The artifact *production* above it stays runtime-bound and is not covered by this. It runs
 /// yt-dlp, FFmpeg and an HTTP fetch, none of which a unit test drives. What is covered is the part

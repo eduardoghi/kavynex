@@ -153,7 +153,7 @@ fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String
 #[cfg(not(windows))]
 fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String> {
     // Resolve against the directories listed in PATH only. An empty PATH entry historically
-    // means "current directory"; it is skipped so a binary in the process CWD is never picked
+    // means "current directory". It is skipped so a binary in the process CWD is never picked
     // up implicitly.
     for candidate in candidates {
         for dir in std::env::split_paths(path_var) {
@@ -373,7 +373,7 @@ fn parse_release_date(version: &str) -> Option<NaiveDate> {
     let day: u32 = parts.next()?.parse().ok()?;
 
     // Guard against a version that merely looks numeric (something like `1.2.3` parses fine but is
-    // not a date). NaiveDate rejects an impossible month/day; the year bound rejects the rest.
+    // not a date). NaiveDate rejects an impossible month/day. The year bound rejects the rest.
     if !(2000..=2999).contains(&year) {
         return None;
     }
@@ -421,7 +421,7 @@ const HEALTH_CHECK_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
 /// Runs `binary_path args`, returns its first non-empty stdout line, and (unlike a plain
 /// `Command::output()`) gives up after `timeout`, killing the whole process tree. Every other
-/// external-process call site (download, metadata, thumbnail) already bounds its child this way; a
+/// external-process call site (download, metadata, thumbnail) already bounds its child this way. A
 /// health check, whose entire job is to survive a misbehaving binary, is the last place that should
 /// block a worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
 ///
@@ -944,7 +944,7 @@ mod tests {
     #[test]
     fn is_batch_shim_extension_flags_only_bat_and_cmd() {
         // The batch shims that route through cmd.exe (CVE-2024-24576, "BatBadBut") are refused, in
-        // any casing and with or without the leading dot; real executables are not.
+        // any casing and with or without the leading dot. Real executables are not.
         for shim in [".BAT", ".bat", ".CMD", ".cmd", "BAT", "cmd", "  .Bat  "] {
             assert!(
                 is_batch_shim_extension(shim),

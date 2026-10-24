@@ -1,11 +1,11 @@
 //! Restoring the database from a snapshot, and finishing a restore a crash interrupted.
 //!
-//! Split out of `mod.rs` alongside `snapshot.rs`; see that module's header for why the tests stay
-//! in the parent and what stayed there with them.
+//! Split out of `mod.rs` alongside `snapshot.rs`. See that module's header for why the tests stay
+//! in the parent and what stays there with them.
 //!
 //! Two orderings here are load-bearing rather than incidental, and both are stated where they
 //! happen. The chosen snapshot is staged and only then renamed into place, so a failure never
-//! leaves the app with no database at all; and the corrupt database is moved under a scratch name
+//! leaves the app with no database at all, and the corrupt database is moved under a scratch name
 //! *before* the `.corrupt` generations are rotated, so a rename that fails cannot cost a generation
 //! it has nothing to put back.
 
@@ -66,7 +66,7 @@ fn set_aside_corrupt_wal(db_path: &Path) -> AppResult<()> {
     })
 }
 
-/// The database set aside by the most recent restore is `.corrupt` (generation 0); earlier ones
+/// The database set aside by the most recent restore is `.corrupt` (generation 0). Earlier ones
 /// are `.corrupt.1` through `.corrupt.{CORRUPT_ROTATED_GENERATIONS}`.
 pub(super) fn generation_corrupt_path(db_path: &Path, generation: usize) -> PathBuf {
     if generation == 0 {
@@ -122,7 +122,7 @@ fn swap_in_restored_database(db_path: &Path, staged: &Path) -> AppResult<()> {
         });
 
         if let Some(Err(error)) = promoted {
-            // The database is already off the live path, so the restore can still proceed; the
+            // The database is already off the live path, so the restore can still proceed. The
             // evidence just keeps the scratch name. Say so rather than lose the thread.
             logger::warn(
                 "db_backup",
@@ -198,7 +198,7 @@ pub fn resume_interrupted_restore(db_path: &Path) -> AppResult<bool> {
 
     crate::services::filesystem::rename_retrying(&staged, db_path)
         .map_err(|error| backup_error("failed to resume an interrupted restore", error))?;
-    // Flush the directory entry so the swap survives a crash right after it; otherwise the next
+    // Flush the directory entry so the swap survives a crash right after it. Otherwise the next
     // launch could find the database missing again and re-run this from a staging file that the
     // rename appeared to consume.
     crate::services::filesystem::fsync_parent_dir(db_path);
@@ -306,7 +306,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     };
 
     // Stage the restored file first so the live database is never left missing on failure. The
-    // copy is a full-file read/write of a possibly large database; run it off the async runtime so
+    // copy is a full-file read/write of a possibly large database. Run it off the async runtime so
     // a slow disk (a network share, a cloud-synced folder) never stalls a Tokio worker thread.
     let staged = restore_staging_path(db_path);
     let partial = restore_partial_path(db_path);

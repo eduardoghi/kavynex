@@ -117,7 +117,7 @@ pub struct ContentVerificationReport {
 static VERIFICATION_RUNNING: AtomicBool = AtomicBool::new(false);
 static VERIFICATION_CANCELLED: AtomicBool = AtomicBool::new(false);
 
-/// Held for the length of one verification; releases the single-run slot on drop.
+/// Held for the length of one verification. Releases the single-run slot on drop.
 ///
 /// A guard rather than a matched pair of calls, for the reason every other guard in this crate
 /// exists. The run has several exits (a refused library path, a channel that went away, a
@@ -389,7 +389,7 @@ mod tests {
             declared_content_hash(&format!("thumb_{digest}.jpg")),
             Some(digest.as_str())
         );
-        // The compressed live-chat name carries two extensions; the split on the first dot is what
+        // The compressed live-chat name carries two extensions. The split on the first dot is what
         // keeps the stem intact for the names that do declare a digest.
         assert_eq!(
             declared_content_hash(&format!("media_{digest}.json.gz")),
@@ -732,7 +732,7 @@ mod tests {
     fn every_example_list_is_capped_while_its_count_stays_complete() {
         // `record` is the one place the report grows, and it does two things that fail in opposite
         // directions. It counts every outcome, and it keeps a bounded sample of the paths. A cap
-        // that reached the count would under-report corruption to the user; a cap missing from the
+        // that reached the count would under-report corruption to the user. A cap missing from the
         // list would put every corrupt path in a library-sized report onto the IPC boundary.
         //
         // Driven through `record` rather than through a sweep because the cap is its decision and a

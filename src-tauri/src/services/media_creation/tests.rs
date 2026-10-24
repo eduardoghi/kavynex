@@ -140,7 +140,7 @@ fn a_value_that_names_nothing_the_app_wrote_is_absent() {
 #[test]
 fn normalizing_trims_every_stored_value() {
     // A padded value validated in one form and stored in another is the validate-here/act-there
-    // gap the database export gate documents; the same rule applies to everything persisted from
+    // gap the database export gate documents. The same rule applies to everything persisted from
     // a creation.
     let padded = CreateMediaRequest {
         title: "  A title  ".to_string(),
@@ -525,7 +525,7 @@ fn the_same_run_id_cannot_be_registered_twice() {
 
 #[test]
 fn the_source_mode_deserializes_from_the_wire_spelling() {
-    // The frontend has always sent these two literals; the enum has to accept exactly them, and
+    // The frontend sends these two literals. The enum has to accept exactly them, and
     // nothing else. An unrecognized mode must fail to deserialize rather than default to one.
     assert_eq!(
         serde_json::from_str::<MediaSourceMode>("\"local\"").unwrap(),
@@ -711,9 +711,9 @@ mod registration {
             import_mode: ImportMode::Copy,
             library_path: library.to_string_lossy().to_string(),
             published_at: None,
-            // Unique per test: the id goes into the process-global download registry, and two
-            // tests sharing one would make the second uncancellable for a reason unrelated to
-            // what it asserts.
+            // Unique per test because the id goes into the process-global download registry, and
+            // two tests sharing one would make the second uncancellable for a reason unrelated
+            // to what it asserts.
             yt_dlp_run_id: format!("run-{label}-{}", crate::utils::naming::unique_temp_suffix()),
             yt_dlp_format_id: String::new(),
             yt_dlp_youtube_video_id: None,

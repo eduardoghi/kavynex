@@ -432,7 +432,7 @@ async fn cleanup_plan_deletes_orphan_artifacts_no_row_references() {
 async fn cleanup_plan_keeps_artifacts_still_referenced_by_a_registered_row() {
     let pool = create_test_pool().await;
     let channel_id = insert_channel(&pool, "@one", Some("thumbnails/shared.jpg")).await;
-    // A registered row references the media file and live chat; the thumbnail is a
+    // A registered row references the media file and live chat. The thumbnail is a
     // channel avatar. Re-preparing the same content-addressed artifacts must not delete
     // the files the existing row/channel depends on.
     insert_media(

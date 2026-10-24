@@ -19,7 +19,7 @@ use crate::AppResult;
 /// in both the old and the new schema (a column the new schema adds is omitted so it takes
 /// its default). All fields are internal schema constants, never user input.
 ///
-/// Unused until the first non-additive migration ships; kept ready (and tested) so that
+/// Unused until the first non-additive migration ships, and kept ready (and tested) so that
 /// migration is a data change, not new untested plumbing.
 #[allow(dead_code)]
 pub(crate) struct TableRebuild {
@@ -151,7 +151,7 @@ impl Drop for RebuildConnection {
 /// before the transaction commits. `PRAGMA foreign_keys` is a no-op inside a transaction,
 /// so it is toggled on a dedicated pooled connection around the transaction, and enforcement
 /// is always restored before that connection returns to the pool. The rebuilt tables' indexes
-/// are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`); other tables' indexes
+/// are recreated from `INDEX_DDLS` (all guarded with `IF NOT EXISTS`). Other tables' indexes
 /// are left in place since their tables were never dropped.
 #[allow(dead_code)]
 pub(crate) async fn apply_table_rebuilds(
@@ -179,7 +179,7 @@ pub(crate) async fn apply_table_rebuilds(
         apply_table_rebuilds_in_transaction(guard.conn()?, rebuilds, target_version).await;
 
     // Restore enforcement before the connection can return to the pool, regardless of the
-    // rebuild outcome. On success this lets the guard hand the connection back normally; if the
+    // rebuild outcome. On success this lets the guard hand the connection back normally. If the
     // restore itself fails (or the rebuild above panicked), the guard detaches it instead.
     sqlx::query("PRAGMA foreign_keys = ON")
         .execute(guard.conn()?)

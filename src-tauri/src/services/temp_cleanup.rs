@@ -409,7 +409,7 @@ fn is_migration_staging_name(file_name: &str) -> bool {
 
 /// True for a replace-backup leftover (`.<name>.backup-<suffix>`, `filesystem.rs::
 /// replace_file_safely`). Split out because a backup is the ONLY leftover kind that can hold the
-/// sole copy of a live file (see [`replace_backup_target_present`]); the `.tmp-`/`.migrated-`/
+/// sole copy of a live file (see [`replace_backup_target_present`]). The `.tmp-`/`.migrated-`/
 /// `.gztmp` kinds are always redundant scratch and safe to reclaim once old.
 fn is_replace_backup_leftover(file_name: &str) -> bool {
     is_hidden_scratch_name(file_name, ".backup-")
@@ -846,7 +846,7 @@ mod tests {
         // A committed file can carry a marker inside the name its source gave it. Only the exact
         // shape the helpers write is scratch, so none of these is ever swept.
         for name in [
-            // Not hidden: a scratch copy or backup always starts with a dot.
+            // Not hidden, because a scratch copy or backup always starts with a dot.
             "youtube_abc.tmp-123-456_137.mp4",
             "clip.backup-123-456.mp4",
             // Hidden, but the suffix is not the numeric one unique_temp_suffix writes.

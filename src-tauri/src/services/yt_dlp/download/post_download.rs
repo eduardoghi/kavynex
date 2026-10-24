@@ -240,10 +240,10 @@ pub(super) async fn store_live_chat<R: Runtime>(
 
     let final_live_chat_destination = live_chat_dir.join(live_chat_file_name);
 
-    // Store live chat replays gzip-compressed to save disk; the frontend reader transparently
+    // Store live chat replays gzip-compressed to save disk. The frontend reader transparently
     // decompresses them. On the blocking pool, since a long stream's replay is tens of MB to gzip
-    // and that held an async runtime thread for the whole compression. Serialize this library write
-    // against a concurrent migration (see library::lock); the guard lives inside the blocking
+    // and that would hold an async runtime thread for the whole compression. Serialize this library write
+    // against a concurrent migration (see library::lock). The guard lives inside the blocking
     // closure, never across an await.
     let kept_existing_live_chat = {
         let source = temp_live_chat_file.clone();
@@ -267,7 +267,7 @@ pub(super) async fn store_live_chat<R: Runtime>(
 
             // Never overwrite an already-stored replay, matching place_downloaded_file's "keep the
             // catalogued bytes" rule for the main media file. The name is deterministic per
-            // video+run, so an existing file is the same replay; without this guard
+            // video+run, so an existing file is the same replay. Without this guard
             // compress_file_to (via replace_file_safely) would silently discard it on a
             // re-download.
             if destination.exists() {

@@ -7,20 +7,20 @@
 //! path (a future feature, a devtools `invoke()`, or a bug that skips the service layer),
 //! could otherwise persist a malformed handle or an empty title. The SQLite `CHECK`
 //! constraints (`db_schema.rs`) already reject empty/blank names and a non-`video`/`audio`
-//! `media_type`, but they surface as a raw constraint violation; validating here maps the
+//! `media_type`, but they surface as a raw constraint violation. Validating here maps the
 //! same conditions to the friendly, catalogued error codes the frontend already understands,
 //! and additionally enforces the *handle format* the database cannot express.
 
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Upper bound (in Unicode scalar values) on a stored channel name. A real YouTube channel name is
-/// well under this; the ceiling exists only so a malformed metadata response or a hand-edited import
+/// well under this. The ceiling exists only so a malformed metadata response or a hand-edited import
 /// cannot persist a megabyte-scale value. The database `CHECK`s enforce non-blankness but express no
 /// length limit, so this is the only ceiling on what gets stored.
 const MAX_CHANNEL_NAME_CHARS: usize = 200;
 
 /// Upper bound (in Unicode scalar values) on a stored YouTube handle. A real one is far shorter (a
-/// `@name` is 3 to 30 characters, a `channel/UC...` is 26), so this is generous; it exists because
+/// `@name` is 3 to 30 characters, a `channel/UC...` is 26), so this is generous. It exists because
 /// the shape check below expresses no ceiling at all. The `@` form is bounded in *character set*
 /// but not in length, and the `channel/`, `c/` and `user/` forms accept any non-empty identifier,
 /// deliberately, since `channel/UC/with/slashes` is a case the shared fixture pins as valid. So
@@ -38,7 +38,7 @@ const MAX_MEDIA_TITLE_CHARS: usize = 500;
 /// `src/utils/youtube.ts`. Either `@<name>` where `<name>` is non-empty and made only of
 /// ASCII alphanumerics plus `.`/`_`/`-`, or a `channel/`, `c/` or `user/` prefix (case
 /// insensitive) followed by a non-empty identifier. The frontend normalizes free-form input
-/// (stripping URLs, adding the `@`) before it gets here; this only checks the stored shape.
+/// (stripping URLs, adding the `@`) before it gets here. This only checks the stored shape.
 fn is_valid_youtube_handle(value: &str) -> bool {
     let normalized = value.trim();
 
@@ -111,17 +111,17 @@ pub fn ensure_valid_channel_name(name: &str) -> AppResult<()> {
 /// The control-character and length checks live here rather than inside
 /// [`is_valid_youtube_handle`] on purpose. That function is the *shape* predicate, and it is
 /// asserted from both sides against `shared/youtube-handle-cases.json` so the TypeScript and Rust
-/// validators cannot drift; folding two more rules into it would mean changing the shared contract
+/// validators cannot drift. Folding two more rules into it would mean changing the shared contract
 /// and the frontend in the same breath for something neither the shape nor the frontend is
 /// responsible for. This mirrors how [`ensure_valid_channel_name`] and [`ensure_valid_media_title`]
 /// are already built, where the same two rules sit beside the emptiness check rather than inside it.
 ///
-/// They matter more here than the `@` form suggests, because the two halves were never symmetric.
+/// They matter more here than the `@` form suggests, because the two halves are not symmetric.
 /// `@name` is confined to ASCII alphanumerics plus `.`/`_`/`-`, which excludes a control character
 /// by construction, while `channel/`, `c/` and `user/` accept any non-empty identifier. So a handle
-/// like `channel/UC\nfake log line` satisfied the shape check, reached the row, and from there the
+/// like `channel/UC\nfake log line` satisfies the shape check, reaches the row, and from there the
 /// backend's log lines. `commands::logging::sanitize_log_text` strips the same characters at the
-/// other boundary; this closes the one they could enter through.
+/// other boundary. This closes the one they could enter through.
 pub fn ensure_valid_youtube_handle(handle: &str) -> AppResult<()> {
     if contains_control_char(handle) {
         return Err(AppError::from_code(
@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn youtube_handle_rejects_an_over_length_value() {
-        // At the ceiling is accepted; one scalar over is rejected. The shape check expresses no
+        // At the ceiling is accepted. One scalar over is rejected. The shape check expresses no
         // ceiling at all (a `channel/` identifier is any non-empty string), so this is the only
         // bound on what reaches the row.
         let at_ceiling = format!("@{}", "a".repeat(MAX_YOUTUBE_HANDLE_CHARS - 1));
@@ -363,7 +363,7 @@ mod tests {
 
     #[test]
     fn channel_name_rejects_an_over_length_value() {
-        // At the ceiling is accepted; one scalar over is rejected. Guards against a malformed
+        // At the ceiling is accepted. One scalar over is rejected. Guards against a malformed
         // metadata response or hand-edited import persisting a megabyte-scale name.
         ensure_valid_channel_name(&"a".repeat(MAX_CHANNEL_NAME_CHARS)).unwrap();
 

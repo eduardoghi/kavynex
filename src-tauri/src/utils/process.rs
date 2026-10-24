@@ -376,7 +376,7 @@ fn taskkill_path() -> std::path::PathBuf {
 /// Kills a spawned child *and* every descendant it created, asynchronously. `yt-dlp` routinely
 /// spawns an `ffmpeg` child (merges, `--convert-thumbnails`), and killing only the direct
 /// child (`Child::kill`/`kill_on_drop`) leaves that grandchild running. On Windows this uses
-/// `taskkill /T` to walk the tree; on Unix it signals the whole process group set up by
+/// `taskkill /T` to walk the tree. On Unix it signals the whole process group set up by
 /// [`configure_process_group`] via the negative pid.
 #[cfg(target_os = "windows")]
 pub async fn kill_process_tree(pid: u32) {

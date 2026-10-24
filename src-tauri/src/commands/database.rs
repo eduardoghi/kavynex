@@ -14,7 +14,7 @@ use crate::services::db_backup::{
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
-/// The guard `restore_database_from_backup` applies before touching the database file: a restore
+/// The guard `restore_database_from_backup` applies before touching the database file. A restore
 /// renames the live database aside, so it must never run while the pool is open (which would be
 /// operating on a file being renamed underneath). Extracted so both branches are unit-testable
 /// without a live pool. `is_open` is `Db::is_initialized`, re-read under the restore lock.

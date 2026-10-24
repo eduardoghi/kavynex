@@ -39,12 +39,13 @@ pub async fn create_media<R: Runtime>(
 //
 // See `docs/decisions/2026-07-30-ipc-exposes-operations-not-steps.md`.
 
-// `create_media` is driven through a real IPC round trip below, under the mock runtime, and that
-// was not possible until every function on its path was generic over `R: Runtime`. The bare
+// `create_media` is driven through a real IPC round trip below, under the mock runtime, which
+// needs every function on its path to be generic over `R: Runtime`. The bare
 // `AppHandle` alias is `AppHandle<tauri::Wry>`, and `tauri::test::mock_builder` produces an
 // `App<MockRuntime>`, so a command naming the alias could not even be registered with
 // `tauri::generate_handler!` for a mock app (no `CommandArg<'_, MockRuntime>` impl for it). The
-// services were generalized first; the commands followed, which is what the IPC test here rests on.
+// services are generic first and the commands build on them, which is what the IPC test here
+// rests on.
 //
 // The local-import end of the creation is the half that can run offline. A real temp library, a
 // real source file, a picked thumbnail (so nothing reaches FFmpeg), and the row lands in an in-memory

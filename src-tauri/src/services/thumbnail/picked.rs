@@ -6,7 +6,7 @@
 //! mutation gate (`src-tauri/.cargo/mutants.toml`), and its previous home cannot be. `thumbnail/temp.rs`
 //! spawns FFmpeg and drains its pipes, which a measured pass showed produces fifteen mutants no unit
 //! test can kill. A deadline comparison, a byte cap on a pipe, the exit-status checks. Adding that
-//! whole file to the gate would mean six exclusions and a permanently noisy run; extracting the part
+//! whole file to the gate would mean six exclusions and a permanently noisy run. Extracting the part
 //! that decides whether a caller-supplied path is allowed through costs one small module.
 //!
 //! What lives here is exactly that decision. The staging itself (`stage_manual_thumbnail_sync`)

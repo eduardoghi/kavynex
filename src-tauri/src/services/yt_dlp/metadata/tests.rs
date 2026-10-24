@@ -41,7 +41,7 @@ fn sanitize_filename_component_prefixes_windows_reserved_names() {
 #[test]
 fn sanitize_filename_component_maps_dot_only_values_to_a_neutral_name() {
     // A value that sanitizes to only dots ('.', '..', '...') is path-significant as a bare
-    // segment; it must never survive as itself, so a future `join` of the result can never
+    // segment. It must never survive as itself, so a future `join` of the result can never
     // walk the directory tree. Mapped to the same placeholder as the empty case.
     for value in [".", "..", "...", " .. ", "..\\"] {
         assert_eq!(
@@ -57,7 +57,7 @@ fn sanitize_filename_component_maps_dot_only_values_to_a_neutral_name() {
 
 #[test]
 fn sanitize_identifier_component_disambiguates_ids_that_share_a_sanitized_form() {
-    // `a__b` and `a_b` both sanitize to `a_b`; the colliding one must get a distinct suffix so
+    // `a__b` and `a_b` both sanitize to `a_b`. The colliding one must get a distinct suffix so
     // one download can never silently overwrite the other, while the canonical `a_b` is kept.
     let canonical = sanitize_identifier_component("a_b");
     let collider = sanitize_identifier_component("a__b");
@@ -75,7 +75,7 @@ fn sanitize_identifier_component_disambiguates_ids_that_share_a_sanitized_form()
 // Spawns a real child process (`sleep`/`ping`) and exercises the kill/timeout path.
 #[tokio::test]
 async fn run_and_capture_kills_the_child_and_reports_timeout_when_it_expires() {
-    // A slow command that would outlive the 1s timeout by far; the call must come
+    // A slow command that would outlive the 1s timeout by far. The call must come
     // back with the timeout error instead of waiting for it (the child is killed).
     let (binary, args): (&str, Vec<String>) = if cfg!(windows) {
         (
@@ -256,7 +256,7 @@ fn redact_cookies_path_is_a_noop_when_no_cookies_path_was_used() {
 #[test]
 fn redact_cookies_path_catches_separator_and_case_variants() {
     // yt-dlp could print the same Windows path with forward slashes (its internal form) or a
-    // different casing; the full path must be redacted in every such form, not only verbatim.
+    // different casing. The full path must be redacted in every such form, not only verbatim.
     let configured = r"C:\Users\Alice\AppData\cookies.txt";
 
     let forward_slashes = "[debug] loading cookies from C:/Users/Alice/AppData/cookies.txt";
@@ -272,7 +272,7 @@ fn redact_cookies_path_catches_separator_and_case_variants() {
 
 #[test]
 fn redact_cookies_path_leaves_the_generic_filename_alone() {
-    // The bare filename is generic and shows up in benign hint text; only the full path leaks
+    // The bare filename is generic and shows up in benign hint text. Only the full path leaks
     // the profile layout, so a line mentioning just "cookies.txt" must survive untouched.
     let line = "provide a cookies.txt file from a verified account";
 
@@ -365,7 +365,7 @@ fn a_profile_given_by_name_is_not_hunted_through_the_rest_of_the_line() {
 fn redact_sensitive_hides_a_browser_profile_in_the_argv_echo() {
     // `-v` echoes the argv, so a profile path given through `--cookies-from-browser` lands in
     // the terminal_logs and in a failure detail exactly like the cookies file path does. The
-    // browser name stays (it names a tool, not the user); the profile goes.
+    // browser name stays (it names a tool, not the user), while the profile goes.
     let line = "[debug] Command-line config: ['--cookies-from-browser', 'firefox:/home/alice/.mozilla/firefox/abc.default', '--', 'https://youtu.be/abc']";
 
     let redacted = redact_sensitive_from_line(

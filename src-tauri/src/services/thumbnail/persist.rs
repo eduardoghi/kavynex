@@ -44,9 +44,9 @@ fn persist_thumbnail_guarded(
     // command and the local branch of `create_media`'s thumbnail source), and on Windows merely
     // stat'ing `\\host\share\x.jpg` authenticates to `host` over SMB and leaks the user's NTLM
     // hash. The same cross-cutting rule as `thumbnail::picked::validate_picked_thumbnail_path`,
-    // which only the staged-preview path runs; this was the one persist entry point without it.
-    // The third caller (the download) passes a file it just wrote into the app cache, so the
-    // check is free there.
+    // which only the staged-preview path runs. This closes the one persist entry point that
+    // lacked it. The third caller (the download) passes a file it just wrote into the app cache,
+    // so the check is free there.
     if is_network_path(&source.to_string_lossy()) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidSourceThumbnail,

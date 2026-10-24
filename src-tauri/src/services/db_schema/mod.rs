@@ -82,7 +82,7 @@ pub(crate) use introspection::{
     table_has_cascade_foreign_key, table_has_column, table_has_unique_index_on,
 };
 
-// The migrations themselves. `ensure_schema` below is only the version dispatcher; each
+// The migrations themselves. `ensure_schema` below is only the version dispatcher. Each
 // `apply_migration_*` and the baseline reconcile live in `migrations`, which keeps this module
 // readable as "which versions run when" rather than as several hundred lines of SQL.
 mod migrations;
@@ -93,7 +93,7 @@ use migrations::{
 };
 
 // SQLite's table-rebuild procedure, for a change `ALTER TABLE ADD COLUMN` or a trigger cannot
-// express. Unused so far and kept ready; see the module for why.
+// express. Unused so far and kept ready. See the module for why.
 mod rebuild;
 #[cfg(test)]
 use rebuild::RebuildConnection;

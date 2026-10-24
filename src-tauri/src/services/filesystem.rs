@@ -41,7 +41,7 @@ fn build_temp_destination_path(destination: &Path) -> AppResult<PathBuf> {
 }
 
 /// The Windows errors a file just created or written tends to return for a moment while an antivirus
-/// scanner or the search indexer holds it: access denied, sharing violation, lock violation.
+/// scanner or the search indexer holds it (access denied, sharing violation, lock violation).
 #[cfg(windows)]
 fn is_held_by_another_program(error: &std::io::Error) -> bool {
     matches!(error.raw_os_error(), Some(5) | Some(32) | Some(33))
@@ -190,7 +190,7 @@ fn flush_directory(dir: &Path) -> bool {
 
     let invalid_handle = usize::MAX as *mut core::ffi::c_void;
 
-    // SAFETY: lp_file_name is a NUL-terminated UTF-16 buffer that outlives the call; the security
+    // SAFETY: lp_file_name is a NUL-terminated UTF-16 buffer that outlives the call. The security
     // and template arguments are null as the API allows. The returned handle is checked against
     // the null/INVALID_HANDLE_VALUE sentinels and always closed before returning.
     unsafe {
@@ -1095,7 +1095,7 @@ pub(crate) fn verify_content_addressed_write(
     }
 
     if corrected.exists() {
-        // The real content was already stored under its correct name; discard the mis-named copy
+        // The real content was already stored under its correct name. Discard the mis-named copy
         // rather than overwriting the catalogued bytes. Best effort. A failed remove only leaks a
         // reclaimable file, never the correct copy.
         let _ = fs::remove_file(written);
@@ -1347,7 +1347,7 @@ pub(crate) fn dir_entry_is_symlink(entry: &fs::DirEntry) -> bool {
 /// rather than from a directory walk. `absolute_path_from_relative` resolves those lexically, so a
 /// symlink planted under a managed directory would otherwise have its *target* read, hashed or
 /// handed to FFmpeg as if it were the library's own file. Every walker in this family already
-/// refuses to follow one; this lets the single-path readers apply the same rule. A path that cannot
+/// refuses to follow one. This lets the single-path readers apply the same rule. A path that cannot
 /// be stat'd is reported as not a symlink, and the caller's own existence check says what it is.
 pub(crate) fn path_is_symlink(path: &Path) -> bool {
     fs::symlink_metadata(path)

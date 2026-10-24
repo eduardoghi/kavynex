@@ -182,7 +182,7 @@ pub fn resolve_existing_library_dir(path: &str) -> AppResult<PathBuf> {
 /// the app's own config directory, where `kavynex.db` and every backup generation live. Pointing the
 /// library there would run library maintenance (which removes managed subdirectories) in the same
 /// tree as the database and defeat the "backups off the library volume" intent. A path that cannot
-/// be canonicalized is treated as *not* inside (fail open); callers validate existence separately,
+/// be canonicalized is treated as *not* inside (fail open). Callers validate existence separately,
 /// so this only decides containment for a directory that does resolve.
 pub fn library_path_is_inside_dir(library_path: &str, protected_dir: &Path) -> bool {
     crate::utils::path::resolves_inside_dir(&library_input_path(library_path), protected_dir)
@@ -190,7 +190,7 @@ pub fn library_path_is_inside_dir(library_path: &str, protected_dir: &Path) -> b
 
 /// Rejects a non-empty `library_path` that is not an existing directory (or is a filesystem
 /// root). The whole security model re-derives the library directory from this stored value and
-/// trusts it (see `services::library::guard`); enforcing it at the write boundary stops a
+/// trusts it (see `services::library::guard`). Enforcing it at the write boundary stops a
 /// compromised frontend from persisting an arbitrary base path that a later delete/move command
 /// would then operate inside. An empty value is the valid "not configured yet" state and the
 /// legitimate flow always persists a path already created by `ensure_directory_exists`.
@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn the_directory_helpers_reject_an_empty_missing_or_file_path() {
-        // The three folder-picker helpers share one input rule and one error code; each branch
+        // The three folder-picker helpers share one input rule and one error code. Each branch
         // is asserted on each of them so a guard dropped from one does not hide behind another.
         let dir = unique_test_dir("dir-helpers");
         fs::create_dir_all(&dir).unwrap();
@@ -606,7 +606,7 @@ mod tests {
         );
 
         // A UNC share is not a drive path, so it is left as-is (the `\\?\UNC\` form is not built
-        // here); open_path_in_system rejects network paths separately.
+        // here), and open_path_in_system rejects network paths separately.
         let unc = PathBuf::from(r"\\server\share\Library");
         assert_eq!(
             to_extended_length_path(unc.clone()).to_string_lossy(),
@@ -619,10 +619,10 @@ mod tests {
     fn ensure_library_dir_creates_a_path_longer_than_max_path() {
         // Build a library path whose full length exceeds the 260-char MAX_PATH limit. Without
         // the `\\?\` rewrite in ensure_library_dir, create_dir_all/canonicalize here would fail
-        // on a machine that has not enabled long paths in the registry; with it, this succeeds
+        // on a machine that has not enabled long paths in the registry. With it, this succeeds
         // everywhere.
         let base = unique_test_dir("longpath");
-        // Each segment is 40 chars; several of them push the total well past 260.
+        // Each segment is 40 chars, and several of them push the total well past 260.
         let segment = "seg_".to_string() + &"a".repeat(36);
         let mut deep = base.clone();
         for _ in 0..8 {

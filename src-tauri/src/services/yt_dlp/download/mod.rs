@@ -49,7 +49,7 @@ const MAX_CAPTURED_STDERR_LINES: usize = 100;
 // is never killed by mistake.
 const YT_DLP_STALL_TIMEOUT_SECS: u64 = 300;
 // Absolute ceiling on a single download's wall-clock time, independent of progress. The stall
-// detector above only fires on the *absence* of progress; a pathological or hostile source that
+// detector above only fires on the *absence* of progress. A pathological or hostile source that
 // dribbles just enough bytes to keep resetting the stall timer could otherwise keep a yt-dlp/ffmpeg
 // process alive forever. This backstop bounds that. It is set very generously so it never truncates
 // a legitimate large single-video download on a slow link (yt-dlp runs with --no-playlist, so this
@@ -60,7 +60,7 @@ const YT_DLP_MAX_RUNTIME_SECS: u64 = 12 * 60 * 60;
 // CPU-, disk- and network-heavy, so without a cap a compromised or buggy frontend firing many
 // distinct run ids could saturate the machine (the per-run registry only rejects a *duplicate* run
 // id, not a burst of unique ones). Separate from the standalone metadata/comment cap in
-// yt_dlp::metadata: a download's own metadata pre-fetch takes a standalone permit, so gating both on
+// yt_dlp::metadata. A download's own metadata pre-fetch takes a standalone permit, so gating both on
 // one semaphore could deadlock. A small limit keeps a couple of downloads progressing without
 // thrashing.
 const MAX_CONCURRENT_DOWNLOADS: usize = 2;
@@ -285,13 +285,13 @@ async fn supervise_download_child<R: Runtime>(
     // ends minutes later (see clear_download_pid).
     let _pid_registration = DownloadPidGuard::new(&normalized_run_id);
     // Also track it in the process-wide registry so the exit handler's global sweep covers
-    // it uniformly with the metadata/thumbnail children; killing a pid twice on exit (once
+    // it uniformly with the metadata/thumbnail children. Killing a pid twice on exit (once
     // via the download registry, once via the global one) is harmless. Unregisters when
     // this download future completes.
     let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
 
     // Stall detection. The reader tasks record the elapsed millis of the last line the
-    // child produced; the wait loop kills the download if it goes silent for too long.
+    // child produced. The wait loop kills the download if it goes silent for too long.
     let download_start = Instant::now();
     let last_activity_ms = Arc::new(AtomicU64::new(0));
     let last_activity_stdout = Arc::clone(&last_activity_ms);
@@ -625,7 +625,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             "download run started: run_id='{}', video='{}', format_id='{}', download_live_chat='{}', skip_auto_thumbnail_download='{}', cookies_browser='{}', cookies_path='{}'",
             normalized_run_id,
             // Log a reduced video reference, not the full pasted URL (which can carry playlist /
-            // tracking params); the file log may be pasted into a public bug report.
+            // tracking params). The file log may be pasted into a public bug report.
             youtube_ref_for_log(&normalized_url),
             normalized_format_id,
             download_live_chat,
@@ -637,7 +637,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 .map(redact_cookies_browser_selector)
                 .unwrap_or_default(),
             // Avoid writing the cookies file path to the log (it can end up in a public bug
-            // report); record only whether one was provided.
+            // report). Record only whether one was provided.
             if normalized_cookies_path.is_some() {
                 "<set>"
             } else {
@@ -719,8 +719,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
         {
             Ok(metadata) => metadata,
             Err(error) => {
-                // The metadata phase now honors cancellation itself (killing the tree
-                // promptly); surface that as a cancellation event rather than a generic error.
+                // The metadata phase honors cancellation itself (killing the tree
+                // promptly). Surface that as a cancellation event rather than a generic error.
                 if cancel_flag.load(Ordering::SeqCst) {
                     let message = "yt-dlp download cancelled";
                     emit_download_cancelled(app, &normalized_run_id, message);
@@ -833,8 +833,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
         crate::utils::process::pin_working_dir_async(&mut command, &temp_dir);
         command.args(&args);
 
-        // Both streams are redacted before anything sees a line: the terminal, the log, and the
-        // failure message built from stderr below. See redact_download_output_line.
+        // Both streams are redacted before anything sees a line (the terminal, the log, and the
+        // failure message built from stderr below). See redact_download_output_line.
         let output_redaction = OutputRedaction {
             run_dir: temp_dir.to_string_lossy().into_owned(),
             ffmpeg_location: ffmpeg_location.clone(),

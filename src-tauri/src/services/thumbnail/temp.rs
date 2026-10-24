@@ -27,7 +27,7 @@ fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<Path
     // this function raw over IPC, and the containment check the delete itself runs
     // (`ensure_existing_path_inside_dir` against `thumbs-temp/`) happens *after* the stat, so it
     // refuses the delete while the handshake has already been paid for. Its sibling
-    // `validate_source_media_path` below has had this since it was written; this one had not.
+    // `validate_source_media_path` below does the same.
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTempThumbnailPath,
@@ -123,16 +123,16 @@ fn ensure_generated_thumbnail_exists(
 }
 
 /// Cap on how much stdout/stderr is retained from the local ffmpeg thumbnail run. `wait_with_output`
-/// would buffer its whole output unbounded; this keeps memory bounded while still draining the pipes
+/// would buffer its whole output unbounded. This keeps memory bounded while still draining the pipes
 /// fully on separate threads, so neither pipe filling can deadlock the other. Mirrors the async twin
 /// in thumbnail/download/process.rs.
 const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// How long a single-frame thumbnail extraction may run before ffmpeg is treated as hung and its
-/// whole process tree killed. A single frame is near-instant; this is generous headroom for a cold
-/// cache or a slow disk while still bounded. Unlike the previous unbounded `wait()`, which a
-/// crafted or truncated container fed to ffmpeg could wedge forever, leaking a blocking-pool thread
-/// and a live ffmpeg process for the rest of the session. Every other external-process call site
+/// whole process tree killed. A single frame is near-instant. This is generous headroom for a cold
+/// cache or a slow disk while still bounded, unlike an unbounded `wait()`, which a crafted or
+/// truncated container fed to ffmpeg could wedge forever, leaking a blocking-pool thread and a
+/// live ffmpeg process for the rest of the session. Every other external-process call site
 /// (yt-dlp download/metadata/thumbnail, the health check) already bounds its child this way.
 const FFMPEG_THUMBNAIL_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -158,12 +158,12 @@ fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::proc
             )
         })?;
 
-    // Tracked for the child's lifetime; the guard unregisters the pid when this function returns.
+    // Tracked for the child's lifetime. The guard unregisters the pid when this function returns.
     let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
 
     // Drain stdout and stderr on separate threads so neither pipe filling can deadlock the other
     // (what `wait_with_output` does internally), each capped for memory. Draining on threads (rather
-    // than on this one) frees this thread to poll for the timeout below; the reads finish on their
+    // than on this one) frees this thread to poll for the timeout below. The reads finish on their
     // own once the child exits or is killed and its pipe ends close.
     let stdout_stream = child.stdout.take();
     let stdout_handle = std::thread::spawn(move || match stdout_stream {
@@ -312,8 +312,8 @@ fn build_audio_thumbnail_args(source_path: &Path, out_thumbnail: &Path) -> Vec<S
     ]
 }
 
-/// Where an FFmpeg preview child starts: the cache directory its output goes to, which the app
-/// owns, rather than wherever the app was launched from (see `utils::process::pin_working_dir`).
+/// Where an FFmpeg preview child starts (the cache directory its output goes to, which the app
+/// owns), rather than wherever the app was launched from (see `utils::process::pin_working_dir`).
 fn ffmpeg_working_dir(out_thumbnail: &Path) -> PathBuf {
     out_thumbnail
         .parent()
@@ -584,12 +584,12 @@ mod tests {
 
     #[test]
     fn both_thumbnail_producers_name_their_output_with_the_shared_format() {
-        // The two producers each choose an output container, and they diverged once. The yt-dlp
-        // download moved to JPEG while this path kept writing lossless PNG, so a library fed from
-        // both sources held both formats for the same kind of content and the size win applied to
-        // half the paths. Reading the shared constant is what makes it one decision; asserting the
-        // filename actually follows it is what stops a hardcoded extension creeping back, which is
-        // exactly how the divergence happened the first time.
+        // The two producers each choose an output container. If the yt-dlp download wrote JPEG
+        // while this path kept writing lossless PNG, a library fed from both sources would hold
+        // both formats for the same kind of content and the size win would apply to half the
+        // paths. Reading the shared constant is what makes it one decision. Asserting the
+        // filename actually follows it is what stops a hardcoded extension creeping back, which
+        // is how the two diverged in the first place.
         //
         // ffmpeg picks its encoder from the output extension, so this is also what keeps the argv
         // built above writing the format the name claims.

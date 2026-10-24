@@ -34,7 +34,7 @@ pub async fn update_media_title(db: State<'_, Db>, media_id: i64, title: String)
 
 /// Returns one filtered, sorted, windowed page of a channel's media (plus the total match
 /// count), so the library list can page through large channels instead of loading every row
-/// over IPC. Filtering and sorting happen in SQLite; see `repo::list_media_page`.
+/// over IPC. Filtering and sorting happen in SQLite. See `repo::list_media_page`.
 #[tauri::command]
 pub async fn list_media_page(
     db: State<'_, Db>,
@@ -90,7 +90,7 @@ pub async fn update_media_duration(
     duration_seconds: Option<i64>,
 ) -> AppResult<()> {
     // A media element reports a non-finite or non-positive duration for a file it could not read,
-    // which the renderer already maps to "unknown"; normalizing the same way here means the column
+    // which the renderer already maps to "unknown". Normalizing the same way here means the column
     // holds either a real measurement or nothing, never a zero that renders as "0:00".
     let duration_seconds =
         duration_seconds.filter(|seconds| *seconds > 0 && *seconds <= MAX_MEDIA_SECONDS);
@@ -234,7 +234,7 @@ mod tests {
         insert_media_row(&webview, channel_id, "video/media_x.mp4");
 
         // Read the row back through the real paginated-list command the library uses (there is no
-        // separate unpaginated list command); this exercises the MediaPageQuery deserialization and
+        // separate unpaginated list command). This exercises the MediaPageQuery deserialization and
         // the MediaPage response over a genuine IPC round trip.
         let page = invoke(
             &webview,

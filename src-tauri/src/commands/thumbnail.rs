@@ -73,7 +73,7 @@ pub async fn download_channel_avatar_from_handle<R: Runtime>(
 /// asks once per page and merely discards a result it no longer wants), so nothing else stops a
 /// scroll from stacking one long-running occupant of the blocking pool per page. A call that finds
 /// the slot taken answers `budgetSpent` for every path it was given, which is the answer the caller
-/// already re-asks about; see `services::thumbnail::display::try_reserve_resolve_slot`.
+/// already re-asks about. See `services::thumbnail::display::try_reserve_resolve_slot`.
 #[tauri::command]
 pub async fn resolve_display_thumbnails<R: Runtime>(
     app: AppHandle<R>,

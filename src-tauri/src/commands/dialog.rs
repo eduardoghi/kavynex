@@ -128,7 +128,7 @@ pub async fn open_file_dialog<R: Runtime>(
 }
 
 /// Opens a save dialog with `default_file_name` filled in. Resolves to the chosen destination, or
-/// `None` when cancelled. Nothing is written here; the command the destination is handed to decides
+/// `None` when cancelled. Nothing is written here. The command the destination is handed to decides
 /// whether it may be written to.
 #[tauri::command]
 pub async fn save_file_dialog<R: Runtime>(

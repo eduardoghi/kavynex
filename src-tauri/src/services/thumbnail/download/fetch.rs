@@ -189,13 +189,13 @@ impl Service<Name> for PublicOnlyResolver {
 /// (reqwest's default) would only let us vet the first hop, so a public thumbnail URL that
 /// 302-redirects to, say, `http://169.254.169.254/...` or an internal host would slip past the
 /// check. The thumbnail URL comes from yt-dlp metadata (attacker-influenced), so that per-hop
-/// revalidation is the whole point; keeping this on a minimal hyper stack also avoids pulling
+/// revalidation is the whole point. Keeping this on a minimal hyper stack also avoids pulling
 /// reqwest's cookie jar and automatic-redirect behavior into a request that must stay dumb.
 ///
 /// The decision each hop makes (the budget, the refusal of a redirect naming no destination, the
 /// resolution of `Location` against the URI it arrived on, and the image-CDN host gate on the
 /// destination), lives in [`super::redirect::next_hop`], not here. This function owns the loop, the
-/// request and the body; it makes no redirect decision of its own, which is what lets that decision
+/// request and the body. It makes no redirect decision of its own, which is what lets that decision
 /// be mutation-tested while the network code around it cannot be.
 ///
 /// That host gate is per hop and not only per fetch. The caller checks where the fetch *starts*,
@@ -210,7 +210,7 @@ pub(super) async fn http_get_image(
 ) -> AppResult<(http::StatusCode, http::HeaderMap, Vec<u8>)> {
     let mut http_connector = HttpConnector::new_with_resolver(PublicOnlyResolver);
     // Required so the connector accepts the `https` scheme. hyper-rustls sets this on the default
-    // connector its own `build()` produces; a wrapped connector must set it explicitly.
+    // connector its own `build()` produces. A wrapped connector must set it explicitly.
     http_connector.enforce_http(false);
 
     let connector = hyper_rustls::HttpsConnectorBuilder::new()
@@ -223,10 +223,11 @@ pub(super) async fn http_get_image(
         })?
         // `https_only()`, not `https_or_http()`. Every other control here constrains the
         // destination or the response, none of them the transport, so a cleartext hop out of an
-        // allowed CDN satisfied all of them (see `redirect::next_hop` for what that let through).
+        // allowed CDN would satisfy all of them (see `redirect::next_hop` for what that lets
+        // through).
         //
         // This is the backstop, not the message. The caller and `next_hop` both refuse cleartext
-        // with a reason; a caller added later that skips them still fails here, at connect time,
+        // with a reason. A caller added later that skips them still fails here, at connect time,
         // with hyper's own error. Worse to read, and still a refusal.
         .https_only()
         .enable_http1()
@@ -244,7 +245,7 @@ pub(super) async fn http_get_image(
     // indefinitely while staying under the DIRECT_THUMBNAIL_MAX_BYTES cap. This command carries no
     // cancel flag, so this deadline is the only thing that can end such a stall.
     timeout(Duration::from_secs(timeout_secs), async move {
-        // `hops_used` is what `next_hop` decides against; the range is a structural backstop that
+        // `hops_used` is what `next_hop` decides against. The range is a structural backstop that
         // cannot be reached, since `next_hop` refuses at MAX_REDIRECT_HOPS on the last iteration.
         // Keeping it means a bug in that predicate costs a bounded loop rather than one the outer
         // deadline is the only thing ending.
@@ -277,8 +278,8 @@ pub(super) async fn http_get_image(
 
                 // The host gate travels with the hop, not only with the initial URL. The caller
                 // gates where the fetch *starts*, and without this a single 302 out of an allowed
-                // CDN carried it to any public host. `next_hop` owns that decision so it can be
-                // mutation-tested; see its doc comment.
+                // CDN would carry it to any public host. `next_hop` owns that decision so it can be
+                // mutation-tested. See its doc comment.
                 uri = next_hop(&uri, location, hops_used, is_allowed_thumbnail_image_host)?;
                 continue;
             }

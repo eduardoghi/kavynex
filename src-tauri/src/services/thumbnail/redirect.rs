@@ -8,16 +8,16 @@
 //! walk straight past the check. The thumbnail URL comes from yt-dlp metadata, which the video
 //! being downloaded influences, so that revalidation is the whole point of the client.
 //!
-//! Which made it awkward that the decision driving that loop was the one part of the downloader no
+//! Left in place, the decision driving that loop would be the one part of the downloader no
 //! mutation gate could reach. The rest of `download.rs` is async network orchestration, so putting
-//! the whole file under `examine_globs` would have reported dozens of unkillable mutants. Extracting
-//! the pure decision into its own module is the resolution this codebase has now reached four times
+//! the whole file under `examine_globs` would report dozens of unkillable mutants. Extracting
+//! the pure decision into its own module is the resolution this codebase has reached four times
 //! ([`crate::services::ssrf_guard`], `thumbnail::url`, `yt_dlp::download::redaction`,
 //! `thumbnail::picked`), and it applies here for the strongest reason of the four.
 //!
 //! [`next_hop`] is that decision, whole. The hop budget, the refusal of a redirect that names no
 //! destination, and the resolution of the `Location` value against the URI it came from. The caller
-//! keeps the loop, the request and the body; it makes no redirect decision of its own.
+//! keeps the loop, the request and the body. It makes no redirect decision of its own.
 
 use http::Uri;
 
@@ -225,7 +225,7 @@ mod tests {
         // nothing about whether the fetch may go there. Cleartext is refused by `next_hop`, on the
         // resolved destination, because a relative value inherits the current scheme and only the
         // resolved URI carries the one the request would use. Asserting both halves here is what
-        // keeps the split visible; moving the refusal down into this function would make the
+        // keeps the split visible. Moving the refusal down into this function would make the
         // relative cases answer the wrong question.
         let resolved = resolve_redirect(
             &uri("http://img.example.com/old.jpg"),
@@ -448,7 +448,7 @@ mod tests {
         // Why the gate reads the resolved destination rather than the raw `Location`. This value
         // names no scheme at all, so a check on the header text would see nothing to refuse and the
         // hop would inherit `http` from the current URI unnoticed. `http_get_image`'s connector is
-        // `https_only()`, so such a current URI cannot arise there today; the gate does not depend
+        // `https_only()`, so such a current URI cannot arise there today. The gate does not depend
         // on that staying true.
         let error = next_hop(
             &uri("http://cdn.example.com/a/b/old.jpg"),

@@ -10,7 +10,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt};
 const MAX_LINE_BYTES: usize = 256 * 1024 * 1024; // 256 MiB
 
 /// A cap for line-oriented output. Yt-dlp/ffmpeg progress lines and stderr messages, which are
-/// always short. Fixed-size ring buffers keep the last N such lines for a failure message; without
+/// always short. Fixed-size ring buffers keep the last N such lines for a failure message. Without
 /// a per-line bound a misbehaving process emitting one enormous unterminated line would let a
 /// single buffered line (times N) balloon memory far past intent. Distinct from `MAX_LINE_BYTES`,
 /// which is sized for the one multi-MiB JSON line `--dump-single-json` legitimately emits and must
@@ -100,7 +100,7 @@ where
     })
 }
 
-/// Drains a pipe to its end, retaining at most `max_bytes`; bytes past the cap are read and
+/// Drains a pipe to its end, retaining at most `max_bytes`. Bytes past the cap are read and
 /// discarded rather than left unread, so the child writing to it never blocks on a full pipe.
 pub(crate) fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8> {
     let mut buffer: Vec<u8> = Vec::new();
@@ -150,8 +150,8 @@ mod tests {
 
     #[tokio::test]
     async fn recovers_from_invalid_utf8_instead_of_stopping() {
-        // A line with invalid UTF-8 bytes sits between two valid lines. The old
-        // `lines().next_line()` loop would stop at the invalid line; this must decode it
+        // A line with invalid UTF-8 bytes sits between two valid lines. A
+        // `lines().next_line()` loop would stop at the invalid line, whereas this must decode it
         // lossily and keep reading the line after it.
         let mut data: Vec<u8> = b"before\n".to_vec();
         data.extend_from_slice(&[0xff, 0xfe]);

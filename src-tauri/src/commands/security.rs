@@ -690,7 +690,7 @@ mod tests {
         // ensure_configured_library_path (via paths_refer_to_same_location) is one of the declared
         // network-refusal sites in scripts/verify-command-path-surface.js, and this command's
         // `library_path` is classified "configured-library" there. CONTRIBUTING.md requires a UNC
-        // test per path-taking command; this is the IPC-level one for this guard class.
+        // test per path-taking command. This is the IPC-level one for this guard class.
         let library = unique_test_dir("register-unc");
         fs::create_dir_all(&library).unwrap();
         let library = library.canonicalize().unwrap();

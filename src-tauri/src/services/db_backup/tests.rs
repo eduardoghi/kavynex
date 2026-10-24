@@ -1170,7 +1170,7 @@ async fn resume_is_a_noop_on_a_normal_launch() {
     let db = dir.join("kavynex.db");
     seed_db(&db).await;
 
-    // No staging file: nothing was interrupted.
+    // No staging file, so nothing was interrupted.
     assert!(!resume_interrupted_restore(&db).unwrap());
     assert_eq!(read_single_value(&db).await, "hello");
 
@@ -1398,7 +1398,7 @@ async fn a_marker_with_no_snapshot_behind_it_never_skips_the_move_aside() {
     // would skip the move-aside and let the swap below overwrite the library outright, with
     // nothing in `.pre-import` to undo it with.
     //
-    // The ordering makes that state unreachable; requiring `.pre-import` to actually exist is
+    // The ordering makes that state unreachable. Requiring `.pre-import` to actually exist is
     // what keeps it survivable if it shows up anyway (a rollback that restored the database but
     // failed to clear the marker leaves exactly this).
     let dir = temp_dir("import-marker-without-snapshot");
@@ -2039,7 +2039,7 @@ async fn mirror_keeps_an_intact_recent_mirror_and_ignores_a_leftover_staged_copy
     std::fs::write(&current, b"intact-mirror").unwrap();
     std::fs::write(&staged, b"leftover-staged").unwrap();
 
-    // The current mirror is fresh, so the throttle skips a new export; the assertion is about
+    // The current mirror is fresh, so the throttle skips a new export. The assertion is about
     // which bytes survive, not whether an export ran.
     assert!(!mirror_database_to_external_dir(&db, &external)
         .await
@@ -2064,7 +2064,7 @@ async fn backup_status_reports_the_snapshot_modified_time() {
 
     let status = database_backup_status(&db);
     assert!(status.available);
-    // 2020-01-01 in ms; any real backup taken now is well past it, epoch-based sentinels are not.
+    // 2020-01-01 in ms. Any real backup taken now is well past it, epoch-based sentinels are not.
     assert!(
         status
             .backed_up_at_ms
@@ -2751,7 +2751,7 @@ async fn seed_db_with_null_normalized_title(path: &Path, user_version: i64) {
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
          UNIQUE (channel_id, file_path))",
         // The video_comments -> videos cascade has been present since the first released
-        // schema (user_version 5), so a realistic older database carries it; import validation
+        // schema (user_version 5), so a realistic older database carries it. Import validation
         // requires it regardless of version.
         "CREATE TABLE video_comments (id INTEGER PRIMARY KEY, video_id INTEGER, text TEXT, \
          original_text TEXT, \
@@ -2864,7 +2864,7 @@ async fn undo_reverts_the_last_import_on_the_next_startup() {
     assert_eq!(read_video_title(&db).await, "imported");
     assert!(database_import_undo_available(&db));
 
-    // Undo stages the pre-import snapshot; the swap happens on the next startup, like a
+    // Undo stages the pre-import snapshot. The swap happens on the next startup, like a
     // normal import, so the live database is never swapped underneath.
     stage_database_import_undo(&db, None).await.unwrap();
     assert!(import_staged_path(&db).exists());
@@ -2899,7 +2899,7 @@ async fn is_schema_migration_pending_reflects_user_version() {
     let dir = temp_dir("pending");
     let db = dir.join("kavynex.db");
 
-    // A missing file: opening it creates the schema, so a migration is pending.
+    // Opening a missing file creates the schema, so a migration is pending.
     assert!(is_schema_migration_pending(&db).await);
 
     // A database stamped below the current version still needs migrating.

@@ -27,7 +27,7 @@ use super::{
     BACKUP_IN_PROGRESS,
 };
 
-// The DB is snapshotted at most once per day so it does not add cost to every launch; any
+// The DB is snapshotted at most once per day so it does not add cost to every launch. Any
 // backup within this window already predates the current launch's migrations.
 pub(super) const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
@@ -41,7 +41,7 @@ pub(super) fn backup_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".bak")
 }
 
-/// The current snapshot is `.bak` (generation 0); older generations are `.bak.1` (newest
+/// The current snapshot is `.bak` (generation 0), and older generations are `.bak.1` (newest
 /// rotated) through `.bak.{BACKUP_ROTATED_GENERATIONS}` (oldest kept).
 pub(super) fn generation_backup_path(db_path: &Path, generation: usize) -> PathBuf {
     if generation == 0 {
@@ -300,7 +300,7 @@ pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> App
 
 /// Creates a consistent snapshot of the database (via `VACUUM INTO`) before migrations run,
 /// so a bad migration or corruption can be rolled back. Best effort and throttled to once a
-/// day; a source database that fails `quick_check` is skipped so a corrupt DB never
+/// day. A source database that fails `quick_check` is skipped so a corrupt DB never
 /// overwrites a good backup. Keeps several rotated generations (`.bak` plus `.bak.1`..
 /// `.bak.{BACKUP_ROTATED_GENERATIONS}`). Returns true when a new snapshot was written.
 pub async fn backup_database(db_path: &Path) -> AppResult<bool> {

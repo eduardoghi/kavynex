@@ -9,10 +9,10 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// in practice (YouTube caps a comment at ~10k characters), so a value past this is a malformed or
 /// adversarial response. The text is truncated rather than the whole batch rejected. A comment
 /// backup is bulk, best-effort data, and losing every other comment over one oversized entry would
-/// be the worse failure. The database also enforces this ceiling now (a `CHECK` on fresh installs, a
-/// trigger on ones whose table predates it (see db_schema), so an out-of-band writer cannot store
-/// an unbounded value; this app-side truncation keeps the normal write path from ever tripping it.
-/// The two must stay in sync), a db_schema test pins the DDL value against this constant.
+/// be the worse failure. The database also enforces this ceiling (a `CHECK` on fresh installs, a
+/// trigger on ones whose table predates it, see db_schema), so an out-of-band writer cannot store
+/// an unbounded value. This app-side truncation keeps the normal write path from ever tripping it.
+/// The two must stay in sync, and a db_schema test pins the DDL value against this constant.
 pub(crate) const MAX_COMMENT_TEXT_CHARS: usize = 16_000;
 
 /// Upper bound on every other text field of a comment (author, handle, channel id, avatar URL, the
@@ -23,7 +23,7 @@ pub(crate) const MAX_COMMENT_FIELD_CHARS: usize = 512;
 
 /// Upper bound on how many comments one media may be handed in a single merge.
 ///
-/// The body of each comment is capped above; this caps the count. The vector comes straight from
+/// The body of each comment is capped above. This caps the count. The vector comes straight from
 /// yt-dlp's output (`fetch_youtube_comments_async`, which asks for at most this many) and is written
 /// in one transaction that holds the SQLite write lock until it commits, so a run returning millions
 /// of rows would hold every other command (they wait up to the busy timeout and then fail) and grow
@@ -213,7 +213,7 @@ fn prepare_comment_rows(comments: Vec<YtDlpComment>) -> Vec<PreparedComment> {
                 author_channel_id: normalize_optional_text(&comment.author_channel_id),
                 author_thumbnail: normalize_optional_text(&comment.author_thumbnail),
                 text,
-                // like_count/reply_count are u64 from yt-dlp; saturate to i64::MAX on the
+                // like_count/reply_count are u64 from yt-dlp, so saturate to i64::MAX on the
                 // (practically impossible) overflow rather than dropping the whole batch over a count.
                 like_count: i64::try_from(comment.like_count).unwrap_or(i64::MAX),
                 reply_count: i64::try_from(comment.reply_count).unwrap_or(i64::MAX),
@@ -1053,7 +1053,7 @@ mod tests {
     #[tokio::test]
     async fn merge_media_comments_maps_foreign_key_violation_to_media_not_found() {
         let pool = create_test_pool().await;
-        // The real pool opens with foreign_keys ON (services::database); the in-memory test pool
+        // The real pool opens with foreign_keys ON (services::database). The in-memory test pool
         // must enable it explicitly to exercise the mapping. max_connections(1) keeps this PRAGMA
         // on the same connection the transaction below reuses.
         sqlx::query("PRAGMA foreign_keys = ON")

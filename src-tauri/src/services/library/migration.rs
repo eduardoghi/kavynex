@@ -9,10 +9,10 @@ use serde::Serialize;
 use crate::constants::MANAGED_LIBRARY_DIRS;
 use crate::services::library::cleanup::LIBRARY_TRASH_DIR;
 
-/// The folders a migration carries to the new library: the four the app writes media into, and the
-/// trash the orphan removal moves files to. The trash has to travel too. Left behind, its files sat
-/// outside the library they could be restored into, nothing purged them any more, and the old
-/// folder stopped being a destination a later move back would accept.
+/// The folders a migration carries to the new library (the four the app writes media into, and the
+/// trash the orphan removal moves files to). The trash has to travel too. Left behind, its files
+/// would sit outside the library they could be restored into, nothing would purge them any more,
+/// and the old folder would stop being a destination a later move back would accept.
 const MIGRATED_LIBRARY_DIRS: [&str; 5] = [
     MANAGED_LIBRARY_DIRS[0],
     MANAGED_LIBRARY_DIRS[1],
@@ -156,12 +156,12 @@ fn directory_chain_contains(path: &Path, target: &Path) -> bool {
 }
 
 /// The destination must be empty, or contain only the app's managed subdirectories
-/// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case; a destination
+/// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case. A destination
 /// that holds only managed folders is treated as a previously interrupted migration and allowed
 /// to resume. The copy phase is idempotent (identical files are skipped, differing ones error
 /// without overwriting), so re-running safely completes the copy. Any top-level entry that is
 /// not a managed directory means the folder holds unrelated user content and is rejected, so a
-/// crash mid-migration no longer wedges the retry with an opaque "not empty" error.
+/// crash mid-migration does not wedge the retry with an opaque "not empty" error.
 fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
     let entries = fs::read_dir(path).map_err(|e| {
         AppError::from_code(
@@ -202,7 +202,7 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         let is_managed_dir = is_managed_name && entry.path().is_dir();
 
         // A managed subdirectory (a previous, interrupted migration to resume) and an OS-generated
-        // file (which the user did not put there) are both allowed; anything else is unrelated user
+        // file (which the user did not put there) are both allowed. Anything else is unrelated user
         // content and rejected, so a real non-empty folder is never migrated into.
         if !is_managed_dir && !is_ignorable_os_entry(&name) {
             return Err(AppError::from_code(
@@ -660,7 +660,7 @@ fn migrate_library_contents_with_marker(
 
 /// Lists the top-level entries of `old_library_dir` that are not one of the managed library
 /// folders (video/audio/thumbnails/live_chat). The library folder is normally fully owned by
-/// the app, but a user can still drop files directly into it; those are never migrated, so
+/// the app, but a user can still drop files directly into it. Those are never migrated, so
 /// they would otherwise be silently left behind (and keep the old directory from being
 /// removed) without any indication of why.
 fn list_leftover_entries(old_library_dir: &Path) -> Vec<String> {
@@ -733,7 +733,7 @@ pub fn migrate_library_directory_in_context(
             ));
         }
         // A previous migration panicked while holding this lock. The mutex guards no shared
-        // state (`Mutex<()>`; it only serializes migrations), so the poison carries no
+        // state (`Mutex<()>`, which only serializes migrations), so the poison carries no
         // corrupted data. Recover the guard and proceed. Treating poison as "already
         // running" would instead wedge every future migration until the app is restarted.
         Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
@@ -830,7 +830,7 @@ pub fn migrate_library_directory_in_context(
     // Hold the exclusive library gate across the copy/remove phase. It drains any in-flight
     // import/download/delete and blocks new ones, so a file can never be written into the old
     // directory in the window between it being copied to the new location and removed. Only the
-    // destructive phase needs it; the validation above is read-only. See services/library/lock.
+    // destructive phase needs it. The validation above is read-only. See services/library/lock.
     let migration_result = {
         let _library_write_guard = crate::services::library::lock::library_write_guard();
         migrate_library_contents_with_marker(&canonical_old, &canonical_new, commit_marker, report)
@@ -1300,7 +1300,7 @@ mod tests {
         let old_root = unique_test_dir("preserve-old");
         let new_root = unique_test_dir("preserve-new");
 
-        // video dir is processed first; audio dir second
+        // video dir is processed first, audio dir second
         fs::create_dir_all(old_root.join("video")).unwrap();
         fs::create_dir_all(old_root.join("audio")).unwrap();
         fs::write(old_root.join("video").join("a.mp4"), b"video-data").unwrap();

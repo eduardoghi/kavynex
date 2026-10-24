@@ -15,19 +15,18 @@ pub const MANAGED_LIBRARY_DIRS: [&str; 4] = [
 /// Both producers read it. The yt-dlp download normalizes to it with `--convert-thumbnails` and
 /// then looks the written file up by it (`services/thumbnail/download/process.rs`), and the local-import
 /// FFmpeg preview names its output with it (`services/thumbnail/temp.rs`). It lives here rather
-/// than in either module because it is one decision, and it was made in only one of them. The
-/// download switched to JPEG while the local import kept writing lossless PNG, so a library that
-/// mixes both sources ended up holding both formats for the same kind of content, and the size
-/// win the switch was made for applied to half the paths.
+/// than in either module because it is one decision. If the two disagreed, with the download on
+/// JPEG and the local import on lossless PNG, a library mixing both sources would hold both
+/// formats for the same kind of content, and the size win of JPEG would apply to half the paths.
 ///
-/// JPEG rather than PNG: YouTube serves photographic JPEG thumbnails, and re-encoding those
+/// JPEG rather than PNG because YouTube serves photographic JPEG thumbnails, and re-encoding those
 /// losslessly to PNG multiplied the stored size for no visual gain. Measured on a real library,
 /// PNG thumbnails averaged ~365 KB against a few dozen KB for the JPEG originals, and the whole
 /// directory sat at 322 MB for 904 media. Normalizing to one known extension is still worth doing
-/// (the content-addressed name needs one), so the conversion stays; only the target changed.
+/// (the content-addressed name needs one), so the conversion stays with JPEG as the target.
 ///
 /// Changing it changes only files produced from now on. Names are content-addressed, so an
-/// existing thumbnail keeps its own extension and the rows pointing at it stay valid; nothing
+/// existing thumbnail keeps its own extension and the rows pointing at it stay valid, and nothing
 /// re-encodes retroactively.
 pub const THUMBNAIL_OUTPUT_FORMAT: &str = "jpg";
 
@@ -51,7 +50,7 @@ pub const TEMP_DIR_THUMB_DISPLAY: &str = "thumb-display";
 
 // Holds one marker per in-flight media creation, naming the library artifacts it has already
 // written but not yet registered a row for. A marker still here at startup is a creation that died
-// in that window; see services/pending_media.rs.
+// in that window. See services/pending_media.rs.
 pub const TEMP_DIR_PENDING_MEDIA: &str = "pending-media";
 
 // Holds a finished download that could not be placed into the library (a disconnected drive, a full

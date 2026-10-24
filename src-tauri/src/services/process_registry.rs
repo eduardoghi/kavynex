@@ -24,7 +24,7 @@ fn tracked_processes() -> &'static Mutex<HashMap<u64, u32>> {
 
 fn lock_registry() -> MutexGuard<'static, HashMap<u64, u32>> {
     // The critical sections here are tiny (a single insert/remove/collect) and never span an
-    // `.await`, so a poisoned lock can only mean an unrelated panic; recover the guard rather
+    // `.await`, so a poisoned lock can only mean an unrelated panic. Recover the guard rather
     // than turning that into a hard failure that would leak the child from the registry.
     tracked_processes()
         .lock()
@@ -48,7 +48,7 @@ pub struct TrackedChildGuard {
 impl TrackedChildGuard {
     /// Registers `pid` as a running external child and returns a guard that unregisters it on
     /// drop. A `None` pid (the child failed to report one) still yields a guard so call sites
-    /// do not need to special-case it; nothing is tracked in that case.
+    /// do not need to special-case it. Nothing is tracked in that case.
     pub fn register(pid: Option<u32>) -> Self {
         let guard = Self::track(pid);
 

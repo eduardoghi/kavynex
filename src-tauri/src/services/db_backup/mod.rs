@@ -12,18 +12,15 @@
 //! - `compaction.rs`: the user-triggered `VACUUM`.
 //!
 //! Most of the tests for all of them are still this module's `mod tests` (in `tests.rs` beside this
-//! file, so the module reads as its production code), and one reason for that
-//! is genuine while the other was not. The genuine one. Many exercise more than one of the machines
+//! file, so the module reads as its production code). Many exercise more than one of the machines
 //! together (a snapshot taken, the database corrupted, the restore checked), which is the behavior
 //! worth pinning and would have to be duplicated or arbitrarily assigned if it were split along the
 //! same line as the code.
 //!
-//! The other reason was the shared fixtures (`temp_dir`, `seed_db`, `filetime_set`). A test could
-//! not move without them, so every split moved code out of this module and left its tests in, and
-//! the test file kept growing as the code shrank. Those fixtures now live in `test_support.rs`, so a test that
-//! belongs to exactly one submodule can go and live there. `integrity.rs` has taken its four; the
-//! rest follow when their submodule is next touched, rather than as one large move of tests nobody
-//! is otherwise changing.
+//! The shared fixtures (`temp_dir`, `seed_db`, `filetime_set`) live in `test_support.rs`, so a test
+//! that belongs to exactly one submodule can go and live there. `integrity.rs` has taken its four.
+//! The rest follow when their submodule is next touched, rather than as one large move of tests
+//! nobody is otherwise changing.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -198,7 +195,7 @@ async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     let options = SqliteConnectOptions::new()
         .filename(db_path)
         .create_if_missing(false)
-        // Backup/export/import can run while the main pool holds the write lock; without
+        // Backup/export/import can run while the main pool holds the write lock. Without
         // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         // This pool also opens files that came from outside (an import, the external mirror), whose
@@ -530,7 +527,7 @@ pub use snapshot::{
     set_aside_backups_for_empty_start, snapshot_before_migration, DatabaseBackupStatus,
     SET_ASIDE_BACKUPS_DIR,
 };
-// The parent module's snapshot tests assert against these internals; test-only so a non-test build
+// The parent module's snapshot tests assert against these internals. Test-only so a non-test build
 // does not flag them unused.
 #[cfg(test)]
 use snapshot::{
@@ -574,7 +571,7 @@ pub(crate) use external::EXTERNAL_BACKUP_FILE_NAME;
 pub use external::{
     export_database, external_backup_status, mirror_database_to_external_dir, ExternalBackupStatus,
 };
-// The parent module's mirror tests reach these internals; test-only so a non-test build does not
+// The parent module's mirror tests reach these internals. Test-only so a non-test build does not
 // flag the imports unused.
 #[cfg(test)]
 use external::{
@@ -657,13 +654,13 @@ pub(crate) fn database_swapped_within(db_path: &Path, window: Duration) -> bool 
         .any(|modified| swap_is_within(now, modified, window))
 }
 
-// The parent module's import tests reach these internals; test-only so a non-test build does
+// The parent module's import tests reach these internals. Test-only so a non-test build does
 // not flag the imports unused.
 #[cfg(test)]
 use import::{import_applying_marker_path, import_staged_path, write_import_applying_marker};
 
 // The fixtures the tests in this family share. Declared here rather than inside `mod tests` so a
-// submodule's own tests can reach them too; see the module docs above for why that mattered.
+// submodule's own tests can reach them too. See the module docs above for why that matters.
 #[cfg(test)]
 mod test_support;
 

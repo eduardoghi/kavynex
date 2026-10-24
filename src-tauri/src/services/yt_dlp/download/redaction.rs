@@ -25,7 +25,7 @@ enum PendingRedaction {
     /// `youtube_ref_for_log`.
     YoutubeUrl,
     /// Keep the browser and keyring, drop the profile and container (used for
-    /// `--cookies-from-browser`). A bare browser name reads back unchanged; a profile is a path
+    /// `--cookies-from-browser`). A bare browser name reads back unchanged. A profile is a path
     /// under the user's home directory or a name they chose, and either would otherwise sit in a
     /// line the UI shows and a bug report carries.
     BrowserSelector,
@@ -49,12 +49,12 @@ pub(super) fn redact_paths_value(value: &str) -> String {
 /// whose value is an absolute local path belongs here.
 fn redaction_for_flag(flag: &str) -> PendingRedaction {
     match flag {
-        // Both carry an absolute path under the per-user profile: the cookies file location, and
+        // Both carry an absolute path under the per-user profile (the cookies file location, and
         // the ffmpeg binary's parent directory, which falls back to `<app_data_dir>/tools`, i.e.
-        // exactly the `C:\Users\<name>\AppData\...` layout the `--paths` redaction exists to hide.
+        // exactly the `C:\Users\<name>\AppData\...` layout the `--paths` redaction exists to hide).
         "--cookies" | "--ffmpeg-location" => PendingRedaction::FullValue,
         "--paths" => PendingRedaction::PathsValue,
-        // The browser name is not sensitive and stays; a profile or container after it is.
+        // The browser name is not sensitive and stays, but a profile or container after it is.
         "--cookies-from-browser" => PendingRedaction::BrowserSelector,
         // The URL is the only argument after the `--` separator (see build_download_command_args);
         // reduce it so the raw pasted URL, with any playlist/tracking params, never reaches the UI
@@ -67,7 +67,7 @@ fn redaction_for_flag(flag: &str) -> PendingRedaction {
 /// Joins yt-dlp args for display, redacting values that can leak local filesystem paths. The
 /// value after `--cookies` reveals the cookies file location, `--ffmpeg-location` carries the
 /// ffmpeg directory (which can sit under the app cache), and each `--paths` value carries the
-/// temp directory under the user's app cache; all would expose the username/profile layout in a
+/// temp directory under the user's app cache. All would expose the username/profile layout in a
 /// log line that is shown in the app and may be pasted into a public bug report.
 /// `--cookies-from-browser` keeps its browser name (not a path) and loses any profile or container
 /// after it. Which flags are treated as sensitive lives in `redaction_for_flag`, so this loop never

@@ -446,7 +446,7 @@ async fn backfill_missing_title_normalized(conn: &mut SqliteConnection) -> AppRe
         const BACKFILL_CHUNK_ROWS: usize = 400;
 
         for chunk in rows.chunks(BACKFILL_CHUNK_ROWS) {
-            // The only interpolation is the number of `(?, ?)` placeholder groups; every value is
+            // The only interpolation is the number of `(?, ?)` placeholder groups. Every value is
             // bound, never interpolated, so the constructed statement is safe to assert.
             let mut insert_sql =
                 String::from("INSERT INTO _title_normalized_backfill (id, normalized) VALUES ");
@@ -505,11 +505,11 @@ pub(super) async fn apply_migration_11(pool: &SqlitePool) -> AppResult<()> {
         .map_err(|error| db_error("failed to begin schema migration", error))?;
 
     // A database created before v11 (v7..=v10, where the baseline no longer runs) lacks the
-    // column; the guarded additive-columns path adds it. Idempotent on a database that already
+    // column. The guarded additive-columns path adds it. Idempotent on a database that already
     // has it.
     ensure_videos_additive_columns(&mut tx).await?;
 
-    // On a fresh database this repairs nothing; on an upgrade it normalizes each existing title
+    // On a fresh database this repairs nothing. On an upgrade it normalizes each existing title
     // once.
     backfill_missing_title_normalized(&mut tx).await?;
 

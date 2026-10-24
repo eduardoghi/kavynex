@@ -11,7 +11,7 @@ use crate::services::yt_dlp::url::is_allowed_youtube_url;
 use crate::{AppError, AppErrorCode, AppResult};
 
 /// Upper bound on the frontend-supplied `run_id`. The legitimate value is a `crypto.randomUUID()`
-/// (36 chars); this cap leaves generous room while stopping a compromised frontend from driving an
+/// (36 chars). This cap leaves generous room while stopping a compromised frontend from driving an
 /// arbitrarily long value into the download temp-directory name (`{run_id}-{suffix}`), where it
 /// could otherwise blow past filesystem path-length limits. The backend is the trust boundary, so
 /// it validates rather than assuming the run id is well-formed.
@@ -40,7 +40,7 @@ pub(crate) fn is_valid_run_id(run_id: &str) -> bool {
 /// selection such as `137+140`. Every part must be non-empty and must not start with `-`, so
 /// the value placed after `-f` can never be parsed as a yt-dlp flag. This is defense in depth
 /// on top of `resolve_format_has_video`, which additionally requires the id to match a real
-/// format from the fetched metadata: since that metadata is attacker-influenced (it comes from
+/// format from the fetched metadata. Since that metadata is attacker-influenced (it comes from
 /// the video being downloaded), the id is filtered by character class before it is trusted.
 pub(super) fn is_valid_format_id(format_id: &str) -> bool {
     format_id.split('+').all(|part| {
@@ -243,7 +243,7 @@ pub(super) enum DownloadTermination {
     Stalled,
     /// The user (or app exit) cancelled the run.
     Cancelled,
-    /// The child exited non-zero; carries the user-facing message built from its stderr.
+    /// The child exited non-zero and carries the user-facing message built from its stderr.
     Failed(String),
     /// The child exited zero and was neither stalled nor cancelled.
     Succeeded,

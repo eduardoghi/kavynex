@@ -9,7 +9,7 @@
 //! existed when the frontend orchestrated the cleanup over several IPC calls.
 //!
 //! File removal itself happens after the transaction commits (the filesystem cannot join
-//! a SQLite transaction); a failure there is reported and logged but never undoes the
+//! a SQLite transaction). A failure there is reported and logged but never undoes the
 //! committed row deletion, matching the previous best-effort semantics.
 
 use std::collections::BTreeSet;
@@ -348,7 +348,7 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
     if absolute.exists() {
         // Re-resolve symlinks and re-check containment before unlinking, matching the sibling
         // delete_media_file_sync / delete_thumbnail_file_sync. absolute_path_from_relative only
-        // does a lexical check; an intermediate path component that is itself a symlink pointing
+        // does a lexical check. An intermediate path component that is itself a symlink pointing
         // outside the library would otherwise let this remove a file outside the managed tree.
         ensure_existing_path_inside_dir(&absolute, library_dir)?;
 
@@ -368,16 +368,16 @@ fn delete_live_chat_file_at(library_dir: &Path, relative_path: &str) -> AppResul
 /// Nothing else would ever remove it. A derivative is addressed by the canonical thumbnail's own
 /// content hash and no row refers to one (see `services::thumbnail::display`), so the only bound on
 /// that directory is the size sweep at startup, which trims oldest-first once the whole cache
-/// exceeds its budget, and therefore has no relation to what was deleted. Until this ran, deleting a
-/// media left its thumbnail readable in the cache directory until enough unrelated browsing pushed
-/// the cache past its ceiling.
+/// exceeds its budget, and therefore has no relation to what was deleted. Without it, deleting a
+/// media leaves its thumbnail readable in the cache directory until enough unrelated browsing
+/// pushes the cache past its ceiling.
 ///
 /// No reference counting of its own. The caller only reaches here for a path the deletion
 /// transaction already found unreferenced, and the derivative is keyed by that path's content hash,
 /// so two rows sharing a thumbnail share its derivative exactly as they share the file.
 ///
 /// Best effort, and deliberately silent on failure. The canonical file is gone, which is what the
-/// user asked for and what the report is about; a derivative left behind is a regenerable cache
+/// user asked for and what the report is about. A derivative left behind is a regenerable cache
 /// entry the size sweep still reclaims, so failing the delete over it (or adding it to
 /// `failed_paths`, which names files the user may need to clean up by hand) would misreport a
 /// cache miss as an orphaned artifact.
@@ -587,7 +587,7 @@ async fn execute_plan_locked<R: Runtime>(
 
     // Resolve the library directory first, before the recount below, so the recount is the last
     // await before the blocking unlink is scheduled. The window this race is about is the gap
-    // between "the file is still unreferenced" and the unlink; keeping any other await (the library
+    // between "the file is still unreferenced" and the unlink. Keeping any other await (the library
     // resolution here) out of that gap shrinks it to the unavoidable run_blocking handoff. The
     // resolution's own result is only consumed after the recount, so this reordering leaves the
     // reporting on every path (including the library-unavailable one) exactly as it was.
@@ -602,7 +602,7 @@ async fn execute_plan_locked<R: Runtime>(
     let library_dir = match library_dir {
         Ok(dir) => dir,
         Err(error) => {
-            // The rows are already committed as deleted; without a configured library the
+            // The rows are already committed as deleted. Without a configured library the
             // files cannot be located, so report every planned path as failed.
             logger::error(
                 "library_cleanup",
@@ -647,7 +647,7 @@ async fn library_is_reachable<R: Runtime>(app: &AppHandle<R>) -> bool {
 }
 
 /// Deletes a media row and removes its now-unreferenced files from disk. The row deletion
-/// and the "is this file still referenced" decision happen in one transaction; file
+/// and the "is this file still referenced" decision happen in one transaction. File
 /// removal is best-effort and reported back.
 pub async fn delete_media_with_artifacts<R: Runtime>(
     app: &AppHandle<R>,
@@ -729,7 +729,7 @@ pub async fn media_registration_guard() -> tokio::sync::MutexGuard<'static, ()> 
 ///
 /// Media files, thumbnails and live chat replays are content-addressed and can be shared
 /// (the same video added to several channels, a thumbnail reused as a channel avatar), so a
-/// freshly prepared artifact can already back a registered row; such a path is kept.
+/// freshly prepared artifact can already back a registered row. Such a path is kept.
 ///
 /// What the count and the unlink are serialized against. [`MEDIA_REGISTRATION_LOCK`]. A wrapping
 /// transaction cannot help (the unlink necessarily happens after any commit, since the filesystem
@@ -1319,7 +1319,7 @@ pub async fn replace_channel_avatar_and_plan_cleanup(
 
 /// Updates a channel's avatar and removes the previous avatar file when it is no longer
 /// referenced. The row write and the "is the old file still used" decision commit
-/// atomically; the unlink runs after the commit and is reported back.
+/// atomically. The unlink runs after the commit and is reported back.
 pub async fn replace_channel_avatar<R: Runtime>(
     app: &AppHandle<R>,
     channel_id: i64,

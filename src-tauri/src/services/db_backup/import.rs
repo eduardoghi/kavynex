@@ -1,10 +1,10 @@
-//! Importing a user-selected database file: validating it is a healthy kavynex database, staging
-//! it atomically, and swapping it in on the next startup (the live connection pool is a
+//! Importing a user-selected database file means validating it is a healthy kavynex database,
+//! staging it atomically, and swapping it in on the next startup (the live connection pool is a
 //! process-wide singleton that cannot be reopened in-process, so the actual swap is deferred).
 //! The undo path reuses the same machinery to revert the last import.
 //!
 //! Tests for everything here live in the parent module's `mod tests`, alongside the backup and
-//! restore tests they share helpers with; the internals those tests reach are `pub(super)`.
+//! restore tests they share helpers with. The internals those tests reach are `pub(super)`.
 
 use std::path::{Path, PathBuf};
 
@@ -119,8 +119,8 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     // absent. A look-alike or hand-built database that named the columns but omitted the
     // constraints. Three of those cannot be repaired after the swap and must land here as a refused
     // import. Without the (channel_id, file_path) unique index the insert_media upsert's
-    // ON CONFLICT target has nothing to match, so every insert fails; without the videos -> channels
-    // ON DELETE CASCADE a channel delete leaves its videos orphaned; and without the
+    // ON CONFLICT target has nothing to match, so every insert fails. Without the videos -> channels
+    // ON DELETE CASCADE a channel delete leaves its videos orphaned. Without the
     // video_comments -> videos ON DELETE CASCADE a media delete (a bare DELETE FROM videos, see
     // library::cleanup) leaves that media's comment rows orphaned forever, with nothing in the
     // library diagnostics to reconcile them. Enabling PRAGMA foreign_keys cannot rescue any of
@@ -235,7 +235,7 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
     // stored `live_chat_file_path`). It is a CHECK on a fresh table and a pair of triggers on an
     // upgraded one, but an import replaces the whole file, so no write ever fires and neither
     // enforces it against pre-existing rows. A database stamped at v13 or later claims to satisfy it
-    // already, so `ensure_schema` skips the migration that would repair it; a violating row would
+    // already, so `ensure_schema` skips the migration that would repair it. A violating row would
     // then sit in the library flagged as having a live chat with no file behind it. A state
     // `get_media_repository_stats` already tracks as an inconsistency. Refuse it here, exactly as
     // the `title_normalized` check above does for the sibling invariant from the same migration.
@@ -327,12 +327,12 @@ async fn count_unmanaged_stored_paths(pool: &SqlitePool) -> AppResult<usize> {
     Ok(unmanaged)
 }
 
-/// The two settings that describe this machine rather than the library: where the library folder
-/// is, and where the daily external mirror goes.
+/// The two settings that describe this machine rather than the library (where the library folder
+/// is, and where the daily external mirror goes).
 ///
 /// An imported database brings its own, written on whatever machine it came from. Taken as they
-/// are, they replaced this machine's library folder with a path that may not exist here (every
-/// media then reads as missing), and they skipped the checks `set_app_settings` makes on that
+/// are, they would replace this machine's library folder with a path that may not exist here (every
+/// media then reads as missing), and would skip the checks `set_app_settings` makes on that
 /// path (an existing directory, not a drive root, not inside the config directory), although the
 /// library guard trusts the stored value from then on.
 ///
@@ -519,7 +519,7 @@ pub async fn stage_database_import(
         // discarded. It answers `busy = 1` when another connection held a lock and frames were
         // left behind. Copying then produces a database quietly missing its most recent commits,
         // which is worse than refusing. The user would have no way to tell. `log` is the frames
-        // still in the WAL afterwards, so `busy` alone is not the test: a busy answer with an
+        // still in the WAL afterwards, so `busy` alone is not the test, since a busy answer with an
         // empty WAL has nothing left to lose and is fine to import.
         let checkpoint = sqlx::query_as::<_, (i64, i64, i64)>("PRAGMA wal_checkpoint(TRUNCATE)")
             .fetch_optional(&pool)
@@ -782,7 +782,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
     if !staged.exists() {
         // Normally there is nothing to apply. But a marker with a `.pre-import` behind it means an
         // earlier run died mid-swap and `.pre-import` holds the only copy of the database. The main
-        // path below handles that when the staged file is still present; if the staged file was
+        // path below handles that when the staged file is still present. If the staged file was
         // additionally lost in that window, this early return would let the pool create an empty
         // database over the stranded snapshot. Restore it here instead so that cannot happen.
         if marker.exists() && pre_import.exists() {
@@ -894,7 +894,7 @@ pub fn apply_pending_database_import(db_path: &Path) -> AppResult<bool> {
 
     if let Err(error) = crate::services::filesystem::rename_retrying(&staged, db_path) {
         // Roll the previous database back so the app is never left without one. When the rollback
-        // succeeds the database is whole again and the marker has to go with it; when it fails,
+        // succeeds the database is whole again and the marker has to go with it. When it fails,
         // the marker is exactly what tells the next run that `.pre-import` is the only real copy.
         if crate::services::filesystem::rename_retrying(&pre_import, db_path).is_ok() {
             let _ = move_wal_with(&pre_import, db_path);

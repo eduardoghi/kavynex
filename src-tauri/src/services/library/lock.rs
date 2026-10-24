@@ -2,8 +2,8 @@
 //!
 //! A library migration copies every managed subdirectory (video/audio/thumbnails/live_chat)
 //! to the new location and then removes the old one (`library::migration::migrate_library_contents_with_marker`).
-//! Nothing else stopped a concurrent import/download/delete from writing a brand-new file into
-//! the old directory in the window between the copy and the `remove_dir_all`; that file would be
+//! Without a gate, a concurrent import/download/delete could write a brand-new file into
+//! the old directory in the window between the copy and the `remove_dir_all`. That file would be
 //! silently deleted and never reach the new location, with the operation still reporting success.
 //! It is the only path in the app that can lose user data silently and permanently.
 //!
@@ -28,7 +28,7 @@
 //! IMPORTANT: a guarded function must never call another guarded function while holding the
 //! guard. A nested read acquisition can deadlock against a waiting writer (`std::sync::RwLock`
 //! makes no reentrancy guarantee). Acquiring the guard once per file inside a loop (release
-//! between iterations) is fine; nesting is not. In debug and test builds this rule is enforced by
+//! between iterations) is fine. Nesting is not. In debug and test builds this rule is enforced by
 //! a per-thread depth check that panics at the offending acquisition (see `library_read_guard`),
 //! not left to code review alone.
 
@@ -47,8 +47,8 @@ fn library_operation_gate() -> &'static RwLock<()> {
 }
 
 /// RAII guard returned by [`library_read_guard`]. Holding it is what serializes a single library
-/// write or delete against a migration; drop it as soon as that fs work is done. Behaves like the
-/// `RwLockReadGuard` it wraps; in debug and test builds it additionally maintains the per-thread
+/// write or delete against a migration. Drop it as soon as that fs work is done. Behaves like the
+/// `RwLockReadGuard` it wraps. In debug and test builds it additionally maintains the per-thread
 /// read-guard depth that backs the no-nesting check (see [`library_read_guard`]).
 pub struct LibraryReadGuard {
     _inner: RwLockReadGuard<'static, ()>,
@@ -70,7 +70,7 @@ impl Drop for LibraryReadGuard {
 }
 
 /// Acquires the shared (read) side of the library gate. Hold the returned guard for the extent
-/// of a single library write or delete; drop it as soon as that fs work is done.
+/// of a single library write or delete. Drop it as soon as that fs work is done.
 ///
 /// The module's no-nesting rule (a guarded leaf function must never acquire a second read guard
 /// while holding one) is otherwise convention-only, and violating it can deadlock against a

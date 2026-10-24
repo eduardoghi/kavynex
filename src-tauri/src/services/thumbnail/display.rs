@@ -73,7 +73,7 @@ const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_mi
 /// Sized so a legitimate call never meets it, which is the constraint that matters and the one that
 /// is easy to get wrong. A full page of 100 real generations runs a few seconds. Even at 300ms
 /// each (a cold disk on a slow machine) it is 30s. Cutting close to that would recreate the bug
-/// [`MAX_GENERATIONS_PER_CALL`] was raised from 64 to fix: the tail of a first-visited page would
+/// [`MAX_GENERATIONS_PER_CALL`] was raised from 64 to fix. The tail of a first-visited page would
 /// come back unresolved, and a channel that fits in one page has no later append to trigger the
 /// retry, so those cards would keep decoding the stored file for the session. This is four times a
 /// slow full page, and still turns the pathological case from ~33 minutes into two.
@@ -595,7 +595,7 @@ fn resolve_one(
     // The resolution above is lexical. A symlink planted under `thumbnails/` would otherwise have
     // its target handed to FFmpeg, and the derivative written into `thumb-display/`, which is one
     // of the two cache directories the webview is authorized to read. Every directory walk in the
-    // library family refuses to follow a symlink; this single-path reader applies the same rule.
+    // library family refuses to follow a symlink. This single-path reader applies the same rule.
     // Permanent, like the other refusals here. It is a property of what sits at the stored path.
     if crate::services::filesystem::path_is_symlink(&source_path) {
         return DisplayThumbnail::Unavailable;

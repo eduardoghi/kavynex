@@ -118,11 +118,11 @@ mod tests {
         // undownloadable. Read the CSP as the source and assert every entry is covered.
         //
         // Both spellings of the policy, because `devCsp` is a *third* copy of the same host list
-        // and it had no gate at all. The two are identical today; a divergence would be silent and
-        // asymmetric. A host reaching only one of them renders a thumbnail under `pnpm tauri dev`
-        // that a packaged build refuses, or the reverse. That is the same dev-versus-packaged
-        // asymmetry `THREAT-MODEL.md` already records for the `asset:`/`http://asset.localhost`
-        // token pair, and the reason `--webview-check` exists at all. Nothing in the normal loop
+        // and would otherwise have no gate at all. The two are identical today. A divergence would
+        // be silent and asymmetric. A host reaching only one of them renders a thumbnail under
+        // `pnpm tauri dev` that a packaged build refuses, or the reverse. That is the same
+        // dev-versus-packaged asymmetry `THREAT-MODEL.md` already records for the
+        // `asset:`/`http://asset.localhost` token pair, and the reason `--webview-check` exists at all. Nothing in the normal loop
         // applies the packaged CSP, so a mistake in it is not observable until a release.
         let raw = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/tauri.conf.json"));
         let config: serde_json::Value =

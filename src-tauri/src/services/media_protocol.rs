@@ -160,7 +160,7 @@ pub(crate) fn parse_byte_range(header: &str, len: u64) -> Option<(u64, u64)> {
     let raw_end = raw_end.trim();
 
     if raw_start.is_empty() {
-        // Suffix form: the last `raw_end` bytes.
+        // Suffix form means the last `raw_end` bytes.
         let suffix: u64 = raw_end.parse().ok()?;
 
         if suffix == 0 {
@@ -229,7 +229,7 @@ pub(crate) fn plan_range(range_header: Option<&str>, len: u64, cap: u64) -> Rang
 ///
 /// Kept separate from the parsing and from the file I/O because this is where the truncation the
 /// whole module exists to bound actually happens, and it is the one piece whose off-by-one has a
-/// visible consequence: a `Content-Range` that disagrees with the body by a byte is a corrupt
+/// visible consequence, since a `Content-Range` that disagrees with the body by a byte is a corrupt
 /// response rather than a short one.
 pub(crate) fn clamp_range(start: u64, end: u64, len: u64, cap: u64) -> (u64, u64) {
     if len == 0 {
@@ -249,7 +249,7 @@ pub(crate) fn clamp_range(start: u64, end: u64, len: u64, cap: u64) -> (u64, u64
 ///
 /// The library only ever holds what `library::media` accepted on import or what yt-dlp produced, so
 /// this covers those and falls back to a generic binary type rather than guessing. A wrong specific
-/// type is worse than an unspecific one: the media stack trusts it.
+/// type is worse than an unspecific one, because the media stack trusts it.
 pub(crate) fn media_content_type(path: &Path) -> &'static str {
     let extension = path
         .extension()
@@ -819,7 +819,7 @@ mod tests {
         assert_eq!(plan_range(None, 0, 16), RangePlan::Empty);
         assert_eq!(plan_range(Some("bytes=0-"), 0, 16), RangePlan::Empty);
 
-        // No header: the first window, never the whole file.
+        // No header gets the first window, never the whole file.
         assert_eq!(plan_range(None, 100, 16), RangePlan::Window(0, 15));
         assert_eq!(plan_range(None, 10, 16), RangePlan::Window(0, 9));
 

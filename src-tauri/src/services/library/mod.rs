@@ -1,6 +1,6 @@
 //! The library feature family. The user-chosen media directory, everything that reads, writes,
 //! validates or repairs it. Each concern is a submodule here rather than a `library_*` sibling of
-//! this file; see `services/mod.rs` for why the grouping exists.
+//! this file. See `services/mod.rs` for why the grouping exists.
 //!
 //! This module itself keeps the "reveal a path in the system file manager" flow plus the
 //! re-exports the command layer imports, so a caller that only needs the common entry points does
@@ -69,7 +69,7 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
     // Refuse UNC / network locations before any filesystem call. `path` arrives over IPC, and the
     // `canonicalize` calls below are what would trigger the SMB/NTLM handshake for a
     // `\\host\share` spelling. The cost is that a library kept on a network share loses only the
-    // "reveal in file manager" convenience; playback, import and download are unaffected.
+    // "reveal in file manager" convenience, and playback, import and download are unaffected.
     if is_network_path(base_library) || is_network_path(&resolved_path.to_string_lossy()) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidMediaPath,
@@ -217,8 +217,8 @@ mod tests {
     fn resolve_path_inside_library_rejects_network_bases_including_mixed_separators() {
         // The network-path guard must fire before any canonicalize reaches the SMB stack. The
         // mixed-separator forms (`/\host\share`, `\/host\share`) are the ones a literal `\\`/`//`
-        // prefix match missed; Windows resolves them to a UNC path all the same. `is_network_path`
-        // is exercised exhaustively in utils::path; here it is pinned at this call site.
+        // prefix match misses. Windows resolves them to a UNC path all the same. `is_network_path`
+        // is exercised exhaustively in utils::path. Here it is pinned at this call site.
         for base in [
             r"\\server\share",
             "//server/share",
@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn rejects_network_path_as_the_target() {
         // A caller that drives IPC could pass a UNC path as both `path` and `library_path`,
-        // making the containment check self-referential; it must be rejected before any
+        // making the containment check self-referential. It must be rejected before any
         // filesystem call (canonicalize) can trigger an SMB/NTLM handshake.
         let error = resolve_path_inside_library(r"\\attacker\share", Some(r"\\attacker\share"))
             .unwrap_err();

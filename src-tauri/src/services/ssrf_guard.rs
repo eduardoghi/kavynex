@@ -2,14 +2,14 @@
 //! behind the thumbnail/avatar downloader in `services::thumbnail::download`). Kept in its own
 //! module (pure, dependency-free, no network or filesystem), so the whole classifier can sit under
 //! the mutation gate (`.cargo/mutants.toml`) without dragging in the downloader's untestable async
-//! network code. `is_disallowed_ip` is the only entry point the downloader uses; it is applied both
+//! network code. `is_disallowed_ip` is the only entry point the downloader uses. It is applied both
 //! as a pre-connection check and inside the pinned DNS resolver, so the address that is validated is
 //! the address that is dialed.
 //!
 //! The tunnel-embedded-IPv4 decoders (6to4/NAT64/Teredo) are separate functions purely so their bit
 //! arithmetic can be pinned by exact-value tests. A classification-only test misses a swapped
 //! shift/mask/XOR whenever the wrong octet still lands in the same allow/deny band, which is exactly
-//! how those operator mutations survived before this split.
+//! how those operator mutations survive without this split.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -86,7 +86,7 @@ fn is_disallowed_ipv6(addr: &Ipv6Addr) -> bool {
     // embeds it in the low 32 bits (segments 6 and 7). Neither is decoded by
     // to_ipv4()/to_ipv4_mapped above, so a AAAA record in one of these forms could smuggle a
     // private/loopback IPv4 past the checks. Extract the embedded address and re-check it by the
-    // same IPv4 rules; a genuinely public embedded address is left allowed.
+    // same IPv4 rules. A genuinely public embedded address is left allowed.
     if segments[0] == 0x2002 {
         let embedded = embedded_6to4_ipv4(&segments);
 
@@ -229,7 +229,7 @@ mod tests {
             "2606:4700:4700::1111",
             "2002:0808:0808::",   // 6to4 wrapping the public 8.8.8.8 stays allowed
             "64:ff9b::0808:0808", // nat64 wrapping the public 8.8.8.8 stays allowed
-            // A public, non-Teredo 2001: address: the Teredo prefix is 2001:0000::/32, so this must
+            // A public, non-Teredo 2001: address. The Teredo prefix is 2001:0000::/32, so this must
             // not be decoded as Teredo. Pins the `segments[0] == 0x2001 && segments[1] == 0x0000`
             // conjunction. A weakened `&&` would treat it as Teredo and re-check a bogus embedded IP.
             "2001:4860:4860::8888",

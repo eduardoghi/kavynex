@@ -1,6 +1,6 @@
 // Service modules, grouped into a directory per feature family once a family outgrew a flat
 // prefix. `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven sibling files whose
-// shared prefix was already naming a directory; making it one applies the same rule
+// shared prefix was already naming a directory. Making it one applies the same rule
 // docs/ARCHITECTURE.md states for a file that outgrows itself (db_backup/, db_schema/,
 // video_repository/, yt_dlp/download/) to a *concept* that outgrows itself. Within a family,
 // siblings reach each other through `super::`, matching those existing directories.

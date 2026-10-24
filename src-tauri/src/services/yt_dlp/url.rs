@@ -20,7 +20,7 @@ fn is_allowed_youtube_host(host: &str) -> bool {
 /// Builds a privacy-reduced reference to a YouTube URL for the file log. The canonical video id
 /// when it can be extracted, otherwise the host and path alone. The full URL a user pastes can
 /// carry extra query parameters (playlist ids, referral/tracking params, timestamps) beyond the
-/// video itself; logging just `host/watch?v=<id>` (or `youtu.be/<id>`) keeps the log useful for
+/// video itself. Logging just `host/watch?v=<id>` (or `youtu.be/<id>`) keeps the log useful for
 /// diagnosis without recording those extras, which may end up in a public bug report.
 pub fn youtube_ref_for_log(url: &str) -> String {
     let Ok(uri) = url.trim().parse::<Uri>() else {

@@ -38,7 +38,7 @@ pub(crate) fn content_addressed_media_name(digest: &str, extension: &str) -> Str
 }
 
 /// Imports a media file with no way to interrupt it. The shape the tests and any future
-/// non-interactive caller want; the user-facing path goes through
+/// non-interactive caller want. The user-facing path goes through
 /// [`stage_media_import_cancellable_sync`].
 pub fn import_media_file_sync(
     path: &str,
@@ -50,7 +50,7 @@ pub fn import_media_file_sync(
 
 /// Imports a media file and, in Move mode, removes the source straight away.
 ///
-/// For a caller with nothing to register in between. Media creation must not use this: it
+/// For a caller with nothing to register in between. Media creation must not use this, because it
 /// removes the source before any row points at the library copy, which is the window
 /// [`stage_media_import_cancellable_sync`] exists to close.
 pub fn import_media_file_cancellable_sync(
@@ -107,10 +107,11 @@ pub fn remove_moved_import_source_sync(source: &Path) -> AppResult<()> {
 /// source is left where it was whenever the volume allows it, and [`StagedMediaImport`] says what
 /// is still owed to it.
 ///
-/// A local import is the only long operation in this app the user had no way out of. A yt-dlp
-/// download has a stall detector, a timeout, a tree-kill and a Cancel button; an import of a 50 GB
-/// file from a slow external drive had none of that, and the add-media modal stays locked while it
-/// runs, so the only exit was killing the app, which the crash marker then had to clean up after.
+/// Without the flag, a local import would be the only long operation in this app the user has no
+/// way out of. A yt-dlp download has a stall detector, a timeout, a tree-kill and a Cancel button,
+/// but an import of a 50 GB file from a slow external drive has none of that, and the add-media
+/// modal stays locked while it runs, so the only exit would be killing the app, which the crash
+/// marker then has to clean up after.
 ///
 /// The flag is polled at three places, which between them cover the whole of the wall clock. Before
 /// any work starts, throughout the hash (a full read pass over the source, and the *first* long
@@ -119,8 +120,8 @@ pub fn remove_moved_import_source_sync(source: &Path) -> AppResult<()> {
 /// abandoning *there* is what would leave a half-finished file where the atomic write was about to
 /// succeed.
 ///
-/// Nothing is left behind by a cancel. The hash writes nothing; the copy stages through a `.tmp-`
-/// sibling that its own error path removes; and a cancel before the rename means the library never
+/// Nothing is left behind by a cancel. The hash writes nothing. The copy stages through a `.tmp-`
+/// sibling that its own error path removes, and a cancel before the rename means the library never
 /// saw the file at all.
 pub fn stage_media_import_cancellable_sync(
     path: &str,
@@ -134,7 +135,7 @@ pub fn stage_media_import_cancellable_sync(
     // caller-supplied (the user picks a file anywhere on disk), and in Move mode the original is
     // removed, so a `\\host\share` source would both make Windows authenticate to `host` over SMB
     // (leaking the NTLM hash) and let a delete land on a network file. The picker never yields such a
-    // path for a normal selection; this closes the value a compromised frontend could inject. It does
+    // path for a normal selection. This closes the value a compromised frontend could inject. It does
     // not make Move safe against an arbitrary *local* source a compromised renderer names (that is
     // inherent to importing a user-picked file and is the subject of the separate path-authority
     // hardening), but it removes the network/NTLM angle here, matching the thumbnail source guard.

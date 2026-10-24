@@ -532,7 +532,7 @@ mod tests {
     #[test]
     fn fs_error_redacts_the_path_to_its_final_component() {
         // fs_error is the one place that wires logger::redact_path into an AppError's `details`.
-        // redact_path itself is tested in services::logger; this pins the integration, so a
+        // redact_path itself is tested in services::logger. This pins the integration, so a
         // regression that passes the raw `path` instead of the redacted one is caught here rather
         // than silently leaking the user's profile directory into a pasted error string.
         let io_error =

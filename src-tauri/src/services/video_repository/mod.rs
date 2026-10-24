@@ -9,7 +9,7 @@ use crate::utils::text::normalize_search_text;
 use crate::utils::validation::{ensure_valid_media_title, ensure_valid_media_type};
 use crate::{AppError, AppErrorCode, AppResult};
 
-// `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`; the Tauri IPC layer
+// `id`/counts/flags are i64 in Rust but ts-rs would emit `bigint`. The Tauri IPC layer
 // serializes them as JSON numbers, so the runtime value is a JS `number`. `media_type` is
 // refined to the union the app relies on. These per-field overrides keep the generated
 // type identical to what `invoke` actually returns.
@@ -38,7 +38,7 @@ pub struct MediaRow {
     #[cfg_attr(test, ts(type = "number"))]
     pub comments_count: i64,
     /// What a comment fetch last concluded. `unknown`, `none` or `available`. See
-    /// `media_comments::CommentsState`; the CHECK on the column keeps it to those three, and
+    /// `media_comments::CommentsState`. The CHECK on the column keeps it to those three, and
     /// the player reads it to decide whether offering a Fetch button would be honest.
     #[cfg_attr(test, ts(type = "\"unknown\" | \"none\" | \"available\""))]
     pub comments_state: String,
@@ -194,7 +194,7 @@ const MAX_SEARCH_TERM_CHARS: usize = 200;
 /// client, which needs them all in one shot, so this is not a page size but a defensive ceiling. A
 /// video with a pathologically large comment backup would otherwise pull every row into memory,
 /// across IPC, and through client-side validation and tree-building on the main thread. The earliest
-/// rows are kept (ORDER BY id ASC); the frontend compares the loaded count against the stored
+/// rows are kept (ORDER BY id ASC). The frontend compares the loaded count against the stored
 /// `comments_count` and tells the user when some were not loaded. Set high enough that no realistic
 /// backup is ever truncated.
 const MAX_MEDIA_COMMENTS_LOADED: i64 = 50_000;
@@ -211,7 +211,7 @@ const MEDIA_COLUMNS: &str = "id, channel_id, title, file_path, thumbnail_path, m
     comments_count, comments_state, is_live, has_live_chat, live_chat_file_path, created_at";
 
 // The channel media grid's paginated query and its filter/sort SQL-building helpers live in the
-// `media_page` submodule. list_media_page is re-exported; resolve_order_by is reached by the
+// `media_page` submodule. list_media_page is re-exported, and resolve_order_by is reached by the
 // parent's EXPLAIN-QUERY-PLAN tests.
 mod media_page;
 pub use media_page::list_media_page;
@@ -312,7 +312,7 @@ pub async fn media_exists_for_channel_and_youtube_id(
 ///
 /// So the rule the rest of the backend follows applies here too. Every write boundary calls the
 /// shared validators. The paths must be managed and library-relative, because the deletion path acts
-/// on whatever a row holds; the text fields are validated and stored trimmed, because the partial
+/// on whatever a row holds. The text fields are validated and stored trimmed, because the partial
 /// unique index on `youtube_video_id` compares the stored column verbatim and a padded value would
 /// dodge the dedupe.
 #[allow(clippy::too_many_arguments)]

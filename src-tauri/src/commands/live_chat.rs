@@ -413,7 +413,7 @@ mod tests {
     /// arrives as an ordinary `"__CHANNEL__:<id>"` string (see `tauri::ipc::channel::IPC_PAYLOAD_PREFIX`
     /// and `JavaScriptChannelId`), which `Channel`'s `CommandArg` impl turns into a real channel bound
     /// to this webview, so no test-only substitute is needed for the command side. The interceptor is
-    /// what lets a test see what was sent without a real renderer to run the generated JS in; the
+    /// what lets a test see what was sent without a real renderer to run the generated JS in. The
     /// mock runtime's own `eval` is a harmless no-op, but it also has no way to hand the payload back.
     fn test_webview(
         db: Db,
@@ -432,7 +432,7 @@ mod tests {
                     }
                 }
 
-                // Consumed: nothing here needs the JS side of the channel, only the payload.
+                // Consumed. Nothing here needs the JS side of the channel, only the payload.
                 true
             })
             .invoke_handler(tauri::generate_handler![

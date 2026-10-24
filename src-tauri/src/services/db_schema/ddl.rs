@@ -1,7 +1,7 @@
-//! The schema's DDL as data: the `CREATE TABLE`/index/trigger statements and the additive-column
-//! list the migrations in the parent module apply. Constants plus the version filter over the index
-//! list, split out so the migration code reads as migration steps rather than being buried under the
-//! SQL text. `pub(super)` so the parent (and its tests, via `super::*`) reach them.
+//! The schema's DDL as data (the `CREATE TABLE`/index/trigger statements and the additive-column
+//! list the migrations in the parent module apply). Constants plus the version filter over the
+//! index list, split out so the migration code reads as migration steps rather than being buried
+//! under the SQL text. `pub(super)` so the parent (and its tests, via `super::*`) reach them.
 
 use super::BASELINE_SCHEMA_VERSION;
 

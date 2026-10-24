@@ -129,7 +129,7 @@ fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
     } else if normalized.starts_with('@')
         // The frontend also accepts and stores the `channel/UC...`, `c/name` and `user/name` forms
         // (see `normalizeYoutubeHandle` in src/utils/youtube.ts). These are path prefixes, not
-        // handles, so they must be appended as-is; prefixing them with `@` (the fallback below)
+        // handles, so they must be appended as-is. Prefixing them with `@` (the fallback below)
         // would build a broken URL such as `https://www.youtube.com/@channel/UC...`.
         || normalized.starts_with("channel/")
         || normalized.starts_with("c/")
@@ -210,13 +210,13 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
             // Restrict the fetch to the image CDNs before it goes out, matching the host gate the
             // yt-dlp fallback below has always applied. `http_get_image`'s SSRF guard keeps this
             // off internal addresses and its size/content-type/magic-byte checks bound what comes
-            // back, but all three constrain the *response*. None of them stopped the request from
+            // back, but all three constrain the *response*. None of them stops the request from
             // reaching an arbitrary public host in the first place. See
             // services::thumbnail::url for the list and why it is not the yt-dlp one.
             //
-            // This gates where the fetch starts; the same predicate is applied to every redirect
-            // destination inside `http_get_image` (through `redirect::next_hop`), because for a
-            // while this check alone read as a gate on the whole operation and was not one.
+            // This gates where the fetch starts. The same predicate is applied to every redirect
+            // destination inside `http_get_image` (through `redirect::next_hop`), because
+            // this check alone reads as a gate on the whole operation and is not one.
             let direct_uri: Uri = normalized_url.parse().map_err(|e| {
                 AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
             })?;
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn normalize_channel_handle_builds_url_from_channel_c_and_user_prefixes() {
         // These prefixed forms are accepted and stored by the frontend
-        // (normalizeYoutubeHandle); the backend must turn them into the matching path URL
+        // (normalizeYoutubeHandle). The backend must turn them into the matching path URL
         // instead of prefixing them with `@`.
         assert_eq!(
             normalize_channel_handle_to_url("channel/UCabcdEFGH1234567890xyzA").unwrap(),

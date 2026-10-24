@@ -453,7 +453,7 @@ impl ManagedSubtree {
 /// Resolves a library-relative path to an absolute one inside `base_dir`, refusing anything that is
 /// not in `subtree`.
 ///
-/// The `subtree` argument is what makes the managed-directory rule impossible to omit; see
+/// The `subtree` argument is what makes the managed-directory rule impossible to omit. See
 /// [`ManagedSubtree`] for the two production bugs that came from it being a separate, forgettable
 /// call. Note what this does *not* do. The containment check here is lexical, so a caller unlinking
 /// or reading the result still re-checks it with [`ensure_existing_path_inside_dir`], which
@@ -589,7 +589,7 @@ mod tests {
             r"\\?\GLOBALROOT\Device\Mup\server\share",
             r"\\.\globalroot\device\mup\server\share",
             r"\\.\LanmanRedirector\server\share",
-            // Not a drive: a digit where the letter goes, and a letter with no colon.
+            // Not a drive (a digit where the letter goes, and a letter with no colon).
             r"\\?\1:\video.mp4",
             r"\\?\C",
             // A drive or volume that `..` steps out of, into the namespace root, after Win32
@@ -601,7 +601,7 @@ mod tests {
             r"\\?\C:\.\video.mp4",
             // Not a share, but a device name no media path needs, refused with them.
             r"\\.\PhysicalDrive0",
-            // Mixed separators that Windows normalizes to a UNC path; a literal `\\`/`//` prefix
+            // Mixed separators that Windows normalizes to a UNC path. A literal `\\`/`//` prefix
             // match misses these, which is exactly the bypass this normalization closes.
             r"/\server\share",
             r"\/server\share",
@@ -866,7 +866,7 @@ mod tests {
 
     #[test]
     fn absolute_path_from_relative_accepts_both_media_directories() {
-        // `Media` covers two directories because a media row's kind is data: the delete that
+        // `Media` covers two directories because a media row's kind is data, so the delete that
         // removes one cannot know whether it was a video or an audio download ahead of time.
         let base_dir = unique_test_dir();
         fs::create_dir_all(&base_dir).unwrap();

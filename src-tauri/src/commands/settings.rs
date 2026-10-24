@@ -21,7 +21,7 @@ pub async fn get_app_settings(db: State<'_, Db>) -> AppResult<StoredAppSettings>
     // new path. If the configured library lost its content but a commit marker points at a
     // populated directory, adopt it before returning, so the frontend never sees the library as
     // "disappeared". Best effort and cheap in the common case (a single stat of a missing
-    // marker); see services::library::recovery.
+    // marker). See services::library::recovery.
     if let Some(config_dir) = db.path().parent() {
         library::recovery::reconcile_interrupted_migration(&pool, config_dir).await;
     }
@@ -66,7 +66,7 @@ pub async fn set_app_settings(
         }
 
         // The database file lives directly in the app config directory, so its parent is that
-        // directory (the same derivation get_app_settings uses); the library must not be nested
+        // directory (the same derivation get_app_settings uses). The library must not be nested
         // inside it.
         let config_dir = db.path().parent().map(Path::to_path_buf);
 
@@ -147,7 +147,8 @@ pub async fn set_external_backup_dir(db: State<'_, Db>, path: String) -> AppResu
     }
 
     // The database file lives directly in the app config directory, so its parent is that directory
-    // (the same derivation set_app_settings uses); the external mirror must not be nested inside it.
+    // (the same derivation set_app_settings uses). The external mirror must not be nested inside
+    // it.
     let config_dir = db.path().parent().map(Path::to_path_buf);
 
     // Validate off the async runtime. std::fs::metadata touches the filesystem (and can block on a

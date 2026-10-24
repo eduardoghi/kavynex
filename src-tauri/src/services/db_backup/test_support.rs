@@ -8,7 +8,7 @@
 //! decide the question again and reach the same answer.
 //!
 //! With the helpers here, a test can live next to the function it exercises. `integrity.rs` is the
-//! first to do so; the rest follow when their own submodule is next touched, rather than as one
+//! first to do so. The rest follow when their own submodule is next touched, rather than as one
 //! large move of tests nobody is otherwise changing.
 //!
 //! `#[cfg(test)]` at the declaration and `pub(super)` here. This is scaffolding compiled only for

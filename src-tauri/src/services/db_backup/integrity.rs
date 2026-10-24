@@ -1,7 +1,7 @@
 //! The full `PRAGMA integrity_check` and the throttle that runs it in the background.
 //!
 //! The automatic paths (open, backup) use the fast, shallow `quick_check` (see the shared helpers
-//! in the parent module); this is the thorough check a subtly damaged page can otherwise slip past.
+//! in the parent module). This is the thorough check a subtly damaged page can otherwise slip past.
 //!
 //! Tests live in the parent module's `mod tests`, which reaches the test-only internals here
 //! (`integrity_check_marker_path`, `MAX_INTEGRITY_PROBLEMS`) through the parent's `#[cfg(test)] use`.
@@ -84,7 +84,7 @@ pub async fn run_full_integrity_check(pool: &SqlitePool) -> AppResult<DatabaseIn
         }
     };
 
-    // The healthy answer is exactly one row reading `ok`; anything else is a list of problems.
+    // The healthy answer is exactly one row reading `ok`. Anything else is a list of problems.
     // Checking the shape rather than just the first row keeps a database that somehow reports `ok`
     // alongside real problems from being called sound.
     let ok = rows.len() == 1 && rows[0].0 == "ok";

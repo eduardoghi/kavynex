@@ -141,7 +141,7 @@ pub struct YtDlpMetadata {
     pub upload_date: Option<String>,
     pub thumbnail: Option<String>,
     // Every thumbnail yt-dlp knows of, in ascending preference. Entries with a width are the ones
-    // YouTube declared; the rest are URLs yt-dlp guesses at, which 404 on older videos.
+    // YouTube declared. The rest are URLs yt-dlp guesses at, which 404 on older videos.
     #[serde(default)]
     pub thumbnails: Vec<YtDlpThumbnailMetadata>,
     pub live_status: Option<String>,
@@ -230,7 +230,7 @@ pub struct YtDlpCommentMetadata {
 }
 
 // Exposed to the frontend as `YtDlpFormat`. u64 fields are annotated `number` (Tauri
-// serializes them as JSON numbers, not the bigint ts-rs emits by default); f64 fields map
+// serializes them as JSON numbers, not the bigint ts-rs emits by default), and f64 fields map
 // to `number` natively.
 //
 // Carries no display label or presentation order on purpose. The frontend cannot use either.

@@ -63,7 +63,7 @@ pub fn hash_while_copying<R: Read, W: Write>(reader: &mut R, writer: &mut W) -> 
 }
 
 /// Hex-encodes a finished hasher. sha2 0.11 returns a hybrid-array `Array` (no `LowerHex`), so the
-/// encoding is spelled out; sharing it keeps the two producers here from drifting into different
+/// encoding is spelled out. Sharing it keeps the two producers here from drifting into different
 /// casings, which would silently break any comparison between them.
 pub(crate) fn hex_digest(hasher: Sha256) -> String {
     hasher
@@ -166,7 +166,7 @@ mod tests {
         File::create(&path).unwrap().write_all(b"abc").unwrap();
 
         // Content-addressed media/thumbnail filenames depend on this exact, stable,
-        // lowercase-hex output; it must not change across sha2 upgrades.
+        // lowercase-hex output. It must not change across sha2 upgrades.
         assert_eq!(
             file_hash(&path).unwrap(),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
