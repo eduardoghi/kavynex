@@ -463,24 +463,21 @@ jobs:
         name: Open an issue on failure
         # The freshness jobs too. They report being behind through issues of their own and go red
         # only when they could not answer at all (an API error, a version they could not read),
-        # which used to reach nothing but an email.
+        # which would otherwise reach nothing but an email.
         needs: [js-advisories, rust-advisories, yt-dlp-fixture-freshness, sqlite-freshness, cargo-tool-pins]
-        # Not `if: failure()`, which is what this said and which does not do what it reads as. A job
-        # killed by its own `timeout-minutes` is marked **cancelled**, not failed, and `failure()`
+        # Not `if: failure()`, which does not do what it reads as. A job killed by its own
+        # `timeout-minutes` is marked **cancelled**, not failed, and `failure()`
         # does not match cancelled, so the alert is skipped on exactly the run where the gate
-        # stopped producing a verdict. That is the worse half of the failure: a gate that fails
-        # loudly is merely broken, while a gate that goes silent reads as green.
+        # stopped producing a verdict. A gate that fails loudly is merely broken, while a gate that
+        # goes silent reads as green.
         #
-        # It is not hypothetical here. Both jobs above `cargo install` two tools from source with no
-        # build cache under a 30-minute ceiling, which is the shape that hits a timeout first. And it
-        # already happened once in this repository, to mutation.yml's identical job on 2026-07-27.
-        # That job's condition was fixed then and this one was not, even though this file was
-        # revisited afterwards for the GH_REPO half of the same lesson (see below).
+        # Both jobs above `cargo install` two tools from source with no build cache under a
+        # 30-minute ceiling, which is the shape that hits a timeout first.
         #
         # So the dependency results are checked explicitly rather than leaning on a status function.
         # `always()` is what lets this run at all once a dependency is cancelled. The consequence is
         # that cancelling the run by hand also opens an issue, which is the right direction to err.
-        # Kept identical to mutation.yml's condition on purpose: the two must not drift again.
+        # Kept identical to mutation.yml's condition on purpose, so the two do not drift.
         if: >
             always() &&
             (needs.js-advisories.result == 'failure' || needs.js-advisories.result == 'cancelled' ||

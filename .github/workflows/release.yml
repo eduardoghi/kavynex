@@ -256,11 +256,9 @@ jobs:
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   # A shallow checkout is enough, and stated explicitly rather than left to the
-                  # default because this step carried a full clone (`fetch-depth: 0`) until the
-                  # reason for it was traced and found to be gone. That reason was the release
-                  # notes, which used to list every commit since the previous tag with `git log`.
-                  # That step was removed once it turned out tauri-action copies the whole body
-                  # into latest.json's `notes`, where the app renders it unscrolled.
+                  # default so nobody adds `fetch-depth: 0` back for a `git log` of release notes.
+                  # tauri-action copies the whole release body into latest.json's `notes`, where
+                  # the app renders it unscrolled, so the body is one line (see docs/RELEASING.md).
                   #
                   # Nothing left in this job walks history: the tag guard uses `git ls-remote`
                   # (which queries the remote, not the local clone), the bindings check diffs the
@@ -449,15 +447,12 @@ jobs:
             - name: Clippy
               run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --locked -- -D warnings
 
-            # Covers the yt-dlp process-kill/timeout/cancel tests too. They used to be `#[ignore]`d
-            # (they hung on the ubuntu-22.04 runner) and needed a dedicated step here, but the hang
-            # is gone on ubuntu-26.04 and the attribute was dropped, so they run in the step below
+            # Covers the yt-dlp process-kill/timeout/cancel tests too, which run in the step below
             # on every platform.
             #
-            # There is still no `--ignored` step, and the reason is now that the two tests it would
-            # match must not run here rather than that it would match nothing. One regenerates a
-            # migration fixture (a manual generator, whose whole effect is rewriting a checked-in
-            # file), and the other fetches live yt-dlp metadata to check the captured fixture has
+            # There is no `--ignored` step, because the two tests it would match must not run
+            # here. One regenerates a migration fixture (a manual generator, whose whole effect is
+            # rewriting a checked-in file), and the other fetches live yt-dlp metadata to check the captured fixture has
             # not drifted, which needs the network and a real yt-dlp. Neither belongs on the path
             # that builds a published binary. Run the second deliberately when yt-dlp is bumped.
             # See its doc comment in services/yt_dlp/metadata.rs.
@@ -1120,12 +1115,10 @@ jobs:
                   # `.sig` files are the updater's. Note the two .dmg files deliberately have none:
                   # tauri signs the macOS updater bundle (.app.tar.gz), not the disk image.
                   #
-                  # Every name here is now confirmed against a real dispatch (v1.2.0), including the
-                  # aarch64 ones this comment previously flagged as derived rather than observed:
-                  # NSIS, WiX (MSI) and deb do use `arm64` while AppImage and rpm use `aarch64`, so
-                  # those held. What did not hold was the pair that had been observed. The macOS
-                  # `.app.tar.gz` names carried no version on v1.1.1 and carry one now, which is why
-                  # they are built from ${VERSION} below. Treat the whole list as perishable. It
+                  # Every name here is confirmed against a real dispatch. NSIS, WiX (MSI) and deb
+                  # use `arm64` while AppImage and rpm use `aarch64`, and the macOS `.app.tar.gz`
+                  # names carry the version, which is why they are built from ${VERSION} below.
+                  # Treat the whole list as perishable. It
                   # tracks tauri's per-bundler naming, and this check exists precisely to fail loudly
                   # (echoing the real names above) rather than let a partial draft look complete.
                   MISSING=""

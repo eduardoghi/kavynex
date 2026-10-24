@@ -60,9 +60,10 @@ jobs:
               run: node scripts/verify-rust-toolchain.js
 
             # `tauri build` refuses an @tauri-apps npm package and its Rust crate on different
-            # major.minor releases, and nothing in this workflow runs `tauri build`, so the skew
-            # used to surface only in release.yml. Dependabot bumps the two sides in separate PRs,
-            # which is how PR #60 produced one. Reads both lockfiles as text, before the install.
+            # major.minor releases, and nothing in this workflow runs `tauri build`, so without this
+            # step the skew would surface only in release.yml. Dependabot bumps the two sides in
+            # separate PRs, which is how one arrives. Reads both lockfiles as text, before the
+            # install.
             - name: Verify Tauri npm and Rust versions agree
               run: node scripts/verify-tauri-package-versions.js
 
@@ -199,10 +200,10 @@ jobs:
             # finding does not block all CI. RUSTSEC advisories are covered separately
             # by the cargo-audit job.
             #
-            # Not `pnpm audit`, which npm's retired audit endpoints broke from 2026-07-15 until
-            # pnpm 11.13.1. The script queries osv.dev (the same GitHub Advisory data, via the
-            # source osv-scanner wraps) and keeps the same high/critical bar without depending on
-            # the package manager's audit client. See scripts/check-js-advisories.js.
+            # Not `pnpm audit`, which depends on npm's audit endpoints, and their retirement has
+            # already broken it once. The script queries osv.dev (the same GitHub Advisory data,
+            # via the source osv-scanner wraps) and keeps the same high/critical bar without
+            # depending on the package manager's audit client. See scripts/check-js-advisories.js.
             - name: Audit production JS dependencies
               run: pnpm run advisories:check
 
@@ -615,18 +616,15 @@ jobs:
         # console dialog, batch-shim and verbatim-path code is measured locally and absent here, but
         # the Linux-only file-manager lookup is the reverse).
         #
-        # That gap used to be described here as real but unmeasured. It has now been measured once,
-        # which is worth recording because it is smaller than the slack it was being given: the
-        # 2026-08-10 run of this job read 78.58% lines / 81.34% regions, and a local Windows run of
-        # the same commit range read 79.37% / 81.99%. Windows reads about 0.8 points higher. One
-        # pair of readings is not a guarantee, so the floor still carries more room than that.
+        # The gap is about 0.8 points, measured once. On the same commits this job read 78.58%
+        # lines and 81.34% regions (2026-08-10), and a local Windows run read 79.37% and 81.99%. One
+        # pair of readings is not a guarantee, so the floor carries more room than that.
         #
-        # Raised 60 -> 68 on 2026-07-30, then 68 -> 74 on 2026-08-16. 68 was leaving over ten points
-        # against the 78.58% this job actually published, which is enough for a whole module to land
-        # untested without turning it red, i.e. the regression the job exists to catch. 74 keeps
-        # about four and a half points, which covers the measured platform gap several times over.
-        # Ratchet further from the number this job publishes to the step summary on a real run,
-        # which is the only Linux reading anyone has. Do not ratchet from a local one.
+        # The floor is 74, about four and a half points under the 78.58% this job publishes, which
+        # covers the platform gap several times over. Ten points of slack would let a whole module
+        # land untested without turning the job red, which is the regression it exists to catch.
+        # Ratchet from the number this job publishes to the step summary on a real run, the only
+        # Linux reading anyone has, and not from a local one.
         env:
             CARGO_PROFILE_DEV_DEBUG: "0"
             CARGO_PROFILE_TEST_DEBUG: "0"
