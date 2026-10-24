@@ -19,7 +19,7 @@ to send someone who has a bug to report rather than a change to propose.
   the workflows install from that same field (`npm install -g pnpm@11.13.1`, since Node 26
   no longer ships Corepack)
 - [Rust](https://www.rust-lang.org/), via [rustup](https://rustup.rs/). The exact
-  toolchain is pinned in `rust-toolchain.toml` (`1.99.0`, with `rustfmt` and `clippy`).
+  toolchain is pinned in `rust-toolchain.toml` (`1.99.1`, with `rustfmt` and `clippy`).
   Rustup will pick it up automatically when you run any `cargo`/`rustc` command inside the
   repo, so there is nothing to configure manually. Bump that file deliberately (and rerun
   `cargo fmt`/`clippy`/tests) rather than letting the toolchain drift.

@@ -324,7 +324,7 @@ jobs:
               # and avoids downloading a moving "stable" toolchain the build never uses.
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
-                  toolchain: 1.99.0
+                  toolchain: 1.99.1
                   components: rustfmt, clippy
 
             # These apt packages are deliberately not version-pinned, unlike the toolchain/Node/image.
@@ -501,7 +501,7 @@ jobs:
               # moving "stable".
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
-                  toolchain: 1.99.0
+                  toolchain: 1.99.1
 
             # Pin the tool version (keep in sync with release.yml). An unpinned `cargo install`
             # builds whatever the latest release happens to be on the day CI runs, so the code
@@ -641,7 +641,7 @@ jobs:
               # supplies the llvm-profdata/llvm-cov binaries cargo-llvm-cov drives.
               uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable (2026-06-30)
               with:
-                  toolchain: 1.99.0
+                  toolchain: 1.99.1
                   components: llvm-tools-preview
 
             - name: Install Linux dependencies
