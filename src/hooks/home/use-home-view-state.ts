@@ -83,7 +83,7 @@ export function useHomeViewState({
 
     // All fields below are primitive strings/booleans recomputed fresh every render, so
     // useMemoObject's shallow compare still keeps the returned object's identity stable
-    // whenever the computed values are unchanged, exactly like the useMemo this replaced.
+    // whenever the computed values are unchanged.
     return useMemoObject({
         shellSurface,
         shellBorder,

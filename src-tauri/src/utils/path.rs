@@ -418,13 +418,11 @@ pub fn ensure_path_parent_inside_dir(path: &Path, base_dir: &Path) -> AppResult<
 /// library-relative path goes through that function, so requiring the subtree here makes "which part
 /// of the library may this path name" a question the compiler asks at each of them.
 ///
-/// The rule it enforces was previously a separate call the caller made, or did not.
-/// `cleanup_unreferenced_media_artifacts` and `delete_thumbnail_file` both shipped without it, five
-/// weeks apart, each confining a caller-supplied path to the library *root* instead. Containment
-/// stopped a traversal, and a bare `contract.docx` still resolved inside the folder the user chose
-/// as their library and was unlinked. Both were listed in the IPC path inventory the whole time (see
-/// `scripts/verify-command-path-surface.js`), which is why the answer had to move from a list into
-/// the type of the thing every one of them calls.
+/// A check the caller has to remember gets forgotten. Confining a caller-supplied path to the
+/// library *root* stops a traversal, but a bare `contract.docx` still resolves inside the folder the
+/// user chose as their library and can be unlinked. Listing the command in the IPC path inventory
+/// (see `scripts/verify-command-path-surface.js`) does not catch that either, which is why the rule
+/// lives in the type of the thing every caller calls.
 ///
 /// The variants are the subtrees an operation actually targets, not the four directories. A media
 /// file is `video/` or `audio/` depending on what was downloaded, and the delete that removes one

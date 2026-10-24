@@ -22,12 +22,12 @@ export async function generateTemporaryThumbnail(mediaPath: string): Promise<str
  *
  * The preview is drawn from that copy rather than from the file the user chose, because the preview
  * directory is already authorized in the asset-protocol scope as a whole. Granting the chosen file
- * instead, which is what this replaced, cannot be undone, since Tauri's scope cannot withdraw a
- * grant. Those grants accumulated for the session, and revoking one would have made the same image
- * picked for a second media silently render nothing (a forbid outranks every later allow).
+ * instead cannot be undone, since Tauri's scope cannot withdraw a grant. Those grants would pile up
+ * for the session, and revoking one would make the same image picked for a second media silently
+ * render nothing (a forbid outranks every later allow).
  *
- * The copy is byte-identical, so persisting from it lands exactly the file that would have been
- * stored before, and it is cleaned up through `deleteTemporaryThumbnail` like any generated preview.
+ * The copy is byte-identical, so persisting from it lands exactly the file the user picked, and it
+ * is cleaned up through `deleteTemporaryThumbnail` like any generated preview.
  */
 export async function stageManualThumbnail(sourcePath: string): Promise<string> {
     const normalizedSourcePath = normalizeString(sourcePath);

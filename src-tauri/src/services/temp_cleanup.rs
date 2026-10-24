@@ -751,10 +751,9 @@ mod tests {
 
     #[test]
     fn the_display_cache_is_left_alone_while_it_fits_however_old_it_is() {
-        // The regression this replaced the age sweep to prevent. Both files are far past the age
-        // gate the three scratch directories use, and the cache is well under its budget, so nothing
-        // may be removed, under the old rule both would have gone and both would have been
-        // re-encoded by FFmpeg on the next scroll.
+        // Both files are far past the age gate the three scratch directories use, and the cache
+        // is well under its budget, so nothing may be removed. An age sweep would take both, and
+        // FFmpeg would re-encode both on the next scroll.
         let dir = unique_test_dir("display-fits");
         fs::create_dir_all(&dir).unwrap();
 

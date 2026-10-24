@@ -354,8 +354,8 @@ export function useMediaActions({
             // effort. If it already finished, cancelMediaDownload rejects with INVALID_RUN_ID (the
             // registry no longer has this run), which is expected here and not surfaced to the
             // user. Any other failure means the cancel signal did not reach the still-running
-            // backup. Quietly logging that (the old behavior) left the user believing Cancel
-            // worked while the download kept running, so it gets a non-blocking notice instead.
+            // backup. Only logging that would leave the user believing Cancel worked while the
+            // download keeps running, so it gets a non-blocking notice.
             try {
                 await cancelMediaDownload(commentsRefreshRunId(mediaId));
             } catch (error) {

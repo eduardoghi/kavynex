@@ -641,8 +641,8 @@ async fn run_yt_dlp_and_capture_json(
         },
         _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
             // The caller signalled cancellation. Kill the whole tree immediately instead of
-            // waiting out the remaining timeout (previously up to a minute of an unresponsive
-            // "cancel"), and report it as a cancellation. Only ever reached when a cancel flag
+            // waiting out the remaining timeout, which can be up to a minute of an unresponsive
+            // "cancel", and report it as a cancellation. Only ever reached when a cancel flag
             // is supplied (the download flow); other callers pass None, so this branch pends
             // forever and the wait above drives the result.
             if let Some(pid) = child_pid {

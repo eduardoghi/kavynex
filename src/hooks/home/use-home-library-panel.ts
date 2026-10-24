@@ -67,7 +67,7 @@ export function useHomeLibraryPanel({
 
     // All four fields below are primitives (booleans/strings) recomputed fresh every render,
     // so useMemoObject's shallow compare still keeps the returned object's identity stable
-    // whenever the computed values are unchanged, exactly like the useMemo this replaced.
+    // whenever the computed values are unchanged.
     return useMemoObject({
         showSelectedChannelPanel,
         itemCountLabel: buildItemCountLabelFromCount(channelMediaTotal),

@@ -180,7 +180,7 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
     // The level is a required first argument rather than one defaulting to "info", because every
     // caller genuinely knows it. A backend line carries its own, and an app-generated one is a
     // deliberate choice. A default would let the interesting cases (a failure notice, a warning)
-    // fall back to "info" by omission, which is the bug this replaced.
+    // fall back to "info" by omission.
     const appendLogs = useCallback(
         (level: YtDlpLogLevel, ...lines: string[]): void => {
             const chunks = lines.flatMap(normalizeLogChunks);
@@ -253,10 +253,9 @@ export function useYtDlpEvents(): UseYtDlpEventsReturn {
         [terminal]
     );
 
-    // `level` is required, and it is what replaced the terminal's old `startsWith("ERROR:")` check.
-    // That sniff only ever matched one of these outcomes (the yt-dlp error event, whose text
-    // happens to start with the prefix), so a terminal-failed line rendered as ordinary output. The
-    // caller knows which outcome it is reporting, so it says so.
+    // `level` is required. Sniffing the text for `ERROR:` matches only one of these outcomes (the
+    // yt-dlp error event, whose text happens to start with the prefix) and renders a terminal-failed
+    // line as ordinary output. The caller knows which outcome it is reporting, so it says so.
     const finalizeRun = useCallback(
         (message: string, level: YtDlpLogLevel, outcome: YtDlpRunOutcome): void => {
             if (message) {

@@ -32,8 +32,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 /// `is_file()`-ing `\\host\share\x.png` authenticates to `host` over SMB and hands it the user's NTLM
 /// hash. Every sibling that takes a caller-supplied path already refuses one
 /// (`library::resolve_path_inside_library`, `validate_source_media_path`, `db_backup`'s import and
-/// export gates, `yt_dlp::cookies::normalize_cookies_path`); the asset-scope grant this replaced was
-/// the last one that did not.
+/// export gates, `yt_dlp::cookies::normalize_cookies_path`).
 ///
 /// The extension gate is the same one the preview needs anyway. Only an image is worth staging, and
 /// refusing anything else here means the copy that follows can never be pointed at an arbitrary file.
@@ -165,8 +164,7 @@ mod tests {
 
     #[test]
     fn a_network_location_is_rejected() {
-        // The check the asset-scope grant this replaced did not have, and the reason it matters more
-        // here than anywhere else. This path arrives raw over IPC, and on Windows `is_file()` alone
+        // Why this check matters more here than anywhere else. This path arrives raw over IPC, and on Windows `is_file()` alone
         // on a UNC share authenticates to that host over SMB and leaks the user's NTLM hash. Every
         // spelling Windows resolves to a share is covered, and each carries a valid image extension
         // so only the network check can be what rejects it.

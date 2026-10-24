@@ -12,9 +12,8 @@ type UseGridScrollRestorationResult = {
 // the position when it hides and restores it when it shows again. The restore is deferred to two
 // animation frames so the virtualizer has laid out its rows before the scrollTop is reapplied, and
 // the `isRestoringScroll` guard keeps that programmatic scroll from being mistaken for a real user
-// scroll and overwriting the saved value. Extracted from MediaGrid so this fragile, ref-heavy
-// bookkeeping lives apart from the grid's focus-highlight and virtualizer-measure concerns, which
-// it previously sat interleaved with.
+// scroll and overwriting the saved value. Kept out of MediaGrid so this fragile, ref-heavy
+// bookkeeping lives apart from the grid's focus-highlight and virtualizer-measure concerns.
 export function useGridScrollRestoration(isVisible: boolean): UseGridScrollRestorationResult {
     const scrollParentRef = useRef<HTMLDivElement | null>(null);
     const savedScrollTopRef = useRef(0);

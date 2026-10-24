@@ -43,10 +43,10 @@ pub(super) fn redact_paths_value(value: &str) -> String {
 }
 
 /// Maps a flag whose following value is sensitive to how that value must be redacted. Centralized
-/// so a path-carrying flag is a single edit here rather than a new branch in the loop below. The
-/// shape of gap that previously let `--ffmpeg-location` leak the app-cache path (and with it the OS
-/// username) into a line shown in the UI and pasted into public bug reports. Any flag whose value is
-/// an absolute local path belongs here.
+/// so a path-carrying flag is a single edit here rather than a new branch in the loop below. A flag
+/// missing from it leaks its value, the way `--ffmpeg-location` would put the app-cache path (and
+/// with it the OS username) into a line shown in the UI and pasted into public bug reports. Any flag
+/// whose value is an absolute local path belongs here.
 fn redaction_for_flag(flag: &str) -> PendingRedaction {
     match flag {
         // Both carry an absolute path under the per-user profile: the cookies file location, and

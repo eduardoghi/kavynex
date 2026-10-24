@@ -61,9 +61,8 @@ pub async fn download_channel_avatar_from_handle<R: Runtime>(
 /// not cached yet (see `services::thumbnail::display`).
 ///
 /// Each entry answers the corresponding `relative_paths` entry, and "no derivative" is an ordinary
-/// answer rather than a failure. The caller renders the stored thumbnail for it, which is what it
-/// did before this existed. The command as a whole therefore only fails when no library is
-/// configured.
+/// answer rather than a failure. The caller renders the stored thumbnail for it. The command as a
+/// whole therefore only fails when no library is configured.
 ///
 /// The answer distinguishes a miss that is worth asking about again (`budgetSpent`) from one that is
 /// final (`unavailable`), because only this side can tell them apart and the caller re-asks about

@@ -31,7 +31,7 @@ export type MotionPreferenceController = {
 export const REDUCE_MOTION_ATTRIBUTE = "data-reduce-motion";
 
 // Fails safe for a consumer rendered outside the provider (a test, a stray component). Motion
-// stays on and the setter does nothing, matching what the page did before this existed.
+// stays on and the setter does nothing.
 const MotionPreferenceContext = createContext<MotionPreferenceController>({
     preference: "system",
     setPreference: () => {},

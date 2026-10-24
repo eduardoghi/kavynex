@@ -241,14 +241,13 @@ pub(crate) struct CachedDerivative {
 
 /// Chooses which derivatives to drop so the cache fits under `max_bytes`, oldest first.
 ///
-/// This exists because the cache was previously swept by the same age rule as its neighbours under
-/// the app cache directory, and that rule is wrong for it. `thumbs-temp/`, `yt-dlp-temp/` and
-/// `yt-dlp-thumb-temp/` hold scratch from an operation that finished, so an old entry there is
-/// garbage by definition. A derivative is not. Regenerating one costs an FFmpeg process, and reading
-/// a cached one is a `stat` that renews nothing, so an age sweep discarded the thumbnails the grid
-/// draws every day at exactly the same rate as the ones nothing had looked at since they were
-/// written. The whole cache therefore emptied every seven days and came back as a burst of FFmpeg
-/// runs on the next scroll, which is most of the cost the cache exists to remove.
+/// The cache is not swept by the age rule its neighbours under the app cache directory use.
+/// `thumbs-temp/`, `yt-dlp-temp/` and `yt-dlp-thumb-temp/` hold scratch from an operation that
+/// finished, so an old entry there is garbage by definition. A derivative is not. Regenerating one
+/// costs an FFmpeg process, and reading a cached one is a `stat` that renews nothing, so an age sweep
+/// would drop the thumbnails the grid draws every day at the same rate as the ones nothing has
+/// looked at. The whole cache would empty every seven days and come back as a burst of FFmpeg runs
+/// on the next scroll, which is most of the cost the cache exists to remove.
 ///
 /// Bounding total size instead means a cache that fits is never touched, whatever its age, and a
 /// cache that does not is trimmed to fit rather than emptied.

@@ -2,13 +2,13 @@
 //!
 //! The per-download registry in [`crate::services::yt_dlp::registry`] only knows about the
 //! main download child, whose pid is recorded after it spawns. The phase that runs *before*
-//! that child exists (metadata resolution), and the standalone fetches that never go through a download run at all (format listing, comment
-//! backup, channel-avatar download) spawn their own yt-dlp/ffmpeg trees that were previously
-//! tracked by nothing. On app exit those were left to `kill_on_drop`, which only reaps the
-//! direct child and not the ffmpeg grandchild yt-dlp spawns for a merge/`--convert-thumbnails`,
-//! and whose drop is not even guaranteed to run during runtime teardown.
+//! that child exists (metadata resolution), and the standalone fetches that never go through a
+//! download run at all (format listing, comment backup, channel-avatar download) spawn their own
+//! yt-dlp/ffmpeg trees, which that registry does not see. `kill_on_drop` alone does not end them on
+//! app exit. It only reaps the direct child and not the ffmpeg grandchild yt-dlp spawns for a
+//! merge/`--convert-thumbnails`, and its drop is not guaranteed to run during runtime teardown.
 //!
-//! This registry closes that gap. Every spawn helper registers its child pid here for the
+//! This registry covers them. Every spawn helper registers its child pid here for the
 //! child's lifetime, and the app-exit handler tree-kills the whole set. It is backed by a
 //! `std::sync::Mutex` (not tokio's) so the exit handler can drain it synchronously without
 //! touching the async runtime, mirroring `yt_dlp::registry`.

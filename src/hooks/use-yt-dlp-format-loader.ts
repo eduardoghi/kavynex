@@ -225,7 +225,7 @@ export function useYtDlpFormatLoader({
             // catalogued/known backend code, but drops them when the message degrades to the
             // generic fallback above. Surface the details in that fallback case only. The
             // `includes` guard keeps them from being appended a second time when the pipeline
-            // already added them (which previously duplicated the details block in the terminal).
+            // already added them, which would print the details block twice in the terminal.
             const { details } = parseAppError(error);
 
             if (details && !message.includes(details)) {

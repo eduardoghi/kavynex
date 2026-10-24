@@ -726,7 +726,7 @@ mod tests {
         );
 
         // The jump-to-the-media targets travel with the report, resolved only for the paths it
-        // named. The whole reason the renderer no longer needs every row.
+        // named. That is why the renderer does not need every row.
         let targets = &response["mediaTargets"];
         assert!(
             targets.get("video/a.mp4").is_none(),

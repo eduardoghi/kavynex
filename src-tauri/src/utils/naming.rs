@@ -12,11 +12,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// work under uniquely named temp entries.
 ///
 /// **Any test helper that builds a unique temporary path builds it from this too, whatever that
-/// helper is called.** Those helpers were originally hand-rolled from pid + nanos, and the missing
-/// counter was a real intermittent CI failure. Two tests starting in the same tick got the same temp
-/// directory and one deleted the other's files, which surfaced on macOS (coarser timer) as a failure
-/// nowhere near its cause. The pattern was fixed in one helper and re-appeared by copy-paste in
-/// sixteen more, so the fix is to delegate here rather than to reproduce the three components.
+/// helper is called.** A name built from pid and nanos alone lacks the counter, so two tests that
+/// start in the same tick get the same temp directory and one deletes the other's files. On macOS,
+/// whose timer is coarser, that shows up as a failure nowhere near its cause. Delegating here keeps
+/// a copy-pasted helper from dropping one of the three components.
 ///
 /// The rule is written that way on purpose. A rule that named three helpers (`unique_test_dir`,
 /// `unique_dir`, `unique_temp_db`) let a sweep that believed it had converted every one of them
