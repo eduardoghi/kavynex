@@ -54,12 +54,11 @@ jobs:
             # stryker.config.json, so a real regression in test strength fails this scheduled run.
             #
             # It also exits non-zero when it never got that far, and those two are not the same
-            # finding. A dry-run timeout (see dryRunTimeoutMinutes in stryker.config.json, raised to
-            # 20 after a local run hit the 5-minute default at 6633 mutants without producing any
-            # score at all) aborts the run, and so does an install or instrumentation error. Both
-            # arrive here as "the mutation job failed", which reads as a loss of test strength while
-            # actually meaning the gate stopped answering. That is the same confusion that let the
-            # Rust leg's timeout go unreported on 2026-07-27, one layer up.
+            # finding. A dry-run timeout (see dryRunTimeoutMinutes in stryker.config.json, at 20
+            # because the 5-minute default runs out before any score at 6633 mutants) aborts the
+            # run, and so does an install or instrumentation error. Both arrive here as "the
+            # mutation job failed", which reads as a loss of test strength while actually meaning
+            # the gate stopped answering.
             #
             # So the outcome is classified rather than inferred. A run that reported a score leaves a
             # report behind, one that aborted does not. The step still exits with Stryker's own
@@ -98,22 +97,18 @@ jobs:
     # and unnoticed among the survivors, with nothing in the config to suggest that the entry rather
     # than the tests had gone stale.
     #
-    # Two entries in mutants.toml have already died exactly that way, both after a pure extraction
-    # moved the code they named, and both were found by someone deciding to check by hand. This is
-    # that check, run every time the gate runs.
+    # An entry goes stale that way when a pure extraction moves the code it names, and nothing
+    # notices unless someone checks by hand. This is that check, run every time the gate runs.
     #
-    # It is a job rather than a step of the shard below, and the reason is the failure mode this
-    # whole workflow keeps running into. It used to be `if: strategy.job-index == 0` inside
-    # `rust-mutation`, so it lived under that job's 90-minute ceiling, and a job killed by its own
-    # `timeout-minutes` is marked *cancelled*, which is exactly how shard 0 died on 2026-07-27. The
-    # check would then not have run at all, while nothing distinguished that from having run and
-    # passed. The verdict of the following 90 minutes rests on this having happened, so it must be
-    # able to answer on its own.
+    # It is a job rather than a step of a shard below. Inside `rust-mutation` it would live under
+    # that job's 90-minute ceiling, and a job killed by its own `timeout-minutes` is marked
+    # *cancelled*, so the check would not run at all while nothing told that apart from having run
+    # and passed. The verdict of the following 90 minutes rests on this check, so it must be able to
+    # answer on its own.
     #
-    # It is also nearly free, which is what makes the split obvious in hindsight: `cargo mutants
-    # --list` parses the sources and never builds the tree (measured at 0.5s over the 54 files the
-    # scope names), so this job needs no apt packages, no build cache and no compile: only
-    # `cargo install cargo-mutants` itself, which is the whole of its runtime.
+    # It is also nearly free. `cargo mutants --list` parses the sources and never builds the tree
+    # (0.5s over the 54 files the scope names), so this job needs no apt packages, no build cache
+    # and no compile, only `cargo install cargo-mutants` itself, which is the whole of its runtime.
     verify-exclusions:
         name: Verify every mutants.toml exclusion still names a real mutant
         runs-on: ubuntu-26.04
@@ -155,15 +150,13 @@ jobs:
             # Read into an array rather than interpolated: two of those globs are directory globs
             # (`db_backup/*.rs`), and an unquoted expansion would have the shell resolve them into
             # several paths, which cargo-mutants rejects because `--file` takes one value.
-            # The listing this reads is uploaded below, and that is not decoration. On its first
-            # ever run (2026-08-03) this step reported twenty patterns as naming no mutant, and
-            # every one of the twenty matched when the same command was reproduced by hand on the
-            # same commit with the same pinned cargo-mutants, so the disagreement is between two
-            # *listings*, not between the config and the code. Without the listing that produced
-            # the verdict there is nothing to compare against, and the only available response to
-            # a red run is to delete twenty exclusions on a guess. That is precisely the failure
-            # this gate exists to prevent. An exclusion removed is a real mutant silently
-            # unexcluded.
+            #
+            # The listing this reads is uploaded below. When this step reports patterns as naming
+            # no mutant and the same command run by hand on the same commit matches them all, the
+            # disagreement is between two *listings*, not between the config and the code. Without
+            # the listing that produced the verdict there is nothing to compare against, and the
+            # only response left to a red run is deleting exclusions on a guess, each of which
+            # silently brings a mutant back into scope.
             #
             # `set -o pipefail` is not needed here (nothing is piped), but the counts are echoed
             # so a truncated or empty listing is visible in the log itself rather than only inside
@@ -221,115 +214,44 @@ jobs:
             matrix:
                 # These values are never read. The shard is derived from `strategy.job-index` /
                 # `strategy.job-total` in the run step below, so only the *length* of this list
-                # matters: adding or removing an entry changes the shard count with nothing else to
-                # keep in step. Spelling the count in two places is what this avoids, and the
-                # failure it avoids is silent. A matrix of three against a hardcoded `/4` would
-                # simply never run the fourth shard's mutants, and the run would go green.
+                # matters, and adding or removing an entry changes the shard count with nothing else
+                # to keep in step. Spelling the count in two places would fail silently. A matrix of
+                # three against a hardcoded `/4` never runs the fourth shard's mutants, and the run
+                # goes green.
                 #
-                # Four since 2026-07-31, and the reasoning is worth keeping because this is the knob
-                # to reach for again. The scope was 1234 mutants across three shards on 2026-07-29,
-                # whose legs took 68, 75 and 79 minutes against the ceiling below. Adding
-                # `live_chat_storage.rs` and `thumbnail/redirect.rs` took it to 1383, which puts the
-                # slowest leg at roughly 88, inside the ceiling by a margin that is not one. The
-                # alternative was raising the ceiling, and that is the wrong direction: it exists to
-                # be a number nothing approaches, and a leg killed by it reports as *cancelled*
-                # rather than failed, which is exactly the outcome that went unreported on
-                # 2026-07-27. A fourth shard puts each leg back to a quarter of the scope instead.
+                # Every leg has to finish well inside the 90-minute ceiling below, because a leg the
+                # ceiling kills reports as *cancelled* and yields no verdict for its slice. Read the
+                # slowest leg, from a real run rather than from an estimate, and add a shard once it
+                # comes within ten minutes of the ceiling. A leg's time swings with runner speed as
+                # much as with the scope, so one sitting a few minutes under the ceiling crosses it
+                # on some run. Raising the ceiling is the wrong direction, since it exists to be a
+                # number nothing approaches. With seven shards the slowest leg took 82 minutes in
+                # the runs of 2026-09-24.
                 #
-                # Five since 2026-08-03, and this one is worth reading before reaching for the knob
-                # again, because the trigger was not what the paragraph above would predict. Shard 1
-                # was killed at 91 minutes and shard 2 finished at 89, while the scope had barely
-                # moved: 1454 against the 1450 measured the day before. So nothing grew. The margin
-                # the note above already called "not one" simply ran out, and an ordinary swing in
-                # runner speed was enough to cross it. The lesson is that a leg sitting within a few
-                # minutes of this ceiling is already over it on some future Tuesday, and the reading
-                # to act on is the *slowest* leg rather than the average. A fifth shard takes each
-                # leg to roughly 291 mutants, which is about 73 minutes at the pace measured today.
+                # A shard that ends with "The runner has received a shutdown signal" at the same
+                # point in every run is not slow. It is one mutant exhausting memory, which takes
+                # the runner with it (the `xyzzy` and `read_capped_line` entries in mutants.toml).
+                # The run step logs every finished mutant, so the next one in that shard's slice is
+                # the culprit. See docs/MUTATION-TESTING.md.
                 #
-                # Still five on 2026-08-16, when `library/verification.rs` and `library/integrity.rs`
-                # joined `examine_globs` (+87 net, scope 1462 -> 1549, so ~310 per leg). The reason
-                # to record a change that did *not* happen is that the paragraph above would have
-                # predicted one: 73 plus the ~6 minutes those mutants add reads as 79 against this
-                # ceiling, which is the margin the 2026-08-03 entry calls "not one". But 73 was a
-                # projection, and the run it projected has since happened. The real legs on the last
-                # run (31367767720) were 58, 65, 65, 66 and 67 minutes, so the slowest was 67 and not
-                # 73, and ~310 per leg lands near 71. That is 19 minutes of headroom rather than 11.
-                #
-                # Which is the lesson this matrix keeps teaching, arriving from the other side for
-                # once. Read the slowest leg, and read it from a run rather than from the last
-                # estimate written down here. Adding a sixth shard on the projection would have cost
-                # a runner every Monday to solve a problem the measurement says does not exist yet.
-                #
-                # 2026-09-20, and this time the measurement says it does. On run 34843621572 the
-                # legs were 48, 85, 86, 89 and 90 minutes. The 48 is a runner that lost its host, so
-                # the four real ones are 85 to 90, and the 90 is shard 1 killed by the ceiling,
-                # having produced no verdict for its slice. The 89 finished with 58 seconds to
-                # spare. Three of five legs inside five minutes of the ceiling is the condition the
-                # entry above describes and the 2026-08-16 entry declined to act on early.
-                #
-                # Six rather than more. Five legs at ~87 spread over six is ~72, which is 18 minutes
-                # of headroom, and that is the same margin the 2026-08-16 entry measured and judged
-                # sufficient. Re-read the slowest leg after this run rather than trusting the
-                # arithmetic, which is the whole point of the paragraph above.
-
-                # It worked, and the legs came back at 62, 63, 71, 72, 73 and 75 minutes. What it
-                # did not fix, because it was never the same problem, is that shards lose their
-                # runners partway through. "The runner has received a shutdown signal" ended two
-                # shards in each of four consecutive runs, and both shards of a two-shard re-run,
-                # at 33, 36, 37, 75, 80 and 81 minutes.
-                #
-                # The first diagnosis of that, written here on 2026-09-20, was wrong, and it is kept
-                # corrected rather than deleted because the way it went wrong is the lesson. It said
-                # "not one bad mutant" and "disk and memory are not it", on the strength of a sampler
-                # that read memory every 30 seconds on a shard that *passed*. It was one bad mutant
-                # per slice, and it was memory. `read_lossy_line(_capped)` mutated to return
-                # `Some("xyzzy")` forever makes the metadata loop push into `log_lines` without
-                # awaiting anything, which exhausts 16 GB in seconds and takes the runner with it.
-                # The empty-string spelling of the same mutant had long been excluded as a hang;
-                # this one was not. Found with `--caught --unviable`, which logs the last finished
-                # mutant, and excluded in mutants.toml. See docs/MUTATION-TESTING.md.
-                #
-                # The cost is not a slower run. A lost shard yields no artifact and no verdict for
-                # its slice, and every remaining step is skipped despite the upload's `if: always()`,
-                # so a real surviving mutant can exist only in a raw job log. That happened on
-                # 2026-09-07. Tracked separately rather than here, since nothing about the shard
-                # count addresses it.
-                #
-                # 2026-09-24, seven. With the host-killing mutants gone, the two complete runs that
-                # followed (35813094358 and 35943046342) came back at 54 to 81 and 63 to 82 minutes.
-                # The slowest leg rose rather than fell, because slices that used to die early now
-                # run to the end. 82 against 90 is eight minutes, below the 18 the six-shard entry
-                # aimed for. Added before a leg crosses 85 rather than after, a judgment the
-                # 2026-08-16 entry would call early, and taken anyway because a leg killed by the
-                # ceiling yields no verdict for its slice, which costs more than a runner a week.
-                # Six legs at ~82 over seven is ~70. Re-read the slowest leg of the next run
-                # rather than trusting that.
+                # A lost shard yields no artifact and no verdict for its slice, and every remaining
+                # step is skipped despite the upload's `if: always()`, so a surviving mutant in that
+                # slice shows up only in the raw job log.
                 shard: [1, 2, 3, 4, 5, 6, 7]
-        # Per shard, not for the whole run. The unsharded job hit exactly this ceiling on
-        # 2026-07-27 (run 30256551949) after `examine_globs` grew from ten entries to twenty, and
-        # was killed at 2h00m having produced no verdict: the two runs before it took ~56 minutes.
-        # The scope was 2541 mutants on 2026-10-11 (`cargo mutants --list | wc -l`, which applies the
-        # config and so counts what a run actually mutates), so a seventh of it plus one baseline build
-        # sits inside this, and the ceiling stays low enough to be a real signal rather than a number
-        # nothing ever approaches. When a leg starts creeping toward it, add a shard rather than
-        # minutes. See the matrix above, including the 2026-08-16 entry on when not to and the
-        # 2026-09-20 one on when to.
+        # Per shard, not for the whole run. The scope was 2541 mutants on 2026-10-11, counted with
+        # `cargo mutants --list | wc -l`, which applies the config and so counts what a run actually
+        # mutates. A seventh of it plus one baseline build sits inside this, and the ceiling stays
+        # low enough to be a real signal. When a leg creeps toward it, add a shard rather than
+        # minutes (see the matrix above).
         #
-        # The same command with `--no-config`, i.e. over the whole crate rather than the gated files,
-        # reported 4621 on 2026-10-11. That is a rough sense of how much of the tree this gate covers
-        # and an input to nothing here, so it is refreshed rather than investigated, but note it said
-        # 3418 the time before and 1634 on 2026-08-02, and a gap that wide is the crate growing rather
-        # than the same scope re-counting. Do not read a small movement into it next time.
+        # The gated scope moves for two reasons. It drifts a little between measurements with
+        # nothing added, and it rises when a file joins `examine_globs` with a row in
+        # docs/MUTATION-TESTING.md behind it. Neither decides the shard count alone. Pace does, so
+        # read the slowest leg rather than this number.
         #
-        # The gated scope is what this decision is read against, so it is worth knowing it moves for
-        # two different reasons. It drifts: 1383 until 2026-08-02, then 1450 on a re-measurement and
-        # 1454 the day after, with nothing added. And it is raised deliberately: 1549 on 2026-08-16,
-        # when two files joined `examine_globs` with a row in docs/MUTATION-TESTING.md behind them,
-        # and 1780 on 2026-09-20 when media_protocol.rs joined the same way, adding 86.
-        # None of those moved the shard count, which is the point of re-measuring rather than
-        # assuming either way, and 2026-08-03 showed the other half of that lesson. The shard count needed
-        # changing anyway, for pace rather than for scope. Read the slowest leg, not this number
-        # alone.
+        # The same command with `--no-config` counts the whole crate rather than the gated files
+        # (4621 on 2026-10-11). It gives a rough sense of how much of the tree this gate covers and
+        # is an input to nothing here.
         timeout-minutes: 90
         # Trim debuginfo like ci.yml's Rust job: cargo-mutants rebuilds the tree once per mutant, so
         # keeping the per-build cost down matters more here than anywhere else.
@@ -458,11 +380,10 @@ jobs:
     alert-on-failure:
         name: Open an issue on failure
         needs: [mutation, verify-exclusions, rust-mutation]
-        # `failure()` alone was wrong, and it cost a real run: a job killed by its own
-        # `timeout-minutes` is marked **cancelled**, not failed, so on 2026-07-27 the Rust leg died
-        # at the 2h ceiling and this job was *skipped*. The gate stopped producing a verdict and the
-        # one mechanism built to make that visible stayed quiet, the worse half of the bug, since a
-        # gate that fails loudly is merely broken while a gate that goes silent reads as green.
+        # Not `failure()` alone. A job killed by its own `timeout-minutes` is marked **cancelled**,
+        # not failed, so a leg dying at the ceiling would leave this job *skipped*. The gate would
+        # stop producing a verdict while the one mechanism built to make that visible stayed quiet,
+        # and a gate that goes silent reads as green, which is worse than one that fails loudly.
         #
         # So the dependency results are checked explicitly instead of leaning on a status function.
         # `always()` is what lets this run at all once a dependency is cancelled. The consequence is
@@ -530,10 +451,9 @@ jobs:
                   fi
 
                   # A shard that loses its runner mid-step is marked *failed*, not cancelled, so the
-                  # timeout branch above never caught it and every one of them was reported as "a
-                  # mutant survived". That is the wrong owner for the wrong problem, and it is not
-                  # rare. Two shards per run went that way across four consecutive runs on
-                  # 2026-09-20, which is what #55 tracks.
+                  # timeout branch above does not catch it, and it would be reported as "a mutant
+                  # survived". That is the wrong owner for the wrong problem, and it is not rare
+                  # (#55).
                   #
                   # The artifact is what tells the two apart, and it is a fact rather than an
                   # inference. A shard that finishes uploads mutants.out whether its slice was clean
@@ -632,9 +552,6 @@ jobs:
     # workflow keeps fixing elsewhere, with the sign flipped. "There is an open alert issue" stops
     # meaning "there is a failure now", and the next real one arrives as a comment on an issue that
     # already reads as known.
-    #
-    # It happened: #24 was opened on 2026-08-01 for a red run and was still open after the run the
-    # next day went green.
     #
     # Closing rather than commenting, because an open issue is the signal. A comment saying "this is
     # fixed" on an issue that stays open is the state this exists to remove.

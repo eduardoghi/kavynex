@@ -2,19 +2,18 @@ name: retry-mutation
 
 # Re-runs the mutation shards that never reported, once the run they belong to has finished.
 #
-# This exists as its own workflow rather than a job inside mutation.yml because a run cannot be
-# re-run from inside itself. The first attempt at this put `gh run rerun` in that workflow's alert
-# job, which is part of the run, so the run was still in progress when it asked and the API refuses.
-# `workflow_run` fires after the run completes, which is the only point the call is accepted.
+# Its own workflow rather than a job inside mutation.yml, because a run cannot be re-run from
+# inside itself. A `gh run rerun` from that workflow's alert job asks while the run is still in
+# progress, and the API refuses. `workflow_run` fires after the run completes, which is the only
+# point the call is accepted.
 #
 # What it is for is in mutation.yml, next to the shard count, and in issue #55. In short, a shard
 # that loses its runner uploads no cargo-mutants output, so its slice of the mutant list goes
-# unexamined, and on 2026-09-21 that was three of six shards.
+# unexamined.
 #
-# This was written believing nothing in the repository caused the losses. Two of the three turned
-# out to be one mutant each, exhausting memory (see the `Some("xyzzy")` entry in mutants.toml), and
-# are excluded now. The retry stays because the third was never identified, and because a runner
-# can still be lost for reasons that are genuinely the host's.
+# A shard that loses its runner at the same point in every attempt is one mutant exhausting memory
+# (see the `Some("xyzzy")` entry in mutants.toml), which a retry does not fix. The retry is for a
+# runner lost for reasons that are genuinely the host's.
 on:
     workflow_run:
         workflows: [mutation]
