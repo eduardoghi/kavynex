@@ -52,27 +52,27 @@ export function keepWithinCeiling<T>(remembered: Set<T>, current: ReadonlySet<T>
  *
  * Two properties make this safe to add to a hot path:
  *
- * - **It never gates a render.** The first paint uses the stored thumbnails exactly as before; the
- *   map arrives afterwards and cards swap to the derivative. Nothing waits on it, and a failure
- *   leaves the grid rendering what it rendered before this hook existed.
+ * - **It never gates a render.** The first paint uses the stored thumbnails, and cards swap to the
+ *   derivative when the map arrives. Nothing waits on it, and a failure leaves the grid on the
+ *   stored thumbnails.
  * - **It never narrows.** Resolutions accumulate across pages rather than replacing each other, so
  *   scrolling a paginated channel does not drop the derivatives of the rows already on screen (which
  *   would swap them *back* to the large file mid-scroll). The accumulated map is dropped only when
  *   the library path changes, which is the one event that invalidates every path in it.
  *
- * Both of the costs that come with sitting on that path are bounded deliberately, and both bounds
- * are load-bearing at library scale rather than micro-optimizations:
+ * Both costs of sitting on that path are bounded, and at library scale neither bound is a
+ * micro-optimization:
  *
  * - **The dependency key is memoized on the (already stable) input array.** The grid re-renders on
  *   every scroll tick. That is what `useVirtualizer` does, and it passes every row loaded so far,
- *   not just the visible window. Rebuilding the key in the hook body therefore meant a map, a filter
+ *   not just the visible window. Rebuilding the key in the hook body would mean a map, a filter
  *   and a join over thousands of strings per frame, allocating a several-hundred-kilobyte string each
  *   time. That is a scroll-jank source that grows with the library, in the hook whose entire purpose
  *   is to make scrolling cheaper.
- * - **Only paths without a derivative yet are asked about.** Each request otherwise carried every
- *   loaded path, so appending page k re-asked about all k pages, and the backend paid a `stat` per
- *   entry to answer "already cached". Quadratic in the number of pages for an answer this side
- *   already had. Skipping the resolved ones leaves each append asking about its own page.
+ * - **Only paths without a derivative yet are asked about.** A request carrying every loaded path
+ *   would make appending page k re-ask about all k pages, and the backend would pay a `stat` per
+ *   entry to answer "already cached". That is quadratic in the number of pages, for an answer this
+ *   side already has. Skipping the resolved ones leaves each append asking about its own page.
  *
  * The set of settled paths is mirrored in a ref rather than read off the map, so it can be consulted
  * without the map becoming an effect dependency. With the map in the deps, every resolution would
@@ -91,12 +91,12 @@ export function keepWithinCeiling<T>(remembered: Set<T>, current: ReadonlySet<T>
  *
  * **Asking again is this hook's job, and waiting for the item list to change is not enough.** The
  * backend's own note on its refused-slot answer says "the caller already re-asks about this", which
- * was true of the case it was written for and not of the case that produces it. The request key is
+ * does not hold for the case that produces it. The request key is
  * derived from the items, so a re-ask only happens when a page is appended, and the backend admits
  * one resolve call at a time, so a page arriving while another holds that slot comes back entirely
  * retryable having decided nothing. On the *last* page of a channel there is no later append, so
- * that page would keep drawing full-resolution stored files for the rest of the session. That is
- * precisely the failure `MAX_GENERATIONS_PER_CALL` was raised from 64 to 100 to remove, reached
+ * that page would keep drawing full-resolution stored files for the rest of the session, the same
+ * failure the per-call generation budget (`MAX_GENERATIONS_PER_CALL`) is sized to prevent, reached
  * through a different door. So a request that settles nothing schedules its own re-ask, bounded by
  * `MAX_DISPLAY_RETRIES` so a backend that genuinely cannot answer is not polled forever.
  */

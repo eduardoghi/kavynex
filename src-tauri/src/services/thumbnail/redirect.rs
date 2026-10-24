@@ -123,8 +123,8 @@ fn resolve_redirect(current: &Uri, location: &str) -> AppResult<Uri> {
 ///
 /// The order of the five checks is not interchangeable. The budget comes first so a chain that has
 /// already gone too far is refused as a chain rather than being reported as whatever happens to be
-/// wrong with its next `Location`; the missing-destination refusal comes before the resolution so
-/// `resolve_redirect` never has to describe an absence; and the scheme and host gates come last
+/// wrong with its next `Location`. The missing-destination refusal comes before the resolution so
+/// `resolve_redirect` never has to describe an absence. The scheme and host gates come last
 /// because they are the two that need the destination already resolved. A relative `Location`
 /// carries neither a scheme nor a host of its own.
 ///

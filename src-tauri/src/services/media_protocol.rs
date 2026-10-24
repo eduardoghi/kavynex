@@ -30,7 +30,7 @@
 //!
 //! It cannot simply be removed. wry hands the response body to `WKURLSchemeTask` as a single
 //! `NSData` copy, so an unbounded `bytes=0-` on a multi-gigabyte file would materialize the whole
-//! thing twice. The cap is what bounds one request; it just has to be large enough that the media
+//! thing twice. The cap is what bounds one request. It just has to be large enough that the media
 //! stack's tolerance for truncated responses is not exhausted.
 //!
 //! That tolerance was measured rather than guessed, serving the same 7.3 MB-`moov` file over plain
@@ -48,27 +48,18 @@
 //! which leaves room for a longer recording's larger metadata without making one request able to
 //! allocate much.
 //!
-//! **What should send someone back to re-measure**: a report of a recording that still will not
-//! play, or a Tauri release that raises its own `MAX_LEN`, which would make this module removable.
-//! The tolerance above is two data points and an extrapolation, not a documented contract.
+//! A report of a recording that still will not play, or a Tauri release that raises its own
+//! `MAX_LEN` (which would make this module removable), is what should send someone back to
+//! re-measure. The tolerance above is two data points and an extrapolation, not a documented
+//! contract.
 //!
 //! # Verified
 //!
-//! Against a `pnpm tauri dev` build on macOS 26.6.1 (M4), importing the same files the boundary
-//! above was measured with. Both failure modes are gone and the case that already worked still
-//! does, which is what would catch a regression in this path rather than only its absence:
-//!
-//! | `moov`  | before                         | after |
-//! |---------|--------------------------------|-------|
-//! | 2.5 MB  | plays                          | plays |
-//! | 4.9 MB  | audio plays, video stays black | plays |
-//! | 7.3 MB  | fails                          | plays |
-//! | 9.0 MB  | fails                          | plays |
-//!
-//! Not yet exercised through a packaged `pnpm tauri build`, where the CSP is the one Tauri injects
-//! rather than `devCsp`. Both list the scheme, so the difference is expected to be nil, but it is
-//! untested. Linux is untested outright: WebKitGTK routes media through GStreamer rather than
-//! AVFoundation, so nothing measured here transfers to it.
+//! On macOS 26.6.1 (M4), every file of the first table plays through this handler, the one that
+//! already played included. The release legs' `--webview-check` confirms in each packaged build,
+//! under its real CSP, that a media element pointed at this scheme reaches the handler (see
+//! `commands::webview_check`). Long recordings on Linux are untested. WebKitGTK routes media
+//! through GStreamer rather than AVFoundation, so nothing measured here transfers to it.
 //!
 //! # What guards it
 //!
