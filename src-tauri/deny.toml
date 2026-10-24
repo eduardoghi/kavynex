@@ -86,4 +86,10 @@ yanked = "deny"
 ignore = [
     { id = "RUSTSEC-2024-0429", reason = "glib unsound, via tauri's GTK3 tree. Re-check when GTK3 moves." },
     { crate = "spin@0.9.8", reason = "yanked, via sqlx-sqlite -> flume. Re-check when sqlx moves." },
+    # zip 4 via tauri-plugin-updater, whose latest release still requires `zip ^4`. All three are
+    # about ZipArchive::extract, which the plugin calls only on Windows, after the minisign check,
+    # on a zip payload, and the app ships its installers unzipped. ci.yml has the longer version.
+    { id = "RUSTSEC-2026-0367", reason = "zip extract, via tauri-plugin-updater. Re-check when it moves to zip 9." },
+    { id = "RUSTSEC-2026-0368", reason = "zip extract, via tauri-plugin-updater. Re-check when it moves to zip 9." },
+    { id = "RUSTSEC-2026-0369", reason = "zip extract, via tauri-plugin-updater. Re-check when it moves to zip 9." },
 ]

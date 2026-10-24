@@ -94,12 +94,16 @@ jobs:
               run: cargo install cargo-audit@0.22.2 --locked
 
             # Same flags as ci.yml's audit job. See its comments for why each ignore/deny is set the
-            # way it is (the GTK3/unic-* unmaintained tree, the yanked spin via sqlx, RUSTSEC-2024-0429).
+            # way it is (the GTK3/unic-* unmaintained tree, the yanked spin via sqlx, RUSTSEC-2024-0429,
+            # the zip 4 advisories via tauri-plugin-updater).
             - name: Audit Rust dependencies
               run: >
                   cargo audit --file src-tauri/Cargo.lock
                   --deny unsound
                   --ignore RUSTSEC-2024-0429
+                  --ignore RUSTSEC-2026-0367
+                  --ignore RUSTSEC-2026-0368
+                  --ignore RUSTSEC-2026-0369
 
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked

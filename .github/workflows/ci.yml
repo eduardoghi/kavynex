@@ -532,11 +532,21 @@ jobs:
             # RUSTSEC-2024-0429 (glib unsound, via that same GTK3 tree) is ignored by name rather
             # than by omission. Naming it is what makes a *new* unsound advisory fail the run
             # instead of hiding among the allowed warnings. Re-check it when GTK3 moves.
+            #
+            # RUSTSEC-2026-0367, 0368 and 0369 are about `ZipArchive::extract` (symlinks out of the
+            # destination, permissions through symlinks, SUID bits) in zip 4, which only
+            # tauri-plugin-updater pulls in. Its latest release still requires `zip ^4`. The plugin
+            # extracts only on Windows, only after the minisign signature checks out, and only when
+            # the payload is a zip, while this app ships the NSIS and MSI installers unzipped. So
+            # reaching it takes the release signing key. Re-check when the plugin moves to zip 9.
             - name: Audit Rust dependencies
               run: >
                   cargo audit --file src-tauri/Cargo.lock
                   --deny unsound
                   --ignore RUSTSEC-2024-0429
+                  --ignore RUSTSEC-2026-0367
+                  --ignore RUSTSEC-2026-0368
+                  --ignore RUSTSEC-2026-0369
 
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked

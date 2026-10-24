@@ -106,6 +106,9 @@ jobs:
                   cargo audit --file src-tauri/Cargo.lock
                   --deny unsound
                   --ignore RUSTSEC-2024-0429
+                  --ignore RUSTSEC-2026-0367
+                  --ignore RUSTSEC-2026-0368
+                  --ignore RUSTSEC-2026-0369
 
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked
