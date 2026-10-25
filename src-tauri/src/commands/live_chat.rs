@@ -289,14 +289,19 @@ mod tests {
         let first = format!("stream-{}", crate::utils::naming::unique_temp_suffix());
         cancel_live_chat_stream(first.clone());
 
-        for _ in 0..MAX_ABANDONED_STREAMS {
-            cancel_live_chat_stream(format!(
-                "stream-{}",
-                crate::utils::naming::unique_temp_suffix()
-            ));
+        let later: Vec<String> = (0..MAX_ABANDONED_STREAMS)
+            .map(|_| format!("stream-{}", crate::utils::naming::unique_temp_suffix()))
+            .collect();
+        for id in &later {
+            cancel_live_chat_stream(id.clone());
         }
 
         assert!(!is_stream_abandoned(&first));
+        // Only the oldest goes. The two newest are checked because another test may add one of its
+        // own in the meantime, which can push out an older entry but never these.
+        assert!(later[MAX_ABANDONED_STREAMS - 2..]
+            .iter()
+            .all(|id| is_stream_abandoned(id)));
         assert!(
             abandoned_streams().lock().unwrap().len() <= MAX_ABANDONED_STREAMS,
             "the list never grows past its bound"

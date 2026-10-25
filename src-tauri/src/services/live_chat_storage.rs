@@ -1004,6 +1004,41 @@ mod tests {
     }
 
     #[test]
+    fn a_cut_line_counts_every_byte_it_took_and_the_next_read_starts_after_it() {
+        let mut data = vec![b'x'; MAX_LIVE_CHAT_LINE_BYTES as usize * 2];
+        data.extend_from_slice(b"\nnext\n");
+        let mut reader = std::io::BufReader::new(&data[..]);
+        let mut raw = Vec::new();
+
+        let (read, cut) = read_capped_line(&mut reader, &mut raw).unwrap();
+        assert_eq!(read, MAX_LIVE_CHAT_LINE_BYTES * 2 + 1);
+        assert!(cut);
+
+        raw.clear();
+        assert_eq!(read_capped_line(&mut reader, &mut raw).unwrap(), (5, false));
+        assert_eq!(raw, b"next\n");
+    }
+
+    #[test]
+    fn a_cut_line_with_no_newline_before_the_end_of_the_stream_still_returns() {
+        // Run against a deadline, so a skip loop that never sees the end fails here instead of
+        // hanging the suite.
+        let (done, finished) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let data = vec![b'x'; MAX_LIVE_CHAT_LINE_BYTES as usize + 10];
+            let mut reader = std::io::BufReader::new(&data[..]);
+            let mut raw = Vec::new();
+            let _ = done.send(read_capped_line(&mut reader, &mut raw).unwrap());
+        });
+
+        let (read, cut) = finished
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("the read reaches the end of the stream");
+        assert_eq!(read, MAX_LIVE_CHAT_LINE_BYTES + 10);
+        assert!(cut);
+    }
+
+    #[test]
     fn stream_reader_lines_rejects_a_stream_larger_than_the_ceiling() {
         // The decompression-bomb guard. A stream whose decoded size exceeds the ceiling is aborted
         // rather than buffered. Tested against a small in-memory reader with a small cap so no

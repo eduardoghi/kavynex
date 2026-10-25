@@ -105,10 +105,11 @@ exclude_re = [
     'run_thumbnail_yt_dlp_with_timeout',
     # Equivalent: with `<=`, the extra iteration it admits is the one where buffer.len() equals
     # max_bytes, and there `max_bytes - buffer.len()` is 0, so the extend_from_slice copies nothing.
-    # Same buffer, same drain. The sibling mutant on the next line (`-` to `+`) is NOT excluded and
-    # is a real one. It overshoots the cap on the chunk that straddles it, which is what
-    # a_stream_over_the_cap_is_truncated_but_still_drained_to_the_end was rewritten to catch.
-    'replace < with <= in read_drain_capped_async',
+    # Same buffer, same drain, for the sync and the async drain alike. The sibling mutant on the
+    # next line (`-` to `+`) is NOT excluded and is a real one. It overshoots the cap on the chunk
+    # that straddles it, which a_stream_over_the_cap_is_truncated_but_still_drained_to_the_end and
+    # a_drained_pipe_keeps_exactly_its_cap_and_is_read_to_the_end catch.
+    'replace < with <= in read_drain_capped(_async)?$',
     # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half.
     # Narrow on purpose, and prepare_cache_scope_dirs, managed_cache_scope_dirs and
     # grant_path_with_canonical stay.
@@ -205,6 +206,12 @@ exclude_re = [
     # GetDiskFreeSpaceExW on windows. No test can pin the number. The decision it feeds,
     # has_room_for, stays in scope and covered.
     'available_space_bytes',
+    # Equivalent: with no Range header the window asked for is `(0, len - 1)`, and clamp_range
+    # bounds the end to `len - 1` anyway, so `len + 1` yields the same window.
+    'replace - with \+ in plan_range',
+    # Equivalent: `64 * 1024` is the size of each piece of a cut line read and dropped. At `64 + 1024`
+    # the same bytes are dropped in more pieces, and the count and the next line are the same.
+    'replace \* with \+ in read_capped_line',
     # Equivalent: `generations > 0` and `>= 0` differ only for zero generations, and the three
     # callers pass BACKUP_ROTATED_GENERATIONS (6), CORRUPT_ROTATED_GENERATIONS (2) and
     # EXTERNAL_BACKUP_ROTATED_GENERATIONS (2).

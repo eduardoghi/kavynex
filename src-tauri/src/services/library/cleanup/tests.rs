@@ -1080,6 +1080,40 @@ fn a_planned_removal_reports_the_refusal_when_most_files_are_unreferenced() {
 }
 
 #[test]
+fn an_orphan_thumbnail_moved_to_the_trash_drops_its_display_derivative() {
+    let root = unique_test_dir("orphans-trash-derivative");
+    let library = root.join("library");
+    let display_dir = root.join("thumb-display");
+    fs::create_dir_all(library.join("thumbnails")).unwrap();
+    fs::create_dir_all(&display_dir).unwrap();
+
+    let thumb = format!("thumbnails/thumb_{TEST_THUMBNAIL_HASH}.jpg");
+    fs::write(library.join(&thumb), b"thumb bytes").unwrap();
+    let derivative = display_dir.join(format!("{TEST_THUMBNAIL_HASH}-w640.jpg"));
+    fs::write(&derivative, b"derivative").unwrap();
+
+    let report = move_orphans_to_trash_sync(
+        &library,
+        Some(&display_dir),
+        vec![DeletableArtifact {
+            kind: ArtifactKind::Thumbnail,
+            path: thumb.clone(),
+        }],
+    );
+
+    assert_eq!(report.deleted_paths, vec![thumb]);
+    // On Windows a file a scanner still holds reads as present after its removal, until the scan
+    // lets go, which on a loaded machine has taken more than two seconds.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while derivative.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!derivative.exists());
+
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn removed_orphans_are_moved_into_the_library_trash_rather_than_deleted() {
     let library = unique_test_dir("orphans-trash");
     fs::create_dir_all(library.join("video")).unwrap();

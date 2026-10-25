@@ -681,6 +681,25 @@ mod tests {
     }
 
     #[test]
+    fn the_share_of_a_network_library_is_recorded_and_a_local_one_clears_it() {
+        // The share is global and set again by any test that registers a library, so each
+        // reading is retried until it is this test's own.
+        let reads_as = |library: &str, expected: Option<&str>| {
+            (0..50).any(|_| {
+                set_library_share(library);
+                library_share()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .as_deref()
+                    == expected
+            })
+        };
+
+        assert!(reads_as(r"\\NAS\Videos\library", Some(r"\\nas\videos")));
+        assert!(reads_as("/home/user/library", None));
+    }
+
+    #[test]
     fn clamp_range_never_returns_more_than_the_cap() {
         // The property the whole module rests on. A cap of 4 yields 4 bytes (0..=3), not 5.
         assert_eq!(clamp_range(0, 999, 1000, 4), (0, 3));

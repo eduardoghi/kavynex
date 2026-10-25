@@ -286,6 +286,26 @@ mod tests {
     }
 
     #[test]
+    fn a_bmp_header_cut_short_is_refused_without_reading_past_it() {
+        for short in [&b"BM"[..], b"BM\0\0\0\0\0\0", b"BM\0\0\0\0\0\0\0\0\0\0\0"] {
+            assert!(!looks_like_bmp(short), "{short:?}");
+        }
+    }
+
+    #[test]
+    fn an_upload_date_of_eight_characters_that_are_not_all_digits_is_dropped() {
+        // Each one is eight characters long, so only the digit check can refuse it. chrono's own
+        // parser would take a sign or a single-digit field.
+        for value in ["+2026011", "2026 1 1", "202601+1"] {
+            assert_eq!(
+                normalize_yt_dlp_upload_date(Some(value.to_string())),
+                None,
+                "{value:?}"
+            );
+        }
+    }
+
+    #[test]
     fn normalize_yt_dlp_upload_date_returns_iso_date() {
         assert_eq!(
             normalize_yt_dlp_upload_date(Some("20260131".to_string())),

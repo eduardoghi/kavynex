@@ -373,6 +373,30 @@ mod tests {
     }
 
     #[test]
+    fn a_check_the_user_ran_is_recorded_like_the_background_one() {
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-record-integrity-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::new(dir.join("kavynex.db"));
+        let report = |ok| DatabaseIntegrityReport {
+            ok,
+            problems: Vec::new(),
+            truncated: false,
+        };
+
+        record_integrity_check(&db, &report(false));
+        assert!(db_backup::integrity_check_failed(db.path()));
+
+        record_integrity_check(&db, &report(true));
+        assert!(!db_backup::integrity_check_failed(db.path()));
+        assert!(!db_backup::integrity_check_is_due(db.path()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn ensure_database_ready_command_succeeds_over_ipc() {
         let webview = test_webview(memory_db());
 

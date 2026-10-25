@@ -265,6 +265,18 @@ mod tests {
     // The two ceilings are load-bearing numbers rather than round decoration, and nothing else
     // reads them back. `MAX_LINE_BYTES` has to stay clear of the 128 MiB JSON payload
     // `--dump-single-json` legitimately emits (truncating that corrupts the parse), while
+    #[test]
+    fn a_drained_pipe_keeps_exactly_its_cap_and_is_read_to_the_end() {
+        // 8192-byte reads into a 10000-byte cap, so the second read straddles the cap and the
+        // remaining-capacity arithmetic runs with a non-empty buffer.
+        let mut stream = std::io::Cursor::new(vec![b'x'; 20_000]);
+
+        let captured = read_drain_capped(&mut stream, 10_000);
+
+        assert_eq!(captured.len(), 10_000);
+        assert_eq!(stream.position(), 20_000);
+    }
+
     // `MAX_PROGRESS_LINE_BYTES` is multiplied by a ring buffer's length, so an arithmetic slip
     // there is a memory bound moving by orders of magnitude. Same reasoning as
     // `the_live_chat_decompression_ceiling_is_512_mib`.

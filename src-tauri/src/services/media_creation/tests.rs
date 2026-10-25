@@ -559,6 +559,24 @@ async fn the_orphan_removal_is_refused_while_a_creation_holds_the_gate() {
     assert!(try_exclude_creations().is_none());
 }
 
+#[tokio::test]
+async fn the_orphan_removal_gets_the_gate_once_no_creation_holds_it() {
+    // Another test can hold the gate for a moment, so this waits for it rather than asking once.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+
+    loop {
+        if try_exclude_creations().is_some() {
+            break;
+        }
+
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the gate stayed taken with no creation running"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 mod registration {
     use super::*;
     use crate::services::database::{get_app_settings_from_pool, set_app_settings_in_pool, Db};
@@ -1252,12 +1270,14 @@ mod registration {
             ..local_request(&library, &original, "renamed-back")
         };
 
-        register_prepared_media(app.handle(), &missing_channel, prepared)
+        let error = register_prepared_media(app.handle(), &missing_channel, prepared)
             .await
             .expect_err("an insert against a channel that does not exist must fail");
 
         assert_eq!(fs_bytes(&original), b"media bytes".to_vec());
         assert!(!library.join(&file_path).exists());
+        // Put back, so the error does not send the user to look for it in the library.
+        assert!(!error.details.unwrap_or_default().contains(&file_path));
 
         let _ = std::fs::remove_dir_all(&library);
         let _ = std::fs::remove_dir_all(&outside);
@@ -1467,6 +1487,33 @@ mod registration {
             "nothing may be recorded for a request refused before the marker is written"
         );
         assert!(!error.code.is_empty());
+
+        let _ = std::fs::remove_dir_all(&library);
+    }
+
+    #[tokio::test]
+    async fn a_download_with_no_chosen_thumbnail_keeps_the_one_it_fetched() {
+        let (app, library) = app_with_library("thumb-fetched").await;
+        let downloaded = DownloadedMediaResult {
+            file_path: "video/clip.mp4".to_string(),
+            suggested_title: "A title".to_string(),
+            youtube_video_id: Some("abc".to_string()),
+            published_at: None,
+            media_type: "video".to_string(),
+            thumbnail_path: Some("thumbnail/clip.jpg".to_string()),
+            is_live: false,
+            live_chat_file_path: None,
+            placement_marker: None,
+        };
+
+        let thumbnail = resolve_downloaded_thumbnail(
+            app.handle(),
+            &request(MediaSourceMode::YtDlp),
+            &downloaded,
+        )
+        .await;
+
+        assert_eq!(thumbnail.as_deref(), Some("thumbnail/clip.jpg"));
 
         let _ = std::fs::remove_dir_all(&library);
     }
