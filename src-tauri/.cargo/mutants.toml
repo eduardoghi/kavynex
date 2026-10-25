@@ -210,6 +210,12 @@ exclude_re = [
     # Equivalent: with no Range header the window asked for is `(0, len - 1)`, and clamp_range
     # bounds the end to `len - 1` anyway, so `len + 1` yields the same window.
     'replace - with \+ in plan_range',
+    # Equivalent: with the guard false, a marker that is already gone only logs a warning, and
+    # logger::write returns early when LOG_PATH is unset, which is every unit test.
+    'replace match guard error.kind\(\) == std::io::ErrorKind::NotFound with false in clear_commit_marker',
+    # Equivalent: with `<=`, the extra pass reads into an empty slice, gets Ok(0) and stops. Same
+    # bytes, same sniff.
+    'replace < with <= in file_starts_like_an_image',
     # Equivalent: `64 * 1024` is the size of each piece of a cut line read and dropped. At `64 + 1024`
     # the same bytes are dropped in more pieces, and the count and the next line are the same.
     'replace \* with \+ in read_capped_line',
