@@ -276,7 +276,9 @@ pub(crate) fn parse_cookies_browser_selector(value: &str) -> Option<CookiesBrows
     };
 
     if let Some(profile) = profile {
-        if !is_safe_selector_component(profile) {
+        // A profile starting with `:` (`firefox: :x`) loses the whitespace that kept it apart from
+        // its separator, and its argument would read back as a container.
+        if !is_safe_selector_component(profile) || profile.starts_with(':') {
             return None;
         }
     }

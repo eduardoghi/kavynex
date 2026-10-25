@@ -6,8 +6,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
-- A browser profile for cookies that ends in a colon and is followed by a container is refused on
-  screen. yt-dlp would have read it as a different profile and container.
+- A browser profile for cookies that starts with a colon, or ends with one before a container, is
+  refused on screen. yt-dlp would have read it as a different profile and container.
 
 ### Security
 

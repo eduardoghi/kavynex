@@ -627,8 +627,8 @@ the container are free text (a profile is often a path) but may not be empty, st
 carry a control character, or be a network path, and the whole value is capped at 512 characters.
 Whitespace around the separators is dropped and the browser and keyring are lowercased, as yt-dlp
 does. The profile and container are passed as typed, since profile names are case-sensitive on
-Linux. A profile ending in `:` before a container is refused, because once the whitespace between
-them is dropped it reads as a different selector. A value that fails
+Linux. A profile that starts with `:`, or ends with one before a container, is refused, because
+once the whitespace around it is dropped it reads as a different selector. A value that fails
 any of this is dropped like an invalid cookies path, and the frontend validates the same grammar
 before the round trip (pinned from both sides by `shared/cookies-browser-selector-cases.json`) so a
 profile a user mistypes is refused on screen rather than silently downgrading the run to no cookies.

@@ -107,7 +107,9 @@ export function parseCookiesBrowserSelector(value: string): CookiesBrowserSelect
 
     const profile = rawProfile === null ? null : rawProfile.trim();
 
-    if (profile !== null && !isSafeSelectorComponent(profile)) {
+    // A profile starting with `:` (`firefox: :x`) loses the whitespace that kept it apart from its
+    // separator, and its argument would read back as a container.
+    if (profile !== null && (!isSafeSelectorComponent(profile) || profile.startsWith(":"))) {
         return null;
     }
 
