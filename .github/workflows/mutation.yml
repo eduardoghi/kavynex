@@ -225,8 +225,9 @@ jobs:
                 # comes within ten minutes of the ceiling. A leg's time swings with runner speed as
                 # much as with the scope, so one sitting a few minutes under the ceiling crosses it
                 # on some run. Raising the ceiling is the wrong direction, since it exists to be a
-                # number nothing approaches. With seven shards the slowest leg took 82 minutes in
-                # the runs of 2026-09-24.
+                # number nothing approaches. A mutant takes about 21 seconds (build and test), so
+                # fourteen shards of the 2566-mutant scope come to about 64 minutes a leg plus
+                # setup. Seven ran every leg into the ceiling on 2026-10-24.
                 #
                 # A shard that ends with "The runner has received a shutdown signal" at the same
                 # point in every run is not slow. It is one mutant exhausting memory, which takes
@@ -237,12 +238,12 @@ jobs:
                 # A lost shard yields no artifact and no verdict for its slice, and every remaining
                 # step is skipped despite the upload's `if: always()`, so a surviving mutant in that
                 # slice shows up only in the raw job log.
-                shard: [1, 2, 3, 4, 5, 6, 7]
-        # Per shard, not for the whole run. The scope was 2541 mutants on 2026-10-11, counted with
+                shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+        # Per shard, not for the whole run. The scope was 2566 mutants on 2026-10-24, counted with
         # `cargo mutants --list | wc -l`, which applies the config and so counts what a run actually
-        # mutates. A seventh of it plus one baseline build sits inside this, and the ceiling stays
-        # low enough to be a real signal. When a leg creeps toward it, add a shard rather than
-        # minutes (see the matrix above).
+        # mutates. A fourteenth of it plus one baseline build sits inside this, and the ceiling
+        # stays low enough to be a real signal. When a leg creeps toward it, add a shard rather
+        # than minutes (see the matrix above).
         #
         # The gated scope moves for two reasons. It drifts a little between measurements with
         # nothing added, and it rises when a file joins `examine_globs` with a row in
