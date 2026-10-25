@@ -609,7 +609,7 @@ const MARKER_REMOVAL_ATTEMPTS: u32 = 5;
 const MARKER_REMOVAL_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Removes the in-progress marker, retrying a held file, and says whether it is gone.
-fn remove_import_applying_marker(marker: &Path) -> bool {
+pub(super) fn remove_import_applying_marker(marker: &Path) -> bool {
     for attempt in 1..=MARKER_REMOVAL_ATTEMPTS {
         match std::fs::remove_file(marker) {
             Ok(()) => return true,

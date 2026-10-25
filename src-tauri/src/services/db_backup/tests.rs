@@ -400,6 +400,15 @@ async fn mirror_sets_aside_copies_an_earlier_database_left_in_the_folder() {
         .filter(|name| name.starts_with("kavynex-backup-previous-") && name.ends_with(".db"))
         .collect();
     assert_eq!(set_aside.len(), 2, "both copies were kept: {set_aside:?}");
+    // The current copy keeps the plain name and the older one carries its generation.
+    assert!(
+        set_aside.iter().any(|name| name.ends_with("Z.db")),
+        "{set_aside:?}"
+    );
+    assert!(
+        set_aside.iter().any(|name| name.ends_with("Z-1.db")),
+        "{set_aside:?}"
+    );
 
     // The fresh copy is labelled, so the next run rotates it like any other.
     age_external_copies(&external);
@@ -1542,6 +1551,103 @@ async fn a_normal_second_import_still_replaces_the_previous_undo_snapshot() {
 }
 
 #[tokio::test]
+async fn import_rejects_a_current_database_without_the_original_comment_text() {
+    // Stamped at the current version, so ensure_schema skips the migration that adds the column
+    // and every comment read would fail after the swap.
+    let dir = temp_dir("import-no-original-text");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let source = dir.join("source.db");
+    seed_kavynex_db(&source, "incoming").await;
+    let pool = open(&source).await.unwrap();
+    for statement in [
+        "ALTER TABLE videos ADD COLUMN title_normalized TEXT".to_string(),
+        "UPDATE videos SET title_normalized = lower(title)".to_string(),
+        "ALTER TABLE video_comments DROP COLUMN original_text".to_string(),
+        format!(
+            "PRAGMA user_version = {}",
+            crate::services::db_schema::SCHEMA_VERSION
+        ),
+    ] {
+        sqlx::query(sqlx::AssertSqlSafe(statement))
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    pool.close().await;
+
+    let error = stage_database_import(&db, &source, None).await.unwrap_err();
+    assert_eq!(error.code, AppErrorCode::DatabaseImportInvalid.as_str());
+    assert!(!import_staged_path(&db).exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_marker_that_cannot_be_removed_is_reported_as_still_there() {
+    // A directory under the marker's name is something remove_file refuses with an error other
+    // than NotFound, the stand-in for a file held open.
+    let dir = temp_dir("import-marker-stuck");
+    let marker = dir.join("kavynex.db.import-applying");
+    std::fs::create_dir_all(&marker).unwrap();
+
+    assert!(!super::import::remove_import_applying_marker(&marker));
+    assert!(super::import::remove_import_applying_marker(
+        &dir.join("never-written")
+    ));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_snapshot_whose_channel_pages_are_damaged_does_not_count_as_a_library() {
+    // Page 1 (the schema) stays intact, so the file opens and only the read of `channels`, whose
+    // root is page 2, finds the damage.
+    let dir = temp_dir("holds-library-damaged-page");
+    let snapshot = dir.join("kavynex.db.bak");
+    {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&snapshot)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        for statement in [
+            "PRAGMA page_size = 4096",
+            "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT)",
+            "CREATE TABLE videos (id INTEGER PRIMARY KEY)",
+            "INSERT INTO channels (name) VALUES ('a channel')",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+        pool.close().await;
+    }
+    let mut bytes = std::fs::read(&snapshot).unwrap();
+    bytes[4096..8192].fill(0xFF);
+    std::fs::write(&snapshot, bytes).unwrap();
+
+    assert!(!super::snapshot::any_holds_library(&[snapshot]).await);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn generations_of_an_empty_library_do_not_count_as_a_library() {
+    let dir = temp_dir("generations-empty-library");
+    let db = dir.join("kavynex.db");
+    empty_kavynex_db(&backup_path(&db)).await;
+    empty_kavynex_db(&generation_backup_path(&db, 1)).await;
+
+    assert!(!super::snapshot::any_generation_holds_library(&db).await);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn import_rejects_a_namesake_database_whose_columns_are_wrong() {
     // The four table names with the wrong columns. Another app's namesake schema, a
     // hand-edited file, a half-finished migration. Stamped at this build's SCHEMA_VERSION,
@@ -2477,40 +2583,127 @@ async fn database_quick_check_tells_damage_from_a_file_it_could_not_read() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Writes a database whose quick_check answers with a problem rather than "ok". A row that violates
+/// a CHECK constraint, written with the constraint switched off, is a deterministic one, since
+/// quick_check verifies CHECK and NOT NULL.
+async fn write_database_failing_its_check(db: &std::path::Path) {
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            sqlx::sqlite::SqliteConnectOptions::new()
+                .filename(db)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+
+    for statement in [
+        "CREATE TABLE guarded (value INTEGER CHECK (value > 0))",
+        "PRAGMA ignore_check_constraints = ON",
+        "INSERT INTO guarded (value) VALUES (-1)",
+    ] {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+    }
+
+    pool.close().await;
+}
+
 #[tokio::test]
 async fn a_quick_check_that_answers_with_a_problem_is_damage() {
     // The other way damage arrives. The file opens and the pragma runs, but its answer is a row
-    // naming a problem rather than "ok". A row that violates a CHECK constraint, written with the
-    // constraint switched off, is a deterministic one, since quick_check verifies CHECK and
-    // NOT NULL.
+    // naming a problem rather than "ok".
     let dir = temp_dir("quick_check_answer");
     let db = dir.join("kavynex.db");
-
-    {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(
-                sqlx::sqlite::SqliteConnectOptions::new()
-                    .filename(&db)
-                    .create_if_missing(true),
-            )
-            .await
-            .unwrap();
-
-        for statement in [
-            "CREATE TABLE guarded (value INTEGER CHECK (value > 0))",
-            "PRAGMA ignore_check_constraints = ON",
-            "INSERT INTO guarded (value) VALUES (-1)",
-        ] {
-            sqlx::query(statement).execute(&pool).await.unwrap();
-        }
-
-        pool.close().await;
-    }
+    write_database_failing_its_check(&db).await;
 
     assert_eq!(database_quick_check(&db).await, QuickCheck::Damaged);
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn an_open_pool_whose_check_names_a_problem_is_damaged_and_unhealthy() {
+    let dir = temp_dir("pool_quick_check_answer");
+    let db = dir.join("kavynex.db");
+    write_database_failing_its_check(&db).await;
+
+    let pool = connect(&db).await.unwrap();
+    assert_eq!(pool_quick_check(&pool).await, QuickCheck::Damaged);
+    assert!(!is_healthy(&pool).await);
+    pool.close().await;
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_swap_exactly_one_window_old_is_no_longer_recent() {
+    let swapped_at = UNIX_EPOCH + Duration::from_secs(1_000_000);
+    let window = Duration::from_secs(60);
+
+    assert!(swap_is_within(
+        swapped_at + window - Duration::from_secs(1),
+        swapped_at,
+        window
+    ));
+    assert!(!swap_is_within(swapped_at + window, swapped_at, window));
+    // A clock that moved back still counts the swap as recent.
+    assert!(swap_is_within(swapped_at - window, swapped_at, window));
+}
+
+#[tokio::test]
+async fn a_database_held_for_a_moment_is_checked_again_rather_than_reported_unreadable() {
+    let dir = temp_dir("quick_check_retry");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "hello").await;
+
+    // Released after the first check gave up and before the retry does. On Windows SQLite retries a
+    // sharing violation for about 1.4 seconds before the first check gives up, so the hold has to
+    // outlast that. Nothing retries a permission error on Unix, so there it ends before the retry,
+    // which waits UNREADABLE_RETRY_DELAY.
+    let hold = if cfg!(windows) {
+        Duration::from_secs(2)
+    } else {
+        UNREADABLE_RETRY_DELAY / 3
+    };
+    let released = hold_briefly(&db, hold);
+
+    assert_eq!(
+        database_quick_check_retrying(&db).await,
+        QuickCheck::Healthy
+    );
+    released.join().unwrap();
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Makes `path` unreadable for `hold`, then readable again, on a thread of its own.
+fn hold_briefly(path: &std::path::Path, hold: Duration) -> std::thread::JoinHandle<()> {
+    #[cfg(windows)]
+    let held = hold_exclusively(path);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o000)).unwrap();
+    }
+
+    let path = path.to_path_buf();
+
+    std::thread::spawn(move || {
+        std::thread::sleep(hold);
+
+        #[cfg(windows)]
+        drop(held);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        }
+
+        #[cfg(windows)]
+        let _ = path;
+    })
 }
 
 /// Holds `path` open with no sharing, the way an antivirus scan or a sync client can on Windows.

@@ -205,6 +205,10 @@ exclude_re = [
     # GetDiskFreeSpaceExW on windows. No test can pin the number. The decision it feeds,
     # has_room_for, stays in scope and covered.
     'available_space_bytes',
+    # Equivalent: `generations > 0` and `>= 0` differ only for zero generations, and the three
+    # callers pass BACKUP_ROTATED_GENERATIONS (6), CORRUPT_ROTATED_GENERATIONS (2) and
+    # EXTERNAL_BACKUP_ROTATED_GENERATIONS (2).
+    'replace > with >= in rotate_generations',
     # Equivalent: the owner-write bit is only set once `readonly()` said no write bit is set at all,
     # so `mode ^ 0o200` and `mode | 0o200` give the same mode.
     'replace \| with \^ in make_owner_writable',

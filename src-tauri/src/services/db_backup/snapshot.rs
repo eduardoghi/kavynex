@@ -63,7 +63,7 @@ pub(super) async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
 }
 
 /// Whether any of the daily generations holds a library.
-async fn any_generation_holds_library(db_path: &Path) -> bool {
+pub(super) async fn any_generation_holds_library(db_path: &Path) -> bool {
     let generations: Vec<PathBuf> = (0..=BACKUP_ROTATED_GENERATIONS)
         .map(|generation| generation_backup_path(db_path, generation))
         .collect();
