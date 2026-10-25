@@ -1102,12 +1102,6 @@ fn an_orphan_thumbnail_moved_to_the_trash_drops_its_display_derivative() {
     );
 
     assert_eq!(report.deleted_paths, vec![thumb]);
-    // On Windows a file a scanner still holds reads as present after its removal, until the scan
-    // lets go, which on a loaded machine has taken more than two seconds.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-    while derivative.exists() && std::time::Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
     assert!(!derivative.exists());
 
     let _ = fs::remove_dir_all(&root);
@@ -1188,4 +1182,38 @@ fn the_grace_period_is_the_one_the_frontend_tells_the_user() {
     let days = fixture["orphanGracePeriodDays"].as_u64().unwrap();
 
     assert_eq!(ORPHAN_GRACE_PERIOD.as_secs(), days * 24 * 60 * 60);
+}
+
+#[test]
+fn a_file_written_in_the_last_hour_is_spared() {
+    // Pinned by value. `60 / 60` would spare a file for one second.
+    assert_eq!(RECENT_WRITE_WINDOW.as_secs(), 3_600);
+}
+
+#[test]
+fn the_share_rule_counts_every_file_named_like_the_apps_own() {
+    let library = unique_test_dir("count-content-addressed");
+    fs::create_dir_all(library.join("video")).unwrap();
+    fs::create_dir_all(library.join("thumbnails")).unwrap();
+    fs::write(
+        library.join(format!("video/media_{}.mp4", "a".repeat(64))),
+        b"a",
+    )
+    .unwrap();
+    fs::write(
+        library.join(format!("video/media_{}.mp4", "b".repeat(64))),
+        b"b",
+    )
+    .unwrap();
+    fs::write(
+        library.join(format!("thumbnails/thumb_{}.jpg", "c".repeat(64))),
+        b"c",
+    )
+    .unwrap();
+    // Put there by hand, so not one of the app's own.
+    fs::write(library.join("video").join("holiday.mp4"), b"d").unwrap();
+
+    assert_eq!(count_content_addressed_files(&library), 3);
+
+    let _ = fs::remove_dir_all(&library);
 }

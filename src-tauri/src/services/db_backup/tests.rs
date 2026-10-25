@@ -39,6 +39,65 @@ fn duration_is_recent_classifies_recent_stale_and_backward_clock() {
 }
 
 #[tokio::test]
+async fn a_database_at_this_builds_schema_version_is_backed_up() {
+    // Only a newer one is skipped as a downgrade.
+    let dir = temp_dir("current-version");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+    let pool = open(&db).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "PRAGMA user_version = {}",
+        crate::services::db_schema::SCHEMA_VERSION
+    )))
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    assert!(backup_database(&db).await.unwrap());
+    assert!(backup_path(&db).exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn setting_aside_the_external_copies_says_how_many_moved() {
+    let dir = temp_dir("set-aside-count");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(external_backup_path(&dir), b"current").unwrap();
+    std::fs::write(generation_external_backup_path(&dir, 1), b"older").unwrap();
+
+    assert_eq!(
+        super::external::set_aside_external_generations(&dir).unwrap(),
+        2
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_marker_held_for_a_moment_is_removed_on_a_later_attempt() {
+    // A directory under the marker's name fails remove_file the way a held file does, and taking
+    // it away after the first attempt stands in for the hold ending.
+    let dir = temp_dir("import-marker-held");
+    let marker = dir.join("kavynex.db.import-applying");
+    std::fs::create_dir_all(&marker).unwrap();
+
+    let released = {
+        let marker = marker.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            std::fs::remove_dir(&marker).unwrap();
+        })
+    };
+
+    assert!(super::import::remove_import_applying_marker(&marker));
+    released.join().unwrap();
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn backup_creates_a_valid_snapshot() {
     let dir = temp_dir("valid");
     let db = dir.join("kavynex.db");

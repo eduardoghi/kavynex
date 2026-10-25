@@ -293,8 +293,7 @@ pub fn stage_media_import_cancellable_sync(
     } else {
         crate::services::filesystem::verify_content_addressed_write(
             &destination,
-            // A consumed source was renamed, not copied, so there is nothing to compare against.
-            (!library_holds_only_copy).then_some(source.as_path()),
+            source_to_compare(&source, library_holds_only_copy),
             &hash,
             "media",
             &ext,
@@ -407,9 +406,24 @@ pub fn delete_media_file_sync(file_path: &str, library_path: &str) -> AppResult<
     Ok(())
 }
 
+/// The source a fresh write is compared against, or `None` when the source was consumed. A source
+/// renamed into the library rather than copied is no longer where it was, so there is nothing to
+/// compare against.
+fn source_to_compare(source: &Path, library_holds_only_copy: bool) -> Option<&Path> {
+    (!library_holds_only_copy).then_some(source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_copy_is_compared_with_its_source_and_a_consumed_source_is_not() {
+        let source = Path::new("/elsewhere/clip.mp4");
+
+        assert_eq!(source_to_compare(source, false), Some(source));
+        assert_eq!(source_to_compare(source, true), None);
+    }
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(

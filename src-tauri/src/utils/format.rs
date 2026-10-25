@@ -286,6 +286,17 @@ mod tests {
     }
 
     #[test]
+    fn a_whole_bmp_file_header_is_enough_for_the_sniff() {
+        // Exactly the 14-byte file header, pointing past a minimal 12-byte DIB header.
+        let mut header = b"BM".to_vec();
+        header.extend_from_slice(&[0; 8]);
+        header.extend_from_slice(&26_u32.to_le_bytes());
+
+        assert_eq!(header.len(), 14);
+        assert!(looks_like_bmp(&header));
+    }
+
+    #[test]
     fn a_bmp_header_cut_short_is_refused_without_reading_past_it() {
         for short in [&b"BM"[..], b"BM\0\0\0\0\0\0", b"BM\0\0\0\0\0\0\0\0\0\0\0"] {
             assert!(!looks_like_bmp(short), "{short:?}");

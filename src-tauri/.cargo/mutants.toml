@@ -95,6 +95,7 @@ exclude_re = [
     # Boundary: spawns FFmpeg and polls it to a deadline. Note that nothing is excluded for
     # resolve_display_thumbnails_sync, and the doc records why the reason once given was wrong.
     'generate_display_thumbnail',
+    'run_display_ffmpeg',
     # Boundary: the two halves of the thumbnail spawn that need a live child process, one to take
     # its pipes and one to kill its tree on a deadline. Narrow on purpose, since
     # read_drain_capped_async takes its cap as an argument and reads any AsyncRead, so it is tested

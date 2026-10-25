@@ -243,7 +243,7 @@ fn existing_external_generations(dir: &Path) -> Vec<PathBuf> {
 /// lineage file with them, so the mirror of a new database starts beside them instead of rotating
 /// them out. The `.db` extension is what lets Settings > Database > Import read one directly.
 /// Returns how many copies were set aside.
-fn set_aside_external_generations(dir: &Path) -> AppResult<usize> {
+pub(super) fn set_aside_external_generations(dir: &Path) -> AppResult<usize> {
     let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     let mut moved = 0;
 

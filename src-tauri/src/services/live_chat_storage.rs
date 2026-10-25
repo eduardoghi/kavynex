@@ -868,6 +868,8 @@ mod tests {
         // remove the bound, neither of which any behavioral test can afford to exercise at that
         // size. A literal is the only thing that catches it.
         assert_eq!(MAX_LIVE_CHAT_DECOMPRESSED_BYTES, 536_870_912);
+        // The line ceiling the same way. `1024 + 1024` would still read every test's lines.
+        assert_eq!(MAX_LIVE_CHAT_LINE_BYTES, 1_048_576);
     }
 
     /// Collects every streamed line into one vector, plus the number of batches `emit` was called

@@ -977,6 +977,9 @@ mod tests {
                 total_bytes: 10,
             })
         );
+        // Between the two, a report waits for PROGRESS_INTERVAL rather than following every file.
+        // Four would mean one per file, which only a copy slower than the interval per file earns.
+        assert!(reports.len() < 4, "{reports:?}");
 
         let _ = fs::remove_dir_all(new_root);
         let _ = fs::remove_dir_all(old_root);
