@@ -1695,6 +1695,34 @@ async fn a_snapshot_whose_channel_pages_are_damaged_does_not_count_as_a_library(
 }
 
 #[tokio::test]
+async fn a_snapshot_whose_library_cannot_be_read_counts_as_one() {
+    // A database with no `channels` table fails the query with an error that is not damage, and
+    // nothing is known about what it holds.
+    let dir = temp_dir("holds-library-unreadable");
+    let snapshot = dir.join("kavynex.db.bak");
+    {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&snapshot)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE unrelated (id INTEGER)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+    }
+
+    assert!(super::snapshot::any_holds_library(&[snapshot]).await);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn generations_of_an_empty_library_do_not_count_as_a_library() {
     let dir = temp_dir("generations-empty-library");
     let db = dir.join("kavynex.db");

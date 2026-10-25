@@ -288,7 +288,13 @@ fn read_capped_line<R: BufRead>(reader: &mut R, raw: &mut Vec<u8>) -> std::io::R
             .read_until(b'\n', &mut rest)?;
         read += skipped as u64;
 
-        if skipped == 0 || rest.last() == Some(&b'\n') {
+        // Two checks rather than one joined with `||`. The mutation gate's `&&` spelling of that
+        // never ends at the end of the stream, and a test reading an unterminated line hangs on it.
+        if skipped == 0 {
+            return Ok((read, true));
+        }
+
+        if rest.last() == Some(&b'\n') {
             return Ok((read, true));
         }
     }

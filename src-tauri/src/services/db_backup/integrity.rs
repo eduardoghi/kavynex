@@ -423,6 +423,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_rebuild_stopped_by_table_damage_reports_the_damage_rather_than_failing() {
+        // Page 2 is the table's root, so REINDEX reads damage there and SQLite stops it with
+        // SQLITE_CORRUPT. Page 1, the schema, stays intact so the file still opens.
+        let dir = temp_dir("reindex-corrupt-table");
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join("kavynex.db");
+        let options = SqliteConnectOptions::new()
+            .filename(&db)
+            .create_if_missing(true);
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options.clone())
+            .await
+            .unwrap();
+        for statement in [
+            "PRAGMA page_size = 4096",
+            "CREATE TABLE t (a TEXT)",
+            "CREATE INDEX t_a ON t (a)",
+            "INSERT INTO t VALUES ('1'), ('2'), ('3')",
+        ] {
+            sqlx::query(statement).execute(&pool).await.unwrap();
+        }
+        pool.close().await;
+
+        let mut bytes = std::fs::read(&db).unwrap();
+        bytes[4096..8192].fill(0xFF);
+        std::fs::write(&db, bytes).unwrap();
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let report = rebuild_indexes(&pool)
+            .await
+            .expect("table damage is reported by the check that follows, not as an error");
+        assert!(!report.ok);
+
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
     async fn rebuild_indexes_repairs_an_index_that_disagrees_with_its_table() {
         // The index is left holding entries for a column other than the one its definition names,
         // which is what a damaged index page looks like to `integrity_check`. The table is intact.

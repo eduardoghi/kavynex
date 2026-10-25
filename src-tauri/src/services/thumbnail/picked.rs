@@ -146,6 +146,24 @@ mod tests {
     }
 
     #[test]
+    fn an_image_exactly_at_the_size_ceiling_is_accepted() {
+        let dir = unique_test_dir();
+        fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("at-the-ceiling.png");
+        fs::write(&source, b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").unwrap();
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&source)
+            .unwrap()
+            .set_len(crate::services::thumbnail::persist::MAX_PERSISTED_THUMBNAIL_BYTES)
+            .unwrap();
+
+        assert!(validate_picked_thumbnail_path(&source.to_string_lossy()).is_ok());
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn an_image_past_the_size_ceiling_is_refused_before_it_is_staged() {
         let dir = unique_test_dir();
         fs::create_dir_all(&dir).unwrap();

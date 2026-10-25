@@ -1146,6 +1146,18 @@ mod tests {
     }
 
     #[test]
+    fn a_download_with_no_url_leaves_the_line_as_it_is() {
+        let redaction = OutputRedaction {
+            url: String::new(),
+            ..output_redaction("/tmp/run-1", "ffmpeg")
+        };
+
+        let line = "[download] 42.0% of 10.00MiB at 1.00MiB/s ETA 00:05";
+
+        assert_eq!(redact_download_output_line(line, &redaction), line);
+    }
+
+    #[test]
     fn a_download_line_reduces_the_pasted_url_to_the_video() {
         let redaction = output_redaction("/tmp/run-1", "ffmpeg");
 

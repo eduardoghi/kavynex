@@ -713,6 +713,24 @@ mod tests {
         let _ = fs::remove_dir_all(&scratch_root);
     }
 
+    #[test]
+    fn a_run_that_ends_without_a_write_back_removes_its_copy() {
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        let scratch_root = unique_temp_path("cookie-scratch-drop");
+        fs::create_dir_all(&scratch_root).unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        let copy = std::path::PathBuf::from(run.path().expect("a valid jar is copied"));
+        assert!(copy.exists());
+
+        drop(run);
+        assert!(!copy.exists());
+
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
+    }
+
     #[tokio::test]
     async fn the_async_write_back_keeps_the_renewed_cookies_and_removes_the_copy() {
         let original = unique_temp_path("cookies.txt");

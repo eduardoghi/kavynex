@@ -208,11 +208,18 @@ exclude_re = [
     # has_room_for, stays in scope and covered.
     'available_space_bytes',
     # Equivalent: with no Range header the window asked for is `(0, len - 1)`, and clamp_range
-    # bounds the end to `len - 1` anyway, so `len + 1` yields the same window.
-    'replace - with \+ in plan_range',
-    # Equivalent: with the guard false, a marker that is already gone only logs a warning, and
+    # bounds the end to `len - 1` anyway, so `len + 1` and `len / 1` yield the same window.
+    'replace - with [+/] in plan_range',
+    # Equivalent: the guards decide only whether a failed removal logs a warning, and
     # logger::write returns early when LOG_PATH is unset, which is every unit test.
-    'replace match guard error.kind\(\) == std::io::ErrorKind::NotFound with false in clear_commit_marker',
+    'replace match guard error.kind\(\) == std::io::ErrorKind::NotFound with (true|false) in clear_commit_marker',
+    'replace == with != in clear_commit_marker',
+    # Equivalent: with the guard false, the last failed attempt sleeps once more instead of logging,
+    # and the function returns false either way.
+    'replace match guard attempt == MARKER_REMOVAL_ATTEMPTS with false in remove_import_applying_marker',
+    # Equivalent: the age is read from the clock in nanoseconds, so a file exactly one window old
+    # cannot be arranged, and at that instant either answer is right.
+    'replace < with <= in was_written_recently',
     # Equivalent: with `<=`, the extra pass reads into an empty slice, gets Ok(0) and stops. Same
     # bytes, same sniff.
     'replace < with <= in file_starts_like_an_image',
