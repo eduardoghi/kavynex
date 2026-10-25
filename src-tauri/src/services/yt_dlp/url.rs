@@ -146,6 +146,8 @@ mod tests {
             "https://youtu.be/abc/extra",
             "https://www.youtube.com/shorts/abc/extra",
             "https://www.youtube.com/watch?v=a%20b",
+            // A `v=` on a page other than watch.
+            "https://www.youtube.com/feed?v=dQw4w9WgXcQ",
         ] {
             assert!(!names_one_video(url), "{url}");
         }

@@ -713,6 +713,28 @@ mod tests {
         let _ = fs::remove_dir_all(&scratch_root);
     }
 
+    #[tokio::test]
+    async fn the_async_write_back_keeps_the_renewed_cookies_and_removes_the_copy() {
+        let original = unique_temp_path("cookies.txt");
+        write_cookie_jar(&original);
+        let scratch_root = unique_temp_path("cookie-scratch-async");
+        fs::create_dir_all(&scratch_root).unwrap();
+
+        let run = RunCookies::prepare(Some(original.to_str().unwrap()), &scratch_root);
+        let copy = std::path::PathBuf::from(run.path().expect("a valid jar is copied"));
+        let mut renewed = fs::read(&original).unwrap();
+        renewed.extend_from_slice(b".youtube.com\tTRUE\t/\tTRUE\t0\tSID\trenewed\n");
+        fs::write(&copy, &renewed).unwrap();
+
+        run.keep_refreshed_async().await;
+
+        assert_eq!(fs::read(&original).unwrap(), renewed);
+        assert!(!copy.exists());
+
+        let _ = fs::remove_file(&original);
+        let _ = fs::remove_dir_all(&scratch_root);
+    }
+
     #[test]
     fn a_run_gets_its_own_copy_of_the_cookies_file_and_writes_back_only_when_asked() {
         let original = unique_temp_path("cookies.txt");
