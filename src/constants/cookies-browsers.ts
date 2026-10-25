@@ -119,6 +119,12 @@ export function parseCookiesBrowserSelector(value: string): CookiesBrowserSelect
         return null;
     }
 
+    // A profile ending in `:` before a container (`firefox:A: ::x`) is the same shape once the
+    // whitespace between them is dropped, and its argument would read back as another selector.
+    if (container !== null && profile !== null && profile.endsWith(":")) {
+        return null;
+    }
+
     return { browser, keyring, profile, container };
 }
 

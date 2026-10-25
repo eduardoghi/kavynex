@@ -288,6 +288,12 @@ pub(crate) fn parse_cookies_browser_selector(value: &str) -> Option<CookiesBrows
         if !is_safe_selector_component(container) || container.starts_with(':') {
             return None;
         }
+
+        // A profile ending in `:` before a container (`firefox:A: ::x`) is the same shape once the
+        // whitespace between them is dropped, and its argument would read back as another selector.
+        if profile.is_some_and(|profile| profile.ends_with(':')) {
+            return None;
+        }
     }
 
     Some(CookiesBrowserSelector {

@@ -4,6 +4,11 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+### Fixed
+
+- A browser profile for cookies that ends in a colon and is followed by a container is refused on
+  screen. yt-dlp would have read it as a different profile and container.
+
 ### Security
 
 - The TLS library under the updater's connection and its certificate checks are past

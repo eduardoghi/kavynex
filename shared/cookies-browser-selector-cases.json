@@ -28,6 +28,7 @@
         "firefox::",
         "firefox: ",
         "firefox:::Work",
+        "firefox:A: ::Work",
         ":Profile",
         "+gnomekeyring",
         "firefox+",
