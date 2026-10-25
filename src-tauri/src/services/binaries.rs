@@ -106,8 +106,13 @@ pub(crate) fn resolve_from_path(candidates: &[&str]) -> Option<String> {
     resolve_from_dirs(&WELL_KNOWN_BIN_DIRS, candidates)
 }
 
+// The Windows body carries its own name, so the mutation gate (which runs on Linux and never
+// compiles it) can exclude it without also excluding the body below.
 #[cfg(windows)]
-fn resolve_from_path_var(path_var: &OsStr, candidates: &[&str]) -> Option<String> {
+use self::resolve_from_path_var_windows as resolve_from_path_var;
+
+#[cfg(windows)]
+fn resolve_from_path_var_windows(path_var: &OsStr, candidates: &[&str]) -> Option<String> {
     // Resolve against the directories listed in PATH only. Unlike where.exe, this never
     // searches the current working directory, which where.exe probes before PATH and would
     // let a malicious yt-dlp.exe/ffmpeg.exe planted in the process CWD win over the real one
@@ -1036,6 +1041,42 @@ mod tests {
             std::env::split_paths(&path).collect::<Vec<_>>(),
             vec![deno_dir]
         );
+    }
+
+    #[test]
+    fn deno_is_looked_for_by_its_platform_name() {
+        let expected: Vec<&str> = if cfg!(target_os = "windows") {
+            vec!["deno.exe", "deno"]
+        } else {
+            vec!["deno"]
+        };
+
+        assert_eq!(js_runtime_candidates(), expected);
+    }
+
+    #[test]
+    fn a_yt_dlp_child_is_given_the_folder_deno_was_found_in() {
+        // The only test that touches the recorded folder, so nothing races it.
+        let deno_dir = std::env::temp_dir().join("kavynex-expose-deno-bin");
+        remember_js_runtime(Some(deno_dir.join("deno").to_string_lossy().to_string()));
+
+        let mut command = tokio::process::Command::new("yt-dlp");
+        expose_js_runtime_to_child(&mut command);
+        remember_js_runtime(None);
+
+        let path = command
+            .as_std()
+            .get_envs()
+            .find(|(key, _)| *key == OsStr::new("PATH"))
+            .and_then(|(_, value)| value)
+            .expect("the child's PATH is set");
+        assert!(std::env::split_paths(path).any(|dir| dir == deno_dir));
+    }
+
+    #[test]
+    fn a_health_check_keeps_64_kib_of_output() {
+        // Pinned by value. `64 + 1024` would still keep a version banner and pass every other test.
+        assert_eq!(HEALTH_CHECK_MAX_OUTPUT_BYTES, 65_536);
     }
 
     #[test]

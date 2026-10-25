@@ -132,6 +132,7 @@ exclude_re = [
     'resolve_binary_from_candidates',
     'resolve_yt_dlp_binary',
     'resolve_ffmpeg_binary',
+    'resolve_js_runtime',
     'run_command_and_capture_first_line',
     'validate_yt_dlp_binary',
     'validate_ffmpeg_binary',
@@ -190,10 +191,23 @@ exclude_re = [
     # cfg-split: unix File::sync_all / windows FlushFileBuffers, best effort, and flushing a
     # directory entry is invisible to any functional test.
     'fsync_parent_dir',
+    # cfg-split: Windows and macOS bodies the Linux gate never compiles, named apart from the Linux
+    # ones for this. flush_directory is Windows' directory flush. The uncached hash reads and the
+    # reader they share are pinned by the cfg(windows) and cfg(macos) tests that compare them with a
+    # plain hash in the Windows and macOS test jobs. resolve_from_path_var_windows is pinned by the
+    # PATH tests there, the PATHEXT one included. The Linux uncached_file_hash and the non-Windows
+    # resolve_from_path_var stay in scope.
+    'flush_directory',
+    'uncached_file_hash_(windows|macos|unsupported)',
+    'hash_reader_or_give_up',
+    'resolve_from_path_var_windows',
     # Boundary and cfg-split: the free space of the machine's own disk, statvfs on unix and
     # GetDiskFreeSpaceExW on windows. No test can pin the number. The decision it feeds,
     # has_room_for, stays in scope and covered.
     'available_space_bytes',
+    # Equivalent: the owner-write bit is only set once `readonly()` said no write bit is set at all,
+    # so `mode ^ 0o200` and `mode | 0o200` give the same mode.
+    'replace \| with \^ in make_owner_writable',
     # Equivalent: with `&&`, a missing or non-file path still returns Ok(false). Covers both guards.
     'replace \|\| with && in file_paths_have_same_content_using$',
     # Equivalent: changes only the internal temp filename, which the following rename discards.

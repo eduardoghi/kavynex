@@ -481,11 +481,23 @@ fn hash_reader_or_give_up(
     }
 }
 
+// The platform bodies other than Linux's carry their own names, so the mutation gate (which runs
+// on Linux and never compiles them) can exclude them without also excluding the Linux one.
+#[cfg(target_os = "macos")]
+use self::uncached_file_hash_macos as uncached_file_hash;
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+use self::uncached_file_hash_unsupported as uncached_file_hash;
+#[cfg(windows)]
+use self::uncached_file_hash_windows as uncached_file_hash;
+
 /// Windows reads with `FILE_FLAG_NO_BUFFERING`, which bypasses the cache and needs the buffer and
 /// each read aligned to the sector size. 4096 covers the sector sizes drives report, and a read the
 /// device refuses all the same falls back to a cached one.
 #[cfg(windows)]
-fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+fn uncached_file_hash_windows(
+    path: &Path,
+    cancel: Option<&AtomicBool>,
+) -> Option<AppResult<String>> {
     use std::os::windows::fs::OpenOptionsExt;
 
     const FILE_FLAG_NO_BUFFERING: u32 = 0x2000_0000;
@@ -527,7 +539,7 @@ fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppRes
 
 /// macOS reads through a descriptor with `F_NOCACHE` set, which keeps the read out of the cache.
 #[cfg(target_os = "macos")]
-fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+fn uncached_file_hash_macos(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
     use std::os::unix::io::AsRawFd;
 
     let mut file = fs::File::open(path).ok()?;
@@ -543,7 +555,10 @@ fn uncached_file_hash(path: &Path, cancel: Option<&AtomicBool>) -> Option<AppRes
 }
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-fn uncached_file_hash(_path: &Path, _cancel: Option<&AtomicBool>) -> Option<AppResult<String>> {
+fn uncached_file_hash_unsupported(
+    _path: &Path,
+    _cancel: Option<&AtomicBool>,
+) -> Option<AppResult<String>> {
     None
 }
 
