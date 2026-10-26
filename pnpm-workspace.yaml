@@ -31,13 +31,10 @@ overrides:
     # `pnpm why qs`, and confirm by deleting this line and seeing what `pnpm install` resolves.
     qs: ">=6.15.2"
     # Floors the transitive fast-uri, pulled by ajv, which only Stryker brings in (dev scope, never
-    # shipped in the app). 3.1.9 fixes the open advisories, GHSA-w74x-v6f9-j3xg, GHSA-xhq7-xmqj-769h,
+    # shipped in the app). 3.1.9 fixes GHSA-w74x-v6f9-j3xg, GHSA-xhq7-xmqj-769h,
     # GHSA-wjr9-j795-jxcr and GHSA-333x-w4r6-6crp, along with the host confusion and SSRF ones fixed
     # in 3.1.4 to 3.1.6. Bounded to the 3.x line ajv declares, so the override stays a patch rather
     # than a major ajv has not been tested against.
-    #
-    # fast-uri has needed this floor raised four times. Another advisory is a reason to ask whether
-    # Stryker is worth carrying, not only to raise the floor again.
     #
     # REMOVE WHEN: ajv's own range floors fast-uri at 3.1.9 or later.
     fast-uri: ">=3.1.9 <4"
