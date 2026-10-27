@@ -4,6 +4,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+## [1.8.1] (2026-10-27)
+
 ### Fixed
 
 - A browser profile for cookies that starts with a colon, or ends with one before a container, is
