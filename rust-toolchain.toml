@@ -7,6 +7,6 @@
 # jobs simply ignore targets they do not build for.
 [toolchain]
 channel = "1.99.1"
-components = ["rustfmt", "clippy"]
+components = ["rustfmt", "clippy", "rust-analyzer"]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 profile = "minimal"
