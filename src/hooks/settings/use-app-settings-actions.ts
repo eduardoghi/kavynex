@@ -27,6 +27,7 @@ import {
     loadStoredSettings,
     persistSettings,
     updateStoredCheckUpdatesOnStartup,
+    updateStoredDeleteSkipsTrash,
     updateStoredExternalBackupDir,
     updateStoredImportMode,
     updateStoredLibraryPath,
@@ -65,6 +66,7 @@ type UseAppSettingsActionsReturn = {
     setImportModeAction: (mode: AppSettings["importMode"]) => void;
     setLoadRemoteImagesAction: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartupAction: (checkUpdatesOnStartup: boolean) => void;
+    setDeleteSkipsTrashAction: (deleteSkipsTrash: boolean) => void;
     openCurrentLibraryPathAction: (libraryPath: string) => Promise<void>;
     chooseExternalBackupDirAction: () => Promise<void>;
     clearExternalBackupDirAction: () => Promise<void>;
@@ -412,6 +414,23 @@ export function useAppSettingsActions({
         [onError]
     );
 
+    const setDeleteSkipsTrashAction = useCallback(
+        (deleteSkipsTrash: boolean): void => {
+            void (async () => {
+                try {
+                    const nextSettings = await updateStoredDeleteSkipsTrash(deleteSkipsTrash);
+                    setSettings(nextSettings);
+                } catch (error) {
+                    logError("settings", "Failed to change the deletion preference.", error, {
+                        deleteSkipsTrash,
+                    });
+                    onError(resolveErrorMessage(error, "Failed to change the deletion preference."));
+                }
+            })();
+        },
+        [onError, setSettings]
+    );
+
     const chooseExternalBackupDirAction = useCallback(async (): Promise<void> => {
         await runSaveExternalBackupDir(async () => {
             try {
@@ -468,6 +487,7 @@ export function useAppSettingsActions({
         setImportModeAction,
         setLoadRemoteImagesAction,
         setCheckUpdatesOnStartupAction,
+        setDeleteSkipsTrashAction,
         openCurrentLibraryPathAction,
         chooseExternalBackupDirAction,
         clearExternalBackupDirAction,

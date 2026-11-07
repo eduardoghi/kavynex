@@ -36,6 +36,10 @@ export async function setStoredAppSettings(
  * never has to round-trip the whole settings form. The backend validates the path is an existing
  * directory.
  */
+export async function setDeleteSkipsTrash(enabled: boolean): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.SET_DELETE_SKIPS_TRASH, { enabled });
+}
+
 export async function setExternalBackupDir(path: string): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.SET_EXTERNAL_BACKUP_DIR, { path });
 }

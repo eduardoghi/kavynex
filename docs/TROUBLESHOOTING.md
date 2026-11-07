@@ -347,8 +347,10 @@ To keep a media file that is listed, import it again from Add Media with the fil
 folder as its source. It is recognised as the same bytes and registered without being copied. Undo
 the import in Settings > Database if the database you brought in was the wrong one.
 
-Files that **Remove orphan files** did take are in the `.trash` folder inside the library folder for
-30 days, each under its original path (`video/media_<hash>.mp4`, say). Move one back to that path to
+Files that **Remove orphan files** did take, and the files of a media or a channel you deleted, are
+in the `.trash` folder inside the library folder for 30 days (unless Settings > Deleted media is set
+to delete right away, or the trash was emptied there), each under its original path
+(`video/media_<hash>.mp4`, say). Move one back to that path to
 use it again, then import it as above.
 
 ## Kavynex could not upgrade its database

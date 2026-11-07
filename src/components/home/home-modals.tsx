@@ -182,6 +182,8 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         checkUpdatesOnStartup={settings.settings.checkUpdatesOnStartup}
                         onChangeImportMode={settings.setImportMode}
                         onChangeLoadRemoteImages={settings.setLoadRemoteImages}
+                        deleteSkipsTrash={settings.settings.deleteSkipsTrash}
+                        onChangeDeleteSkipsTrash={settings.setDeleteSkipsTrash}
                         onChangeCheckUpdatesOnStartup={settings.setCheckUpdatesOnStartup}
                         onChooseLibraryPath={() => void settings.chooseLibraryPath()}
                         onOpenLibraryPath={() => void settings.openCurrentLibraryPath()}

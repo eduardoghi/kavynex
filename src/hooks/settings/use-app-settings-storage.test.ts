@@ -32,6 +32,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: null,
             loadRemoteImages: null,
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
     });
@@ -47,6 +48,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: null as string | null,
             loadRemoteImages: "false" as string | null,
             checkUpdatesOnStartup: "false" as string | null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         };
 
@@ -83,6 +85,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
     });
@@ -93,6 +96,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: null,
             loadRemoteImages: null,
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -101,6 +105,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -113,6 +118,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "  /library  ",
             loadRemoteImages: "false",
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -121,6 +127,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
     });
@@ -131,6 +138,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: null,
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -139,6 +147,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
     });
@@ -149,12 +158,14 @@ describe("use-app-settings-storage", () => {
             libraryPath: null,
             loadRemoteImages: "true",
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
         await expect(loadStoredSettings()).resolves.toMatchObject({
             loadRemoteImages: true,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
     });
@@ -166,12 +177,14 @@ describe("use-app-settings-storage", () => {
                 libraryPath: null,
                 loadRemoteImages: stored,
                 checkUpdatesOnStartup: null,
+                deleteSkipsTrash: null,
                 externalBackupDir: null,
             });
 
             await expect(loadStoredSettings()).resolves.toMatchObject({
                 loadRemoteImages: false,
                 checkUpdatesOnStartup: true,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             });
         }
@@ -204,6 +217,7 @@ describe("use-app-settings-storage", () => {
                 libraryPath: null,
                 loadRemoteImages: null,
                 checkUpdatesOnStartup: stored,
+                deleteSkipsTrash: null,
                 externalBackupDir: null,
             });
 
@@ -219,6 +233,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -231,6 +246,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "  /library  ",
             loadRemoteImages: false,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -243,6 +259,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: "false",
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -253,6 +270,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -265,6 +283,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/old-library",
             loadRemoteImages: null,
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -275,6 +294,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/new-library",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -287,6 +307,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: null,
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -297,6 +318,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: false,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -309,6 +331,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: "true",
             checkUpdatesOnStartup: null,
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -319,6 +342,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -331,6 +355,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: "true",
             checkUpdatesOnStartup: "true",
+            deleteSkipsTrash: null,
             externalBackupDir: null,
         });
 
@@ -342,6 +367,7 @@ describe("use-app-settings-storage", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: true,
+            deleteSkipsTrash: false,
             externalBackupDir: "/mnt/backups",
         });
 

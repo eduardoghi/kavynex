@@ -75,6 +75,9 @@ export const TAURI_COMMANDS = {
     GET_APP_SETTINGS: "get_app_settings",
     SET_APP_SETTINGS: "set_app_settings",
     SET_EXTERNAL_BACKUP_DIR: "set_external_backup_dir",
+    SET_DELETE_SKIPS_TRASH: "set_delete_skips_trash",
+    GET_LIBRARY_TRASH_SUMMARY: "get_library_trash_summary",
+    EMPTY_LIBRARY_TRASH: "empty_library_trash",
     GET_EXTERNAL_BACKUP_STATUS: "get_external_backup_status",
 
     LIST_CHANNELS: "list_channels",

@@ -10,6 +10,9 @@ export type AppSettings = {
     // version is available. Defaults to true, and only a stored "false" turns it off (see
     // normalizeCheckUpdatesOnStartup in use-app-settings-storage.ts for why it is opt-out).
     checkUpdatesOnStartup: boolean;
+    // When true, deleting a media or a channel removes its files at once instead of moving them to
+    // the library's `.trash` folder. Defaults to false. Persisted through its own command.
+    deleteSkipsTrash: boolean;
     // Absolute path of an external directory the database is mirrored into once a day, kept
     // off-volume from the app config directory. Empty means the feature is off (the default).
     // Persisted through its own command, not the whole-row settings write.

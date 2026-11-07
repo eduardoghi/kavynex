@@ -1,6 +1,7 @@
 import type { AppSettings, ImportMode } from "../../types/settings";
 import {
     getStoredAppSettings,
+    setDeleteSkipsTrash,
     setExternalBackupDir,
     setStoredAppSettings,
 } from "../../services/app-settings-command-service";
@@ -10,6 +11,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     libraryPath: "",
     loadRemoteImages: false,
     checkUpdatesOnStartup: true,
+    deleteSkipsTrash: false,
     externalBackupDir: "",
 };
 
@@ -19,6 +21,7 @@ function cloneDefaultSettings(): AppSettings {
         libraryPath: DEFAULT_SETTINGS.libraryPath,
         loadRemoteImages: DEFAULT_SETTINGS.loadRemoteImages,
         checkUpdatesOnStartup: DEFAULT_SETTINGS.checkUpdatesOnStartup,
+        deleteSkipsTrash: DEFAULT_SETTINGS.deleteSkipsTrash,
         externalBackupDir: DEFAULT_SETTINGS.externalBackupDir,
     };
 }
@@ -60,6 +63,12 @@ function normalizeCheckUpdatesOnStartup(value: string | null | undefined): boole
     return value !== "false";
 }
 
+// Only a stored "true" deletes at once. An absent key (a database from before the setting) keeps the
+// trash, which is the choice a mistake can be taken back from.
+function normalizeDeleteSkipsTrash(value: string | null | undefined): boolean {
+    return value === "true";
+}
+
 // An absent key (older databases, a fresh install) or a blank value means the external backup is
 // off. A stored path is trimmed the same way the library path is.
 function normalizeExternalBackupDir(value: string | null | undefined): string {
@@ -78,6 +87,7 @@ export async function loadStoredSettings(): Promise<AppSettings> {
         libraryPath: normalizeLibraryPath(stored.libraryPath),
         loadRemoteImages: normalizeLoadRemoteImages(stored.loadRemoteImages),
         checkUpdatesOnStartup: normalizeCheckUpdatesOnStartup(stored.checkUpdatesOnStartup),
+        deleteSkipsTrash: normalizeDeleteSkipsTrash(stored.deleteSkipsTrash),
         externalBackupDir: normalizeExternalBackupDir(stored.externalBackupDir),
     };
 }
@@ -152,6 +162,18 @@ export function updateStoredCheckUpdatesOnStartup(
     return enqueueSettingsUpdate(() =>
         updateStoredField((current) => ({ ...current, checkUpdatesOnStartup }))
     );
+}
+
+// Like the external backup directory below, this has its own backend command, so it does not go
+// through the whole-row write.
+export function updateStoredDeleteSkipsTrash(deleteSkipsTrash: boolean): Promise<AppSettings> {
+    return enqueueSettingsUpdate(async () => {
+        const current = await loadStoredSettings();
+
+        await setDeleteSkipsTrash(deleteSkipsTrash);
+
+        return { ...current, deleteSkipsTrash };
+    });
 }
 
 // The external backup directory has its own backend command (not the whole-row write persistSettings

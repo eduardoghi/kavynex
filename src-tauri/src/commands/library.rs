@@ -292,6 +292,33 @@ pub async fn get_library_summary(db: State<'_, Db>) -> AppResult<LibrarySummaryI
     .await
 }
 
+/// How much the library's `.trash` folder holds, for Settings.
+#[tauri::command]
+pub async fn get_library_trash_summary(
+    db: State<'_, Db>,
+) -> AppResult<library::trash::LibraryTrashSummary> {
+    let pool = db.pool().await?;
+
+    with_configured_library_then_blocking_in_pool(&pool, |library_path| {
+        library::trash::library_trash_summary_sync(&library_path)
+    })
+    .await
+}
+
+/// Deletes everything in the library's `.trash` folder for good, and returns what that freed. The
+/// renderer asks the user first.
+#[tauri::command]
+pub async fn empty_library_trash(
+    db: State<'_, Db>,
+) -> AppResult<library::trash::LibraryTrashSummary> {
+    let pool = db.pool().await?;
+
+    with_configured_library_then_blocking_in_pool(&pool, |library_path| {
+        library::trash::empty_library_trash_sync(&library_path)
+    })
+    .await
+}
+
 /// Reveals a path inside the configured library in the OS file manager.
 ///
 /// `path` is confined to the configured library (`resolve_path_inside_library`). The library comes

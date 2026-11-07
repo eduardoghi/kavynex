@@ -19,7 +19,7 @@ use serde::Serialize;
 use sqlx::{SqliteConnection, SqlitePool};
 use tauri::{AppHandle, Runtime};
 
-use crate::services::database::{db_error, shared_pool};
+use crate::services::database::{db_error, get_app_settings_from_pool, shared_pool};
 use crate::services::library::guard::configured_library_dir;
 use crate::services::library::media::delete_media_file_sync;
 use crate::services::logger;
@@ -566,10 +566,31 @@ fn report_for_unavailable_library(plan: ArtifactCleanupPlan) -> ArtifactCleanupR
 async fn execute_plan<R: Runtime>(
     app: &AppHandle<R>,
     plan: ArtifactCleanupPlan,
+    disposal: Disposal,
 ) -> AppResult<ArtifactCleanupReport> {
     let _guard = MEDIA_REGISTRATION_LOCK.lock().await;
 
-    execute_plan_locked(app, plan).await
+    execute_plan_locked_with(app, plan, disposal).await
+}
+
+/// What a removal does with the files no row references any more.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Disposal {
+    /// Removed from disk.
+    Delete,
+    /// Moved to the library's `.trash` folder, which the startup sweep purges after
+    /// [`ORPHAN_GRACE_PERIOD`] and Settings can empty sooner.
+    Trash,
+}
+
+/// What deleting a media or a channel does with its files. The trash, unless Settings says to
+/// delete at once. A setting that cannot be read keeps the trash, since that is the choice a
+/// mistake can be taken back from.
+async fn deletion_disposal(pool: &SqlitePool) -> Disposal {
+    match get_app_settings_from_pool(pool).await {
+        Ok(settings) if settings.delete_skips_trash.as_deref() == Some("true") => Disposal::Delete,
+        _ => Disposal::Trash,
+    }
 }
 
 /// The body of [`execute_plan`], for a caller that already holds [`MEDIA_REGISTRATION_LOCK`].
@@ -579,7 +600,16 @@ async fn execute_plan<R: Runtime>(
 /// would deadlock.
 async fn execute_plan_locked<R: Runtime>(
     app: &AppHandle<R>,
+    plan: ArtifactCleanupPlan,
+) -> AppResult<ArtifactCleanupReport> {
+    execute_plan_locked_with(app, plan, Disposal::Delete).await
+}
+
+/// [`execute_plan_locked`], with what to do with the files.
+async fn execute_plan_locked_with<R: Runtime>(
+    app: &AppHandle<R>,
     mut plan: ArtifactCleanupPlan,
+    disposal: Disposal,
 ) -> AppResult<ArtifactCleanupReport> {
     if plan.deletable.is_empty() {
         return Ok(report_for_nothing_deletable(plan));
@@ -619,11 +649,21 @@ async fn execute_plan_locked<R: Runtime>(
     let display_dir = thumb_display_dir_async(app).await.ok();
 
     run_blocking(move || {
-        Ok(remove_planned_artifacts_sync(
-            &library_dir,
-            display_dir.as_deref(),
-            plan,
-        ))
+        Ok(match disposal {
+            Disposal::Delete => {
+                remove_planned_artifacts_sync(&library_dir, display_dir.as_deref(), plan)
+            }
+            Disposal::Trash => {
+                let skipped_shared_paths = plan.skipped_shared_paths;
+                let mut report = move_orphans_to_trash_sync(
+                    &library_dir,
+                    display_dir.as_deref(),
+                    plan.deletable,
+                );
+                report.skipped_shared_paths = skipped_shared_paths;
+                report
+            }
+        })
     })
     .await
 }
@@ -655,9 +695,10 @@ pub async fn delete_media_with_artifacts<R: Runtime>(
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
     let library_reachable = library_is_reachable(app).await;
+    let disposal = deletion_disposal(&pool).await;
 
     match delete_media_row_and_plan_cleanup(&pool, media_id, library_reachable).await? {
-        Some(plan) => execute_plan(app, plan).await,
+        Some(plan) => execute_plan(app, plan, disposal).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
 }
@@ -670,9 +711,10 @@ pub async fn delete_channel_with_artifacts<R: Runtime>(
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
     let library_reachable = library_is_reachable(app).await;
+    let disposal = deletion_disposal(&pool).await;
 
     match delete_channel_row_and_plan_cleanup(&pool, channel_id, library_reachable).await? {
-        Some(plan) => execute_plan(app, plan).await,
+        Some(plan) => execute_plan(app, plan, disposal).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
 }
@@ -1327,8 +1369,10 @@ pub async fn replace_channel_avatar<R: Runtime>(
 ) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
 
+    // A replaced avatar is removed at once. It was fetched from the channel, so it can be fetched
+    // again, and the trash is for what a deletion the user made could take back.
     match replace_channel_avatar_and_plan_cleanup(&pool, channel_id, avatar_path).await? {
-        Some(plan) => execute_plan(app, plan).await,
+        Some(plan) => execute_plan(app, plan, Disposal::Delete).await,
         None => Ok(ArtifactCleanupReport::default()),
     }
 }

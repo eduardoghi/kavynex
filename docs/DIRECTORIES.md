@@ -367,8 +367,10 @@ Inside the library directory, media services create these subfolders on demand:
 - `live_chat/`: live chat replays, one file per video that has live chat backed up. Each keeps
   yt-dlp's name (`<name>.live_chat.json`) and is gzip-compressed in place, so the name does not say
   it is compressed.
-- `.trash/`: what Diagnostics' **Remove orphan files** moved aside, one `<UTC time>-<suffix>/`
+- `.trash/`: what Diagnostics' **Remove orphan files** moved aside, and what deleting a media or a
+  channel moved there unless Settings > Deleted media deletes right away, one `<UTC time>-<suffix>/`
   folder per run that keeps each file's library-relative path (`video/media_<sha256>.mp4`, say).
+  **Empty trash** in the same section deletes it all at once.
   The startup sweep (`temp_cleanup::cleanup_library_leftovers_sync`) deletes a run folder once it
   is 30 days old (`ORPHAN_GRACE_PERIOD`). To bring a file back, move it to the same path under the
   library folder. A file already in the library under that name is the same bytes. Diagnostics

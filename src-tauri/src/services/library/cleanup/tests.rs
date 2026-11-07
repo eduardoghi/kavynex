@@ -124,8 +124,9 @@ async fn execute_plan_waits_for_a_media_registration_holding_the_lock() {
     let guard = media_registration_guard().await;
 
     let handle = app.handle().clone();
-    let mut cleanup =
-        tokio::spawn(async move { execute_plan(&handle, ArtifactCleanupPlan::default()).await });
+    let mut cleanup = tokio::spawn(async move {
+        execute_plan(&handle, ArtifactCleanupPlan::default(), Disposal::Delete).await
+    });
 
     assert!(
         tokio::time::timeout(std::time::Duration::from_millis(200), &mut cleanup)
@@ -1214,6 +1215,106 @@ fn the_share_rule_counts_every_file_named_like_the_apps_own() {
     fs::write(library.join("video").join("holiday.mp4"), b"d").unwrap();
 
     assert_eq!(count_content_addressed_files(&library), 3);
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+/// A library on disk holding one media file, a database whose settings name it, and the media's row.
+/// `delete_skips_trash` is stored as given, so `None` is a database that never set it.
+fn library_with_one_media(
+    label: &str,
+    delete_skips_trash: Option<&str>,
+) -> (tauri::App<tauri::test::MockRuntime>, PathBuf, i64) {
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::Manager;
+
+    let library = std::env::temp_dir().join(format!(
+        "kavynex-delete-{label}-{}",
+        crate::utils::naming::unique_temp_suffix()
+    ));
+    fs::create_dir_all(library.join("video")).unwrap();
+    fs::write(library.join("video").join("media_a.mp4"), b"the only copy").unwrap();
+
+    let db = crate::commands::test_ipc::memory_db();
+
+    let media_id = tauri::async_runtime::block_on(async {
+        let pool = db.pool().await.unwrap();
+
+        crate::services::database::set_app_settings_in_pool(
+            &pool,
+            &crate::services::database::StoredAppSettings {
+                library_path: Some(library.to_string_lossy().to_string()),
+                delete_skips_trash: delete_skips_trash.map(str::to_string),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let channel_id =
+            crate::services::channel_repository::insert_channel(&pool, "Channel", "@channel", None)
+                .await
+                .unwrap();
+
+        crate::services::video_repository::insert_media(
+            &pool,
+            channel_id,
+            "A video",
+            "video/media_a.mp4",
+            None,
+            "video",
+            None,
+            None,
+            None,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+        sqlx::query_scalar::<_, i64>("SELECT id FROM videos")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+    });
+
+    let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+    app.manage(db);
+
+    (app, library, media_id)
+}
+
+fn files_in_trash(library: &std::path::Path) -> usize {
+    crate::services::library::trash::library_trash_summary_sync(&library.to_string_lossy())
+        .unwrap()
+        .files as usize
+}
+
+#[test]
+fn deleting_a_media_moves_its_file_to_the_trash() {
+    // A deletion the user regrets, or a click on the wrong channel, can be taken back until the trash
+    // is emptied, and a video that is gone from YouTube is not lost to it.
+    let (app, library, media_id) = library_with_one_media("trash", None);
+
+    let report =
+        tauri::async_runtime::block_on(delete_media_with_artifacts(app.handle(), media_id))
+            .unwrap();
+
+    assert_eq!(report.deleted_paths, vec!["video/media_a.mp4".to_string()]);
+    assert!(!library.join("video").join("media_a.mp4").exists());
+    assert_eq!(files_in_trash(&library), 1);
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+#[test]
+fn deleting_a_media_removes_its_file_at_once_when_settings_say_so() {
+    let (app, library, media_id) = library_with_one_media("skip-trash", Some("true"));
+
+    tauri::async_runtime::block_on(delete_media_with_artifacts(app.handle(), media_id)).unwrap();
+
+    assert!(!library.join("video").join("media_a.mp4").exists());
+    assert_eq!(files_in_trash(&library), 0);
 
     let _ = fs::remove_dir_all(&library);
 }

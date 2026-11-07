@@ -60,6 +60,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -98,6 +100,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={onChangeLoadRemoteImages}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -152,6 +156,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -180,6 +186,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -227,6 +235,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -260,6 +270,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -294,6 +306,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -326,6 +340,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 
@@ -369,6 +385,8 @@ describe("SettingsModal", () => {
                 checkUpdatesOnStartup={false}
                 onChangeLoadRemoteImages={vi.fn()}
                 onChangeCheckUpdatesOnStartup={vi.fn()}
+                deleteSkipsTrash={false}
+                onChangeDeleteSkipsTrash={vi.fn()}
             />
         );
 

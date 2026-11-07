@@ -12,7 +12,14 @@ import {
     type DatabaseBackupStatus,
     type ExternalBackupStatus,
 } from "../../services/database-service";
-import { getLibrarySummary, type LibrarySummaryInfo } from "../../services/library-service";
+import {
+    emptyLibraryTrash,
+    getLibrarySummary,
+    getLibraryTrashSummary,
+    type LibrarySummaryInfo,
+} from "../../services/library-service";
+import type { LibraryTrashSummary } from "../../types/generated/LibraryTrashSummary";
+import { useAsyncFlag } from "../use-async-flag";
 import { parseAppError } from "../../utils/app-error";
 import { resolveErrorMessage } from "../../utils/error-message";
 import { logError } from "../../utils/app-logger";
@@ -45,6 +52,11 @@ export type SettingsController = {
     isLoadingLibrarySummary: boolean;
     librarySummaryError: string;
     refreshLibrarySummary: () => Promise<void>;
+    // What the library's `.trash` folder holds, or null before it was read or when it could not be.
+    trashSummary: LibraryTrashSummary | null;
+    isEmptyingTrash: boolean;
+    trashError: string;
+    emptyTrashAction: () => Promise<void>;
     // Null until the status has been read (or when reading it failed), so the UI can stay silent
     // rather than claim a size or a backup date it does not have.
     backupStatus: DatabaseBackupStatus | null;
@@ -406,6 +418,46 @@ export function useSettingsController({
         };
     }, [opened, externalBackupDir]);
 
+    const [trashSummary, setTrashSummary] = useState<LibraryTrashSummary | null>(null);
+    const [trashError, setTrashError] = useState("");
+    const { isRunning: isEmptyingTrash, runWithFlag: runEmptyTrash } = useAsyncFlag();
+
+    const refreshTrashSummary = useCallback(async (): Promise<void> => {
+        if (!libraryPath.trim()) {
+            setTrashSummary(null);
+            return;
+        }
+
+        try {
+            setTrashSummary(await getLibraryTrashSummary());
+        } catch (error) {
+            logError("settings-modal", "Failed to read the library trash.", error);
+            setTrashSummary(null);
+        }
+    }, [libraryPath]);
+
+    useEffect(() => {
+        if (opened) {
+            setTrashError("");
+            void refreshTrashSummary();
+        }
+    }, [opened, refreshTrashSummary]);
+
+    const emptyTrashAction = useCallback(async (): Promise<void> => {
+        await runEmptyTrash(async () => {
+            setTrashError("");
+
+            try {
+                await emptyLibraryTrash();
+            } catch (error) {
+                logError("settings-modal", "Failed to empty the library trash.", error);
+                setTrashError(resolveErrorMessage(error, "Failed to empty the trash."));
+            }
+
+            await refreshTrashSummary();
+        });
+    }, [refreshTrashSummary, runEmptyTrash]);
+
     // Memoized for a stable identity across renders, matching every sibling controller hook. Not
     // load-bearing today (settings-modal destructures individual fields), but it keeps this hook
     // consistent with the others and safe to pass whole to a memoized consumer later.
@@ -414,6 +466,10 @@ export function useSettingsController({
         isLoadingLibrarySummary,
         librarySummaryError,
         refreshLibrarySummary,
+        trashSummary,
+        isEmptyingTrash,
+        trashError,
+        emptyTrashAction,
         backupStatus,
         externalBackupStatus,
         databaseBusy,

@@ -12,6 +12,7 @@ import { normalizeString } from "../utils/guards";
 import { logError } from "../utils/app-logger";
 import { ClientError } from "../utils/app-error";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
+import type { LibraryTrashSummary } from "../types/generated/LibraryTrashSummary";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { ContentVerificationReport } from "../types/generated/ContentVerificationReport";
 import type { ArtifactCleanupReport } from "../types/generated/ArtifactCleanupReport";
@@ -126,6 +127,16 @@ export async function cancelLibraryMigration(): Promise<void> {
 
 // The functions below that take the library path send it nowhere. The backend reads the library
 // from the settings. They use it to skip a call that cannot succeed while no library is configured.
+
+// How much the library's `.trash` folder holds. The backend reads the configured library.
+export async function getLibraryTrashSummary(): Promise<LibraryTrashSummary> {
+    return invokeCommand(TAURI_COMMANDS.GET_LIBRARY_TRASH_SUMMARY);
+}
+
+// Deletes everything in the library's `.trash` folder for good, and returns what that freed.
+export async function emptyLibraryTrash(): Promise<LibraryTrashSummary> {
+    return invokeCommand(TAURI_COMMANDS.EMPTY_LIBRARY_TRASH);
+}
 
 export async function getLibrarySummary(path: string): Promise<LibrarySummaryInfo> {
     const normalizedPath = normalizeString(path);

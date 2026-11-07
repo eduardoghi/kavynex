@@ -45,6 +45,7 @@ export async function initializeAppSettings({
             libraryPath,
             loadRemoteImages: storedSettings.loadRemoteImages,
             checkUpdatesOnStartup: storedSettings.checkUpdatesOnStartup,
+            deleteSkipsTrash: storedSettings.deleteSkipsTrash,
             externalBackupDir: storedSettings.externalBackupDir,
         },
         libraryUnreachable,

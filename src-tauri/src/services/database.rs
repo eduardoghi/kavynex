@@ -19,6 +19,7 @@ const IMPORT_MODE_KEY: &str = "import_mode";
 pub(crate) const LIBRARY_PATH_KEY: &str = "library_path";
 pub(crate) const LOAD_REMOTE_IMAGES_KEY: &str = "load_remote_images";
 const CHECK_UPDATES_ON_STARTUP_KEY: &str = "check_updates_on_startup";
+const DELETE_SKIPS_TRASH_KEY: &str = "delete_skips_trash";
 pub(crate) const EXTERNAL_BACKUP_DIR_KEY: &str = "external_backup_dir";
 
 /// The application database, held in Tauri-managed state (`app.manage`) rather than a
@@ -145,6 +146,11 @@ pub struct StoredAppSettings {
     // that delivery path unused for anyone who did not go looking for it. What it enables is a
     // check that shows a notice, never an install.
     pub check_updates_on_startup: Option<String>,
+    // "true"/"false" (absent means never set). When "true", deleting a media or a channel removes its
+    // files at once instead of moving them to the library's `.trash` folder. Off by default, so a
+    // deletion can be taken back until the trash is emptied or the grace period runs out. Written by
+    // its own command, like `external_backup_dir`.
+    pub delete_skips_trash: Option<String>,
     // Absolute path of a user-chosen external directory the database is mirrored into once a day
     // (absent/empty means the feature is off). Kept off-volume from the app config directory so a
     // disk failure that takes the live database and its `.bak` snapshots does not take this too.
@@ -206,6 +212,12 @@ const SETTINGS: &[SettingSpec] = &[
         key: CHECK_UPDATES_ON_STARTUP_KEY,
         load: |settings, value| settings.check_updates_on_startup = Some(value),
         store: |settings| settings.check_updates_on_startup.as_deref(),
+        normalize: store_as_given,
+    },
+    SettingSpec {
+        key: DELETE_SKIPS_TRASH_KEY,
+        load: |settings, value| settings.delete_skips_trash = Some(value),
+        store: |settings| settings.delete_skips_trash.as_deref(),
         normalize: store_as_given,
     },
     SettingSpec {
@@ -814,6 +826,7 @@ mod tests {
             library_path: Some(library_path.to_string()),
             load_remote_images: bool_setting(load_remote_images),
             check_updates_on_startup: bool_setting(check_updates_on_startup),
+            delete_skips_trash: None,
             external_backup_dir: None,
         }
     }

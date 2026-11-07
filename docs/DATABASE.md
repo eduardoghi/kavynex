@@ -135,7 +135,8 @@ CREATE TABLE app_settings (
 
 A generic key/value table, upserted via `INSERT ... ON CONFLICT(key) DO UPDATE`. The keys it
 holds are whatever `StoredAppSettings` in `database.rs` defines. Currently `import_mode`,
-`library_path`, `load_remote_images`, `check_updates_on_startup` and `external_backup_dir` (the
+`library_path`, `load_remote_images`, `check_updates_on_startup`, `delete_skips_trash` (whether
+deleting a media or a channel skips the library's `.trash` folder) and `external_backup_dir` (the
 optional off-volume mirror directory, see "External database mirror" below). Read them from there
 rather than trusting a count here, because adding a setting is a one-line change on that struct, and
 this document is not what stops the two from drifting.

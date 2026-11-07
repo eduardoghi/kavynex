@@ -12,6 +12,7 @@ import { ImportBehaviorSection } from "./settings-sections/import-behavior-secti
 import { LibraryFolderSection } from "./settings-sections/library-folder-section";
 import { MotionSection } from "./settings-sections/motion-section";
 import { PrivacySection } from "./settings-sections/privacy-section";
+import { TrashSection } from "./settings-sections/trash-section";
 
 type SettingsModalProps = {
     opened: boolean;
@@ -26,6 +27,8 @@ type SettingsModalProps = {
     onChangeImportMode: (mode: ImportMode) => void;
     onChangeLoadRemoteImages: (loadRemoteImages: boolean) => void;
     onChangeCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
+    deleteSkipsTrash: boolean;
+    onChangeDeleteSkipsTrash: (deleteSkipsTrash: boolean) => void;
     onChooseLibraryPath: () => void;
     onOpenLibraryPath: () => void;
     onOpenDiagnostics: () => void;
@@ -107,6 +110,8 @@ export function SettingsModal({
     onChangeImportMode,
     onChangeLoadRemoteImages,
     onChangeCheckUpdatesOnStartup,
+    deleteSkipsTrash,
+    onChangeDeleteSkipsTrash,
     onChooseLibraryPath,
     onOpenLibraryPath,
     onOpenDiagnostics,
@@ -236,6 +241,17 @@ export function SettingsModal({
                         onCancelLibraryMove={onCancelLibraryMove}
                         libraryMoveProgress={libraryMoveProgress}
                         onCancelRunningLibraryMove={onCancelRunningLibraryMove}
+                    />
+
+                    <Divider />
+
+                    <TrashSection
+                        deleteSkipsTrash={deleteSkipsTrash}
+                        onChangeDeleteSkipsTrash={onChangeDeleteSkipsTrash}
+                        trashSummary={controller.trashSummary}
+                        isEmptyingTrash={controller.isEmptyingTrash}
+                        trashError={controller.trashError}
+                        onEmptyTrash={controller.emptyTrashAction}
                     />
 
                     <Divider />

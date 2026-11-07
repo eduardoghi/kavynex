@@ -31,6 +31,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -55,6 +56,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -81,6 +83,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -96,6 +99,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "   ",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -113,6 +117,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -134,6 +139,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -145,6 +151,7 @@ describe("initializeAppSettings", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });

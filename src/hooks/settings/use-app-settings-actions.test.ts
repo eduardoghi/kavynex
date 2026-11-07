@@ -55,6 +55,7 @@ describe("useAppSettingsActions", () => {
         libraryPath: "/new-library",
         loadRemoteImages: true,
         checkUpdatesOnStartup: false,
+        deleteSkipsTrash: false,
         externalBackupDir: "",
     };
 
@@ -92,6 +93,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -101,6 +103,7 @@ describe("useAppSettingsActions", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
             libraryUnreachable: false,
@@ -130,6 +133,7 @@ describe("useAppSettingsActions", () => {
                 libraryPath: "/library",
                 loadRemoteImages: true,
                 checkUpdatesOnStartup: false,
+                deleteSkipsTrash: false,
                 externalBackupDir: "",
             },
         });
@@ -138,6 +142,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
         expect(persistSettings).toHaveBeenCalledWith({
@@ -145,6 +150,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
         expect(updateStoredLibraryPath).not.toHaveBeenCalled();
@@ -156,6 +162,7 @@ describe("useAppSettingsActions", () => {
         libraryPath: "/library",
         loadRemoteImages: true,
         checkUpdatesOnStartup: false,
+        deleteSkipsTrash: false,
         externalBackupDir: "",
     };
 
@@ -688,6 +695,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -711,6 +719,7 @@ describe("useAppSettingsActions", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
         expect(onError).not.toHaveBeenCalled();

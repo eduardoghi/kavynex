@@ -40,6 +40,7 @@ export type AppSettingsController = {
     setImportMode: (mode: ImportMode) => void;
     setLoadRemoteImages: (loadRemoteImages: boolean) => void;
     setCheckUpdatesOnStartup: (checkUpdatesOnStartup: boolean) => void;
+    setDeleteSkipsTrash: (deleteSkipsTrash: boolean) => void;
     chooseLibraryPath: () => Promise<void>;
     confirmLibraryMove: () => Promise<void>;
     cancelLibraryMove: () => void;
@@ -115,6 +116,14 @@ export function useAppSettings({
     const chooseExternalBackupDir = useCallback(async (): Promise<void> => {
         await settingsActions.chooseExternalBackupDirAction();
     }, [settingsActions]);
+
+    const { setDeleteSkipsTrashAction } = settingsActions;
+    const setDeleteSkipsTrash = useCallback(
+        (deleteSkipsTrash: boolean): void => {
+            setDeleteSkipsTrashAction(deleteSkipsTrash);
+        },
+        [setDeleteSkipsTrashAction]
+    );
 
     const clearExternalBackupDir = useCallback(async (): Promise<void> => {
         await settingsActions.clearExternalBackupDirAction();
@@ -206,6 +215,7 @@ export function useAppSettings({
         setImportMode,
         setLoadRemoteImages,
         setCheckUpdatesOnStartup,
+        setDeleteSkipsTrash,
         chooseLibraryPath,
         confirmLibraryMove,
         cancelLibraryMove,

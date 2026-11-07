@@ -89,6 +89,7 @@ pub async fn set_app_settings(
             library_path: Some(trimmed_library_path),
             load_remote_images: bool_setting(load_remote_images),
             check_updates_on_startup: bool_setting(check_updates_on_startup),
+            delete_skips_trash: None,
             external_backup_dir: None,
         },
     )
@@ -125,6 +126,23 @@ pub async fn get_external_backup_status(
         .unwrap_or_default();
 
     run_blocking(move || Ok(crate::services::db_backup::external_backup_status(&dir))).await
+}
+
+/// Whether deleting a media or a channel removes its files at once instead of moving them to the
+/// library's `.trash` folder. Its own command, like the external backup folder, so the settings
+/// form's write is unchanged.
+#[tauri::command]
+pub async fn set_delete_skips_trash(db: State<'_, Db>, enabled: bool) -> AppResult<()> {
+    let pool = db.pool().await?;
+
+    set_app_settings_in_pool(
+        &pool,
+        &StoredAppSettings {
+            delete_skips_trash: bool_setting(enabled),
+            ..Default::default()
+        },
+    )
+    .await
 }
 
 #[tauri::command]

@@ -9,6 +9,7 @@
 // src-tauri/src/commands). A command that returns `AppResult<()>` maps to `void`.
 import type { TauriCommandName } from "../constants/tauri-commands";
 import type { AppUpdateInfo } from "../types/generated/AppUpdateInfo";
+import type { LibraryTrashSummary } from "../types/generated/LibraryTrashSummary";
 import type {
     Channel,
     MediaCommentRow,
@@ -113,6 +114,9 @@ export type TauriCommandReturns = {
     get_app_settings: StoredAppSettingsPayload;
     set_app_settings: void;
     set_external_backup_dir: void;
+    set_delete_skips_trash: void;
+    get_library_trash_summary: LibraryTrashSummary;
+    empty_library_trash: LibraryTrashSummary;
     get_external_backup_status: ExternalBackupStatus;
 
     list_channels: Channel[];

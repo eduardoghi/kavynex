@@ -48,6 +48,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -64,6 +65,7 @@ describe("useAppSettings", () => {
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
+            setDeleteSkipsTrashAction: vi.fn(),
             openCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
             isLibraryUnreachable: false,
@@ -189,6 +191,7 @@ describe("useAppSettings", () => {
             setImportModeAction: nextSetImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
+            setDeleteSkipsTrashAction: vi.fn(),
             openCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
             isLibraryUnreachable: false,
@@ -237,6 +240,7 @@ describe("useAppSettings", () => {
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
+            setDeleteSkipsTrashAction: vi.fn(),
             openCurrentLibraryPathAction: nextOpenCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
             isLibraryUnreachable: false,
@@ -285,6 +289,7 @@ describe("useAppSettings", () => {
             setImportModeAction,
             setLoadRemoteImagesAction: vi.fn(),
             setCheckUpdatesOnStartupAction: vi.fn(),
+            setDeleteSkipsTrashAction: vi.fn(),
             openCurrentLibraryPathAction,
             isSavingExternalBackupDir: false,
             isLibraryUnreachable: false,
@@ -310,6 +315,7 @@ describe("useAppSettings", () => {
             libraryPath: "   ",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -349,6 +355,7 @@ describe("useAppSettings", () => {
             libraryPath: "  /library  ",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -368,6 +375,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -437,6 +445,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -465,6 +474,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 
@@ -496,6 +506,7 @@ describe("useAppSettings", () => {
             libraryPath: "/library",
             loadRemoteImages: true,
             checkUpdatesOnStartup: false,
+            deleteSkipsTrash: false,
             externalBackupDir: "",
         });
 

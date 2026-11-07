@@ -57,6 +57,7 @@ import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
 import type { AppUpdateInfo } from "../types/generated/AppUpdateInfo";
+import type { LibraryTrashSummary } from "../types/generated/LibraryTrashSummary";
 import type { AppUpdateDownloadProgress } from "../types/generated/AppUpdateDownloadProgress";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
@@ -313,6 +314,7 @@ const storedAppSettingsPayloadSchema = z.object({
     libraryPath: z.string().nullable(),
     loadRemoteImages: z.string().nullable(),
     checkUpdatesOnStartup: z.string().nullable(),
+    deleteSkipsTrash: z.string().nullable(),
     externalBackupDir: z.string().nullable(),
 });
 
@@ -339,7 +341,15 @@ const appUpdateInfoSchema = z.object({
     body: z.string().nullable(),
 }) satisfies z.ZodType<AppUpdateInfo>;
 
+const libraryTrashSummarySchema = z.object({
+    files: z.number(),
+    bytes: z.number(),
+    formattedSize: z.string(),
+}) satisfies z.ZodType<LibraryTrashSummary>;
+
 const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
+    get_library_trash_summary: libraryTrashSummarySchema,
+    empty_library_trash: libraryTrashSummarySchema,
     // Null when no newer release is out.
     check_for_app_update: appUpdateInfoSchema.nullable() satisfies z.ZodType<AppUpdateInfo | null>,
     check_external_tools: externalToolsStatusSchema satisfies z.ZodType<ExternalToolsStatus>,
