@@ -192,7 +192,44 @@ pub fn persist_thumbnail_file_sync(path: &str, library_path: &str) -> AppResult<
     persist_thumbnail_from_source(&source, &library_dir)
 }
 
+/// Whether `relative_path` names a thumbnail this app wrote, `thumbnails/thumb_<sha256>.<ext>`, which
+/// is the only name `persist_thumbnail_from_source` gives one.
+///
+/// A row's thumbnail or avatar path is checked to be inside `thumbnails/`, but nothing at the write
+/// boundary checks its name. So a path a compromised renderer stored, or one an imported database
+/// carried, could name a file the user put in that folder by hand, and removing the row's thumbnail
+/// would then delete it. Only this name is deleted. Anything else stays where it is.
+pub(crate) fn is_app_written_thumbnail(relative_path: &str) -> bool {
+    let mut components = relative_path.trim().split(['/', '\\']);
+
+    let (Some(dir), Some(file_name), None) =
+        (components.next(), components.next(), components.next())
+    else {
+        return false;
+    };
+
+    let Some((stem, extension)) = file_name
+        .strip_prefix("thumb_")
+        .and_then(|rest| rest.split_once('.'))
+    else {
+        return false;
+    };
+
+    dir == LIBRARY_DIR_THUMBNAILS
+        && stem.len() == 64
+        && stem.chars().all(|c| c.is_ascii_hexdigit())
+        && !extension.is_empty()
+        && !extension.contains('.')
+}
+
 pub fn delete_thumbnail_file_sync(thumbnail_path: &str, library_path: &str) -> AppResult<()> {
+    if !is_app_written_thumbnail(thumbnail_path) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidThumbnailPath,
+            "only a thumbnail the app wrote (thumb_<sha256>) is deleted, so this file was left in place",
+        ));
+    }
+
     // Serialize against a concurrent library migration (see library::lock). Acquired once per
     // call, so the per-artifact loop in library::cleanup releases between files rather than
     // nesting.
@@ -431,11 +468,12 @@ mod tests {
 
         fs::create_dir_all(&thumbs_dir).unwrap();
 
-        let target = thumbs_dir.join("thumb_test.png");
+        let name = format!("thumb_{}.png", "a".repeat(64));
+        let target = thumbs_dir.join(&name);
         fs::write(&target, b"png-data").unwrap();
 
         delete_thumbnail_file_sync(
-            "thumbnails/thumb_test.png",
+            &format!("thumbnails/{name}"),
             library_dir.to_string_lossy().as_ref(),
         )
         .unwrap();
@@ -446,13 +484,61 @@ mod tests {
     }
 
     #[test]
+    fn delete_thumbnail_file_sync_leaves_a_file_the_app_did_not_write() {
+        // A row can name any file inside thumbnails/, and the user may keep their own files there.
+        let root = unique_test_dir();
+        let library_dir = root.join("library");
+        let thumbs_dir = library_dir.join("thumbnails");
+        fs::create_dir_all(&thumbs_dir).unwrap();
+        let theirs = thumbs_dir.join("contract.pdf");
+        fs::write(&theirs, b"the user's own file").unwrap();
+
+        let error = delete_thumbnail_file_sync(
+            "thumbnails/contract.pdf",
+            library_dir.to_string_lossy().as_ref(),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::InvalidThumbnailPath.as_str());
+        assert!(theirs.is_file());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn only_the_name_the_app_gives_a_thumbnail_counts_as_its_own() {
+        let digest = "0123456789abcdef".repeat(4);
+
+        assert!(is_app_written_thumbnail(&format!(
+            "thumbnails/thumb_{digest}.jpg"
+        )));
+        assert!(is_app_written_thumbnail(&format!(
+            "thumbnails\\thumb_{digest}.webp"
+        )));
+        assert!(!is_app_written_thumbnail("thumbnails/contract.pdf"));
+        assert!(!is_app_written_thumbnail("thumbnails/thumb_test.png"));
+        assert!(!is_app_written_thumbnail(&format!(
+            "thumbnails/thumb_{digest}"
+        )));
+        assert!(!is_app_written_thumbnail(&format!(
+            "thumbnails/thumb_{digest}.tar.gz"
+        )));
+        assert!(!is_app_written_thumbnail(&format!(
+            "thumbnails/sub/thumb_{digest}.jpg"
+        )));
+        assert!(!is_app_written_thumbnail(&format!(
+            "video/thumb_{digest}.jpg"
+        )));
+    }
+
+    #[test]
     fn delete_thumbnail_file_sync_ignores_missing_file() {
         let root = unique_test_dir();
         let library_dir = root.join("library");
         fs::create_dir_all(library_dir.join("thumbnails")).unwrap();
 
         let result = delete_thumbnail_file_sync(
-            "thumbnails/missing.png",
+            &format!("thumbnails/thumb_{}.png", "b".repeat(64)),
             library_dir.to_string_lossy().as_ref(),
         );
 

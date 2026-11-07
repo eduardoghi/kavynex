@@ -577,7 +577,7 @@ fn remove_planned_artifacts_deletes_files_and_reports_missing_as_deleted() {
     fs::create_dir_all(library.join("live_chat")).unwrap();
     fs::write(library.join("video/a.mp4"), b"media").unwrap();
     fs::write(library.join("live_chat/a.json.gz"), b"chat").unwrap();
-    // thumbnails/a.jpg intentionally does not exist. Deletion of a missing file is a
+    // thumbnails/thumb_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg intentionally does not exist. Deletion of a missing file is a
     // no-op success, matching the individual delete services.
 
     let plan = ArtifactCleanupPlan {
@@ -588,7 +588,7 @@ fn remove_planned_artifacts_deletes_files_and_reports_missing_as_deleted() {
             },
             DeletableArtifact {
                 kind: ArtifactKind::Thumbnail,
-                path: "thumbnails/a.jpg".to_string(),
+                path: "thumbnails/thumb_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg".to_string(),
             },
             DeletableArtifact {
                 kind: ArtifactKind::LiveChat,
@@ -602,7 +602,11 @@ fn remove_planned_artifacts_deletes_files_and_reports_missing_as_deleted() {
 
     assert_eq!(
         report.deleted_paths,
-        vec!["video/a.mp4", "thumbnails/a.jpg", "live_chat/a.json.gz"]
+        vec![
+            "video/a.mp4",
+            "thumbnails/thumb_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg",
+            "live_chat/a.json.gz"
+        ]
     );
     assert_eq!(report.skipped_shared_paths, vec!["video/shared.mp4"]);
     assert!(report.failed_paths.is_empty());

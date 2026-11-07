@@ -467,6 +467,14 @@ picked and is not required to be empty, which is also why `managed_asset_scope_d
 grant the root. So every path a removal resolves also has to sit in its own subtree
 (`ManagedSubtree`, above).
 
+The subtree is not enough for a thumbnail either. A thumbnail or avatar path is checked to be inside
+`thumbnails/` when it is stored, not for its name, so a value a compromised renderer stored (an
+avatar through `insert_channel` or `replace_channel_avatar`) or an imported database carried could
+name a file the user keeps in that folder. `thumbnail::persist::delete_thumbnail_file_sync` therefore
+unlinks only `thumbnails/thumb_<sha256>.<ext>`, the one name the app writes there, and leaves
+anything else where it is. A deletion that moves files to the library trash instead
+(`library::trash`) loses nothing either way, since the trash can be moved back from.
+
 `scripts/verify-command-surface-is-used.js` runs in CI and refuses a registered command that no
 wrapper in `src/` calls, so a command left behind by a caller that moved fails the build instead of
 staying exposed. The commands that rule removed, and how each was found, are in

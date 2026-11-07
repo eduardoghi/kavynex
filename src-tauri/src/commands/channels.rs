@@ -353,7 +353,9 @@ mod tests {
         let webview = test_webview(db);
         insert(&webview, "Chan", "@chan");
 
-        let avatar = library.join("thumbnails").join("thumb_new.jpg");
+        let avatar = library
+            .join("thumbnails")
+            .join("thumb_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg");
         std::fs::write(&avatar, b"img").unwrap();
 
         let error = invoke(
@@ -362,7 +364,7 @@ mod tests {
             serde_json::json!({
                 "name": "Other",
                 "youtubeHandle": "@chan",
-                "avatarPath": "thumbnails/thumb_new.jpg"
+                "avatarPath": "thumbnails/thumb_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.jpg"
             }),
         )
         .unwrap_err();
