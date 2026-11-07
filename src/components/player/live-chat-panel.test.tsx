@@ -279,6 +279,25 @@ describe("LiveChatPanel", () => {
         expect(screen.queryByText("1 visible")).not.toBeInTheDocument();
     });
 
+    it("names a verified author's badge to assistive technology", () => {
+        // lucide hides its icons by default, so the label alone never reached a screen reader.
+        const message = makeChatMessage({
+            author_badges: [{ type: "verified", label: "Verified" }],
+        });
+
+        renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[message]}
+                visibleLiveChatMessages={[message]}
+                activePin={null}
+                isLoadingLiveChat={false}
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(screen.getByRole("img", { name: "Verified" })).toBeInTheDocument();
+    });
+
     it("has no detectable accessibility violations with every row kind, and when empty", async () => {
         // One of each row the panel can draw (a plain message with badges, a super chat, a super
         // sticker, a membership, and an active pin banner), with remote images on so the avatar and

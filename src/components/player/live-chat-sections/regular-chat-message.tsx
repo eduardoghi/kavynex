@@ -103,6 +103,8 @@ export function RegularChatMessage({
                         {isVerified && !isOwner && (
                             <Check
                                 size={13}
+                                role="img"
+                                aria-hidden={false}
                                 aria-label="Verified"
                                 style={{ opacity: 0.7, flexShrink: 0 }}
                             />
