@@ -18,6 +18,7 @@ import {
     joinNormalizedPath,
     mediaSrcFromAbsolutePath,
     mediaSrcFromStoredPath,
+    mayNotPlayInBuiltInPlayer,
     mediaTypeFromFile,
     resolveStoredPath,
     RESUME_COMPLETION_TOLERANCE_SECONDS,
@@ -179,6 +180,20 @@ describe("media-utils", () => {
         it("defaults to video for unknown or missing extensions", () => {
             expect(mediaTypeFromFile("C:/media/clip.mkv")).toBe("video");
             expect(mediaTypeFromFile("C:/media/noext")).toBe("video");
+        });
+    });
+
+    describe("mayNotPlayInBuiltInPlayer", () => {
+        it("warns about containers the webview has no demuxer for", () => {
+            for (const name of ["clip.avi", "show.TS", "camera.m2ts", "phone.3gp"]) {
+                expect(mayNotPlayInBuiltInPlayer(`C:/media/${name}`)).toBe(true);
+            }
+        });
+
+        it("says nothing about the ones it plays", () => {
+            for (const name of ["clip.mp4", "clip.webm", "song.mp3", "noext"]) {
+                expect(mayNotPlayInBuiltInPlayer(`C:/media/${name}`)).toBe(false);
+            }
         });
     });
 

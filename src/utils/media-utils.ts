@@ -26,6 +26,11 @@ const LIKELY_UNPLAYABLE_EXTENSIONS = new Set<string>([
     "mpeg",
     "wma",
     "aiff",
+    // MPEG transport streams (TV and camera recordings). Chromium has no demuxer for them outside
+    // a streaming library, and on the desktop none for 3GP either.
+    "ts",
+    "m2ts",
+    "3gp",
 ]);
 
 // Whether the built-in player is likely to refuse this file. See LIKELY_UNPLAYABLE_EXTENSIONS.
