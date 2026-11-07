@@ -27,6 +27,9 @@ actually act on what it says.
    version that skipped ahead would keep the updater from ever offering the one that was meant.
 2. Commit the version bump, push to `main`, and wait for `ci.yml` and `codeql.yml` to finish green
    on that commit. The release's first job (`ci-passed`) refuses to go on otherwise.
+   `e2e.yml` (the end-to-end flows in a real webview) runs weekly rather than on every push, and the
+   release does not check it. Dispatch it on that commit and wait for it too. A failed run also
+   leaves an open "End-to-end flows failed" issue, which the next green run closes.
    If `release.yml` changed since the last release, or anything only a packaged build exercises
    (`src-tauri/src/commands/webview_check.rs`, `src/lib/webview-check.ts`, `src-tauri/capabilities/`,
    or the CSP in `src-tauri/tauri.conf.json`), dispatch `release-rehearsal.yml` first and wait for
@@ -175,6 +178,22 @@ attestation's `subject-path`) instead of leaving them to be noticed.
 
 Dropping a target is the other thing this makes expressible. With `"all"` there was nowhere to
 say that a format is not shipped.
+
+### What the repository has to be configured with
+
+The workflows read a few things that live in the repository's settings rather than in its files.
+GitHub does not let anyone read a secret back, so this list is what says they exist and what each is
+for when the repository has to be set up again or a key replaced.
+
+| Setting | Where | What it is for |
+| --- | --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | Secret of the `release` environment | The minisign key that signs every update artifact. Its public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, and installed copies accept only updates signed by it. Replacing it is a rotation (`docs/RELEASE-SECURITY.md`, "What a rotation costs"), never a plain swap. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Secret of the `release` environment | The password of that key. |
+| `release` environment | Settings > Environments | Holds the two secrets and admits only deployments from `main`. Only the `publish-tauri` job of `release.yml` names it. |
+| `UPDATER_SIGNING_PUBKEY_OVERRIDE` | Repository variable | Empty, except for the one bridging release of a key rotation, when it holds the old public key so `scripts/verify-latest-json.js` checks that release's signatures against it. |
+| Workflow permissions | Settings > Actions > General | Read-only by default. Every job asks for what it needs in its own `permissions:` block (`contents: write` to upload a release, `issues: write` for the alerts of `e2e.yml`, `mutation.yml` and `scheduled-audit.yml`, `id-token` and `attestations` for `attest-installers`). |
+| Issues | Settings > General > Features | On. The scheduled workflows report a failure as an issue and close it on the next green run. |
+| Dependabot alerts and security updates, CodeQL | Settings > Code security | On. `dependabot.yml` and `codeql.yml` rely on them. |
 
 ### Scheduled workflows on a quiet repository
 

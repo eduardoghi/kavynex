@@ -100,10 +100,13 @@ download is authentic:
 - Or, with the [GitHub CLI](https://cli.github.com/), verify its build provenance:
 
   ```
-  gh attestation verify <installer-file> --repo eduardoghi/kavynex
+  gh attestation verify <installer-file> --repo eduardoghi/kavynex \
+      --signer-workflow eduardoghi/kavynex/.github/workflows/release.yml \
+      --source-ref refs/heads/main
   ```
 
-  A successful check confirms the file was built by this repository's release workflow.
+  A successful check confirms the file was built by this repository's release workflow, from
+  `main`. With `--repo` alone, any workflow of the repository from any branch would pass.
 
 Both apply from v1.2.0 onward. The checksum and provenance steps were added to the release
 workflow after v1.1.1 was published, so v1.1.1 and earlier have neither, and `gh attestation
