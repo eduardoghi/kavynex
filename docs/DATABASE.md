@@ -565,7 +565,8 @@ rotation itself stops short, `.corrupt` is still occupied, so the database just 
 
 The chosen backup is copied to a `.restore.partial` file first, flushed, given this machine's
 folders, and only then renamed to `.restore.tmp`, the name the next launch resumes from. A copy cut
-short therefore never becomes the database. `.restore.tmp` is renamed into place after the corrupt
+short therefore never becomes the database, and it is removed rather than left behind. A copy that
+would not fit on the drive is not started (`NotEnoughSpaceForDatabase`). `.restore.tmp` is renamed into place after the corrupt
 database has been moved aside, so a failure partway through never leaves the app without a database
 file. There is a window of two renames where the database is
 transiently absent; `resume_interrupted_restore` (called from `setup()` before the pool opens)
@@ -638,19 +639,25 @@ up separately.
 Importing a user-selected `.db` file is a two-step, startup-deferred process, because the
 live connection pool is a singleton that cannot be reopened mid-session:
 
-1. `stage_database_import` validates the selected file (it must open as a healthy SQLite
-   database (`quick_check`), contain the four core tables (`channels`, `videos`,
-   `video_comments`, `app_settings`) *and* the columns each of them is queried through, and
-   have a `user_version` no higher than this build's `SCHEMA_VERSION` (`DatabaseSchemaTooNew`
-   otherwise)), then copies it to a `.import-staged.tmp` file and renames it to
-   `.import-staged` (atomic staging, so a partial copy is never picked up). The column check
+1. `stage_database_import` only ever reads the selected file. It opens it read-only, refuses
+   it when it fails `quick_check`, and copies it with `VACUUM INTO` to a `.import-staged.tmp`
+   file. A read-only connection still reads the commits the file's write-ahead log holds, and
+   unlike a writable one it never checkpoints that log into the file or removes it, so the file
+   and its log are left exactly as they were, and `VACUUM INTO` writes one consistent,
+   self-contained database even while another program is writing the source. The copy is
+   refused before it starts when the drive holding the database has less free space than the file
+   and its log (`NotEnoughSpaceForDatabase`).
+
+   Everything after that runs on the copy, so what is checked is what is swapped in. The copy must
+   contain the four core tables (`channels`, `videos`, `video_comments`, `app_settings`) *and* the
+   columns each of them is queried through, and have a `user_version` no higher than this build's
+   `SCHEMA_VERSION` (`DatabaseSchemaTooNew` otherwise). It is then given this machine's folders
+   and renamed to `.import-staged` (atomic staging, so a partial copy is never picked up). A copy
+   that fails anywhere is removed. The column check
    matters because the names alone are not a "is this a kavynex database" test: a namesake
    schema stamped at the current `SCHEMA_VERSION` would pass, and `ensure_schema` would then
    consider it current and repair nothing, so it would swap in cleanly and fail with "no such
-   column" on the first query, after the previous database had already been set aside. Any
-   WAL frames the source still holds are checkpointed into it first, since only the `.db` file
-   is copied; if a lock prevents that and frames remain, the import is refused rather than
-   silently dropping the source's most recent commits.
+   column" on the first query, after the previous database had already been set aside.
 
    A database stamped at v11 or later whose `videos` still hold a NULL `title_normalized` is
    refused here too. This is the one hole v13's triggers cannot cover (an import replaces the

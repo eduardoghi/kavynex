@@ -221,6 +221,66 @@ async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
         .await
 }
 
+/// Opens a database file that is not the app's for reading only, so neither it nor its write-ahead
+/// log is changed. A read-only connection still reads the commits the log holds, and it never
+/// checkpoints the log into the file or removes it on close, which a writable one does.
+///
+/// For a file the user picked to import. Same untrusted-schema settings as [`connect`].
+async fn connect_read_only(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    let options = SqliteConnectOptions::new()
+        .filename(db_path)
+        .create_if_missing(false)
+        .read_only(true)
+        .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
+        .pragma("trusted_schema", "OFF")
+        .pragma("cell_size_check", "ON");
+
+    SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+}
+
+/// Refuses a copy of `bytes` into the directory holding the database when its drive does not have
+/// that much free. An import and a restore write a full copy there, and a disk that fills halfway
+/// fills the very drive the database needs to write to. An unknown free space lets the copy run,
+/// and a copy that then fails is cleaned up.
+fn ensure_room_for_database_copy(db_path: &Path, bytes: u64) -> AppResult<()> {
+    let available = db_path
+        .parent()
+        .and_then(crate::services::library::migration::available_space_bytes);
+
+    if crate::services::library::migration::has_room_for(bytes, available) {
+        return Ok(());
+    }
+
+    Err(AppError::from_code_with_details(
+        crate::AppErrorCode::NotEnoughSpaceForDatabase,
+        "the drive holding the database does not have room for the copy",
+        format!(
+            "{} needed, {} available",
+            crate::utils::format::format_bytes(bytes),
+            crate::utils::format::format_bytes(available.unwrap_or(0))
+        ),
+    ))
+}
+
+/// The size of the file at `path`, and of its write-ahead log when there is one. Zero when it cannot
+/// be read.
+fn file_bytes_with_log(path: &Path) -> u64 {
+    [path.to_path_buf(), sibling(path, "-wal")]
+        .iter()
+        .filter_map(|path| std::fs::metadata(path).ok())
+        .map(|metadata| metadata.len())
+        .fold(0u64, u64::saturating_add)
+}
+
+/// Removes a scratch database and the sidecars SQLite may have left beside it.
+fn remove_scratch_database(path: &Path) {
+    let _ = std::fs::remove_file(path);
+    remove_stale_sidecars(path);
+}
+
 /// True when `modified` is within `min_interval_secs` of `now`. Extracted as a pure function so the
 /// backward-clock branch can be tested without setting a file mtime into the future. A `modified`
 /// timestamp in the future relative to `now` (the system clock moved backward. An NTP correction,

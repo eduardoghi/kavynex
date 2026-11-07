@@ -17,6 +17,8 @@ export const DATABASE_MIGRATION_BLOCKED_ERROR_CODE = "DATABASE_MIGRATION_BLOCKED
 // The database file is gone while backups of it remain. Startup offers the restore, plus starting
 // with an empty library, rather than opening an empty database that would push the backups out.
 export const DATABASE_MISSING_ERROR_CODE = "DATABASE_MISSING" as const;
+// An import or a restore needs room for a copy of the database on the drive that holds it.
+export const NOT_ENOUGH_SPACE_FOR_DATABASE_ERROR_CODE = "NOT_ENOUGH_SPACE_FOR_DATABASE" as const;
 
 export const INVALID_URL_ERROR_CODE = "INVALID_URL" as const;
 export const INVALID_LIBRARY_PATH_ERROR_CODE = "INVALID_LIBRARY_PATH" as const;
@@ -189,6 +191,7 @@ export const KNOWN_ERROR_CODES = [
     DATABASE_UNAVAILABLE_ERROR_CODE,
     DATABASE_MIGRATION_BLOCKED_ERROR_CODE,
     DATABASE_MISSING_ERROR_CODE,
+    NOT_ENOUGH_SPACE_FOR_DATABASE_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_LIBRARY_PATH_ERROR_CODE,
     INVALID_DIRECTORY_PATH_ERROR_CODE,

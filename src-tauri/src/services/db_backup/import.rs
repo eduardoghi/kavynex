@@ -23,6 +23,10 @@ pub(super) fn import_staged_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".import-staged")
 }
 
+fn import_staging_temp_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".import-staged.tmp")
+}
+
 pub(crate) fn pre_import_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".pre-import")
 }
@@ -473,6 +477,13 @@ pub(super) async fn prepare_staged_database(
 /// process-wide singleton that cannot be reopened in-process. Rejects a file that is not a
 /// healthy database, is not a kavynex database, or was created by a newer app version.
 ///
+/// The selected file is only read, never written. It is opened read-only, which still reads the
+/// commits its write-ahead log holds, and copied with `VACUUM INTO`, which writes one consistent,
+/// self-contained database even while another program is writing the file. Everything after that
+/// (the checks, this machine's folders) runs on the copy, so what is checked
+/// is exactly what is swapped in. A copy that fails anywhere is removed, and one that would not fit
+/// on the drive is not started.
+///
 /// `machine_paths`, when given, replaces the library and mirror folders the file names, so the
 /// imported database keeps pointing at this machine's (see [`MachinePaths`]).
 pub async fn stage_database_import(
@@ -494,105 +505,72 @@ pub async fn stage_database_import(
     }
 
     // A file another program is holding is reported as that, rather than as not being a database.
-    let pool = super::connect(source_path).await.map_err(|error| {
-        if crate::services::database::sqlite_error_means_damage(&error) {
-            AppError::from_code(
-                AppErrorCode::DatabaseImportInvalid,
-                "the selected file is not a valid database",
-            )
-        } else {
-            super::database_unreadable_error(error.to_string())
-        }
-    })?;
-    let validation = validate_import_source(&pool).await;
-
-    if validation.is_ok() {
-        // Fold any not-yet-checkpointed WAL frames of the source into its main database file
-        // before it is copied below. The staging copy takes only the `.db` file, never the
-        // source's `-wal`/`-shm` sidecars, so a source that is a raw copy of a *live* WAL-mode
-        // database (as opposed to a `VACUUM INTO` export, which has no WAL) would otherwise
-        // silently drop whatever committed writes still sat in its WAL. Best effort. A source
-        // on read-only media cannot be checkpointed, but such a source was not being written
-        // to either, so its `.db` is already self-contained.
-        //
-        // The pragma reports whether it actually finished, and that has to be read rather than
-        // discarded. It answers `busy = 1` when another connection held a lock and frames were
-        // left behind. Copying then produces a database quietly missing its most recent commits,
-        // which is worse than refusing. The user would have no way to tell. `log` is the frames
-        // still in the WAL afterwards, so `busy` alone is not the test, since a busy answer with an
-        // empty WAL has nothing left to lose and is fine to import.
-        let checkpoint = sqlx::query_as::<_, (i64, i64, i64)>("PRAGMA wal_checkpoint(TRUNCATE)")
-            .fetch_optional(&pool)
-            .await;
-
-        match checkpoint {
-            Ok(Some((busy, remaining_frames, _))) => {
-                if busy != 0 && remaining_frames > 0 {
-                    pool.close().await;
-
-                    return Err(AppError::from_code(
-                        AppErrorCode::DatabaseImportInvalid,
-                        "the selected database is still in use, so its most recent changes could \
-                         not be read; close the app that has it open and try again",
-                    ));
-                }
-            }
-            // The checkpoint could not be evaluated at all (an I/O error, or no row where the
-            // pragma always returns one). Proceeding would copy the `.db` with no confirmation
-            // that its WAL was folded in, which is exactly the silent recent-commit loss the busy
-            // case above refuses, so refuse here too rather than let the anomaly fall through.
-            Ok(None) | Err(_) => {
-                pool.close().await;
-
-                return Err(AppError::from_code(
+    let pool = super::connect_read_only(source_path)
+        .await
+        .map_err(|error| {
+            if crate::services::database::sqlite_error_means_damage(&error) {
+                AppError::from_code(
                     AppErrorCode::DatabaseImportInvalid,
-                    "the selected database could not be prepared for import, so its most recent \
-                     changes could not be confirmed; try exporting it again and re-importing",
-                ));
+                    "the selected file is not a valid database",
+                )
+            } else {
+                super::database_unreadable_error(error.to_string())
             }
-        }
+        })?;
+
+    // Checked on the source as well as on the copy, so a damaged file is refused as one before
+    // anything is written. `VACUUM INTO` can rebuild past some damage, and the copy passing would
+    // then say nothing about the file the user picked.
+    if !is_healthy(&pool).await {
+        pool.close().await;
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected database failed an integrity check",
+        ));
     }
 
-    pool.close().await;
-    validation?;
-
-    // Stage atomically. Copy to a temp name, then rename into the staged slot so a partial
-    // copy is never picked up on the next startup.
     let staged = import_staged_path(db_path);
-    let staging_tmp = sibling(db_path, ".import-staged.tmp");
-    let _ = std::fs::remove_file(&staging_tmp);
-    super::remove_stale_sidecars(&staging_tmp);
-    // Full-file copy of the (possibly large) source database. Run it off the async runtime so a
-    // slow source disk never stalls a Tokio worker thread.
+    let staging_tmp = import_staging_temp_path(db_path);
+    super::remove_scratch_database(&staging_tmp);
+
+    if let Err(error) =
+        super::ensure_room_for_database_copy(db_path, super::file_bytes_with_log(source_path))
     {
-        let copy_source = source_path.to_path_buf();
-        let copy_dest = staging_tmp.clone();
-        run_blocking(move || {
-            std::fs::copy(&copy_source, &copy_dest)
-                .map_err(|error| backup_error("failed to stage database import", error))?;
-            // Flush the copied bytes before the rename below. Only the `.db` file is carried across;
-            // apply_pending_database_import swaps this staged file in on the next startup without
-            // re-reading its source, so a power loss that left it truncated must not survive the
-            // rename into `.import-staged`.
-            crate::services::filesystem::fsync_file(&copy_dest)
-        })
-        .await?;
+        pool.close().await;
+        return Err(error);
     }
 
-    // Before the rename, so the staged slot only ever holds a database already in that state.
-    if let Err(error) = prepare_staged_database(&staging_tmp, machine_paths).await {
-        let _ = std::fs::remove_file(&staging_tmp);
+    let vacuum_sql = format!(
+        "VACUUM INTO '{}'",
+        super::escape_sql_literal(&staging_tmp.to_string_lossy())
+    );
+    let copied = sqlx::query(sqlx::AssertSqlSafe(vacuum_sql))
+        .execute(&pool)
+        .await;
+    pool.close().await;
+
+    if let Err(error) = copied {
+        super::remove_scratch_database(&staging_tmp);
+        return Err(backup_error("failed to copy the selected database", error));
+    }
+
+    let prepared = prepare_import_copy(&staging_tmp, machine_paths).await;
+
+    if let Err(error) = prepared {
+        super::remove_scratch_database(&staging_tmp);
         return Err(error);
     }
 
     // The flush, the rename (which retries a held file with sleeps on Windows) and the directory
-    // flush on the blocking pool, like the copy above.
+    // flush on the blocking pool.
     run_blocking(move || {
         crate::services::filesystem::fsync_file(&staging_tmp)?;
 
         let _ = std::fs::remove_file(&staged);
-        crate::services::filesystem::rename_retrying(&staging_tmp, &staged)
-            .map_err(|error| backup_error("failed to stage database import", error))?;
+        crate::services::filesystem::rename_retrying(&staging_tmp, &staged).map_err(|error| {
+            let _ = std::fs::remove_file(&staging_tmp);
+            backup_error("failed to stage database import", error)
+        })?;
         // Make the staged slot's directory entry durable, so a crash after this cannot lose the
         // rename and leave a `.import-staged.tmp` the next launch would ignore.
         crate::services::filesystem::fsync_parent_dir(&staged);
@@ -600,6 +578,19 @@ pub async fn stage_database_import(
         Ok(())
     })
     .await
+}
+
+/// Checks the copy of the selected database and writes this machine's folders into it. Everything
+/// here reads or writes the copy, never the file the user picked.
+async fn prepare_import_copy(copy: &Path, machine_paths: Option<&MachinePaths>) -> AppResult<()> {
+    let pool = super::connect(copy)
+        .await
+        .map_err(|error| backup_error("failed to open the copy of the selected database", error))?;
+    let validation = validate_import_source(&pool).await;
+    pool.close().await;
+    validation?;
+
+    prepare_staged_database(copy, machine_paths).await
 }
 
 /// How many times the marker removal after a completed swap is attempted before giving up. A file

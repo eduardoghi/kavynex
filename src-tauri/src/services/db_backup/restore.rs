@@ -357,6 +357,16 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     super::remove_stale_sidecars(&staged);
     let _ = std::fs::remove_file(&partial);
     super::remove_stale_sidecars(&partial);
+
+    // The copy goes on the drive the database needs to write to, so one that would not fit is not
+    // started.
+    if let Err(error) =
+        super::ensure_room_for_database_copy(db_path, super::file_bytes_with_log(&readable))
+    {
+        remove_unpacked(db_path);
+        return Err(error);
+    }
+
     {
         let copy_source = readable.clone();
         let copy_dest = partial.clone();
@@ -371,7 +381,13 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         .await;
 
         remove_unpacked(db_path);
-        copied?;
+
+        if let Err(error) = copied {
+            // A copy cut short (a full disk, a read error) is not left behind under a name the next
+            // attempt would only remove.
+            super::remove_scratch_database(&partial);
+            return Err(error);
+        }
     }
 
     if let Some(paths) = machine_paths.as_ref() {

@@ -3647,3 +3647,69 @@ async fn an_archive_a_write_cut_short_left_is_removed_by_the_next_backup() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[tokio::test]
+async fn an_import_leaves_the_selected_file_and_its_log_exactly_as_they_were() {
+    // The file the user picked is only read. Its newest commits, still in its write-ahead log, reach
+    // the staged copy all the same.
+    let dir = temp_dir("import-source-untouched");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "current").await;
+
+    let live = dir.join("live.db");
+    seed_kavynex_db(&live, "checkpointed").await;
+
+    let options = SqliteConnectOptions::new()
+        .filename(&live)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::query("PRAGMA wal_autocheckpoint = 0")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE videos SET title = 'only in the log'")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // A copy taken while that connection is open, which is what the user would pick.
+    let source = dir.join("picked.db");
+    std::fs::copy(&live, &source).unwrap();
+    std::fs::copy(sibling(&live, "-wal"), sibling(&source, "-wal")).unwrap();
+    pool.close().await;
+
+    let before = (
+        std::fs::read(&source).unwrap(),
+        std::fs::read(sibling(&source, "-wal")).unwrap(),
+    );
+
+    stage_database_import(&db, &source, None).await.unwrap();
+
+    assert_eq!(std::fs::read(&source).unwrap(), before.0);
+    assert_eq!(std::fs::read(sibling(&source, "-wal")).unwrap(), before.1);
+    assert_eq!(
+        read_video_title(&import_staged_path(&db)).await,
+        "only in the log"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_copy_that_would_not_fit_on_the_drive_is_refused() {
+    let dir = temp_dir("database-copy-room");
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("kavynex.db");
+
+    let error = super::ensure_room_for_database_copy(&db, u64::MAX)
+        .expect_err("no drive has that much free");
+
+    assert_eq!(error.code, AppErrorCode::NotEnoughSpaceForDatabase.as_str());
+    assert!(super::ensure_room_for_database_copy(&db, 1).is_ok());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

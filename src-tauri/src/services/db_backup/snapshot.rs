@@ -459,7 +459,13 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         .execute(&pool)
         .await;
     pool.close().await;
-    vacuum_result.map_err(|error| backup_error("failed to snapshot database", error))?;
+
+    if let Err(error) = vacuum_result {
+        // A vacuum cut short (a full disk) leaves a partial file, which would otherwise sit there as
+        // the last restore candidate until the next run.
+        super::remove_scratch_database(&temp);
+        return Err(backup_error("failed to snapshot database", error));
+    }
 
     // The snapshot is checked before anything is rotated for it. Rotation drops the oldest
     // generation, which must not happen for a file that is not a sound copy.

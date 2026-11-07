@@ -37,6 +37,9 @@ pub enum AppErrorCode {
     // The database file is gone while backups of it are still there. Opening would create an
     // empty database, and the daily snapshot would then rotate it over the backups.
     DatabaseMissing,
+    // The drive holding the database has no room for a copy an import or a restore needs. Nothing
+    // was changed.
+    NotEnoughSpaceForDatabase,
 
     DataDirectoryResolveFailed,
     CacheDirectoryResolveFailed,
@@ -233,6 +236,7 @@ impl AppErrorCode {
             Self::DatabaseUnavailable => "DATABASE_UNAVAILABLE",
             Self::DatabaseMigrationBlocked => "DATABASE_MIGRATION_BLOCKED",
             Self::DatabaseMissing => "DATABASE_MISSING",
+            Self::NotEnoughSpaceForDatabase => "NOT_ENOUGH_SPACE_FOR_DATABASE",
 
             Self::DataDirectoryResolveFailed => "DATA_DIRECTORY_RESOLVE_FAILED",
             Self::CacheDirectoryResolveFailed => "CACHE_DIRECTORY_RESOLVE_FAILED",

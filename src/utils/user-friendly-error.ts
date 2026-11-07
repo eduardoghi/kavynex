@@ -10,6 +10,7 @@ import {
     DATABASE_UNAVAILABLE_ERROR_CODE,
     DATABASE_MIGRATION_BLOCKED_ERROR_CODE,
     DATABASE_MISSING_ERROR_CODE,
+    NOT_ENOUGH_SPACE_FOR_DATABASE_ERROR_CODE,
     INVALID_INPUT_ERROR_CODE,
     INVALID_URL_ERROR_CODE,
     INVALID_RUN_ID_ERROR_CODE,
@@ -112,6 +113,9 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
         "Kavynex could not upgrade its database to this version, and left it as it was. The most common cause is a full disk. Free up space on the drive that holds the app's data and restart Kavynex. If it keeps happening, the app log has the details.",
     [DATABASE_MISSING_ERROR_CODE]:
         "Kavynex's database file is missing, but backups of it are still there. Restore one, or start with an empty library.",
+    // The amounts arrive in the backend details and are appended after this line.
+    [NOT_ENOUGH_SPACE_FOR_DATABASE_ERROR_CODE]:
+        "The drive that holds the app's data does not have enough free space for a copy of the database. Nothing was changed. Free up space and try again.",
     DATABASE_IMPORT_INVALID: "The selected file is not a valid Kavynex database.",
     // The three database-recovery refusals. Each is a state the user asked about rather than a
     // failure, and each surfaces in the restore/import flow. The one place where telling someone
