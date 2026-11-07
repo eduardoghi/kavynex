@@ -3,6 +3,19 @@ import { createAppError, parseAppError } from "./app-error";
 import type { KnownErrorCode } from "../constants/error-codes";
 
 describe("parseAppError", () => {
+    it("reads an error that is its own cause instead of overflowing the stack", () => {
+        // Inside the very handler meant to report the failure, which then reported nothing.
+        const looped = { code: "MEDIA_NOT_FOUND", message: "gone" } as Record<string, unknown>;
+        looped.cause = looped;
+        const first = { message: "outer" } as Record<string, unknown>;
+        const second = { code: "CHANNEL_NOT_FOUND", message: "inner", error: first };
+        first.error = second;
+
+        expect(parseAppError(looped).code).toBe("MEDIA_NOT_FOUND");
+        expect(() => parseAppError(first)).not.toThrow();
+        expect(parseAppError(first).code).toBe("CHANNEL_NOT_FOUND");
+    });
+
     it("returns direct code and message from plain object", () => {
         expect(
             parseAppError({

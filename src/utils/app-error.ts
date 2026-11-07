@@ -73,8 +73,18 @@ function normalizeDirectAppErrorShape(value: unknown): AppErrorShape | null {
     };
 }
 
-function extractNestedError(value: unknown): AppErrorShape | null {
-    if (value == null) {
+// How deep the search below goes through `error`, `cause` and JSON-in-a-string wrappers. Real ones
+// nest two or three levels. The bound and the `seen` set are what end a cycle (an error that is its
+// own cause), which otherwise recursed until the stack overflowed inside the handler meant to report
+// the error, and the user saw nothing.
+const MAX_NESTED_ERROR_DEPTH = 8;
+
+function extractNestedError(
+    value: unknown,
+    seen: WeakSet<object> = new WeakSet(),
+    depth = 0
+): AppErrorShape | null {
+    if (value == null || depth > MAX_NESTED_ERROR_DEPTH) {
         return null;
     }
 
@@ -82,7 +92,7 @@ function extractNestedError(value: unknown): AppErrorShape | null {
         const parsed = tryParseJsonString(value);
 
         if (parsed) {
-            const nested = extractNestedError(parsed);
+            const nested = extractNestedError(parsed, seen, depth + 1);
 
             if (nested) {
                 return nested;
@@ -92,12 +102,14 @@ function extractNestedError(value: unknown): AppErrorShape | null {
         return null;
     }
 
-    if (!isRecord(value)) {
+    if (!isRecord(value) || seen.has(value)) {
         return null;
     }
 
+    seen.add(value);
+
     if ("error" in value) {
-        const nestedFromError = extractNestedError(value.error);
+        const nestedFromError = extractNestedError(value.error, seen, depth + 1);
 
         if (nestedFromError) {
             return nestedFromError;
@@ -105,7 +117,7 @@ function extractNestedError(value: unknown): AppErrorShape | null {
     }
 
     if ("cause" in value) {
-        const nestedFromCause = extractNestedError(value.cause);
+        const nestedFromCause = extractNestedError(value.cause, seen, depth + 1);
 
         if (nestedFromCause) {
             return nestedFromCause;
@@ -113,7 +125,7 @@ function extractNestedError(value: unknown): AppErrorShape | null {
     }
 
     if (typeof value.message === "string") {
-        const nestedFromMessage = extractNestedError(value.message);
+        const nestedFromMessage = extractNestedError(value.message, seen, depth + 1);
 
         if (nestedFromMessage) {
             return nestedFromMessage;
