@@ -61,18 +61,26 @@ function extractRunsText(runs: unknown): string {
                 return item.text;
             }
 
-            const emoji = item.emoji as Record<string, unknown> | undefined;
-            const shortcuts = Array.isArray(emoji?.shortcuts) ? emoji.shortcuts : [];
-            const emojiId = typeof emoji?.emojiId === "string" ? emoji.emojiId : "";
-
-            if (typeof shortcuts[0] === "string" && shortcuts[0].trim()) {
-                return shortcuts[0];
-            }
-
-            return emojiId;
+            return emojiAsText(item.emoji as Record<string, unknown> | undefined);
         })
         .filter((value) => value !== "")
         .join("");
+}
+
+// The text an emoji run reads as. A standard emoji's id is its unicode character, so it reads as
+// itself, the way a chat message shows it. A custom one (a channel's own, an image) has only its
+// shortcut (`:wave-hand:`) to stand for it in text. One rule for both readers, so a member's
+// milestone or a pin header does not show `:smile:` where the message shows the face.
+function emojiAsText(emoji: Record<string, unknown> | undefined): string {
+    const shortcuts = Array.isArray(emoji?.shortcuts) ? emoji.shortcuts : [];
+    const shortcut = typeof shortcuts[0] === "string" ? shortcuts[0].trim() : "";
+    const emojiId = typeof emoji?.emojiId === "string" ? emoji.emojiId : "";
+
+    if (emoji?.isCustomEmoji !== true && emojiId) {
+        return emojiId;
+    }
+
+    return shortcut || emojiId;
 }
 
 function parseRendererMessage(renderer: Record<string, unknown>): string {
@@ -131,10 +139,7 @@ function parseMessageParts(renderer: Record<string, unknown>): LiveChatMessagePa
             continue;
         }
 
-        const shortcuts = Array.isArray(emoji.shortcuts) ? emoji.shortcuts : [];
-        const label =
-            (typeof shortcuts[0] === "string" && shortcuts[0].trim() ? shortcuts[0] : "") ||
-            (typeof emoji.emojiId === "string" ? emoji.emojiId : "");
+        const label = emojiAsText(emoji);
 
         if (emoji.isCustomEmoji === true) {
             const url = emojiImageUrl(emoji);
@@ -149,10 +154,8 @@ function parseMessageParts(renderer: Record<string, unknown>): LiveChatMessagePa
         }
 
         // Standard emoji. emojiId is the unicode character.
-        const text = typeof emoji.emojiId === "string" && emoji.emojiId ? emoji.emojiId : label;
-
-        if (text) {
-            parts.push({ type: "text", text });
+        if (label) {
+            parts.push({ type: "text", text: label });
         }
     }
 

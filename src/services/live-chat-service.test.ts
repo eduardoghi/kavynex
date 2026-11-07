@@ -313,6 +313,36 @@ describe("readLiveChatMessagesFromFile", () => {
         });
     });
 
+    it("shows a standard emoji in a member's message as itself, not its shortcut", async () => {
+        // A chat message already did. The milestone, gift and pin texts read ":smile:".
+        mockFile(
+            rawItemLine({
+                liveChatMembershipItemRenderer: {
+                    id: "m3",
+                    authorName: { simpleText: "@regular" },
+                    headerPrimaryText: { runs: [{ text: "Member for 2 months" }] },
+                    message: {
+                        runs: [
+                            { text: "thanks " },
+                            { emoji: { emojiId: "😄", shortcuts: [":smile:"] } },
+                            {
+                                emoji: {
+                                    emojiId: "UCx/abc",
+                                    shortcuts: [":wave-hand:"],
+                                    isCustomEmoji: true,
+                                },
+                            },
+                        ],
+                    },
+                },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.message_text).toBe("Member for 2 months (thanks 😄:wave-hand:)");
+    });
+
     it("parses a gift membership redemption", async () => {
         mockFile(
             rawItemLine({
