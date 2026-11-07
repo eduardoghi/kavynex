@@ -168,6 +168,7 @@ describe("useAddMediaForm", () => {
             "webp",
             "bmp",
             "avif",
+            "gif",
         ]);
     });
 

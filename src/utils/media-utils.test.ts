@@ -1,9 +1,6 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { convertFileSrc } from "../lib/tauri-platform";
 import {
-    AUDIO_FILE_EXTENSIONS,
     extensionFromPath,
     fileNameFromPath,
     fileSrcFromAbsolutePath,
@@ -22,7 +19,6 @@ import {
     mediaTypeFromFile,
     resolveStoredPath,
     RESUME_COMPLETION_TOLERANCE_SECONDS,
-    VIDEO_FILE_EXTENSIONS,
     resumePositionFor,
     stripWindowsExtendedPrefix,
 } from "./media-utils";
@@ -149,30 +145,6 @@ describe("media-utils", () => {
         });
     });
 
-    describe("media file extensions", () => {
-        // The backend's lists decide what a file picker may offer. Read from the Rust source (from
-        // the repo root, vitest's cwd) so a format added there and not here fails this test.
-        function rustExtensionList(name: string): string[] {
-            const source = readFileSync(
-                resolve(process.cwd(), "src-tauri/src/utils/format.rs"),
-                "utf-8"
-            );
-            const match = source.match(
-                new RegExp(`pub const ${name}: \\[&str; \\d+\\] = \\[([^\\]]*)\\]`)
-            );
-
-            return [...(match?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((found) => found[1] ?? "");
-        }
-
-        it("match the backend's video list", () => {
-            expect([...VIDEO_FILE_EXTENSIONS]).toEqual(rustExtensionList("ALLOWED_VIDEO_EXTENSIONS"));
-        });
-
-        it("match the backend's audio list", () => {
-            expect([...AUDIO_FILE_EXTENSIONS]).toEqual(rustExtensionList("ALLOWED_AUDIO_EXTENSIONS"));
-        });
-    });
-
     describe("mediaTypeFromFile", () => {
         it("detects audio media type from file extension", () => {
             expect(mediaTypeFromFile("C:/media/music.mp3")).toBe("audio");
@@ -210,7 +182,7 @@ describe("media-utils", () => {
 
     describe("isThumbnailFile", () => {
         it("recognizes every thumbnail extension", () => {
-            const thumbnailExtensions = ["png", "jpg", "jpeg", "webp", "bmp", "avif"];
+            const thumbnailExtensions = ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"];
 
             for (const ext of thumbnailExtensions) {
                 expect(isThumbnailFile(`C:/media/thumb.${ext}`)).toBe(true);
@@ -218,7 +190,7 @@ describe("media-utils", () => {
         });
 
         it("rejects non-thumbnail files", () => {
-            expect(isThumbnailFile("C:/media/thumb.gif")).toBe(false);
+            expect(isThumbnailFile("C:/media/thumb.svg")).toBe(false);
             expect(isThumbnailFile("C:/media/video.mp4")).toBe(false);
             expect(isThumbnailFile("C:/media/noext")).toBe(false);
         });

@@ -521,7 +521,7 @@ describe("useChannels", () => {
             filters: [
                 {
                     name: "Images",
-                    extensions: ["png", "jpg", "jpeg", "webp", "bmp", "avif"],
+                    extensions: ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"],
                 },
             ],
         });
@@ -604,7 +604,7 @@ describe("useChannels", () => {
             filters: [
                 {
                     name: "Images",
-                    extensions: ["png", "jpg", "jpeg", "webp", "bmp", "avif"],
+                    extensions: ["png", "jpg", "jpeg", "webp", "bmp", "avif", "gif"],
                 },
             ],
         });

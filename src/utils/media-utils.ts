@@ -1,38 +1,16 @@
 import { convertFileSrc } from "../lib/tauri-platform";
+import { AUDIO_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS } from "../types/generated/fileExtensions";
 import type { MediaType } from "../types/media";
 
-// The media file types the library accepts, mirroring ALLOWED_AUDIO_EXTENSIONS and
-// ALLOWED_VIDEO_EXTENSIONS in src-tauri/src/utils/format.rs (media-utils.test.ts reads that file and
-// fails when they drift). The backend is the one that refuses a file, and these let the file picker
-// show only what it will accept.
-export const AUDIO_FILE_EXTENSIONS = [
-    "mp3",
-    "m4a",
-    "aac",
-    "wav",
-    "flac",
-    "ogg",
-    "opus",
-    "wma",
-    "alac",
-    "aiff",
-] as const;
-
-export const VIDEO_FILE_EXTENSIONS = [
-    "mp4",
-    "mkv",
-    "webm",
-    "mov",
-    "avi",
-    "m4v",
-    "mpg",
-    "mpeg",
-    "wmv",
-    "flv",
-    "3gp",
-    "ts",
-    "m2ts",
-] as const;
+// The file types the backend accepts (audio and video to import, images for a thumbnail or channel
+// avatar), generated from src-tauri/src/utils/format.rs so the file pickers offer exactly that and
+// the two sides cannot drift (see "Generated TypeScript bindings" in docs/ARCHITECTURE.md). The
+// backend is the one that refuses a file.
+export {
+    AUDIO_FILE_EXTENSIONS,
+    IMAGE_FILE_EXTENSIONS,
+    VIDEO_FILE_EXTENSIONS,
+} from "../types/generated/fileExtensions";
 
 const AUDIO_EXTENSIONS = new Set<string>(AUDIO_FILE_EXTENSIONS);
 
@@ -57,11 +35,6 @@ export function mayNotPlayInBuiltInPlayer(path: string): boolean {
 
     return dot !== -1 && LIKELY_UNPLAYABLE_EXTENSIONS.has(name.slice(dot + 1));
 }
-
-// The image file types Kavynex accepts for a thumbnail or channel avatar, in the order shown in
-// the file picker. Both the thumbnail classification below and the avatar/thumbnail picker filter
-// (pickImageFilePath in utils/pick-image-file.ts) derive from this one list so they cannot drift.
-export const IMAGE_FILE_EXTENSIONS = ["png", "jpg", "jpeg", "webp", "bmp", "avif"] as const;
 
 const THUMBNAIL_EXTENSIONS = new Set<string>(IMAGE_FILE_EXTENSIONS);
 

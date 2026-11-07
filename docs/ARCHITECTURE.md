@@ -203,6 +203,13 @@ git diff --exit-code -- src/types/generated
 (`ci.yml`, the "Verify generated TS bindings are up to date" step, run once on Ubuntu.)
 Never hand-edit files under `src/types/generated/`. Change the Rust type and regenerate.
 
+Values cross the same way when the frontend needs them. ts-rs exports types only, so
+`utils/format.rs` has a test named `export_bindings_file_extensions` that writes
+`src/types/generated/fileExtensions.ts` with the audio, video and image extensions the backend
+accepts. The name puts it under the same `export_bindings` filter, so the command above regenerates
+it and the diff catches a list changed in Rust alone. `utils/media-utils.ts` re-exports those lists,
+and the file pickers and the frontend's own checks are built from them.
+
 ## Frontend layering
 
 ```
