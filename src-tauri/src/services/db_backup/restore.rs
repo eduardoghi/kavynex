@@ -424,7 +424,10 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
                 format!("the restored database keeps the snapshot's folders: {error}"),
             );
         }
-        crate::services::filesystem::fsync_file(&partial)?;
+        // A flush of the whole database, which can take seconds, so off the async runtime like
+        // the copy above.
+        let flushed = partial.clone();
+        run_blocking(move || crate::services::filesystem::fsync_file(&flushed)).await?;
     }
 
     // Only a copy that is complete and prepared takes the name the next launch resumes from.
