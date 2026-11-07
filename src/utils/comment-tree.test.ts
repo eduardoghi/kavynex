@@ -335,6 +335,16 @@ describe("matchesCommentSearch", () => {
         expect(matchesCommentSearch(c, "rabbit")).toBe(true);
         expect(matchesCommentSearch(c, "missing")).toBe(false);
     });
+
+    it("ignores accents on either side", () => {
+        const c = comment({ author_name: "João", text: "Que ação incrível" });
+
+        expect(matchesCommentSearch(c, normalizeSearchValue("acao"))).toBe(true);
+        expect(matchesCommentSearch(c, normalizeSearchValue("joao"))).toBe(true);
+        expect(matchesCommentSearch(comment({ text: "acao" }), normalizeSearchValue("Ação"))).toBe(
+            true
+        );
+    });
 });
 
 describe("countCommentsInTree", () => {

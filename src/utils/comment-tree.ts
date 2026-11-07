@@ -35,11 +35,17 @@ export type CommentTreeNode = MediaCommentRow & {
 
 export type CommentSortMode = "likes" | "newest" | "oldest";
 
-export function normalizeSearchValue(value: string): string {
-    return value.trim().toLocaleLowerCase();
+// Lowercased with the accents taken off (decomposed, then the combining marks dropped), so "acao"
+// finds "ação" and "Ação" finds "acao". Applied to the query and to every comment alike.
+function foldForSearch(value: string): string {
+    return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
 }
 
-// The lowercased text a search runs against, built once per comment. A search runs over every
+export function normalizeSearchValue(value: string): string {
+    return foldForSearch(value.trim());
+}
+
+// The folded text a search runs against (foldForSearch), built once per comment. A search runs over every
 // comment on each debounced keystroke, and with up to 100,000 of them rebuilding this each time was
 // the whole cost of the query. Weak, so it goes with the comments it was built for.
 const searchHaystacks = new WeakMap<MediaCommentRow, string>();
@@ -48,9 +54,9 @@ function searchHaystack(comment: MediaCommentRow): string {
     let haystack = searchHaystacks.get(comment);
 
     if (haystack === undefined) {
-        haystack = [comment.author_name, comment.author_handle ?? "", comment.text]
-            .join(" ")
-            .toLocaleLowerCase();
+        haystack = foldForSearch(
+            [comment.author_name, comment.author_handle ?? "", comment.text].join(" ")
+        );
         searchHaystacks.set(comment, haystack);
     }
 
