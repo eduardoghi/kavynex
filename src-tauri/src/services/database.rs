@@ -418,6 +418,16 @@ async fn database_holds_data(path: &Path) -> bool {
         && !crate::services::db_backup::database_has_no_schema(path).await
 }
 
+/// The two pragmas the pools that open an outside file already set (`db_backup`), on the main pool
+/// too. After an import or a restore, the main database is such a file, and its schema is parsed on
+/// every open. A schema from outside may not call functions with side effects, and a page whose
+/// cells overrun it is reported as damage rather than read past.
+pub(crate) fn harden_against_foreign_schema(options: SqliteConnectOptions) -> SqliteConnectOptions {
+    options
+        .pragma("trusted_schema", "OFF")
+        .pragma("cell_size_check", "ON")
+}
+
 async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool> {
     // Read before the open, which creates the file. A database made from nothing gets a new lineage
     // id once its schema is in place (see db_backup::lineage), and has no pre-migration snapshot to
@@ -502,6 +512,7 @@ async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool>
         .synchronous(SqliteSynchronous::Normal)
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .foreign_keys(true);
+    let options = harden_against_foreign_schema(options);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(MAX_CONNECTIONS)
@@ -787,6 +798,72 @@ pub async fn set_app_settings_in_pool(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn the_apps_own_schema_works_with_the_foreign_schema_pragmas_on() {
+        // trusted_schema=OFF refuses functions not marked innocuous in DEFAULTs, CHECKs and
+        // triggers. The schema leans on datetime('now') defaults and on the v13/v14 triggers, so
+        // every one of them is exercised here.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-hardened-pool-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let options = harden_against_foreign_schema(
+            SqliteConnectOptions::new()
+                .filename(dir.join("kavynex.db"))
+                .create_if_missing(true)
+                .foreign_keys(true),
+        );
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+
+        let (trusted,): (i64,) = sqlx::query_as("PRAGMA trusted_schema")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(trusted, 0, "the pragma is in effect");
+
+        crate::services::db_schema::ensure_schema(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type, \
+             has_live_chat, live_chat_file_path) \
+             VALUES (1, 1, 'T', 't', 'video/v.mp4', 'video', 1, 'live_chat/x.json')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO video_comments (video_id, comment_id, author_name, text) \
+             VALUES (1, 'c1', 'A', 'hi')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE videos SET has_live_chat = 0, live_chat_file_path = NULL WHERE id = 1")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let (created_at,): (String,) =
+            sqlx::query_as("SELECT created_at FROM channels WHERE id = 1")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(!created_at.is_empty());
+
+        pool.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     async fn create_test_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()

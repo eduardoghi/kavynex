@@ -332,5 +332,6 @@ copy of it into the binary, and RustSec tracks the crate, not the C library insi
 database files that come from outside (Import database, the external mirror), so SQLite's parser
 reads untrusted input. `scheduled-audit.yml`'s `sqlite-freshness` job compares the bundled version
 with SQLite's latest release each week and keeps an issue open while they differ by minor version,
-and the connection that opens those files sets `trusted_schema=OFF` and `cell_size_check=ON`. The
-bump arrives with sqlx, which pins libsqlite3-sys.
+and the connections that open those files set `trusted_schema=OFF` and `cell_size_check=ON`. So
+does the main database's pool (`database::harden_against_foreign_schema`), since after an import or
+a restore the main database is such a file. The bump arrives with sqlx, which pins libsqlite3-sys.
