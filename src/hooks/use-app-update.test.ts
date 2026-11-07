@@ -6,7 +6,6 @@ import {
     installAppUpdate,
     lastCheckedUpdate,
     subscribeToCheckedUpdate,
-    toAppUpdateInfo,
     type AppUpdateInfo,
 } from "../services/app-update-service";
 import { logError } from "../utils/app-logger";
@@ -14,7 +13,6 @@ import { logError } from "../utils/app-logger";
 vi.mock("../services/app-update-service", () => ({
     checkAppUpdate: vi.fn(),
     installAppUpdate: vi.fn(),
-    toAppUpdateInfo: vi.fn(),
     lastCheckedUpdate: vi.fn(() => null),
     subscribeToCheckedUpdate: vi.fn(() => () => {}),
 }));
@@ -25,19 +23,11 @@ vi.mock("../utils/app-logger", () => ({
 
 const checkAppUpdateMock = vi.mocked(checkAppUpdate);
 const installAppUpdateMock = vi.mocked(installAppUpdate);
-const toAppUpdateInfoMock = vi.mocked(toAppUpdateInfo);
 const logErrorMock = vi.mocked(logError);
 
-function createUpdate(overrides: Partial<Record<string, unknown>> = {}) {
-    return {
-        currentVersion: "1.0.0",
-        version: "1.1.0",
-        date: "2026-01-01",
-        body: "release notes",
-        downloadAndInstall: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-        ...overrides,
-    } as unknown as Parameters<typeof installAppUpdate>[0];
+// What a check reports. The backend keeps the update itself, so this is all the renderer holds.
+function createUpdate(overrides: Partial<AppUpdateInfo> = {}): AppUpdateInfo {
+    return createUpdateInfo(overrides);
 }
 
 function createUpdateInfo(overrides: Partial<AppUpdateInfo> = {}): AppUpdateInfo {
@@ -66,7 +56,6 @@ describe("useAppUpdate", () => {
 
         const update = createUpdate();
         vi.mocked(lastCheckedUpdate).mockReturnValue(update);
-        toAppUpdateInfoMock.mockReturnValue(createUpdateInfo());
 
         act(() => {
             notify();
@@ -94,7 +83,6 @@ describe("useAppUpdate", () => {
         const update = createUpdate();
         const updateInfo = createUpdateInfo();
         vi.mocked(lastCheckedUpdate).mockReturnValue(update);
-        toAppUpdateInfoMock.mockReturnValue(updateInfo);
 
         const { result } = renderHook(() => useAppUpdate());
 
@@ -108,7 +96,6 @@ describe("useAppUpdate", () => {
     it("transitions to available with update info when an update exists", async () => {
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
 
         const { result } = renderHook(() => useAppUpdate());
 
@@ -116,7 +103,6 @@ describe("useAppUpdate", () => {
             await result.current.checkForUpdate();
         });
 
-        expect(toAppUpdateInfoMock).toHaveBeenCalledWith(update);
         expect(result.current.status).toBe("available");
         expect(result.current.updateInfo).toEqual(createUpdateInfo());
         expect(result.current.errorMessage).toBe("");
@@ -133,7 +119,6 @@ describe("useAppUpdate", () => {
 
         expect(result.current.status).toBe("not-available");
         expect(result.current.updateInfo).toBeNull();
-        expect(toAppUpdateInfoMock).not.toHaveBeenCalled();
     });
 
     it("sets an error state with the exact user-facing message when checking fails", async () => {
@@ -192,7 +177,6 @@ describe("useAppUpdate", () => {
             firstCheck as unknown as ReturnType<typeof checkAppUpdate>
         );
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
 
         const { result } = renderHook(() => useAppUpdate());
 
@@ -229,7 +213,6 @@ describe("useAppUpdate", () => {
             firstCheck as unknown as ReturnType<typeof checkAppUpdate>
         );
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
 
         const { result } = renderHook(() => useAppUpdate());
 
@@ -266,7 +249,6 @@ describe("useAppUpdate", () => {
 
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
         installAppUpdateMock.mockResolvedValueOnce(undefined);
 
         const { result } = renderHook(() => useAppUpdate());
@@ -308,9 +290,8 @@ describe("useAppUpdate", () => {
     it("installs the update, reports download progress and stays on downloading", async () => {
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
 
-        installAppUpdateMock.mockImplementationOnce(async (_update, onProgress) => {
+        installAppUpdateMock.mockImplementationOnce(async (onProgress) => {
             onProgress?.({ downloaded: 50, total: 100, percent: 50 });
         });
 
@@ -324,7 +305,7 @@ describe("useAppUpdate", () => {
             await result.current.installUpdate();
         });
 
-        expect(installAppUpdateMock).toHaveBeenCalledWith(update, expect.any(Function));
+        expect(installAppUpdateMock).toHaveBeenCalledWith(expect.any(Function));
         expect(result.current.progress).toEqual({ downloaded: 50, total: 100, percent: 50 });
         expect(result.current.errorMessage).toBe("");
 
@@ -340,7 +321,6 @@ describe("useAppUpdate", () => {
     it("sets an error state with the exact user-facing message when installing fails", async () => {
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
 
         const error = new Error("disk full");
         installAppUpdateMock.mockRejectedValueOnce(error);
@@ -367,7 +347,6 @@ describe("useAppUpdate", () => {
     it("resets the error message and recovers when retrying installUpdate after a failure", async () => {
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
         installAppUpdateMock.mockRejectedValueOnce(new Error("first failure"));
 
         const { result } = renderHook(() => useAppUpdate());
@@ -397,7 +376,6 @@ describe("useAppUpdate", () => {
     it("recreates installUpdate after checkForUpdate loads a real update (kills [update] -> [] dep mutant)", async () => {
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
         installAppUpdateMock.mockResolvedValueOnce(undefined);
 
         const { result } = renderHook(() => useAppUpdate());
@@ -416,7 +394,7 @@ describe("useAppUpdate", () => {
             await installAfterCheck();
         });
 
-        expect(installAppUpdateMock).toHaveBeenCalledWith(update, expect.any(Function));
+        expect(installAppUpdateMock).toHaveBeenCalledWith(expect.any(Function));
         expect(result.current.status).toBe("downloading");
     });
 
@@ -428,7 +406,6 @@ describe("useAppUpdate", () => {
         // reintroducing such a state fails here rather than as a modal that closes on its own.
         const update = createUpdate();
         checkAppUpdateMock.mockResolvedValueOnce(update);
-        toAppUpdateInfoMock.mockReturnValueOnce(createUpdateInfo());
         installAppUpdateMock.mockResolvedValueOnce(undefined);
 
         const { result } = renderHook(() => useAppUpdate());

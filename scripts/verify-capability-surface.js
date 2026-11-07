@@ -66,15 +66,6 @@ export const DECLARED_CAPABILITY_SURFACE = [
         permissions: ["core:event:allow-listen", "core:event:allow-unlisten"],
     },
     { binding: "getVersion", module: "@tauri-apps/api/app", permissions: ["core:app:allow-version"] },
-    { binding: "relaunch", module: "@tauri-apps/plugin-process", permissions: ["process:allow-restart"] },
-    // `check` hands back an `Update` whose `downloadAndInstall` is the only other updater call the app
-    // makes. The plugin's default set would also grant the separate `download` and `install` halves,
-    // which nothing here calls.
-    {
-        binding: "check",
-        module: "@tauri-apps/plugin-updater",
-        permissions: ["updater:allow-check", "updater:allow-download-and-install"],
-    },
 ];
 
 // Every value binding a file imports or re-exports from an `@tauri-apps` module, with the module it

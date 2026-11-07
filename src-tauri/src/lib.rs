@@ -510,8 +510,10 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_window_state::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
+        // Driven from Rust only (commands::updater), so the renderer holds no updater grant and
+        // cannot hand the plugin a proxy or headers of its own.
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(commands::updater::PendingAppUpdate::default())
         // Opened from Rust only (commands::external, the reveal-in-folder helpers). The plugin's
         // default also injects a click handler that sends `<a href>` clicks to `open_url`, which the
         // renderer holds no grant for and the app has no links for.
@@ -712,6 +714,9 @@ pub fn run() {
             commands::logging::log_frontend_error,
             commands::logging::open_log_directory,
             commands::startup::take_startup_notices,
+            commands::updater::check_for_app_update,
+            commands::updater::install_app_update,
+            commands::updater::relaunch_app,
             commands::external::open_youtube_video,
             commands::external::open_youtube_channel,
             commands::webview_check::begin_webview_check,

@@ -8,6 +8,7 @@
 // Every value type below mirrors what the corresponding Rust command returns (see
 // src-tauri/src/commands). A command that returns `AppResult<()>` maps to `void`.
 import type { TauriCommandName } from "../constants/tauri-commands";
+import type { AppUpdateInfo } from "../types/generated/AppUpdateInfo";
 import type {
     Channel,
     MediaCommentRow,
@@ -41,6 +42,9 @@ export type TauriCommandReturns = {
     get_kept_files_summary: KeptFilesSummary;
     open_kept_folder: void;
     take_startup_notices: StartupNotices;
+    check_for_app_update: AppUpdateInfo | null;
+    install_app_update: void;
+    relaunch_app: void;
     open_youtube_video: void;
     open_youtube_channel: void;
 

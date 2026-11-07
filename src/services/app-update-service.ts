@@ -1,11 +1,8 @@
-import { checkForAppUpdate, relaunch, type Update } from "../lib/tauri-platform";
+import { TAURI_COMMANDS } from "../constants/tauri-commands";
+import { installAppUpdateWithProgress, invokeCommand, invokeVoid } from "../lib/tauri-client";
+import type { AppUpdateInfo } from "../types/generated/AppUpdateInfo";
 
-export type AppUpdateInfo = {
-    currentVersion: string;
-    version: string;
-    date?: string;
-    body?: string;
-};
+export type { AppUpdateInfo };
 
 export type AppUpdateProgress = {
     downloaded: number;
@@ -16,8 +13,9 @@ export type AppUpdateProgress = {
 // The update the last check found, kept for the rest of the session. The startup check runs from
 // the Home controller and Settings has its own hook instance, so without this Settings opened at
 // "idle" right under a notice saying a new version was out, and the user had to check again to
-// reach the install button.
-let lastFoundUpdate: Update | null = null;
+// reach the install button. The backend keeps the update itself, and installs the one its last
+// check found.
+let lastFoundUpdate: AppUpdateInfo | null = null;
 
 // Told when lastFoundUpdate changes, for a Settings already mounted when the startup check lands.
 const checkedUpdateListeners = new Set<() => void>();
@@ -29,10 +27,10 @@ export function subscribeToCheckedUpdate(listener: () => void): () => void {
     };
 }
 
-export async function checkAppUpdate(): Promise<Update | null> {
-    const update = await checkForAppUpdate({
-        timeout: 30000
-    });
+// The backend checks the endpoint in the app's configuration, with its own timeout. Nothing about the
+// request is chosen here.
+export async function checkAppUpdate(): Promise<AppUpdateInfo | null> {
+    const update = await invokeCommand(TAURI_COMMANDS.CHECK_FOR_APP_UPDATE);
 
     lastFoundUpdate = update;
     checkedUpdateListeners.forEach((listener) => listener());
@@ -41,7 +39,7 @@ export async function checkAppUpdate(): Promise<Update | null> {
 }
 
 // The update the last check this session found, or null when none has run or none was found.
-export function lastCheckedUpdate(): Update | null {
+export function lastCheckedUpdate(): AppUpdateInfo | null {
     return lastFoundUpdate;
 }
 
@@ -50,61 +48,29 @@ export function resetLastCheckedUpdateForTests(): void {
     lastFoundUpdate = null;
 }
 
-export function toAppUpdateInfo(update: Update): AppUpdateInfo {
-    return {
-        currentVersion: update.currentVersion,
-        version: update.version,
-        date: update.date,
-        body: update.body
-    };
-}
-
-// Settings stays locked while the download runs, so a download that stalls has to end on its own or
-// the window cannot be closed short of quitting. Generous for an installer of a few tens of megabytes
-// on a slow link.
-const UPDATE_DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
-
+// Downloads and installs the update the backend's last check found, then the backend relaunches
+// into it. Settings stays locked while it runs, and the backend bounds the download, so one that
+// stalls ends on its own.
 export async function installAppUpdate(
-    update: Update,
     onProgress?: (progress: AppUpdateProgress) => void
 ): Promise<void> {
-    let downloaded = 0;
-    let total: number | null = null;
+    await installAppUpdateWithProgress((progress) => {
+        const percent = progress.finished
+            ? 100
+            : progress.total
+              ? Math.round((progress.downloaded / progress.total) * 100)
+              : null;
 
-    await update.downloadAndInstall((event) => {
-        if (event.event === "Started") {
-            total = event.data.contentLength ?? null;
-            downloaded = 0;
+        onProgress?.({
+            downloaded: progress.downloaded,
+            total: progress.total,
+            percent,
+        });
+    });
+}
 
-            onProgress?.({
-                downloaded,
-                total,
-                percent: null
-            });
-
-            return;
-        }
-
-        if (event.event === "Progress") {
-            downloaded += event.data.chunkLength;
-
-            onProgress?.({
-                downloaded,
-                total,
-                percent: total ? Math.round((downloaded / total) * 100) : null
-            });
-
-            return;
-        }
-
-        if (event.event === "Finished") {
-            onProgress?.({
-                downloaded,
-                total,
-                percent: 100
-            });
-        }
-    }, { timeout: UPDATE_DOWNLOAD_TIMEOUT_MS });
-
-    await relaunch();
+// Relaunches the app, for a database import or its undo, which are applied at the next startup, and
+// from the crash screen.
+export async function relaunchApp(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.RELAUNCH_APP);
 }

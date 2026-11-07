@@ -47,7 +47,6 @@ chrono = "0.4.44"
 # same `utils::text::normalize_search_text`, so a match is guaranteed regardless of accents/case.
 # Already present transitively (via idna); pinned here as a direct dependency.
 unicode-normalization = "0.1.25"
-tauri-plugin-process = "2"
 tauri-plugin-window-state = "2"
 # Minimal hand-rolled HTTP client (hyper) for the direct thumbnail/avatar download in
 # services/thumbnail/download/fetch.rs. Deliberately kept separate from `reqwest` (pulled in

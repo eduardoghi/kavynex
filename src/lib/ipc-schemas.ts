@@ -56,6 +56,8 @@ import type { DatabaseCompaction } from "../types/generated/DatabaseCompaction";
 import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
 import type { LibrarySummaryInfo } from "../types/generated/LibrarySummaryInfo";
 import type { LibraryMigrationProgress } from "../types/generated/LibraryMigrationProgress";
+import type { AppUpdateInfo } from "../types/generated/AppUpdateInfo";
+import type { AppUpdateDownloadProgress } from "../types/generated/AppUpdateDownloadProgress";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
@@ -330,7 +332,16 @@ type IpcResultSchemas = {
     [K in keyof TauriCommandReturns]?: z.ZodType<TauriCommandReturns[K]>;
 };
 
+const appUpdateInfoSchema = z.object({
+    currentVersion: z.string(),
+    version: z.string(),
+    date: z.string().nullable(),
+    body: z.string().nullable(),
+}) satisfies z.ZodType<AppUpdateInfo>;
+
 const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
+    // Null when no newer release is out.
+    check_for_app_update: appUpdateInfoSchema.nullable() satisfies z.ZodType<AppUpdateInfo | null>,
     check_external_tools: externalToolsStatusSchema satisfies z.ZodType<ExternalToolsStatus>,
     // Nullable because a normal launch answers null. Only a `--webview-check` run gets a plan.
     begin_webview_check: webviewCheckPlanSchema.nullable() satisfies z.ZodType<WebviewCheckPlan | null>,
@@ -493,6 +504,14 @@ export const libraryMigrationProgressSchema = z.object({
 }) satisfies z.ZodType<LibraryMigrationProgress>;
 
 export type { LibraryMigrationProgress };
+
+export const appUpdateDownloadProgressSchema = z.object({
+    downloaded: z.number(),
+    total: z.number().nullable(),
+    finished: z.boolean(),
+}) satisfies z.ZodType<AppUpdateDownloadProgress>;
+
+export type { AppUpdateDownloadProgress, AppUpdateInfo };
 
 // Validates an event/channel payload against `schema`. Returns the parsed value on success, or
 // `null` on a mismatch after logging the specific fields that failed. Unlike `validateIpcResult`

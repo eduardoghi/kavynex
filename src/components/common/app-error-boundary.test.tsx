@@ -3,15 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { AppErrorBoundary } from "./app-error-boundary";
 
-vi.mock("../../lib/tauri-platform", () => ({
-    relaunch: vi.fn(),
+vi.mock("../../services/app-update-service", () => ({
+    relaunchApp: vi.fn(),
 }));
 
 vi.mock("../../utils/global-error-reporting", () => ({
     reportFatalError: vi.fn(),
 }));
 
-import { relaunch } from "../../lib/tauri-platform";
+import { relaunchApp } from "../../services/app-update-service";
 import { reportFatalError } from "../../utils/global-error-reporting";
 
 function CrashingChild({ shouldThrow }: { shouldThrow: boolean }): JSX.Element {
@@ -66,7 +66,7 @@ describe("AppErrorBoundary", () => {
     });
 
     it("relaunches the app when restart is clicked", async () => {
-        vi.mocked(relaunch).mockResolvedValue(undefined);
+        vi.mocked(relaunchApp).mockResolvedValue(undefined);
         const user = userEvent.setup();
 
         render(
@@ -77,7 +77,7 @@ describe("AppErrorBoundary", () => {
 
         await user.click(screen.getByRole("button", { name: "Restart app" }));
 
-        expect(relaunch).toHaveBeenCalledTimes(1);
+        expect(relaunchApp).toHaveBeenCalledTimes(1);
     });
 
     it("re-renders children when try again is clicked", async () => {

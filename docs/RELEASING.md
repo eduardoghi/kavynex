@@ -107,9 +107,9 @@ permission that is missing, misspelled, or scoped too narrowly compiles, passes 
 `src/lib/` cannot drift apart, and `--webview-check` (every release leg) proves the three `core:*`
 grants, the asset protocol and the player's `kvxmedia` protocol work in the packaged build.
 
-Neither reaches the plugin grants, and the reason is that exercising one has a side effect no
-unattended run may take, whether a file picker, a browser launch, a network call or a process
-restart. So they are checked by hand, here, once per release, in step 6.
+Neither reaches the backend commands that drive the plugins, and the reason is that exercising one
+has a side effect no unattended run may take, whether a file picker, a browser launch, a network call
+or a process restart. So they are checked by hand, here, once per release, in step 6.
 
 Run it against the **installed artifact from the draft**, not `pnpm tauri dev`. The ACL itself is the
 same in dev (the capabilities are compiled into the binary either way), so a missing grant is
@@ -125,13 +125,13 @@ published, and because the updater half of the list does not behave realisticall
       source on YouTube** launches the browser on a media that has a YouTube source, and clicking a
       comment author opens their channel. `commands/external.rs` builds both URLs, and these two
       clicks are its only callers.
-- [ ] **`process:allow-restart`**: Settings > Database > **Import database**, pick a database, then
-      **Replace and restart**. The app relaunches once the swap is staged. `relaunch` has three
-      callers and the updater is only one of them, so this grant does **not** have to wait for a real
-      update to be verified. **Use a throwaway install or export your database first.** The import
+- [ ] **The relaunch** (no grant, a backend command). In Settings > Database > **Import database**,
+      pick a database, then **Replace and restart**. The app relaunches once the swap is staged
+      (`relaunch_app`, which the undo and the crash screen call too), so the relaunch does **not**
+      have to wait for a real update to be verified. **Use a throwaway install or export your database first.** The import
       keeps a safety copy and **Undo last import** reverts it, but do not let that be the only copy.
-- [ ] **`updater:allow-check`**: Settings > Application update > **Check for updates**
-      returns an answer. "Kavynex is already up to date" counts. What matters is that it answers
+- [ ] **The update check** (no grant, a backend command). In Settings > Application update, **Check
+      for updates** returns an answer. "Kavynex is already up to date" counts. What matters is that it answers
       rather than failing, since an ACL refusal surfaces as an error.
 - [ ] **The uninstaller's second confirmation** (Windows, `-setup.exe` only): uninstall the draft
       build with **Delete the application data** ticked. A dialog naming the database and its backups
@@ -142,13 +142,12 @@ published, and because the updater half of the list does not behave realisticall
       never prompt. That is the failure a tauri-cli bump can introduce, and this is the only place it
       is caught.
 
-The updater holds two grants, and the item above exercises only `allow-check`. The other,
-`allow-download-and-install`, is the one that installs an update, and it cannot be exercised before
-publishing, because it needs a published release newer than the version running.
+The item above exercises only the check. The install (`install_app_update`) cannot be exercised
+before publishing, because it needs a published release newer than the version running.
 
 So it is verified backwards, on the next cycle. Install the previous release, let it offer this one,
-and take the update. That single action covers `allow-download-and-install` **and** the
-`process:allow-restart` in the updater's own path, which is the one the item above does not reach.
+and take the update. That single action covers the install **and** the relaunch that follows it,
+which is the path the item above does not reach.
 Doing it once per release means each version's updater path is confirmed by the release that follows
 it, and a break is found one version late rather than never. If the update does not install, say so
 in the next release's notes, because users on that version have to reinstall by hand, and nothing in the app

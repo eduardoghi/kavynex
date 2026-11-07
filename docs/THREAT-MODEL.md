@@ -258,7 +258,7 @@ depth is the point and neither costs anything:
   nothing and keeps the command's worst case at "a Finder window opened somewhere unexpected".
 
 `undo_database_import` is the same kind of command. It stages the `.pre-import` snapshot with no
-confirmation the backend can check, and the renderer holds `process:allow-restart`. What bounds it is
+confirmation the backend can check, and the renderer can relaunch the app (`relaunch_app`). What bounds it is
 that the database it replaces is set aside as the new `.pre-import`, so the undo is itself undoable.
 
 `remove_orphan_library_files` takes no argument at all, which also means nothing on the backend
@@ -756,9 +756,7 @@ That surface is granted as the exact list the app uses, not a preset:
 - `core:app:allow-version`: `getVersion`, for the version shown in Settings.
 - `core:event:allow-listen` / `core:event:allow-unlisten`: `listen`, for the yt-dlp progress and
   database-integrity events the backend emits.
-- In `desktop.json`, `updater:allow-check`, `updater:allow-download-and-install` and `process:allow-restart`. The
-  updater's default set would also grant its standalone `download` and `install` commands, which the
-  app never calls.
+- Nothing else. The updater and the relaunch are backend commands, for the reason below.
 
 The file and folder pickers are not on that list, and that is a security decision rather than a
 smaller list for its own sake. The dialog plugin's renderer-facing `open` and `save` add every path
@@ -777,6 +775,16 @@ watch page and an author's channel page, so `commands/external.rs` takes the id,
 (video) or `UC` plus 22 (channel) characters of `[A-Za-z0-9_-]`, and builds the URL itself. The renderer holds no `opener:` permission, and the plugin is built with
 `open_js_links_on_click(false)`, so it does not inject the script that would send `<a href>` clicks
 to `open_url` either.
+
+The updater is a backend command for a reason of its own. The plugin's renderer-facing `check`
+takes a proxy, extra headers, a timeout and a target platform from its caller, so with
+`updater:allow-check` a renderer running hostile script could send a request through a proxy of its
+choosing, carrying in the proxy's URL whatever it had read through IPC. That was the one outbound
+channel the CSP and the image host allow-list did not cover. `commands/updater.rs` checks and installs
+with the endpoint and timeouts of the app's own configuration, takes no such argument, and keeps the
+update it found, so the renderer never names one. The relaunch after an update or a database import
+is `AppHandle::restart` behind the same module, so the renderer holds no `updater:` or `process:`
+permission.
 
 The window those grants belong to is built in `main_window.rs` rather than from the config, so it
 can carry two hooks. A navigation is allowed only to the origin the bundle is served from on this
@@ -802,9 +810,9 @@ job from the Rust side. A launch hook that focuses the existing window, and a wi
 that persists size and position. Neither is reachable from `src/lib/`, so neither belongs in
 `capabilities/`, and adding one would be granting a permission nothing calls. This is stated rather
 than left to be inferred from the absence, because the list above otherwise reads as a complete
-accounting of the plugin surface and a reader counting six plugins against the grants above
-deserves the answer here rather than in a diff. The dialog and opener plugins are the same case,
-driven from Rust as described above. If either ever grows a call from the seam, its permission joins
+accounting of the plugin surface and a reader counting five plugins against the grants above
+deserves the answer here rather than in a diff. The dialog, opener and updater plugins are the same
+case, driven from Rust as described above. If either ever grows a call from the seam, its permission joins
 the list, and the failure mode if that is forgotten is the loud one described below.
 
 The list started as the scaffolded `core:default` and stayed that way through four rounds of
@@ -855,11 +863,8 @@ A renderer that never loads at all reports nothing, which a watchdog turns into 
 naming that outcome rather than a hang. The case that covers a bundle the webview refuses or a
 CSP that blocks the entry script.
 
-The three plugin grants cannot be probed that way at all, because none can be exercised without a
-side effect. The two `updater:` grants would reach the network, and `process:allow-restart` would
-restart the app.
-
-What covers them instead is a second gate on a different question.
+The renderer holds no plugin grant, so nothing beyond those four is left to probe. What keeps it that
+way is a second gate on a different question.
 `scripts/verify-capability-surface.js` (`ci.yml`, on every push) reads the two seam files and the
 capability files and holds the mapping between them. Every `@tauri-apps` binding a seam imports must
 have a declared entry naming the permissions it needs, every permission those entries need must be
@@ -871,25 +876,17 @@ is present, which catches a typo (`dialog:allow-opne`) that the config accepts a
 refuses.
 
 The two gates divide the work, and neither covers the other. `--webview-check`
-proves a grant *works* for the three it can reach, on a packaged binary, at release time. This one
-proves the *list* cannot drift from the two files that define the used surface, for all six, on
-every push, which is where the drift this section is about actually happens. It is deliberately not
+proves a grant *works*, on a packaged binary, at release time. This one proves the *list* cannot
+drift from the two files that define the used surface, for every grant, on every push, which is where the drift this section is about actually happens. It is deliberately not
 a claim that a granted permission functions, since only the ACL can answer that, and only in the renderer.
 
 The over-grant direction it added is not a hypothetical tidiness check. The list started as the
 scaffolded `core:default` and survived four rounds of capability hardening precisely because nothing
 was comparing it against `src/lib/`; that comparison is now a build step rather than a habit.
 
-What remains manual is therefore one item rather than four. `process:allow-restart` is the only grant
-neither gate can reach, since `relaunch()` has no dry run and probing it would restart the process
-mid-check.
-
-One trap worth naming, since it is the one case where the tight list could bite. The `Update`
-object returned by the updater plugin extends `Resource`, and calling `.close()` on it would
-invoke `plugin:resources|close`, which is **not** granted. Nothing calls it today (the flow is
-`check()` then `downloadAndInstall()` then `relaunch()`, and the plugin closes the handle on the
-Rust side), so adding `core:resources:allow-close` now would be granting an unused permission.
-Add it if and when a `.close()` call appears.
+Nothing about the grant list remains manual. The update and the relaunch are backend commands that
+reach the network or restart the process, so `docs/RELEASING.md` step 6 still exercises them by hand
+on the installed build.
 
 ## Asset-protocol scope
 

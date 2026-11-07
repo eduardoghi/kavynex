@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import type { Update } from "../lib/tauri-platform";
 import { useMemoObject } from "./use-memo-object";
 import { useRequestGuard } from "./use-request-guard";
 import {
@@ -7,7 +6,6 @@ import {
     installAppUpdate,
     lastCheckedUpdate,
     subscribeToCheckedUpdate,
-    toAppUpdateInfo,
     type AppUpdateInfo,
     type AppUpdateProgress
 } from "../services/app-update-service";
@@ -44,11 +42,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
     const [status, setStatus] = useState<AppUpdateStatus>(() =>
         lastCheckedUpdate() ? "available" : "idle"
     );
-    const [update, setUpdate] = useState<Update | null>(() => lastCheckedUpdate());
-    const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(() => {
-        const found = lastCheckedUpdate();
-        return found ? toAppUpdateInfo(found) : null;
-    });
+    const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(() => lastCheckedUpdate());
     const [progress, setProgress] = useState<AppUpdateProgress | null>(null);
 
     // A check another instance of this hook ran (the startup one, from the Home controller) can land
@@ -58,8 +52,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
 
     useEffect(() => {
         if (checkedElsewhere && status === "idle") {
-            setUpdate(checkedElsewhere);
-            setUpdateInfo(toAppUpdateInfo(checkedElsewhere));
+            setUpdateInfo(checkedElsewhere);
             setStatus("available");
         }
     }, [checkedElsewhere, status]);
@@ -89,14 +82,12 @@ export function useAppUpdate(): UseAppUpdateReturn {
             }
 
             if (!availableUpdate) {
-                setUpdate(null);
                 setUpdateInfo(null);
                 setStatus("not-available");
                 return;
             }
 
-            setUpdate(availableUpdate);
-            setUpdateInfo(toAppUpdateInfo(availableUpdate));
+            setUpdateInfo(availableUpdate);
             setStatus("available");
         } catch (error) {
             logError("app-update", "Failed to check app update.", error);
@@ -108,7 +99,6 @@ export function useAppUpdate(): UseAppUpdateReturn {
                 return;
             }
 
-            setUpdate(null);
             setUpdateInfo(null);
             setStatus("error");
             setErrorMessage("Could not check for updates.");
@@ -116,7 +106,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
     }, [checkGuard]);
 
     const installUpdate = useCallback(async () => {
-        if (!update) {
+        if (!updateInfo) {
             return;
         }
 
@@ -133,7 +123,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
         try {
             // No status change on success, by design. See AppUpdateStatus above. The status stays
             // "downloading" until the relaunch takes the process with it.
-            await installAppUpdate(update, setProgress);
+            await installAppUpdate(setProgress);
         } catch (error) {
             logError("app-update", "Failed to install app update.", error);
 
@@ -141,9 +131,9 @@ export function useAppUpdate(): UseAppUpdateReturn {
             setErrorMessage("Could not install the update.");
         }
         // `checkGuard` is reference-stable (useRequestGuard memoizes over three stable callbacks),
-        // so listing it keeps the deps honest without costing this callback its identity. `update`
-        // is still the only thing that recreates it.
-    }, [update, checkGuard]);
+        // so listing it keeps the deps honest without costing this callback its identity.
+        // `updateInfo` is still the only thing that recreates it.
+    }, [updateInfo, checkGuard]);
 
     // Reference-stable so the controller keeps the shared convention (see use-memo-object). A
     // consumer that depends on the whole object does not churn on every render.

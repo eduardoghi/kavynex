@@ -56,6 +56,7 @@ describe("AppUpdateSection", () => {
                     updateInfo: {
                         version: "1.2.0",
                         currentVersion: "1.1.1",
+                        date: null,
                         body: "Bug fixes.",
                     },
                     installUpdate,
@@ -76,7 +77,7 @@ describe("AppUpdateSection", () => {
             <AppUpdateSection
                 {...baseProps({
                     appUpdateStatus: "available",
-                    updateInfo: { version: "1.2.0", currentVersion: "1.1.1", body: "" },
+                    updateInfo: { version: "1.2.0", currentVersion: "1.1.1", date: null, body: "" },
                 })}
             />
         );
@@ -91,7 +92,7 @@ describe("AppUpdateSection", () => {
             <AppUpdateSection
                 {...baseProps({
                     appUpdateStatus: "available",
-                    updateInfo: { version: "1.2.0", currentVersion: "1.1.1", body: "" },
+                    updateInfo: { version: "1.2.0", currentVersion: "1.1.1", date: null, body: "" },
                     installUpdate,
                     installBlockedReason:
                         "Wait for the library folder to finish moving before updating.",

@@ -203,7 +203,7 @@ describe("verifyCapabilitySurface", () => {
         // silently does nothing, on the first click a user makes.
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
-        ].filter((identifier) => identifier !== "process:allow-restart");
+        ].filter((identifier) => identifier !== "core:app:allow-version");
 
         const result = verifyCapabilitySurface({
             seams: completeSeams(),
@@ -212,7 +212,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("process:allow-restart");
+        expect(result.message).toContain("core:app:allow-version");
         expect(result.message).toContain("silently does nothing");
     });
 
@@ -268,7 +268,7 @@ describe("verifyCapabilitySurface", () => {
         // The rot direction. Without it the declaration decays into a list of names nothing calls,
         // which is how the prose version of this rule died next door.
         const seams = completeSeams();
-        seams[0].content = seams[0].content.replace(/\brelaunch,?\s*/, "");
+        seams[0].content = seams[0].content.replace(/\bgetVersion,?\s*/, "");
 
         const result = verifyCapabilitySurface({
             seams,
@@ -277,7 +277,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("relaunch");
+        expect(result.message).toContain("getVersion");
     });
 
     it("fails on a granted identifier that names no real permission", () => {
@@ -287,7 +287,7 @@ describe("verifyCapabilitySurface", () => {
         const permissions = [
             ...new Set(DECLARED_CAPABILITY_SURFACE.flatMap((entry) => entry.permissions)),
         ].map((identifier) =>
-            identifier === "process:allow-restart" ? "process:allow-restrat" : identifier
+            identifier === "core:app:allow-version" ? "core:app:allow-versoin" : identifier
         );
 
         const result = verifyCapabilitySurface({
@@ -297,7 +297,7 @@ describe("verifyCapabilitySurface", () => {
         });
 
         expect(result.ok).toBe(false);
-        expect(result.message).toContain("process:allow-restrat");
+        expect(result.message).toContain("core:app:allow-versoin");
     });
 
     it("reports the identifier check as skipped when no ACL manifest is available", () => {

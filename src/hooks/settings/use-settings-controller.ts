@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { relaunch } from "../../lib/tauri-platform";
+import { relaunchApp } from "../../services/app-update-service";
 import { pickFile, pickSaveDestination } from "../../services/file-dialog-service";
 import type { AppUpdateInfo, AppUpdateProgress } from "../../services/app-update-service";
 import {
@@ -245,7 +245,7 @@ export function useSettingsController({
         // that fails is not a failed import. The database is already staged and goes in whenever
         // the app next starts, so say that rather than reporting the import itself as failed.
         try {
-            await relaunch();
+            await relaunchApp();
         } catch (error) {
             logError("settings-modal", "Failed to relaunch after staging the import.", error);
             setDatabaseMessage({
@@ -293,7 +293,7 @@ export function useSettingsController({
         // fails is not a failed undo. The revert is staged and goes in whenever the app next starts,
         // and reporting it as failed invited a retry that finds nothing left to undo.
         try {
-            await relaunch();
+            await relaunchApp();
         } catch (error) {
             logError("settings-modal", "Failed to relaunch after staging the undo.", error);
             setDatabaseMessage({

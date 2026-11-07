@@ -11,6 +11,7 @@ pub mod security;
 pub mod settings;
 pub mod startup;
 pub mod thumbnail;
+pub mod updater;
 pub mod videos;
 pub mod webview_check;
 pub mod yt_dlp;

@@ -1,18 +1,19 @@
 // The single IPC seam. The only module that calls into our own Rust backend, wrapping Tauri's
 // `invoke`/`listen` with consistent error normalization (parseAppError). Tauri's *platform*
-// capabilities (process, updater, app version, asset URLs) live in the sibling
-// `tauri-platform.ts`. Between them these two modules are the only files allowed to import
+// capabilities (the app version, asset URLs) live in the sibling `tauri-platform.ts`. Between them these two modules are the only files allowed to import
 // `@tauri-apps` at all, enforced by eslint.config.js. See tauri-platform.ts for the rationale.
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
 import { TAURI_COMMANDS, type TauriCommandName } from "../constants/tauri-commands";
 import type { TauriCommandReturns } from "./tauri-command-returns";
 import {
+    appUpdateDownloadProgressSchema,
     contentVerificationEventSchema,
     libraryMigrationProgressSchema,
     liveChatStreamEventSchema,
     parseEventPayload,
     validateIpcResult,
+    type AppUpdateDownloadProgress,
     type ContentVerificationEvent,
     type ContentVerificationReport,
     type LibraryMigrationProgress,
@@ -281,6 +282,30 @@ export async function migrateLibraryWithProgress(
         ...args,
         onProgress: channel,
     });
+}
+
+// Installs the update the backend's last check found, passing each download progress message to
+// `onProgress`. The backend relaunches into the new version once it is installed (on Windows the
+// installer ends the process first), so a resolved promise is only ever seen when that relaunch did
+// not happen. A message this seam cannot validate is dropped, like the migration's.
+export async function installAppUpdateWithProgress(
+    onProgress: (progress: AppUpdateDownloadProgress) => void
+): Promise<void> {
+    const channel = new Channel<AppUpdateDownloadProgress>();
+
+    channel.onmessage = (rawProgress) => {
+        const progress = parseEventPayload(
+            appUpdateDownloadProgressSchema,
+            TAURI_COMMANDS.INSTALL_APP_UPDATE,
+            rawProgress
+        );
+
+        if (progress) {
+            onProgress(progress);
+        }
+    };
+
+    await invokeCommand(TAURI_COMMANDS.INSTALL_APP_UPDATE, { onProgress: channel });
 }
 
 export async function listenTauri<TPayload>(

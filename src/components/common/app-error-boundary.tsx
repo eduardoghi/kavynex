@@ -1,5 +1,5 @@
 import { Component, type CSSProperties, type ErrorInfo, type ReactNode } from "react";
-import { relaunch } from "../../lib/tauri-platform";
+import { relaunchApp } from "../../services/app-update-service";
 import { reportFatalError } from "../../utils/global-error-reporting";
 
 type AppErrorBoundaryProps = {
@@ -61,7 +61,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     };
 
     handleRestart = (): void => {
-        void relaunch().catch(() => {
+        void relaunchApp().catch(() => {
             // Relaunch needs the Tauri process plugin. If it fails, reloading the webview
             // is the closest recovery available.
             window.location.reload();

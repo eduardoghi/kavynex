@@ -25,13 +25,12 @@
 //! through [`report_webview_check`], and the process exits 0 or 1. A frontend that never loads
 //! reports nothing, which the watchdog in `lib.rs` turns into a non-zero exit rather than a hang.
 //!
-//! **What it does not cover, stated plainly.** The plugin grants that cannot be exercised without
-//! a human or a side effect. The two `updater:` grants (would reach the network) and
-//! `process:allow-restart` (would restart the app). Those are checked by hand instead, once per
-//! release, against the installed artifact. `docs/RELEASING.md` step 6 names the click that
-//! exercises each one. Worth reading before assuming a grant here is unverified, because
-//! `process:allow-restart` is cheaper to confirm than it looks (the database import reaches it, not
-//! only an update). What is covered here is the renderer booting, the two `core:*` grants,
+//! **What it does not cover, stated plainly.** The update check and install and the relaunch
+//! (`commands::updater`), which cannot be exercised without a side effect, since the first two reach
+//! the network and the last restarts the app. They are backend commands, so the renderer holds no
+//! grant for them. They are checked by hand instead, once per release, against the installed
+//! artifact. `docs/RELEASING.md` step 6 names the click that exercises each one. The relaunch is
+//! cheaper to confirm than it looks (the database import reaches it, not only an update). What is covered here is the renderer booting, the two `core:*` grants,
 //! IPC into this crate's own commands, the asset protocol end to end, and a media element's request
 //! reaching the player's protocol. The sound itself is not required to decode, since that depends on
 //! the codecs the runner has rather than on anything this check is about.

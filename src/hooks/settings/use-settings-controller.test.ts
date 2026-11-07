@@ -2,8 +2,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LibrarySummaryInfo } from "../../services/library-service";
 
-vi.mock("../../lib/tauri-platform", () => ({
-    relaunch: vi.fn(),
+vi.mock("../../services/app-update-service", () => ({
+    relaunchApp: vi.fn(),
 }));
 
 vi.mock("../../services/file-dialog-service", () => ({
@@ -48,7 +48,7 @@ vi.mock("../use-app-update", () => ({
     }),
 }));
 
-import { relaunch } from "../../lib/tauri-platform";
+import { relaunchApp } from "../../services/app-update-service";
 import { pickFile, pickSaveDestination } from "../../services/file-dialog-service";
 import {
     exportDatabase,
@@ -64,7 +64,7 @@ import { useSettingsController } from "./use-settings-controller";
 
 const openMock = vi.mocked(pickFile);
 const saveMock = vi.mocked(pickSaveDestination);
-const relaunchMock = vi.mocked(relaunch);
+const relaunchMock = vi.mocked(relaunchApp);
 const exportDatabaseMock = vi.mocked(exportDatabase);
 const importDatabaseMock = vi.mocked(importDatabase);
 const getDatabaseImportUndoStatusMock = vi.mocked(getDatabaseImportUndoStatus);

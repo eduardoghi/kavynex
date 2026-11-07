@@ -23,13 +23,11 @@ public key embedded in `tauri.conf.json` before being installed. The matching pr
 password are secrets of the repository's `release` environment, never checked into the repository,
 and that environment only admits runs on `main`.
 
-The endpoint is fixed, but the rest of the request is not entirely. The renderer holds
-`updater:allow-check`, and the plugin's `check` takes a proxy, extra headers, a timeout and a target
-platform from its caller. None of that can change where the manifest comes from or what signature an
-update must carry, so the worst a compromised renderer gets is routing the check through a proxy of
-its choosing (which learns the user's address and that the app is running, inside a TLS tunnel) or
-asking for another platform's artifact, which then fails to install. Accepted, since moving the check
-behind a backend command would only remove that nuisance.
+The rest of the request is fixed too. The renderer holds no `updater:` permission. The check and the
+install are backend commands (`commands/updater.rs`) that take no argument from it, because the
+plugin's own `check` takes a proxy, extra headers, a timeout and a target platform from its caller,
+and a proxy of a compromised renderer's choosing would carry whatever it put in the proxy's URL to a
+host of its choosing (see `THREAT-MODEL.md`).
 
 ### Accepted risk: the updater can be rolled back to an older signed release
 
@@ -67,7 +65,7 @@ stronger than it is.
 
 On Windows the updater runs the downloaded installer in `passive` mode (`installMode`,
 `tauri.conf.json`). The NSIS installer shows a minimal progress bar and proceeds without a wizard
-click, and once it finishes the app calls `relaunch()` itself (`src/services/app-update-service.ts`).
+click, and once it finishes the backend relaunches the app itself (`commands/updater.rs`).
 So the full sequence (signature-verified download, install, restart), completes from the single
 click the user makes on "Download and install update"; there is no second "install now?" prompt in
 between. This is deliberate rather than an oversight. The trust decision has already been made by

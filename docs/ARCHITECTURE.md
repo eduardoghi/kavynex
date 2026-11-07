@@ -23,7 +23,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 - **Commands** (`src-tauri/src/commands/`) are the only `#[tauri::command]` functions,
   one module per feature area (`channels.rs`, `videos.rs`, `media.rs`, `thumbnail.rs`,
   `live_chat.rs`, `yt_dlp.rs`, `database.rs`, `security.rs`, `settings.rs`, `comments.rs`,
-  `library.rs`, `logging.rs`, `dialog.rs`, `external.rs`, `startup.rs`, `webview_check.rs`). A
+  `library.rs`, `logging.rs`, `dialog.rs`, `external.rs`, `startup.rs`, `updater.rs`,
+  `webview_check.rs`). A
   command's job is to take the request from IPC, open the
   shared database pool or resolve an app path, and delegate to a service. It holds
   essentially no logic of its own. A command that only needs the database takes the managed `Db`
@@ -160,7 +161,7 @@ downloads, kills every tracked yt-dlp and FFmpeg child and checkpoints the write
 
 ### The plugin chain, and why its order matters once
 
-Six plugins are registered, and the order of the list is not arbitrary at its head.
+Five plugins are registered, and the order of the list is not arbitrary at its head.
 `tauri-plugin-single-instance` **must be first**. A second launch is redirected into the running
 process's callback (which focuses the existing window) instead of starting a second instance, and a
 second instance would open a second `SqlitePool` onto the same database file and a second
@@ -168,16 +169,18 @@ per-process download registry, which is a data-integrity problem rather than a c
 Registering it after a plugin that can fail or block would leave that window open. The invariant is
 stated here as well as in the code comment because a plugin list reads as an unordered set.
 
-Two of the six are the ones the frontend actually calls, and each has a matching grant in
-`src-tauri/capabilities/`, so `tauri-plugin-process` (relaunch after an update) and
-`tauri-plugin-updater`. The other four do their whole job from the Rust side.
+None of the five is called by the frontend, so none has a grant in `src-tauri/capabilities/`.
+`tauri-plugin-updater` checks for and installs updates, but only through `commands/updater.rs`,
+whose commands take no argument from the renderer, because the plugin's own `check` takes a proxy and
+headers from its caller. The relaunch after an update or a database import is `AppHandle::restart`
+behind the same module. The other four do their whole job from the Rust side too.
 `tauri-plugin-single-instance` and `tauri-plugin-window-state` (which persists the window's size and
 position across launches) work through a launch hook and a window-event hook.
 `tauri-plugin-dialog` opens the file and folder pickers, but only through the commands in
 `commands/dialog.rs`, because its renderer-facing commands add every picked path to the asset scope.
 `tauri-plugin-opener` opens YouTube links, but only through `commands/external.rs`, which builds the
 URL from a video or channel id instead of taking one from the renderer.
-Nothing in `src/lib/` calls any of the four, so none appears in `capabilities/` and none needs to;
+Nothing in `src/lib/` calls any of the five, so none appears in `capabilities/` and none needs to;
 see `docs/THREAT-MODEL.md` for why that is the correct state rather than a missing grant, and
 `docs/DIRECTORIES.md` for the file window-state writes.
 
@@ -221,7 +224,7 @@ repositories (src/repositories/**)
 src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
 ```
 
-(Alongside it, `src/lib/tauri-platform.ts` covers the non-IPC Tauri surfaces (process relaunch, the updater, the app version, `convertFileSrc`), so those never reach a component
+(Alongside it, `src/lib/tauri-platform.ts` covers the non-IPC Tauri surfaces (the app version, `convertFileSrc`), so those never reach a component
 either. See "The Tauri boundary" below.)
 
 - **Components** (`src/components/`) render Mantine/React UI. Most are presentation, receiving
@@ -229,8 +232,8 @@ either. See "The Tauri boundary" below.)
   carry IPC behind them and are not reusable without it: `SettingsModal` (`useSettingsController`),
   `AddMediaModal` (`useExternalToolsAvailability`) and `MediaPlayerView` (`useMediaComments`,
   `useMediaLiveChat`, `useMediaProgressPersistence`). No component calls `invoke()` or imports
-  `@tauri-apps`. One imports a seam module, `AppErrorBoundary`, for `relaunch`, since a render crash
-  leaves no hook tree to go through.
+  `@tauri-apps`. One imports a service directly, `AppErrorBoundary`, for `relaunchApp`, since a render
+  crash leaves no hook tree to go through.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`
   (`src/hooks/home/use-home-controller.tsx`) is the composition root for the main `Home` page.
   It wires together `useErrorModal`, `useAppBootstrap`, `useAppSettings`, `useChannels`,
@@ -280,10 +283,10 @@ either. See "The Tauri boundary" below.)
   returns a value and `invokeVoid` when it does not; the command name is typed as
   `TauriCommandName`, so it must come from the `TAURI_COMMANDS` map rather than a literal.
 - **`src/lib/tauri-platform.ts`** is the sibling seam for Tauri's *platform* capabilities:
-  everything that is not a call into our own Rust backend, so `relaunch` (plugin-process),
-  `checkForAppUpdate` plus the `Update` type (plugin-updater), `getVersion`, and
-  `convertFileSrc`. These are deliberate re-exports rather than wrappers, and each keeps the
-  plugin's exact signature, so routing a caller through the seam is a pure import change.
+  everything that is not a call into our own Rust backend, so `getVersion` and `convertFileSrc`.
+  These are deliberate re-exports rather than wrappers, and each keeps its exact signature, so
+  routing a caller through the seam is a pure import change. The updater and the relaunch are not
+  here. They are backend commands (`services/app-update-service.ts`).
   Error normalization stays with the IPC seam, which is where `AppError` is produced.
 
 ### The Tauri boundary
@@ -305,7 +308,7 @@ the call:
   `use-add-media-form`, `use-settings-controller`, `utils/pick-image-file.ts`, and the library and
   database services. `use-settings-controller` also relaunches after an import, through the
   platform seam.
-- `use-app-version` reads `getVersion`, `use-app-update` takes the updater's `Update` type, and
+- `use-app-version` reads `getVersion`, and
   `utils/media-utils.ts` builds media URLs with `convertFileSrc`.
 
 `src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` are the **only** two files that

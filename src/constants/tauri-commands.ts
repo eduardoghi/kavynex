@@ -9,6 +9,9 @@ export const TAURI_COMMANDS = {
     // What the background startup tasks found for the user, taken once. See
     // src-tauri/src/services/startup_notices.rs.
     TAKE_STARTUP_NOTICES: "take_startup_notices",
+    CHECK_FOR_APP_UPDATE: "check_for_app_update",
+    INSTALL_APP_UPDATE: "install_app_update",
+    RELAUNCH_APP: "relaunch_app",
     // Take an id, not a URL. The backend builds the YouTube URL and refuses anything that is not an
     // id, so the renderer holds no opener permission. See src-tauri/src/commands/external.rs.
     OPEN_YOUTUBE_VIDEO: "open_youtube_video",
