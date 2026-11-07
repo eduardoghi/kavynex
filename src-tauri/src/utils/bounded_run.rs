@@ -29,7 +29,7 @@
 use std::future::Future;
 use std::process::{ExitStatus, Output, Stdio};
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::services::process_registry::TrackedChildGuard;
@@ -124,34 +124,50 @@ pub(crate) fn run_bounded_blocking(
     })
 }
 
-/// A pipe being drained on a thread of its own.
-struct Drain(Option<mpsc::Receiver<Vec<u8>>>);
+/// A pipe being drained on a thread of its own, into a buffer this side can read before it ends.
+struct Drain(Option<DrainingPipe>);
+
+struct DrainingPipe {
+    buffer: Arc<Mutex<Vec<u8>>>,
+    done: mpsc::Receiver<()>,
+}
 
 fn drain_on_thread(stream: Option<impl std::io::Read + Send + 'static>, max_bytes: usize) -> Drain {
     let Some(stream) = stream else {
         return Drain(None);
     };
 
-    let (sender, receiver) = mpsc::channel();
+    let buffer = Arc::new(Mutex::new(Vec::new()));
+    let filling = Arc::clone(&buffer);
+    let (finished, done) = mpsc::channel();
 
     std::thread::spawn(move || {
-        let _ = sender.send(crate::utils::io::read_drain_capped(stream, max_bytes));
+        crate::utils::io::read_drain_capped_into(stream, max_bytes, &filling);
+        let _ = finished.send(());
     });
 
-    Drain(Some(receiver))
+    Drain(Some(DrainingPipe { buffer, done }))
 }
 
 impl Drain {
-    /// What the reader held by `deadline`, or nothing when it had not finished. A reader still
-    /// waiting is left to end with its pipe, which the program that holds it closes on exit.
+    /// What the reader held by `deadline`. The whole output when the pipe closed by then, and what
+    /// had arrived when it had not. A program that exited while a child it started holds the pipe
+    /// (`yt-dlp --version` printing its line, say) still has that line read, where waiting for the
+    /// end alone dropped it. A reader still waiting is left to end with its pipe.
     fn collect(self, deadline: Instant) -> Vec<u8> {
-        let Some(receiver) = self.0 else {
+        let Some(DrainingPipe { buffer, done }) = self.0 else {
             return Vec::new();
         };
 
-        receiver
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .unwrap_or_default()
+        let _ = done.recv_timeout(deadline.saturating_duration_since(Instant::now()));
+
+        let held = std::mem::take(
+            &mut *buffer
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        );
+
+        held
     }
 }
 
@@ -395,5 +411,42 @@ mod tests {
         .expect("a set cancel flag ends the run");
 
         assert!(matches!(failure, RunFailure::Cancelled));
+    }
+
+    /// Hands over one line, then holds the pipe open well past the drain deadline, as a child
+    /// that inherited it does.
+    struct LineThenHeld(bool);
+
+    impl std::io::Read for LineThenHeld {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            if self.0 {
+                std::thread::sleep(Duration::from_secs(2));
+                return Ok(0);
+            }
+
+            self.0 = true;
+            let line = b"2026.10.01
+";
+            buffer[..line.len()].copy_from_slice(line);
+            Ok(line.len())
+        }
+    }
+
+    #[test]
+    fn a_pipe_still_held_at_the_deadline_keeps_what_it_had_read() {
+        let drain = drain_on_thread(Some(LineThenHeld(false)), 1024);
+
+        let started = Instant::now();
+        let output = drain.collect(Instant::now() + Duration::from_millis(200));
+
+        assert_eq!(
+            output,
+            b"2026.10.01
+"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "the deadline, not the pipe, ends the wait"
+        );
     }
 }

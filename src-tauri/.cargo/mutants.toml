@@ -108,7 +108,7 @@ exclude_re = [
     # next line (`-` to `+`) is NOT excluded and is a real one. It overshoots the cap on the chunk
     # that straddles it, which a_stream_over_the_cap_is_truncated_but_still_drained_to_the_end and
     # a_drained_pipe_keeps_exactly_its_cap_and_is_read_to_the_end catch.
-    'replace < with <= in read_drain_capped(_async)?$',
+    'replace < with <= in read_drain_capped_(async|into)$',
     # AppHandle glue: what is left once prepare_cache_scope_dirs took the observable half.
     # Narrow on purpose, and prepare_cache_scope_dirs, managed_cache_scope_dirs and
     # grant_path_with_canonical stay.

@@ -102,14 +102,25 @@ where
 
 /// Drains a pipe to its end, retaining at most `max_bytes`. Bytes past the cap are read and
 /// discarded rather than left unread, so the child writing to it never blocks on a full pipe.
-pub(crate) fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize) -> Vec<u8> {
-    let mut buffer: Vec<u8> = Vec::new();
+///
+/// Read into `buffer` a chunk at a time, so another thread can take what was read so far while the
+/// pipe is still open. A program that exited while a child it started holds the pipe still has its
+/// output kept (`utils::bounded_run`).
+pub(crate) fn read_drain_capped_into(
+    mut stream: impl std::io::Read,
+    max_bytes: usize,
+    buffer: &std::sync::Mutex<Vec<u8>>,
+) {
     let mut chunk = [0u8; 8192];
 
     loop {
         match stream.read(&mut chunk) {
             Ok(0) | Err(_) => break,
             Ok(read) => {
+                let mut buffer = buffer
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+
                 if buffer.len() < max_bytes {
                     let take = (max_bytes - buffer.len()).min(read);
                     buffer.extend_from_slice(&chunk[..take]);
@@ -117,8 +128,6 @@ pub(crate) fn read_drain_capped(mut stream: impl std::io::Read, max_bytes: usize
             }
         }
     }
-
-    buffer
 }
 
 #[cfg(test)]
@@ -271,9 +280,10 @@ mod tests {
         // remaining-capacity arithmetic runs with a non-empty buffer.
         let mut stream = std::io::Cursor::new(vec![b'x'; 20_000]);
 
-        let captured = read_drain_capped(&mut stream, 10_000);
+        let captured = std::sync::Mutex::new(Vec::new());
+        read_drain_capped_into(&mut stream, 10_000, &captured);
 
-        assert_eq!(captured.len(), 10_000);
+        assert_eq!(captured.into_inner().unwrap().len(), 10_000);
         assert_eq!(stream.position(), 20_000);
     }
 
