@@ -626,11 +626,37 @@ pub async fn resolve_ffmpeg_binary_async<R: Runtime>(app: &AppHandle<R>) -> AppR
     run_blocking(move || resolve_ffmpeg_binary(&app)).await
 }
 
+/// How long a tools check answers the next ones. Long enough that a burst of requests (a renderer
+/// asking in a loop, two views opening together) spawns the three probes once, and short enough
+/// that "Check again" after installing a tool sees it.
+const TOOLS_STATUS_REUSE: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The last tools check and when it finished. Its lock is also what lets one check run at a time,
+/// where every other place that starts a child process is bounded already.
+static LAST_TOOLS_STATUS: tokio::sync::Mutex<Option<(std::time::Instant, ExternalToolsStatus)>> =
+    tokio::sync::Mutex::const_new(None);
+
+/// Whether a check that finished at `checked_at` still answers one asked at `now`.
+fn tools_status_is_fresh(checked_at: std::time::Instant, now: std::time::Instant) -> bool {
+    now.saturating_duration_since(checked_at) < TOOLS_STATUS_REUSE
+}
+
 pub async fn resolve_external_tools_status_async<R: Runtime>(
     app: &AppHandle<R>,
 ) -> AppResult<ExternalToolsStatus> {
+    let mut last = LAST_TOOLS_STATUS.lock().await;
+
+    if let Some((checked_at, status)) = last.as_ref() {
+        if tools_status_is_fresh(*checked_at, std::time::Instant::now()) {
+            return Ok(status.clone());
+        }
+    }
+
     let app = app.clone();
-    run_blocking(move || resolve_external_tools_status(&app)).await
+    let status = run_blocking(move || resolve_external_tools_status(&app)).await?;
+    *last = Some((std::time::Instant::now(), status.clone()));
+
+    Ok(status)
 }
 
 pub fn ffmpeg_location_argument(ffmpeg_binary: &str) -> String {
@@ -650,6 +676,21 @@ pub fn ffmpeg_location_argument(ffmpeg_binary: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tools_check_answers_the_next_ones_for_a_few_seconds_only() {
+        let checked_at = std::time::Instant::now();
+
+        assert!(tools_status_is_fresh(checked_at, checked_at));
+        assert!(tools_status_is_fresh(
+            checked_at,
+            checked_at + TOOLS_STATUS_REUSE - std::time::Duration::from_millis(1)
+        ));
+        assert!(!tools_status_is_fresh(
+            checked_at,
+            checked_at + TOOLS_STATUS_REUSE
+        ));
+    }
     use std::time::Instant;
 
     fn make_executable(path: &Path) {
