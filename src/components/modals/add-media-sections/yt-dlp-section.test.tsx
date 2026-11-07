@@ -8,7 +8,13 @@ import type { YtDlpFormatOption } from "../../../types/media";
 function renderYtDlpSection(
     overrides: Partial<ComponentProps<typeof YtDlpSection>> = {}
 ): ReturnType<typeof renderWithMantine> {
-    return renderWithMantine(
+    return renderWithMantine(ytDlpSection(overrides));
+}
+
+function ytDlpSection(
+    overrides: Partial<ComponentProps<typeof YtDlpSection>> = {}
+): JSX.Element {
+    return (
         <YtDlpSection
             mediaUrl=""
             cookiesBrowser=""
@@ -53,6 +59,43 @@ function createYtDlpFormat(overrides: Partial<YtDlpFormatOption> = {}): YtDlpFor
 }
 
 describe("YtDlpSection", () => {
+    it("gives focus back to the URL field once the formats have loaded", () => {
+        // Both the field and the Load button are disabled during the load, which dropped focus
+        // to the page.
+        const { rerender } = renderYtDlpSection({
+            mediaUrl: "https://youtube.com/watch?v=abc",
+            isLoadingYtDlpFormats: true,
+        });
+        expect(document.activeElement).toBe(document.body);
+
+        rerender(
+            ytDlpSection({
+                mediaUrl: "https://youtube.com/watch?v=abc",
+                isLoadingYtDlpFormats: false,
+            })
+        );
+
+        expect(screen.getByLabelText("Media URL")).toHaveFocus();
+    });
+
+    it("leaves focus where the user put it while the formats loaded", () => {
+        const { rerender } = renderYtDlpSection({
+            mediaUrl: "https://youtube.com/watch?v=abc",
+            isLoadingYtDlpFormats: true,
+        });
+        const [downloadComments] = screen.getAllByRole("checkbox");
+        downloadComments!.focus();
+
+        rerender(
+            ytDlpSection({
+                mediaUrl: "https://youtube.com/watch?v=abc",
+                isLoadingYtDlpFormats: false,
+            })
+        );
+
+        expect(downloadComments).toHaveFocus();
+    });
+
     it("renders url input and load button", () => {
         renderYtDlpSection();
 

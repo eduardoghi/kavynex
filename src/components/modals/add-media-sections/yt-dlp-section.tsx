@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import {
     ActionIcon,
     Box,
@@ -63,12 +63,36 @@ function YtDlpSectionView({
         ytDlpFormats.find((item) => item.format_id === selectedYtDlpFormatId) ?? null;
 
     const canLoadFormats = mediaUrl.trim() !== "" && !isLocked && !isLoadingYtDlpFormats;
+
+    // The URL field and the Load button are disabled while the formats load, and focus on either
+    // fell to the page with nothing to bring it back. Once the load ends it returns to the field,
+    // unless the user has put it somewhere else meanwhile.
+    const urlInputRef = useRef<HTMLInputElement>(null);
+    const wasLoading = useRef(isLoadingYtDlpFormats);
+
+    useEffect(() => {
+        const loadEnded = wasLoading.current && !isLoadingYtDlpFormats;
+        wasLoading.current = isLoadingYtDlpFormats;
+
+        if (!loadEnded) {
+            return;
+        }
+
+        const active = document.activeElement;
+
+        if (active && active !== document.body && document.contains(active)) {
+            return;
+        }
+
+        urlInputRef.current?.focus();
+    }, [isLoadingYtDlpFormats]);
     const isManualCookies = cookiesBrowser === "manual";
     const isBrowserCookies = cookiesBrowser !== "" && !isManualCookies;
 
     return (
         <Stack gap="sm">
             <TextInput
+                ref={urlInputRef}
                 label="Media URL"
                 placeholder="https://www.youtube.com/watch?v=..."
                 value={mediaUrl}
