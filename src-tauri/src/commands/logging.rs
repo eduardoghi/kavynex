@@ -40,10 +40,10 @@ struct ReportBudget {
 #[derive(Debug, PartialEq, Eq)]
 enum Admission {
     /// Write it, after saying how many the previous window dropped, when it dropped any.
-    Write {
-        dropped_before: u32,
-    },
-    Drop,
+    Write { dropped_before: u32 },
+    /// Drop it. `first` for the window's first drop, which the log notes at once, since the count
+    /// only reaches it with a report after the window, and a burst that stops has none.
+    Drop { first: bool },
 }
 
 impl ReportBudget {
@@ -65,7 +65,9 @@ impl ReportBudget {
 
         if self.written >= MAX_REPORTS_PER_WINDOW {
             self.dropped = self.dropped.saturating_add(1);
-            return Admission::Drop;
+            return Admission::Drop {
+                first: self.dropped == 1,
+            };
         }
 
         self.written += 1;
@@ -91,8 +93,24 @@ pub async fn log_frontend_error(scope: String, message: String) {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .admit(std::time::Instant::now());
 
-    let Admission::Write { dropped_before } = admission else {
-        return;
+    let dropped_before = match admission {
+        Admission::Write { dropped_before } => dropped_before,
+        Admission::Drop { first: true } => {
+            let _ = run_blocking(|| {
+                logger::warn(
+                    "frontend",
+                    format!(
+                        "frontend error reports are coming too fast; dropping the rest for up to                          {} seconds",
+                        REPORT_WINDOW.as_secs()
+                    ),
+                );
+                Ok(())
+            })
+            .await;
+
+            return;
+        }
+        Admission::Drop { first: false } => return,
     };
 
     let _ = run_blocking(move || {
@@ -191,12 +209,23 @@ mod tests {
             assert_eq!(budget.admit(start), Admission::Write { dropped_before: 0 });
         }
 
-        assert_eq!(budget.admit(start), Admission::Drop);
-        assert_eq!(budget.admit(start), Admission::Drop);
+        // The first drop says so at once, since a burst that stops never sends the report that
+        // would carry the count.
+        assert_eq!(budget.admit(start), Admission::Drop { first: true });
+        assert_eq!(budget.admit(start), Admission::Drop { first: false });
 
         let later = start + REPORT_WINDOW;
         assert_eq!(budget.admit(later), Admission::Write { dropped_before: 2 });
         assert_eq!(budget.admit(later), Admission::Write { dropped_before: 0 });
+
+        for _ in 2..MAX_REPORTS_PER_WINDOW {
+            budget.admit(later);
+        }
+        assert_eq!(
+            budget.admit(later),
+            Admission::Drop { first: true },
+            "each window notes its own first drop"
+        );
     }
 
     #[test]
