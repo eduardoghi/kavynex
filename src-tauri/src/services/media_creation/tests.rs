@@ -31,6 +31,35 @@ fn with_video_id(source_mode: MediaSourceMode, video_id: Option<&str>) -> Create
 }
 
 #[test]
+fn a_download_keeps_its_own_thumbnail_unless_a_usable_one_is_supplied() {
+    // A value the classifier reads as absent is not stored either, so skipping on its presence
+    // alone saved the media with no thumbnail.
+    for unusable in [
+        None,
+        Some(""),
+        Some("   "),
+        Some("file:///C:/cover.png"),
+        Some("data:image/png;base64,AAAA"),
+    ] {
+        assert!(
+            !supplied_thumbnail_replaces_fetched(unusable),
+            "{unusable:?} should leave the download's own thumbnail on"
+        );
+    }
+
+    for usable in [
+        "thumbnails/thumb_abc.jpg",
+        "https://i.ytimg.com/vi/abc/maxresdefault.jpg",
+        "/home/me/cover.png",
+    ] {
+        assert!(
+            supplied_thumbnail_replaces_fetched(Some(usable)),
+            "{usable} replaces the download's own thumbnail"
+        );
+    }
+}
+
+#[test]
 fn a_managed_thumbnail_path_is_taken_as_it_is() {
     // The one case that must not be re-persisted. It already names a file in the library, so
     // treating it as a local path would copy that file onto itself under a new hash.

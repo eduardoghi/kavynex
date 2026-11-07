@@ -196,6 +196,15 @@ fn is_absolute_file_path(value: &str) -> bool {
     }
 }
 
+/// Whether a download may skip fetching its own thumbnail because the request supplies one.
+///
+/// Only a value that classifies as a thumbnail does. One the classifier reads as absent (a `file:`
+/// or `data:` URL, a relative path outside `thumbnails/`) is not stored either, so skipping on its
+/// mere presence registered the media with no thumbnail at all, and nothing said so.
+pub(crate) fn supplied_thumbnail_replaces_fetched(value: Option<&str>) -> bool {
+    !matches!(classify_thumbnail_source(value), ThumbnailSource::Absent)
+}
+
 pub(crate) fn classify_thumbnail_source(value: Option<&str>) -> ThumbnailSource {
     let trimmed = value.map(str::trim).unwrap_or_default();
 
@@ -695,7 +704,8 @@ async fn prepare_yt_dlp_artifacts<R: Runtime>(
 ) -> AppResult<PreparedArtifacts> {
     // A supplied thumbnail makes the run's own thumbnail fetch pointless work whose output would be
     // discarded a moment later, so it is skipped rather than downloaded and cleaned up.
-    let skip_auto_thumbnail = request.thumbnail_source_path.is_some();
+    let skip_auto_thumbnail =
+        supplied_thumbnail_replaces_fetched(request.thumbnail_source_path.as_deref());
 
     let downloaded = yt_dlp::download_media_from_url_async(
         app,
