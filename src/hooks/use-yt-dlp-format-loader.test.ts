@@ -426,6 +426,57 @@ describe("useYtDlpFormatLoader", () => {
         expect(result.current.ytDlpFormats).toEqual([]);
         expect(result.current.selectedYtDlpFormatId).toBe("");
     });
+
+    it("lets a new load run after a reset, and the old one ending leaves it loading", async () => {
+        let resolveOld: (value: YtDlpFormatsResult) => void = () => {};
+        vi.mocked(listYtDlpFormats)
+            .mockReturnValueOnce(
+                new Promise<YtDlpFormatsResult>((resolve) => {
+                    resolveOld = resolve;
+                })
+            )
+            .mockReturnValueOnce(new Promise<YtDlpFormatsResult>(() => {}));
+
+        const { result } = renderLoader();
+
+        let oldLoad: Promise<void> = Promise.resolve();
+        act(() => {
+            oldLoad = result.current.loadYtDlpFormats();
+        });
+        act(() => {
+            result.current.resetYtDlpFormats();
+        });
+
+        // Refused before the reset cleared the flag, and only by the old load's end.
+        act(() => {
+            void result.current.loadYtDlpFormats();
+        });
+        expect(listYtDlpFormats).toHaveBeenCalledTimes(2);
+
+        await act(async () => {
+            resolveOld(resultWithFormats([]));
+            await oldLoad;
+        });
+
+        expect(result.current.isLoadingYtDlpFormats).toBe(true);
+    });
+
+    it("reports a cancelled load as cancelled rather than as an error", async () => {
+        vi.mocked(listYtDlpFormats).mockRejectedValueOnce({
+            code: "YT_DLP_DOWNLOAD_CANCELLED",
+            message: "yt-dlp download cancelled",
+        });
+
+        const { result, onTerminalLog, onTerminalStop } = renderLoader();
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats().catch(() => undefined);
+        });
+
+        expect(onTerminalLog).toHaveBeenCalledWith("Loading the formats was cancelled.");
+        expect(onTerminalLog).not.toHaveBeenCalledWith(expect.stringMatching(/^ERROR/));
+        expect(onTerminalStop).toHaveBeenCalledWith("cancelled");
+    });
 });
 
 describe("useYtDlpFormatLoader: display label formatting", () => {

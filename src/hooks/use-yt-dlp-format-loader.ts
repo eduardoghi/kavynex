@@ -3,6 +3,7 @@ import { cancelMediaDownload, listYtDlpFormats } from "../services/media-downloa
 import type { MediaType, YtDlpFormatOption } from "../types/media";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
+import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
 import { useRequestGuard } from "./use-request-guard";
 import { redactCookiesBrowserSelector } from "../constants/cookies-browsers";
 import {
@@ -83,6 +84,10 @@ export function useYtDlpFormatLoader({
             void cancelMediaDownload(FORMAT_LOADER_RUN_ID).catch(() => undefined);
         }
 
+        // The probe it superseded leaves the loading flags alone when it ends, so the reset clears
+        // them, and a new "Load formats" is not refused while the old probe winds down.
+        isLoadingRef.current = false;
+        setIsLoadingYtDlpFormats(false);
         setYtDlpFormats([]);
         setSelectedYtDlpFormatIdState("");
         setResolvedYoutubeVideoId(null);
@@ -115,7 +120,8 @@ export function useYtDlpFormatLoader({
             return;
         }
 
-        if (isLoadingYtDlpFormats) {
+        // The ref, not the state this callback closed over, which may be a render behind.
+        if (isLoadingRef.current) {
             return;
         }
 
@@ -232,17 +238,23 @@ export function useYtDlpFormatLoader({
                 message = `${message}\n${details}`;
             }
 
-            onTerminalLog?.(`ERROR: ${message}`);
-            outcome = "failed";
+            // Cancel is what the user asked for. The form does not report it either.
+            if (parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE) {
+                onTerminalLog?.("Loading the formats was cancelled.");
+                outcome = "cancelled";
+            } else {
+                onTerminalLog?.(`ERROR: ${message}`);
+                outcome = "failed";
+            }
+
             throw error;
         } finally {
-            isLoadingRef.current = false;
-            setIsLoadingYtDlpFormats(false);
-
-            // A probe superseded by a reset (a URL change, the modal closing) does not report how it
-            // ended. The reset already cleared the terminal, and a stop here would mark that empty
-            // terminal finished.
+            // A probe superseded by a reset (a URL change, the modal closing) touches nothing. The
+            // loading flags belong to whichever probe is current now, and the reset already cleared
+            // the terminal, so a stop here would mark that empty terminal finished.
             if (requestGuard.isCurrent(requestId)) {
+                isLoadingRef.current = false;
+                setIsLoadingYtDlpFormats(false);
                 onTerminalStop?.(outcome);
             }
         }
@@ -251,7 +263,6 @@ export function useYtDlpFormatLoader({
         getCookiesPath,
         getCurrentTitle,
         getUrl,
-        isLoadingYtDlpFormats,
         onMediaTypeResolved,
         onSuggestedTitle,
         onTerminalLog,
