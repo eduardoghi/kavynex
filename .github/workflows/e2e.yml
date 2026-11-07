@@ -105,3 +105,60 @@ jobs:
                   done
 
                   node e2e/run.js "$binary"
+
+    # Like scheduled-audit.yml and mutation.yml, a failing scheduled run opens (or comments on) a
+    # tracking issue, since the email GitHub sends is easy to miss. Results are checked explicitly
+    # rather than with `failure()`, which does not match a job cancelled by its own timeout.
+    alert-on-failure:
+        name: Open an issue on failure
+        needs: [e2e]
+        if: always() && (needs.e2e.result == 'failure' || needs.e2e.result == 'cancelled')
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            issues: write
+        steps:
+            - name: Open or update the tracking issue
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  # No checkout here, so `gh issue` needs the repository named.
+                  GH_REPO: ${{ github.repository }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="End-to-end flows failed"
+                  BODY="The end-to-end run failed: a flow in e2e/run.js did not get through the real window, or the build before it broke. Review the run: $RUN_URL"
+                  EXISTING=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+                  if [ -n "$EXISTING" ]; then
+                      gh issue comment "$EXISTING" --body "$BODY"
+                  else
+                      gh issue create --title "$TITLE" --body "$BODY"
+                  fi
+
+    # The other half. A green run closes the issue the job above opened, so an open one always means
+    # the flows are failing now.
+    close-on-success:
+        name: Close the tracking issue on a green run
+        needs: [e2e]
+        if: needs.e2e.result == 'success'
+        runs-on: ubuntu-26.04
+        timeout-minutes: 10
+        permissions:
+            issues: write
+        steps:
+            - name: Close the tracking issue if one is open
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  GH_REPO: ${{ github.repository }}
+                  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                  TITLE="End-to-end flows failed"
+                  NUMBER=$(gh issue list --state open --search "$TITLE in:title" \
+                      --json number,title \
+                      --jq "[.[] | select(.title == \"$TITLE\")] | .[0].number // empty")
+
+                  if [ -n "$NUMBER" ]; then
+                      gh issue close "$NUMBER" \
+                          --comment "A later run of this workflow completed green: $RUN_URL"
+                  fi
