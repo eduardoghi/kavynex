@@ -269,8 +269,12 @@ mod tests {
         assert!(!cases.is_empty());
 
         for case in cases {
-            let bytes = case["bytes"].as_u64().expect("bytes must be a whole number");
-            let formatted = case["formatted"].as_str().expect("formatted must be a string");
+            let bytes = case["bytes"]
+                .as_u64()
+                .expect("bytes must be a whole number");
+            let formatted = case["formatted"]
+                .as_str()
+                .expect("formatted must be a string");
 
             assert_eq!(format_bytes(bytes), formatted, "{bytes} bytes");
         }
