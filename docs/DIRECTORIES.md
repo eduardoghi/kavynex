@@ -242,7 +242,9 @@ paths to the same reference counting the deletions use, so an artifact a registe
 points at is kept, and a genuine orphan is moved to the library's `.trash` folder rather than
 deleted (a finished download may be of something no longer on YouTube). A yt-dlp download records
 a marker for its file the moment it is placed, before the live chat and the thumbnail, and the
-registration replaces it with its own. Finding a
+registration replaces it with its own. A local import in Move mode records one before it touches the
+user's file, naming where the file came from. On a volume without hard links the move renames the
+file into the library, and the sweep then puts it back there instead of trashing it. Finding a
 `pending-media/` marker on a healthy install means a media import died midway; the sweep
 handles it on the next launch and nothing needs to be deleted by hand.
 

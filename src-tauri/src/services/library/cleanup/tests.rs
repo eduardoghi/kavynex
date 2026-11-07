@@ -1047,6 +1047,7 @@ fn a_file_written_in_the_last_hour_is_not_planned_for_removal() {
         &library,
         &crate::services::library::integrity::ExpectedLibraryPaths::default(),
         false,
+        &std::collections::HashSet::new(),
     );
 
     assert_eq!(plan.files, 1);
@@ -1054,6 +1055,29 @@ fn a_file_written_in_the_last_hour_is_not_planned_for_removal() {
     assert_eq!(plan.refusal, None);
     assert_eq!(deletable.len(), 1);
     assert_eq!(deletable[0].path, old);
+
+    let _ = fs::remove_dir_all(&library);
+}
+
+#[test]
+fn a_planned_removal_leaves_out_a_file_a_move_import_took_from_the_user() {
+    // A crash marker says it came from the user's folder and may be their only copy. The startup
+    // sweep puts it back, so Diagnostics must not offer it for the trash meanwhile.
+    let library = unique_test_dir("orphans-moved");
+    fs::create_dir_all(library.join("video")).unwrap();
+    let moved = format!("video/media_{}.mp4", "c".repeat(64));
+    fs::write(library.join(&moved), b"only copy").unwrap();
+    age_file(&library.join(&moved), TWO_HOURS);
+
+    let (plan, deletable) = plan_orphan_removal(
+        &library,
+        &crate::services::library::integrity::ExpectedLibraryPaths::default(),
+        false,
+        &std::collections::HashSet::from([moved.clone()]),
+    );
+
+    assert_eq!(plan.files, 0);
+    assert!(deletable.is_empty());
 
     let _ = fs::remove_dir_all(&library);
 }
@@ -1073,6 +1097,7 @@ fn a_planned_removal_reports_the_refusal_when_most_files_are_unreferenced() {
         &library,
         &crate::services::library::integrity::ExpectedLibraryPaths::default(),
         false,
+        &std::collections::HashSet::new(),
     );
 
     assert_eq!(plan.files, 12);

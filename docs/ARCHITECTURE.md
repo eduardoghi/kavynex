@@ -368,7 +368,8 @@ ordering lives on the other side, in `services/media_creation.rs`:
    thumbnail. A download fetches its thumbnail after the media and straight from YouTube's image
    CDN, and a thumbnail that fails leaves the media saved without one. A live chat replay that cannot
    be stored does the same, since the media is already in the library by then. A Move import leaves its
-   source in place. **The files are in the library from here on.** A download records a crash marker
+   source in place, except on a volume without hard links, where it renames the file in and records a
+   crash marker just before saying where it came from. **The files are in the library from here on.** A download records a crash marker
    for its file right after placing it, so the minutes the live chat and the thumbnail take are covered.
 5. `register_prepared_media`, under `library::cleanup::media_registration_guard`: the crash marker,
    the duplicate check on the stored path, `insert_media`, then the marker's removal and, for a

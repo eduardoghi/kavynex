@@ -129,6 +129,24 @@ pub fn stage_media_import_cancellable_sync(
     library_path: &str,
     cancel: Option<&AtomicBool>,
 ) -> AppResult<StagedMediaImport> {
+    stage_media_import_recorded_sync(path, mode, library_path, cancel, None)
+}
+
+/// Called by a Move import right before it touches the user's file, with the library-relative path
+/// the file is about to take and the path it comes from. Media creation records a crash marker here
+/// (`pending_media::record_moved_import`), since on a volume without hard links the move renames the
+/// file into the library, and a crash before the row lands would otherwise leave the user's only
+/// copy there under a hash name with nothing saying where it came from.
+pub type BeforeMove<'a> = &'a dyn Fn(&str, &Path);
+
+/// [`stage_media_import_cancellable_sync`] with a [`BeforeMove`] hook.
+pub fn stage_media_import_recorded_sync(
+    path: &str,
+    mode: ImportMode,
+    library_path: &str,
+    cancel: Option<&AtomicBool>,
+    before_move: Option<BeforeMove<'_>>,
+) -> AppResult<StagedMediaImport> {
     let trimmed = path.trim();
 
     // Reject a UNC / network source before any filesystem call touches it. The source is
@@ -265,6 +283,17 @@ pub fn stage_media_import_cancellable_sync(
             // source is still owed its removal and the Move actually frees it. Pass the hash we
             // already computed above so the identical-content check does not re-hash the
             // (possibly multi-GB) source a second time.
+            // Spelled out rather than resolved, since the destination does not exist yet.
+            if let Some(before_move) = before_move {
+                before_move(
+                    &format!(
+                        "{media_subdir}/{}",
+                        content_addressed_media_name(&hash, &ext)
+                    ),
+                    &source,
+                );
+            }
+
             let staged =
                 stage_move_cancellable(&source, &destination, &hash, cancel).map_err(|error| {
                     if error.code == AppErrorCode::DestinationAlreadyExists.as_str() {
@@ -550,6 +579,56 @@ mod tests {
 
         assert!(!source.exists());
         assert_eq!(fs::read(&library_file).unwrap(), b"video-bytes");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn a_move_import_announces_the_file_it_is_about_to_take_and_a_copy_does_not() {
+        // Media creation writes its crash marker from this call, so it has to come before the file
+        // is touched and name the library path the import ends up with.
+        let root = unique_test_dir("before-move");
+        let source_dir = root.join("source");
+        let library_dir = root.join("library");
+        fs::create_dir_all(&library_dir).unwrap();
+        fs::create_dir_all(&source_dir).unwrap();
+
+        let source = source_dir.join("video.mp4");
+        fs::write(&source, b"video-bytes").unwrap();
+
+        let announced = std::cell::RefCell::new(Vec::new());
+        let record = |relative: &str, from: &Path| {
+            assert!(from.is_file(), "announced before the source is touched");
+            announced
+                .borrow_mut()
+                .push((relative.to_string(), from.to_path_buf()));
+        };
+
+        let staged = stage_media_import_recorded_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+            Some(&record),
+        )
+        .unwrap();
+
+        assert_eq!(
+            announced.borrow().as_slice(),
+            &[(staged.relative_path.clone(), source.clone())]
+        );
+
+        announced.borrow_mut().clear();
+        stage_media_import_recorded_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+            Some(&record),
+        )
+        .unwrap();
+
+        assert!(announced.borrow().is_empty(), "a Copy never takes the file");
 
         let _ = fs::remove_dir_all(root);
     }

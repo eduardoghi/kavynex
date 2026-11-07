@@ -352,7 +352,8 @@ pub async fn open_path_in_system(db: State<'_, Db>, path: String) -> AppResult<(
 ///
 /// The library is the configured one, read from the settings before the rows are.
 #[tauri::command]
-pub async fn check_library_integrity(
+pub async fn check_library_integrity<R: Runtime>(
+    app: AppHandle<R>,
     db: State<'_, Db>,
 ) -> AppResult<library::integrity::LibraryIntegrityCheck> {
     let pool = db.pool().await?;
@@ -364,11 +365,16 @@ pub async fn check_library_integrity(
     let recent_database_swap = library::cleanup::database_was_recently_swapped(db.path());
 
     run_blocking(move || {
+        // A file a Move import took before the app closed is the sweep's to put back, so
+        // Diagnostics does not offer it for removal (see `pending_media`).
+        let awaiting_return = crate::services::pending_media::moved_files_awaiting_return(&app);
+
         library::integrity::check_library_integrity_for_references(
             &library_path,
             references,
             avatar_paths,
             recent_database_swap,
+            &awaiting_return,
         )
     })
     .await

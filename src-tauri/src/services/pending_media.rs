@@ -62,6 +62,16 @@ pub struct PendingMediaArtifacts {
     /// before this field existed reads as a first attempt rather than failing to parse.
     #[serde(default)]
     pub attempts: u32,
+    /// A Move import's file in the library (library-relative), recorded before the move, because on a
+    /// volume without hard links (FAT32, exFAT) the move renames the user's file into the library and
+    /// it is then their only copy. Never handed to the cleanup. The sweep puts it back at
+    /// [`moved_from`](Self::moved_from) when no row references it (see [`put_moved_file_back`]).
+    #[serde(default)]
+    pub moved_file_path: Option<String>,
+    /// Where [`moved_file_path`](Self::moved_file_path) was moved from, as an absolute path. The two
+    /// are kept or dropped together.
+    #[serde(default)]
+    pub moved_from: Option<String>,
 }
 
 impl PendingMediaArtifacts {
@@ -69,6 +79,30 @@ impl PendingMediaArtifacts {
         self.file_path.is_none()
             && self.thumbnail_path.is_none()
             && self.live_chat_file_path.is_none()
+            && self.moved_file_path.is_none()
+    }
+
+    fn names_files_to_trash(&self) -> bool {
+        self.file_path.is_some()
+            || self.thumbnail_path.is_some()
+            || self.live_chat_file_path.is_some()
+    }
+}
+
+/// Keeps a moved file's pair only when both halves are sound. A library path inside the managed
+/// layout, and an absolute path to put it back at. A marker naming one without the other names
+/// nothing the sweep can act on.
+fn moved_pair_or_none(
+    moved_file_path: Option<String>,
+    moved_from: Option<String>,
+) -> (Option<String>, Option<String>) {
+    let moved_from = moved_from
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && Path::new(value).is_absolute());
+
+    match (managed_path_or_none(moved_file_path), moved_from) {
+        (Some(file), Some(from)) => (Some(file), Some(from)),
+        _ => (None, None),
     }
 }
 
@@ -95,10 +129,15 @@ fn managed_path_or_none(value: Option<String>) -> Option<String> {
 pub(crate) fn sanitize_pending_artifacts(
     artifacts: PendingMediaArtifacts,
 ) -> PendingMediaArtifacts {
+    let (moved_file_path, moved_from) =
+        moved_pair_or_none(artifacts.moved_file_path, artifacts.moved_from);
+
     PendingMediaArtifacts {
         file_path: managed_path_or_none(artifacts.file_path),
         thumbnail_path: managed_path_or_none(artifacts.thumbnail_path),
         live_chat_file_path: managed_path_or_none(artifacts.live_chat_file_path),
+        moved_file_path,
+        moved_from,
         // Carried through rather than reset. This runs on the decode path too, where dropping the
         // count would restart the retry budget on every launch and reinstate the forever-retry this
         // field exists to end. The record path zeroes it explicitly instead.
@@ -179,10 +218,145 @@ fn paths_named_by_live_markers<R: Runtime>(app: &AppHandle<R>) -> HashSet<String
                 artifacts.file_path,
                 artifacts.thumbnail_path,
                 artifacts.live_chat_file_path,
+                artifacts.moved_file_path,
             ]
         })
         .flatten()
         .collect()
+}
+
+/// Every library file a marker on disk says a Move import took from the user, whatever the marker's
+/// age, retry count or owner. Diagnostics leaves these out of the orphan removal, since each one may
+/// be the user's only copy of the file and the sweep is the one that puts it back.
+pub fn moved_files_awaiting_return<R: Runtime>(app: &AppHandle<R>) -> HashSet<String> {
+    let Ok(dir) = pending_media_dir(app) else {
+        return HashSet::new();
+    };
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return HashSet::new();
+    };
+
+    entries
+        .flatten()
+        .filter(|entry| is_marker_file_name(&entry.file_name().to_string_lossy()))
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .filter_map(|contents| parse_marker(&contents).ok().flatten())
+        .filter_map(|artifacts| artifacts.moved_file_path)
+        .collect()
+}
+
+/// What [`put_moved_file_back`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MovedFileReturn {
+    /// The file was renamed back to where the user had it.
+    Returned,
+    /// Nothing to do. The library file is gone, or the original is still where it was with the same
+    /// content (the move linked or copied, and the source was never taken).
+    NothingToReturn,
+}
+
+/// Puts a Move import's file back where the user had it, for an import that never registered.
+///
+/// The caller has already checked that no row references `relative`. Refused, and left where it is,
+/// when the original name now holds something else or its folder is gone (a drive not plugged in),
+/// so the next launch can try again. Blocking (it may compare two whole files).
+pub(crate) fn put_moved_file_back(
+    library_dir: &Path,
+    relative: &str,
+    moved_from: &Path,
+) -> AppResult<MovedFileReturn> {
+    let in_library = crate::utils::path::absolute_path_from_relative(
+        library_dir,
+        relative,
+        crate::utils::path::ManagedSubtree::Media,
+    )?;
+
+    if fs::symlink_metadata(&in_library).is_err() {
+        return Ok(MovedFileReturn::NothingToReturn);
+    }
+
+    if fs::symlink_metadata(moved_from).is_ok() {
+        if crate::services::filesystem::file_paths_have_same_content_using(
+            moved_from,
+            &in_library,
+            None,
+        )? {
+            return Ok(MovedFileReturn::NothingToReturn);
+        }
+
+        return Err(AppError::fs_error(
+            AppErrorCode::DestinationAlreadyExists,
+            "the file a Move import took cannot go back, because another file now has its name",
+            moved_from,
+            &std::io::Error::from(std::io::ErrorKind::AlreadyExists),
+        ));
+    }
+
+    if !moved_from.parent().is_some_and(Path::is_dir) {
+        return Err(AppError::fs_error(
+            AppErrorCode::FileMoveFailed,
+            "the folder a Move import took a file from is not there",
+            moved_from,
+            &std::io::Error::from(std::io::ErrorKind::NotFound),
+        ));
+    }
+
+    crate::services::filesystem::rename_retrying_patiently(&in_library, moved_from).map_err(
+        |error| {
+            AppError::fs_error(
+                AppErrorCode::FileMoveFailed,
+                "failed to move the file back",
+                moved_from,
+                &error,
+            )
+        },
+    )?;
+
+    Ok(MovedFileReturn::Returned)
+}
+
+/// The sweep's step for a marker's moved file. Under the registration lock, the reference count says
+/// whether the import registered after all (then the file is the media's and stays), and otherwise
+/// the file goes back where the user had it. `Err` is the reason it could not, which the sweep counts
+/// as a failed attempt like any other.
+async fn return_moved_file<R: Runtime>(
+    app: &AppHandle<R>,
+    relative: &str,
+    moved_from: &str,
+) -> Result<(), String> {
+    let _guard = crate::services::library::cleanup::media_registration_guard().await;
+
+    let pool = crate::services::database::shared_pool(app)
+        .await
+        .map_err(|error| error.to_string())?;
+    let references =
+        crate::services::library::cleanup::count_media_rows_using_file(&pool, relative)
+            .await
+            .map_err(|error| error.to_string())?;
+
+    if references > 0 {
+        return Ok(());
+    }
+
+    let library_dir = crate::services::library::guard::configured_library_dir(app)
+        .await
+        .map_err(|error| error.to_string())?;
+    let relative_owned = relative.to_string();
+    let moved_from = PathBuf::from(moved_from);
+
+    let returned =
+        run_blocking(move || put_moved_file_back(&library_dir, &relative_owned, &moved_from))
+            .await
+            .map_err(|error| error.to_string())?;
+
+    if returned == MovedFileReturn::Returned {
+        logger::info(
+            "pending_media",
+            "a file a Move import took into the library before the app closed was put back where it was",
+        );
+    }
+
+    Ok(())
 }
 
 /// The instant this process started, used as the cutoff by [`marker_is_sweepable`].
@@ -363,6 +537,25 @@ pub fn record_pending_media_artifacts<R: Runtime>(
     }
 
     Ok(name)
+}
+
+/// Records, before a Move import touches the user's file, which library file it is about to become
+/// and where it came from. The marker is cleared once the import knows its source was linked or
+/// copied rather than taken, and otherwise travels with the creation (`interim_marker`) until the
+/// row lands.
+pub fn record_moved_import<R: Runtime>(
+    app: &AppHandle<R>,
+    relative: &str,
+    moved_from: &Path,
+) -> AppResult<String> {
+    record_pending_media_artifacts(
+        app,
+        PendingMediaArtifacts {
+            moved_file_path: Some(relative.to_string()),
+            moved_from: Some(moved_from.to_string_lossy().into_owned()),
+            ..PendingMediaArtifacts::default()
+        },
+    )
 }
 
 /// Writes the marker durably. Contents, `sync_all`, then a parent-directory fsync. Split out so the
@@ -600,14 +793,32 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
             let spare =
                 |path: &Option<String>| path.clone().filter(|path| !in_flight.contains(path));
 
-            let failure = match crate::services::library::cleanup::trash_unreferenced_artifacts(
-                app,
-                spare(&artifacts.file_path),
-                spare(&artifacts.thumbnail_path),
-                spare(&artifacts.live_chat_file_path),
-            )
-            .await
-            {
+            // The user's file first. Until it is back where they had it, the marker is its only
+            // record. A creation in flight on the same content-addressed name is about to register
+            // it, so it is left for the next launch rather than taken from under that creation.
+            let returned = match (&artifacts.moved_file_path, &artifacts.moved_from) {
+                (Some(relative), Some(_)) if in_flight.contains(relative) => {
+                    Err("a media being added now uses the same library file".to_string())
+                }
+                (Some(relative), Some(moved_from)) => {
+                    return_moved_file(app, relative, moved_from).await
+                }
+                _ => Ok(()),
+            };
+
+            let trashed = if artifacts.names_files_to_trash() {
+                crate::services::library::cleanup::trash_unreferenced_artifacts(
+                    app,
+                    spare(&artifacts.file_path),
+                    spare(&artifacts.thumbnail_path),
+                    spare(&artifacts.live_chat_file_path),
+                )
+                .await
+            } else {
+                Ok(crate::services::library::cleanup::ArtifactCleanupReport::default())
+            };
+
+            let failure = match trashed {
                 Ok(report) => {
                     removed_artifacts += report.deleted_paths.len();
 
@@ -633,6 +844,7 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
                 }
                 Err(error) => Some(error.to_string()),
             };
+            let failure = returned.err().or(failure);
 
             if let Some(error) = failure {
                 // Leave the marker in place so the next launch retries. A transient failure
@@ -753,6 +965,7 @@ mod tests {
             thumbnail_path: thumb.map(str::to_string),
             live_chat_file_path: chat.map(str::to_string),
             attempts: 0,
+            ..PendingMediaArtifacts::default()
         }
     }
 
@@ -810,6 +1023,7 @@ mod tests {
             thumbnail_path: None,
             live_chat_file_path: None,
             attempts: MAX_MARKER_SWEEP_ATTEMPTS + 10,
+            ..PendingMediaArtifacts::default()
         };
 
         let app = mock_app();
@@ -1442,5 +1656,219 @@ mod tests {
     fn parsing_tells_an_empty_marker_from_an_unreadable_one() {
         assert!(matches!(parse_marker("{}"), Ok(None)));
         assert!(parse_marker("{\"file_path\":").is_err());
+    }
+
+    fn absolute_outside(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("kavynex_moved_{label}_{}", unique_temp_suffix()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_moved_file_is_kept_only_with_an_absolute_place_to_go_back_to() {
+        let outside = absolute_outside("pair").join("clip.mp4");
+        let whole = sanitize_pending_artifacts(PendingMediaArtifacts {
+            moved_file_path: Some("video/media_a.mp4".to_string()),
+            moved_from: Some(outside.to_string_lossy().into_owned()),
+            ..PendingMediaArtifacts::default()
+        });
+        assert_eq!(whole.moved_file_path.as_deref(), Some("video/media_a.mp4"));
+        assert!(!whole.is_empty());
+        assert!(
+            !whole.names_files_to_trash(),
+            "a moved file is never trashed"
+        );
+
+        for (file, from) in [
+            (Some("video/media_a.mp4"), None),
+            (None, Some(outside.to_string_lossy().into_owned())),
+            (Some("video/media_a.mp4"), Some("clip.mp4".to_string())),
+            (
+                Some("../outside.mp4"),
+                Some(outside.to_string_lossy().into_owned()),
+            ),
+        ] {
+            let half = sanitize_pending_artifacts(PendingMediaArtifacts {
+                moved_file_path: file.map(str::to_string),
+                moved_from: from,
+                ..PendingMediaArtifacts::default()
+            });
+
+            assert_eq!(half.moved_file_path, None);
+            assert_eq!(half.moved_from, None);
+        }
+    }
+
+    fn library_holding(label: &str, bytes: &[u8]) -> (PathBuf, String) {
+        let library = absolute_outside(label);
+        fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
+        let relative = format!("video/media_{label}.mp4");
+        fs::write(library.join(&relative), bytes).unwrap();
+        (library, relative)
+    }
+
+    #[test]
+    fn a_moved_file_goes_back_where_the_user_had_it() {
+        let (library, relative) = library_holding("back", b"the user's video");
+        let outside = absolute_outside("back-to");
+        let original = outside.join("clip.mp4");
+
+        let outcome = put_moved_file_back(&library, &relative, &original).unwrap();
+
+        assert_eq!(outcome, MovedFileReturn::Returned);
+        assert_eq!(fs::read(&original).unwrap(), b"the user's video");
+        assert!(!library.join(&relative).exists());
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn nothing_goes_back_when_the_source_was_never_taken() {
+        // The volume could link, so the original is still there with the same bytes.
+        let (library, relative) = library_holding("kept", b"same bytes");
+        let outside = absolute_outside("kept-at");
+        let original = outside.join("clip.mp4");
+        fs::write(&original, b"same bytes").unwrap();
+
+        assert_eq!(
+            put_moved_file_back(&library, &relative, &original).unwrap(),
+            MovedFileReturn::NothingToReturn
+        );
+        assert!(library.join(&relative).exists());
+
+        // And a library file that is gone has nothing to return either.
+        fs::remove_file(library.join(&relative)).unwrap();
+        assert_eq!(
+            put_moved_file_back(&library, &relative, &original).unwrap(),
+            MovedFileReturn::NothingToReturn
+        );
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[test]
+    fn a_moved_file_never_replaces_another_file_or_lands_in_a_missing_folder() {
+        let (library, relative) = library_holding("taken", b"the user's video");
+        let outside = absolute_outside("taken-at");
+        let original = outside.join("clip.mp4");
+        fs::write(&original, b"a different file").unwrap();
+
+        assert!(put_moved_file_back(&library, &relative, &original).is_err());
+        assert_eq!(fs::read(&original).unwrap(), b"a different file");
+        assert!(library.join(&relative).exists());
+
+        let unplugged = outside.join("gone").join("clip.mp4");
+        assert!(put_moved_file_back(&library, &relative, &unplugged).is_err());
+        assert!(library.join(&relative).exists());
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    fn leftover_moved_marker(
+        app: &tauri::App<tauri::test::MockRuntime>,
+        relative: &str,
+        moved_from: &Path,
+    ) -> PathBuf {
+        let name = format!("pending-{}.json", unique_temp_suffix());
+        let marker = pending_media_dir(app.handle()).unwrap().join(&name);
+        let contents = serde_json::to_string(&PendingMediaArtifacts {
+            moved_file_path: Some(relative.to_string()),
+            moved_from: Some(moved_from.to_string_lossy().into_owned()),
+            ..PendingMediaArtifacts::default()
+        })
+        .unwrap();
+
+        fs::write(&marker, contents).unwrap();
+        set_modified_before_process_start(&marker);
+
+        marker
+    }
+
+    #[tokio::test]
+    async fn the_sweep_puts_back_a_file_a_move_import_took_before_the_app_closed() {
+        let _sweep = SWEEP_TESTS.lock().await;
+        let (app, library) = app_with_library("moved-back").await;
+        let relative = format!("video/media_moved_{}.mp4", unique_temp_suffix());
+        fs::write(library.join(&relative), b"only copy").unwrap();
+        let outside = absolute_outside("moved-back-to");
+        let original = outside.join("clip.mp4");
+        let marker = leftover_moved_marker(&app, &relative, &original);
+
+        assert!(moved_files_awaiting_return(app.handle()).contains(&relative));
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert_eq!(fs::read(&original).unwrap(), b"only copy");
+        assert!(!library.join(&relative).exists());
+        assert!(!marker.exists(), "a returned file needs no record");
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_leaves_a_moved_file_a_registered_media_took() {
+        // The row landed and the app closed before the marker went. The file is the media's now.
+        let _sweep = SWEEP_TESTS.lock().await;
+        let (app, library) = app_with_library("moved-registered").await;
+        let relative = format!("video/media_moved_kept_{}.mp4", unique_temp_suffix());
+        fs::write(library.join(&relative), b"registered").unwrap();
+        let pool = crate::services::database::shared_pool(app.handle())
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 'Kept', 'kept', ?, 'video')",
+        )
+        .bind(&relative)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let outside = absolute_outside("moved-registered-from");
+        let original = outside.join("clip.mp4");
+        let marker = leftover_moved_marker(&app, &relative, &original);
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert!(library.join(&relative).exists());
+        assert!(!original.exists());
+        assert!(!marker.exists());
+
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_keeps_the_record_of_a_moved_file_that_cannot_go_back() {
+        let _sweep = SWEEP_TESTS.lock().await;
+        let (app, library) = app_with_library("moved-blocked").await;
+        let relative = format!("video/media_moved_blocked_{}.mp4", unique_temp_suffix());
+        fs::write(library.join(&relative), b"only copy").unwrap();
+        let outside = absolute_outside("moved-blocked-at");
+        let original = outside.join("clip.mp4");
+        fs::write(&original, b"something else took the name").unwrap();
+        let marker = leftover_moved_marker(&app, &relative, &original);
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert!(library.join(&relative).exists());
+        assert!(
+            marker.exists(),
+            "the marker is the only record of where it came from"
+        );
+        assert_eq!(
+            decode_marker(&fs::read_to_string(&marker).unwrap())
+                .unwrap()
+                .attempts,
+            1
+        );
+
+        let _ = fs::remove_file(&marker);
+        let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
     }
 }

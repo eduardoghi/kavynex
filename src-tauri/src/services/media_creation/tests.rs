@@ -685,6 +685,24 @@ mod registration {
             .count()
     }
 
+    fn remove_markers_naming(app: &MockApp, file_path: &str) {
+        let Ok(cache) = app.path().app_cache_dir() else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(cache.join(crate::constants::TEMP_DIR_PENDING_MEDIA))
+        else {
+            return;
+        };
+
+        for entry in entries.flatten() {
+            if std::fs::read_to_string(entry.path())
+                .is_ok_and(|contents| contents.contains(file_path))
+            {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+
     /// What `source_media_outside_the_library(label)` writes.
     ///
     /// Distinct per label because the import names the library file after its hash. The mock apps
@@ -1309,6 +1327,11 @@ mod registration {
         assert!(!library.join(&file_path).exists());
         // Put back, so the error does not send the user to look for it in the library.
         assert!(!error.details.unwrap_or_default().contains(&file_path));
+        assert_eq!(
+            markers_naming(&app, &file_path),
+            0,
+            "nothing is left to put back"
+        );
 
         let _ = std::fs::remove_dir_all(&library);
         let _ = std::fs::remove_dir_all(&outside);
@@ -1345,6 +1368,12 @@ mod registration {
         assert!(library.join(&file_path).is_file());
         assert!(error.details.unwrap_or_default().contains(&file_path));
         assert_eq!(fs_bytes(&original), b"another file".to_vec());
+        assert_eq!(
+            markers_naming(&app, &file_path),
+            1,
+            "the marker stays, so the next launch tries to put the file back again"
+        );
+        remove_markers_naming(&app, &file_path);
 
         let _ = std::fs::remove_dir_all(&library);
         let _ = std::fs::remove_dir_all(&outside);

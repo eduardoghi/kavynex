@@ -104,6 +104,17 @@ async fn count_media_files_referencing(conn: &mut SqliteConnection, path: &str) 
     Ok(total)
 }
 
+/// How many media rows store `path` as their file, in either separator spelling. For the startup
+/// sweep, which puts a Move import's file back only when no row took it after all.
+pub(crate) async fn count_media_rows_using_file(pool: &SqlitePool, path: &str) -> AppResult<i64> {
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|error| db_error("failed to acquire a database connection", error))?;
+
+    count_media_files_referencing(&mut conn, path).await
+}
+
 /// A thumbnail is referenced both by video rows and by channel avatars, so a single count
 /// covers every surviving use regardless of which side the deletion came from.
 async fn count_thumbnails_referencing(conn: &mut SqliteConnection, path: &str) -> AppResult<i64> {
@@ -1092,13 +1103,19 @@ fn count_content_addressed_files(library_dir: &Path) -> usize {
 
 /// Lists the removable orphans and decides whether removing them is allowed. Blocking (it walks the
 /// library).
+///
+/// `awaiting_return` is what a crash marker says a Move import took from the user
+/// (`pending_media::moved_files_awaiting_return`). Such a file has no row and may be the only copy,
+/// and the startup sweep is what puts it back, so it is never offered for removal.
 pub(crate) fn plan_orphan_removal(
     library_dir: &Path,
     expected: &crate::services::library::integrity::ExpectedLibraryPaths,
     recent_database_swap: bool,
+    awaiting_return: &std::collections::HashSet<String>,
 ) -> (OrphanRemovalPlan, Vec<DeletableArtifact>) {
     let removable: Vec<DeletableArtifact> = removable_orphans(library_dir, expected)
         .into_iter()
+        .filter(|artifact| !awaiting_return.contains(&artifact.path))
         .filter(|artifact| !was_written_recently(&library_relative(library_dir, &artifact.path)))
         .collect();
 
@@ -1271,11 +1288,16 @@ pub async fn remove_orphan_artifacts<R: Runtime>(
         run_blocking(move || Ok(database_was_recently_swapped(&db_path))).await?;
 
     let planning_dir = library_dir.clone();
+    let planning_app = app.clone();
     let (removal, deletable) = run_blocking(move || {
+        let awaiting_return =
+            crate::services::pending_media::moved_files_awaiting_return(&planning_app);
+
         Ok(plan_orphan_removal(
             &planning_dir,
             &expected,
             recent_database_swap,
+            &awaiting_return,
         ))
     })
     .await?;

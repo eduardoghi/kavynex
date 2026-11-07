@@ -525,23 +525,57 @@ async fn prepare_local_artifacts<R: Runtime>(
     let import_mode = request.import_mode;
     let source_value = request.source_value.clone();
     let library_path = request.library_path.clone();
+    let marker_app = app.clone();
+    let moved_marker: Arc<std::sync::Mutex<Option<String>>> = Arc::default();
+    let marker_slot = Arc::clone(&moved_marker);
 
     // Staged rather than imported outright. A Move leaves the source in place until
     // `register_prepared_media` has a row pointing at the library copy, so a refused insert or a
-    // crash before it never costs the user their file.
+    // crash before it never costs the user their file. Where the volume cannot link and the move
+    // has to rename the file in, a marker written just before says where it came from, and the
+    // startup sweep puts it back if the app closes before the row lands.
     let staged = run_blocking(move || {
-        library::media::stage_media_import_cancellable_sync(
+        let record = |relative: &str, source: &Path| match pending_media::record_moved_import(
+            &marker_app,
+            relative,
+            source,
+        ) {
+            Ok(name) => {
+                *marker_slot
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(name);
+            }
+            Err(error) => logger::warn(
+                "media_creation",
+                format!("could not record the Move import marker: {error}"),
+            ),
+        };
+
+        library::media::stage_media_import_recorded_sync(
             &source_value,
             import_mode,
             &library_path,
             cancel_flag.as_deref(),
+            Some(&record),
         )
     })
     .await;
 
+    let moved_marker = moved_marker
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .take();
+
     let staged = match staged {
         Ok(staged) => staged,
         Err(error) => {
+            // Most failures come before the user's file is touched, and the sweep then finds it
+            // still in place and only drops the marker. One after a rename finds the file in the
+            // library and puts it back.
+            if let Some(marker) = moved_marker {
+                pending_media::leave_marker_for_next_sweep(&marker);
+            }
+
             // The thumbnail is already in the library and nothing will ever point at it, so hand it
             // to the reference-counted cleanup rather than leaving it behind. Reference-counted
             // because it is content-addressed. The same image may already back a registered row.
@@ -557,6 +591,15 @@ async fn prepare_local_artifacts<R: Runtime>(
         media_subdir_from_extension(&extension_from_path(Path::new(&staged.relative_path)))
             .to_string();
 
+    // Only a renamed file needs the marker past this point. A linked or copied source is still
+    // where the user had it.
+    let interim_marker = if staged.renamed_from.is_some() {
+        moved_marker
+    } else {
+        clear_marker_best_effort(app, moved_marker).await;
+        None
+    };
+
     Ok(PreparedArtifacts {
         file_path: staged.relative_path,
         thumbnail_path,
@@ -568,7 +611,7 @@ async fn prepare_local_artifacts<R: Runtime>(
         move_source_to_remove: staged.source_to_remove,
         media_file_is_only_copy: staged.library_holds_only_copy,
         renamed_from: staged.renamed_from,
-        interim_marker: None,
+        interim_marker,
     })
 }
 
@@ -868,11 +911,20 @@ async fn record_marker_best_effort<R: Runtime>(
     // asking for an empty one would only log a refusal.
     let file_path = deletable_media_file(prepared);
 
-    if nothing_to_clean_up(
-        file_path.as_deref(),
-        prepared.thumbnail_path.as_deref(),
-        prepared.live_chat_file_path.as_deref(),
-    ) {
+    // A renamed file is not left out, though. It is named as moved, which the sweep puts back where
+    // the user had it rather than handing to the cleanup.
+    let moved_from = prepared
+        .renamed_from
+        .as_ref()
+        .map(|from| from.to_string_lossy().into_owned());
+
+    if moved_from.is_none()
+        && nothing_to_clean_up(
+            file_path.as_deref(),
+            prepared.thumbnail_path.as_deref(),
+            prepared.live_chat_file_path.as_deref(),
+        )
+    {
         return None;
     }
 
@@ -881,6 +933,8 @@ async fn record_marker_best_effort<R: Runtime>(
         file_path,
         thumbnail_path: prepared.thumbnail_path.clone(),
         live_chat_file_path: prepared.live_chat_file_path.clone(),
+        moved_file_path: moved_from.as_ref().map(|_| prepared.file_path.clone()),
+        moved_from,
         // The sweep's own retry bookkeeping. A fresh record always starts at zero, which
         // `record_pending_media_artifacts` enforces regardless of what is passed here.
         attempts: 0,
@@ -983,7 +1037,7 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
             })
         }
         Err(error) => {
-            let error = put_renamed_file_back(request, &prepared, error).await;
+            let (error, file_is_back) = put_renamed_file_back(request, &prepared, error).await;
 
             // The cleanup runs while the lock is still held, so the count it takes cannot race a
             // creation that would have adopted these same paths, and the marker is cleared only
@@ -992,7 +1046,8 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
             //
             // A cleanup that could not move everything keeps the markers instead, since they are
             // then the only record of files still on disk, and the next launch's sweep retries them.
-            if cleanup_artifacts_best_effort_locked(app, &prepared).await {
+            // So does a renamed file that could not go back, which the sweep tries again.
+            if cleanup_artifacts_best_effort_locked(app, &prepared).await && file_is_back {
                 clear_marker_best_effort(app, marker).await;
                 clear_marker_best_effort(app, interim_marker).await;
             } else {
@@ -1012,13 +1067,16 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
 /// Diagnostics would offer to move to the trash. Renamed back to where the user had it, the failed
 /// import leaves things as they were. When that is not possible (the name was taken meanwhile, the
 /// rename failed), the error says where the file is, so the user can import it again from there.
+///
+/// Also says whether the user's file is out of the library now (put back, or never renamed in), which
+/// decides whether the crash markers naming it may go.
 async fn put_renamed_file_back(
     request: &CreateMediaRequest,
     prepared: &PreparedArtifacts,
     error: AppError,
-) -> AppError {
+) -> (AppError, bool) {
     let Some(original) = prepared.renamed_from.clone() else {
-        return error;
+        return (error, true);
     };
 
     let library_path = request.library_path.clone();
@@ -1054,7 +1112,7 @@ async fn put_renamed_file_back(
                 "media_creation",
                 "the media could not be registered, so the moved file was put back where it was",
             );
-            error
+            (error, true)
         }
         _ => {
             let note = format!(
@@ -1067,10 +1125,13 @@ async fn put_renamed_file_back(
                 None => note,
             };
 
-            AppError {
-                details: Some(details),
-                ..error
-            }
+            (
+                AppError {
+                    details: Some(details),
+                    ..error
+                },
+                false,
+            )
         }
     }
 }

@@ -520,15 +520,23 @@ window either. Its source is removed only after the row lands (`media_creation::
 through `library::media::stage_media_import_cancellable_sync`), so a refused creation leaves the
 user's original where it was. The one Move that cannot keep its source until then is a rename on a
 volume without hard links (FAT32, exFAT), and that library file is flagged as the only copy, which
-keeps it out of both the failure cleanup and the crash marker the startup sweep reads. A refused
+keeps it out of both the failure cleanup and the trash step of the startup sweep. A refused
 creation renames it back to where the user had it, and when that name has been taken meanwhile the
 error names the library file instead. The rename also gives the file the current time, so the orphan
 removal in Diagnostics, which spares files written in the last hour, does not take it from a creation
 still running.
 
-The residual is a process that dies between that rename and the row. The file then stays in the
-library with nothing pointing at it, Diagnostics reports it as an orphan, and **Remove orphan files**
-moves it to the library's `.trash` like any other, where it stays for 30 days.
+A process that dies between that rename and the row is covered by a crash marker written just before
+the Move touches the file (`pending_media::record_moved_import`), naming the library file it is about
+to become and the absolute path it comes from. The registration's own marker carries the same pair.
+The next launch's sweep checks under the registration lock that no row took the file, and renames it
+back (`pending_media::put_moved_file_back`). It never replaces a file that took the original name
+meanwhile, and does not recreate a folder that is gone (a drive not plugged in). Either way the
+marker stays and the next launch tries again. While any marker names the file, **Remove orphan
+files** leaves it out (`pending_media::moved_files_awaiting_return`). The residual is a source changed
+during the import, whose library file is renamed after its new content before the registration's
+marker records it, so the first marker names a file that is not there and the sweep has nothing to
+put back.
 
 None of this depends on the add-media modal refusing a second creation. A queue, a batch import or a
 background re-download needs nothing new, since none of them can produce a creation that is not

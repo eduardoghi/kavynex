@@ -495,12 +495,14 @@ pub fn check_library_integrity_for_references(
     references: Vec<MediaIntegrityReference>,
     avatar_paths: Vec<String>,
     recent_database_swap: bool,
+    awaiting_return: &std::collections::HashSet<String>,
 ) -> AppResult<LibraryIntegrityCheck> {
     let expected = expected_library_paths(&references, avatar_paths);
     let (orphan_removal, _) = crate::services::library::cleanup::plan_orphan_removal(
         Path::new(library_path),
         &expected,
         recent_database_swap,
+        awaiting_return,
     );
 
     let report = check_library_integrity_sync(
@@ -541,6 +543,7 @@ pub async fn count_missing_library_files<R: tauri::Runtime>(
             references,
             avatar_paths,
             false,
+            &std::collections::HashSet::new(),
         )?;
 
         Ok(missing_file_count(&check.report))
@@ -724,6 +727,7 @@ mod tests {
             references,
             vec!["thumbnails/avatar_10.jpg".to_string()],
             false,
+            &std::collections::HashSet::new(),
         )
         .unwrap();
 
