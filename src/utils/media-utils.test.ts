@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { convertFileSrc } from "../lib/tauri-platform";
 import {
@@ -404,7 +406,22 @@ describe("media-utils", () => {
             expect(formatBytes(1024 * 1024 * 1024)).toBe("1.00 GB");
             expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe("2.50 GB");
         });
+
+        it("formats every shared case the way the backend does", () => {
+            // Diagnostics shows sizes from both sides next to each other. 1.5 TB read
+            // "1536.00 GB" here and "1.50 TB" in the backend's summary.
+            const fixture = JSON.parse(
+                readFileSync(resolve(process.cwd(), "shared/byte-size-cases.json"), "utf-8")
+            ) as { cases: { bytes: number; formatted: string }[] };
+
+            expect(fixture.cases.length).toBeGreaterThan(0);
+
+            for (const { bytes, formatted } of fixture.cases) {
+                expect(formatBytes(bytes)).toBe(formatted);
+            }
+        });
     });
+
 
     describe("formatDuration", () => {
         it("returns an empty string for null, undefined, non-finite and non-positive values", () => {

@@ -133,7 +133,10 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     behind the normalized columns the media search queries against.
   - `format.rs`: the allowed media/thumbnail extension lists (and their user-facing labels),
     the extension-to-subdirectory mapping, and `format_bytes`, shared by the library and
-    database size summaries.
+    database size summaries. `format_bytes` and the frontend's `formatBytes` are both asserted
+    against `shared/byte-size-cases.json`, so two sizes side by side in Diagnostics read alike.
+    The frontend's other numbers go through `utils/number-format.ts`, in English like the rest of
+    the interface.
   - `bounded_semaphore.rs`: the permit-based limiter bounding how much parallel work runs at
     once.
   - `task.rs`, `io.rs`: a `run_blocking` wrapper for moving blocking work off the async

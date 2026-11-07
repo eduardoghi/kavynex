@@ -255,6 +255,28 @@ mod tests {
     }
 
     #[test]
+    fn format_bytes_matches_every_shared_case() {
+        // The frontend's formatBytes is asserted against the same cases (media-utils.test.ts), so
+        // two sizes side by side in Diagnostics read alike.
+        let raw = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../shared/byte-size-cases.json"
+        ));
+        let fixture: serde_json::Value =
+            serde_json::from_str(raw).expect("the shared fixture must be valid JSON");
+        let cases = fixture["cases"].as_array().expect("cases must be an array");
+
+        assert!(!cases.is_empty());
+
+        for case in cases {
+            let bytes = case["bytes"].as_u64().expect("bytes must be a whole number");
+            let formatted = case["formatted"].as_str().expect("formatted must be a string");
+
+            assert_eq!(format_bytes(bytes), formatted, "{bytes} bytes");
+        }
+    }
+
+    #[test]
     fn media_subdir_from_extension_detects_audio() {
         assert_eq!(media_subdir_from_extension("mp3"), "audio");
         assert_eq!(media_subdir_from_extension(".flac"), "audio");

@@ -1,0 +1,13 @@
+{
+    "_comment": "Shared fixture for the byte-size formatter, asserted from both sides so the two copies cannot drift apart: TypeScript formatBytes (src/utils/media-utils.ts, src/utils/media-utils.test.ts) and Rust format_bytes (src-tauri/src/utils/format.rs). Diagnostics shows sizes from both next to each other.",
+    "cases": [
+        { "bytes": 0, "formatted": "0 B" },
+        { "bytes": 1023, "formatted": "1023 B" },
+        { "bytes": 1024, "formatted": "1.00 KB" },
+        { "bytes": 1536, "formatted": "1.50 KB" },
+        { "bytes": 1048576, "formatted": "1.00 MB" },
+        { "bytes": 1073741824, "formatted": "1.00 GB" },
+        { "bytes": 1649267441664, "formatted": "1.50 TB" },
+        { "bytes": 2251799813685248, "formatted": "2048.00 TB" }
+    ]
+}

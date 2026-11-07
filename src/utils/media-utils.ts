@@ -272,28 +272,24 @@ export function formatDuration(seconds: number | null | undefined): string {
     return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
+const BYTE_UNITS = ["B", "KB", "MB", "GB", "TB"] as const;
+
+// The same output as the backend's format_bytes, so two sizes side by side in Diagnostics read
+// alike. shared/byte-size-cases.json is asserted against both.
 export function formatBytes(value: number | null | undefined): string {
     if (value === null || value === undefined || Number.isNaN(value)) {
         return "size unknown";
     }
 
-    if (value < 1024) {
-        return `${value} B`;
+    let scaled = value;
+    let unit = 0;
+
+    while (scaled >= 1024 && unit < BYTE_UNITS.length - 1) {
+        scaled /= 1024;
+        unit += 1;
     }
 
-    const kb = 1024;
-    const mb = kb * 1024;
-    const gb = mb * 1024;
-
-    if (value >= gb) {
-        return `${(value / gb).toFixed(2)} GB`;
-    }
-
-    if (value >= mb) {
-        return `${(value / mb).toFixed(2)} MB`;
-    }
-
-    return `${(value / kb).toFixed(2)} KB`;
+    return unit === 0 ? `${value} B` : `${scaled.toFixed(2)} ${BYTE_UNITS[unit]}`;
 }
 
 function parseDateOnly(value: string): Date | null {
