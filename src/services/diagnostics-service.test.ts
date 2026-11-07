@@ -119,6 +119,7 @@ describe("diagnostics-service", () => {
             video_files: 1,
             audio_files: 0,
             thumbnail_files: 1,
+            channel_image_files: 0,
         });
 
         getMediaRepositoryStatsMock.mockResolvedValueOnce(
@@ -219,6 +220,7 @@ describe("diagnostics-service", () => {
             video_files: 0,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
 
         getMediaRepositoryStatsMock.mockResolvedValueOnce(createMediaRepositoryStats());
@@ -298,6 +300,7 @@ describe("diagnostics-service", () => {
             video_files: 1,
             audio_files: 0,
             thumbnail_files: 1,
+            channel_image_files: 0,
         });
 
         getMediaRepositoryStatsMock.mockResolvedValueOnce(
@@ -390,6 +393,7 @@ describe("diagnostics-service", () => {
             video_files: 0,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
 
         getMediaRepositoryStatsMock.mockResolvedValueOnce(
@@ -499,6 +503,7 @@ describe("diagnostics-service", () => {
             video_files: 1,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
 
         getMediaRepositoryStatsMock.mockResolvedValueOnce(
@@ -599,6 +604,7 @@ describe("diagnostics-service", () => {
             video_files: 0,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
         // The summary that failed is zeroed so the report renders, and nothing is claimed from the
         // zeros. "Library is empty" was said here about a library that could not be read.

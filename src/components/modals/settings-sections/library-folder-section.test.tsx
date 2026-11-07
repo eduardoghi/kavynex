@@ -10,6 +10,7 @@ const SUMMARY: LibrarySummaryInfo = {
     video_files: 3,
     audio_files: 2,
     thumbnail_files: 5,
+    channel_image_files: 0,
 };
 
 type SectionProps = Parameters<typeof LibraryFolderSection>[0];

@@ -171,6 +171,13 @@ function buildIssuesFromChecks(
 
     const totalLibraryMediaFiles =
         input.librarySummary.video_files + input.librarySummary.audio_files;
+    // `thumbnails/` also holds the channels' avatars and banners, which no media row references.
+    // Compared with the media rows, they read as thumbnails without media, and they hid a library
+    // whose media thumbnails were all gone.
+    const mediaThumbnailFiles = Math.max(
+        0,
+        input.librarySummary.thumbnail_files - input.librarySummary.channel_image_files
+    );
 
     if (!input.libraryPath.trim()) {
         issues.push({
@@ -257,7 +264,7 @@ function buildIssuesFromChecks(
 
     if (
         input.mediaRepositoryStats.total_with_thumbnail === 0 &&
-        input.librarySummary.thumbnail_files > 0
+        mediaThumbnailFiles > 0
     ) {
         issues.push({
             code: "THUMBNAILS_WITHOUT_DATABASE_ROWS",
@@ -283,7 +290,7 @@ function buildIssuesFromChecks(
 
     if (
         input.mediaRepositoryStats.total_with_thumbnail > 0 &&
-        input.librarySummary.thumbnail_files === 0
+        mediaThumbnailFiles === 0
     ) {
         issues.push({
             code: "DATABASE_THUMBNAILS_WITHOUT_LIBRARY_FILES",
@@ -295,7 +302,7 @@ function buildIssuesFromChecks(
     }
 
     if (
-        input.librarySummary.thumbnail_files > 0 &&
+        mediaThumbnailFiles > 0 &&
         totalLibraryMediaFiles === 0
     ) {
         issues.push({

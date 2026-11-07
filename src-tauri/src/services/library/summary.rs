@@ -22,6 +22,11 @@ pub struct LibrarySummaryInfo {
     pub audio_files: u64,
     #[cfg_attr(test, ts(type = "number"))]
     pub thumbnail_files: u64,
+    /// How many of [`thumbnail_files`](Self::thumbnail_files) are a channel's avatar or banner and
+    /// no media's thumbnail. They share `thumbnails/` with the media thumbnails, and Diagnostics
+    /// compares only the latter with the media rows.
+    #[cfg_attr(test, ts(type = "number"))]
+    pub channel_image_files: u64,
 }
 
 fn calculate_directory_size(path: &Path) -> AppResult<u64> {
@@ -168,11 +173,27 @@ fn count_files_in_directory(path: &Path) -> AppResult<u64> {
     Ok(total_files)
 }
 
-pub fn summarize_library(library_dir: &Path) -> AppResult<LibrarySummaryInfo> {
+/// `channel_only_images` is what the database names as a channel's avatar or banner and no media's
+/// thumbnail. Each one that is a file in the library counts toward `channel_image_files`.
+pub fn summarize_library(
+    library_dir: &Path,
+    channel_only_images: &[String],
+) -> AppResult<LibrarySummaryInfo> {
     let total_bytes = calculate_directory_size(library_dir)?;
     let video_files = count_files_in_directory(&library_dir.join("video"))?;
     let audio_files = count_files_in_directory(&library_dir.join("audio"))?;
     let thumbnail_files = count_files_in_directory(&library_dir.join("thumbnails"))?;
+    let channel_image_files = channel_only_images
+        .iter()
+        .filter(|relative| {
+            crate::utils::path::absolute_path_from_relative(
+                library_dir,
+                relative,
+                crate::utils::path::ManagedSubtree::Thumbnails,
+            )
+            .is_ok_and(|path| path.is_file())
+        })
+        .count() as u64;
 
     Ok(LibrarySummaryInfo {
         total_bytes,
@@ -180,6 +201,7 @@ pub fn summarize_library(library_dir: &Path) -> AppResult<LibrarySummaryInfo> {
         video_files,
         audio_files,
         thumbnail_files,
+        channel_image_files,
     })
 }
 
@@ -193,6 +215,30 @@ mod tests {
             "kavynex-library-summary-test-{}",
             crate::utils::naming::unique_temp_suffix()
         ))
+    }
+
+    #[test]
+    fn summarize_library_counts_the_channel_images_that_are_there() {
+        let root = unique_test_dir();
+        let thumbs_dir = root.join("thumbnails");
+        fs::create_dir_all(&thumbs_dir).unwrap();
+        fs::write(thumbs_dir.join("avatar.jpg"), b"1").unwrap();
+        fs::write(thumbs_dir.join("media.jpg"), b"1").unwrap();
+
+        let summary = summarize_library(
+            &root,
+            &[
+                "thumbnails/avatar.jpg".to_string(),
+                // Named by a channel and gone from the disk, so not counted.
+                "thumbnails/missing.jpg".to_string(),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(summary.thumbnail_files, 2);
+        assert_eq!(summary.channel_image_files, 1);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -210,7 +256,7 @@ mod tests {
         fs::write(audio_dir.join("a.mp3"), b"12").unwrap();
         fs::write(thumbs_dir.join("a.jpg"), b"123").unwrap();
 
-        let summary = summarize_library(&root).unwrap();
+        let summary = summarize_library(&root, &[]).unwrap();
 
         assert_eq!(summary.video_files, 1);
         assert_eq!(summary.audio_files, 1);
@@ -226,7 +272,7 @@ mod tests {
         let root = unique_test_dir();
         fs::create_dir_all(&root).unwrap();
 
-        let summary = summarize_library(&root).unwrap();
+        let summary = summarize_library(&root, &[]).unwrap();
 
         assert_eq!(summary.video_files, 0);
         assert_eq!(summary.audio_files, 0);

@@ -288,9 +288,10 @@ pub async fn remove_orphan_library_files<R: Runtime>(
 #[tauri::command]
 pub async fn get_library_summary(db: State<'_, Db>) -> AppResult<LibrarySummaryInfo> {
     let pool = db.pool().await?;
+    let channel_only_images = channel_repository::list_channel_only_image_paths(&pool).await?;
 
-    with_configured_library_then_blocking_in_pool(&pool, |library_path| {
-        library::get_library_summary_sync(&library_path)
+    with_configured_library_then_blocking_in_pool(&pool, move |library_path| {
+        library::get_library_summary_sync(&library_path, &channel_only_images)
     })
     .await
 }

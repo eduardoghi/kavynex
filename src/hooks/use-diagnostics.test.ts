@@ -66,6 +66,7 @@ function createSummary(label: string): DiagnosticsSummary {
                 video_files: 1,
                 audio_files: 0,
                 thumbnail_files: 1,
+                channel_image_files: 0,
             },
             liveChatStorage: {
                 live_chat_files: 0,

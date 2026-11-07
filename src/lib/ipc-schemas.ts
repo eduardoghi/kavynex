@@ -167,6 +167,7 @@ const librarySummaryInfoSchema = z.object({
     video_files: z.number(),
     audio_files: z.number(),
     thumbnail_files: z.number(),
+    channel_image_files: z.number(),
 });
 
 const migrateLibraryDirectoryResultSchema = z.object({

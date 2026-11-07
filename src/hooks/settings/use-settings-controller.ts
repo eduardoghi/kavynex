@@ -33,6 +33,7 @@ const EMPTY_LIBRARY_SUMMARY: LibrarySummaryInfo = {
     video_files: 0,
     audio_files: 0,
     thumbnail_files: 0,
+    channel_image_files: 0,
 };
 
 type DatabaseMessage = {

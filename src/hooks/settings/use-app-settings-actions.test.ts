@@ -343,6 +343,7 @@ describe("useAppSettingsActions", () => {
         video_files: 3,
         audio_files: 1,
         thumbnail_files: 4,
+        channel_image_files: 0,
     };
 
     async function renderWithPendingMove(

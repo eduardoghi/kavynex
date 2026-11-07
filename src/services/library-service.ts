@@ -48,6 +48,7 @@ export function createEmptyLibrarySummary(): LibrarySummaryInfo {
         video_files: 0,
         audio_files: 0,
         thumbnail_files: 0,
+        channel_image_files: 0,
     };
 }
 
@@ -154,6 +155,7 @@ export async function getLibrarySummary(path: string): Promise<LibrarySummaryInf
             video_files: Number(result.video_files ?? 0),
             audio_files: Number(result.audio_files ?? 0),
             thumbnail_files: Number(result.thumbnail_files ?? 0),
+            channel_image_files: Number(result.channel_image_files ?? 0),
         };
     } catch (error) {
         logError("library-service", "Failed to get library summary.", error, {

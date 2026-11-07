@@ -29,6 +29,7 @@ function baseDiagnostics(): AppDiagnostics {
             video_files: 1,
             audio_files: 0,
             thumbnail_files: 1,
+            channel_image_files: 0,
         },
         liveChatStorage: { live_chat_files: 0 },
         mediaRepositoryStats: {
@@ -364,6 +365,33 @@ describe("buildDiagnosticsIssues", () => {
                 description: "The library contains thumbnail files, but no media files were counted.",
             },
         ]);
+    });
+
+    it("does not read a new channel's avatar and banner as thumbnails without media", () => {
+        // A library with one channel, its two images and no media yet.
+        const input = baseDiagnostics();
+        input.librarySummary.video_files = 0;
+        input.librarySummary.audio_files = 0;
+        input.librarySummary.thumbnail_files = 2;
+        input.librarySummary.channel_image_files = 2;
+        input.mediaRepositoryStats.total_media = 0;
+        input.mediaRepositoryStats.total_with_thumbnail = 0;
+
+        const codes = buildDiagnosticsIssues(input).map((issue) => issue.code);
+
+        expect(codes).not.toContain("THUMBNAILS_WITHOUT_DATABASE_ROWS");
+        expect(codes).not.toContain("THUMBNAILS_WITHOUT_MEDIA_FILES");
+    });
+
+    it("flags missing media thumbnails even while a channel image remains", () => {
+        const input = baseDiagnostics();
+        input.librarySummary.thumbnail_files = 1;
+        input.librarySummary.channel_image_files = 1;
+        // mediaRepositoryStats.total_with_thumbnail stays 1 from the base fixture
+
+        const codes = buildDiagnosticsIssues(input).map((issue) => issue.code);
+
+        expect(codes).toContain("DATABASE_THUMBNAILS_WITHOUT_LIBRARY_FILES");
     });
 
     it("flags MEDIA_WITHOUT_THUMBNAILS when every media record lacks a thumbnail", () => {

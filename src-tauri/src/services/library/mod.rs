@@ -32,9 +32,12 @@ use crate::utils::path::is_network_path;
 use crate::{AppError, AppErrorCode, AppResult};
 use summary::summarize_library;
 
-pub fn get_library_summary_sync(library_path: &str) -> AppResult<LibrarySummaryInfo> {
+pub fn get_library_summary_sync(
+    library_path: &str,
+    channel_only_images: &[String],
+) -> AppResult<LibrarySummaryInfo> {
     let library_dir = resolve_existing_library_dir(library_path)?;
-    summarize_library(&library_dir)
+    summarize_library(&library_dir, channel_only_images)
 }
 
 /// Resolves `path` relative to `library_path` (or as-is if absolute), verifies that

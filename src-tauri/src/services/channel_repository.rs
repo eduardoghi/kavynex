@@ -59,6 +59,25 @@ pub async fn list_channel_image_paths(pool: &SqlitePool) -> AppResult<Vec<String
     .map_err(|error| db_error("failed to list channel image paths", error))
 }
 
+/// Every distinct channel avatar or banner path that no media row uses as its thumbnail. What the
+/// library summary counts apart from the media thumbnails it shares `thumbnails/` with.
+pub async fn list_channel_only_image_paths(pool: &SqlitePool) -> AppResult<Vec<String>> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT path FROM (
+             SELECT avatar_path AS path FROM channels
+             UNION ALL
+             SELECT banner_path AS path FROM channels
+         )
+         WHERE path IS NOT NULL AND TRIM(path) <> ''
+           AND path NOT IN (
+               SELECT thumbnail_path FROM videos WHERE thumbnail_path IS NOT NULL
+           )",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| db_error("failed to list channel image paths", error))
+}
+
 pub async fn find_channel_by_youtube_handle(
     pool: &SqlitePool,
     youtube_handle: &str,
@@ -261,6 +280,36 @@ mod tests {
         .expect("create videos table");
 
         pool
+    }
+
+    #[tokio::test]
+    async fn the_channel_only_images_leave_out_one_a_media_also_uses() {
+        let pool = create_test_pool().await;
+        let id = insert_channel(&pool, "Alice", "@alice", Some("thumbnails/avatar.jpg"))
+            .await
+            .unwrap();
+        sqlx::query("UPDATE channels SET banner_path = 'thumbnails/shared.jpg' WHERE id = ?")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        insert_channel(&pool, "Bob", "@bob", Some("thumbnails/avatar.jpg"))
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO videos (channel_id, title, file_path, thumbnail_path)
+             VALUES (?, 'V', 'video/v.mp4', 'thumbnails/shared.jpg')",
+        )
+        .bind(id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // The shared avatar once, and the banner a media also uses not at all.
+        assert_eq!(
+            list_channel_only_image_paths(&pool).await.unwrap(),
+            vec!["thumbnails/avatar.jpg".to_string()]
+        );
     }
 
     #[tokio::test]

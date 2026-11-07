@@ -202,6 +202,7 @@ describe("getLibrarySummary", () => {
             video_files: 0,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
         expect(invokeCommandMock).not.toHaveBeenCalled();
     });
@@ -219,6 +220,7 @@ describe("getLibrarySummary", () => {
             video_files: 3,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
         expect(invokeCommandMock).toHaveBeenCalledWith(TAURI_COMMANDS.GET_LIBRARY_SUMMARY);
     });

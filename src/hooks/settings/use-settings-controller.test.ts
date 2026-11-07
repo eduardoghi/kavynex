@@ -79,6 +79,7 @@ function createSummary(overrides: Partial<LibrarySummaryInfo> = {}): LibrarySumm
         video_files: 2,
         audio_files: 3,
         thumbnail_files: 4,
+        channel_image_files: 0,
         ...overrides,
     };
 }

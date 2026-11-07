@@ -27,6 +27,7 @@ describe("SettingsModal", () => {
             video_files: 0,
             audio_files: 0,
             thumbnail_files: 0,
+            channel_image_files: 0,
         });
     });
 
@@ -37,6 +38,7 @@ describe("SettingsModal", () => {
             video_files: 2,
             audio_files: 3,
             thumbnail_files: 4,
+            channel_image_files: 0,
         });
 
         renderWithMantine(
@@ -127,6 +129,7 @@ describe("SettingsModal", () => {
                 video_files: 2,
                 audio_files: 3,
                 thumbnail_files: 4,
+                channel_image_files: 0,
             })
             .mockImplementationOnce(
                 () =>
@@ -204,6 +207,7 @@ describe("SettingsModal", () => {
             video_files: 5,
             audio_files: 6,
             thumbnail_files: 7,
+            channel_image_files: 0,
         });
 
         await waitFor(() => {
@@ -362,6 +366,7 @@ describe("SettingsModal", () => {
             video_files: 2,
             audio_files: 3,
             thumbnail_files: 4,
+            channel_image_files: 0,
         });
 
         renderWithMantine(
