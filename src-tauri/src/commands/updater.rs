@@ -152,7 +152,12 @@ pub async fn install_app_update<R: Runtime>(
 
 /// Relaunches the app, after an update or for a database import or undo applied at startup. Goes
 /// through the normal exit, so running downloads are stopped and the database log is checkpointed.
+///
+/// `request_restart`, not `restart`. A command that is not `async` runs on the main thread, and
+/// there `restart` skips the exit events and relaunches at once, which left a running yt-dlp or
+/// ffmpeg behind and the log unfolded. `request_restart` asks the event loop to exit, which delivers
+/// them from any thread.
 #[tauri::command]
 pub fn relaunch_app<R: Runtime>(app: AppHandle<R>) {
-    app.restart();
+    app.request_restart();
 }
