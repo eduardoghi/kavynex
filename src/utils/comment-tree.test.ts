@@ -345,6 +345,18 @@ describe("matchesCommentSearch", () => {
             true
         );
     });
+
+    it("keeps the marks that make a different letter in other scripts", () => {
+        // が is not か with an accent, and कि is not क. Every combining mark was dropped before.
+        expect(matchesCommentSearch(comment({ text: "がんばって" }), normalizeSearchValue("か"))).toBe(
+            false
+        );
+        expect(matchesCommentSearch(comment({ text: "がんばって" }), normalizeSearchValue("が"))).toBe(
+            true
+        );
+        // A vowel sign is a mark too, so "कि" was searched for as "क" and found any क.
+        expect(matchesCommentSearch(comment({ text: "का" }), normalizeSearchValue("कि"))).toBe(false);
+    });
 });
 
 describe("countCommentsInTree", () => {

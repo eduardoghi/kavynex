@@ -35,10 +35,19 @@ export type CommentTreeNode = MediaCommentRow & {
 
 export type CommentSortMode = "likes" | "newest" | "oldest";
 
-// Lowercased with the accents taken off (decomposed, then the combining marks dropped), so "acao"
-// finds "ação" and "Ação" finds "acao". Applied to the query and to every comment alike.
+// Lowercased with the accents taken off, so "acao" finds "ação" and "Ação" finds "acao". Applied to
+// the query and to every comment alike.
+//
+// Only the accents of the Latin, Greek and Cyrillic letters (U+0300 to U+036F), the range the title
+// search strips too (`utils::text` in the backend). Every combining mark folded か and が, and क
+// and कि, together, which are different sounds, not one letter with an accent. Composed again
+// after, so が is one character again and a search for か does not find it inside が.
 function foldForSearch(value: string): string {
-    return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .normalize("NFC")
+        .toLocaleLowerCase();
 }
 
 export function normalizeSearchValue(value: string): string {
