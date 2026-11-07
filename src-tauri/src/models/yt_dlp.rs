@@ -145,6 +145,7 @@ pub struct YtDlpMetadata {
     #[serde(default)]
     pub thumbnails: Vec<YtDlpThumbnailMetadata>,
     pub live_status: Option<String>,
+    #[serde(default, deserialize_with = "lenient_bool")]
     pub was_live: Option<bool>,
     #[serde(default)]
     pub formats: Vec<YtDlpFormatMetadata>,
@@ -154,7 +155,7 @@ pub struct YtDlpMetadata {
     // actually downloaded. Used to tell "the video genuinely has no comments" (null / 0) from
     // "the video has comments but extraction returned none" (a positive count with an empty
     // `comments`). Absent/`null` when comments are disabled.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_i64")]
     pub comment_count: Option<i64>,
 }
 
@@ -200,6 +201,28 @@ where
     }))
 }
 
+/// [`lenient_u64`] for a measure that may be fractional (a frame rate, a bitrate).
+fn lenient_f64<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+
+    Ok(value
+        .and_then(|value| value.as_f64())
+        .filter(|number| number.is_finite()))
+}
+
+/// [`lenient_u64`] for a yes or no. Anything but a JSON boolean reads as absent.
+fn lenient_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+
+    Ok(value.and_then(|value| value.as_bool()))
+}
+
 /// A string field that reads as absent when yt-dlp sends anything else, for the same reason as
 /// [`lenient_u64`].
 fn lenient_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -233,8 +256,11 @@ pub struct YtDlpFormatMetadata {
     pub acodec: Option<String>,
     #[serde(default, deserialize_with = "lenient_u64")]
     pub height: Option<u64>,
+    #[serde(default, deserialize_with = "lenient_f64")]
     pub fps: Option<f64>,
+    #[serde(default, deserialize_with = "lenient_f64")]
     pub abr: Option<f64>,
+    #[serde(default, deserialize_with = "lenient_f64")]
     pub tbr: Option<f64>,
     pub protocol: Option<String>,
     /// The audio track's language, on a video with more than one (YouTube's dubbed tracks).
@@ -253,9 +279,12 @@ pub struct YtDlpCommentMetadata {
     pub author: Option<String>,
     pub author_id: Option<String>,
     pub author_thumbnail: Option<String>,
+    #[serde(default, deserialize_with = "lenient_bool")]
     pub author_is_uploader: Option<bool>,
     pub author_url: Option<String>,
+    #[serde(default, deserialize_with = "lenient_bool")]
     pub is_favorited: Option<bool>,
+    #[serde(default, deserialize_with = "lenient_bool")]
     pub is_pinned: Option<bool>,
     pub text: Option<String>,
     #[serde(default, deserialize_with = "lenient_u64")]
@@ -263,7 +292,9 @@ pub struct YtDlpCommentMetadata {
     #[serde(default, deserialize_with = "lenient_u64")]
     pub reply_count: Option<u64>,
     pub time_text: Option<String>,
+    #[serde(default, deserialize_with = "lenient_i64")]
     pub timestamp: Option<i64>,
+    #[serde(default, deserialize_with = "lenient_bool")]
     pub is_edited: Option<bool>,
 }
 
@@ -429,6 +460,35 @@ mod tests {
 
         assert_eq!(odd.language, None);
         assert_eq!(odd.language_preference, None);
+    }
+
+    #[test]
+    fn odd_shapes_in_the_remaining_fields_read_as_absent_rather_than_failing_the_parse() {
+        // A float timestamp or a string count failed the whole metadata parse, which is what the
+        // lenient readers exist to prevent.
+        let metadata: YtDlpMetadata = serde_json::from_value(serde_json::json!({
+            "id": "abc",
+            "was_live": "no",
+            "comment_count": "12",
+            "formats": [{ "format_id": "140", "fps": "30", "abr": 129.5, "tbr": null }],
+            "comments": [{
+                "id": "c1",
+                "timestamp": 1700000000.4,
+                "is_pinned": 1,
+                "is_edited": true,
+                "author_is_uploader": "yes"
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(metadata.was_live, None);
+        assert_eq!(metadata.comment_count, None);
+        assert_eq!(metadata.formats[0].fps, None);
+        assert_eq!(metadata.formats[0].abr, Some(129.5));
+        assert_eq!(metadata.comments[0].timestamp, Some(1_700_000_000));
+        assert_eq!(metadata.comments[0].is_pinned, None);
+        assert_eq!(metadata.comments[0].is_edited, Some(true));
+        assert_eq!(metadata.comments[0].author_is_uploader, None);
     }
 
     #[test]
