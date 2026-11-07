@@ -507,16 +507,22 @@ fn temp_sibling_path(path: &Path) -> AppResult<PathBuf> {
         )
     })?;
 
-    Ok(path.with_file_name(format!("{}.gztmp", file_name.to_string_lossy())))
+    // Unique per call. Two downloads of the same video store their replays under the same
+    // content-addressed name, and sharing one staging file let them write into each other's.
+    Ok(path.with_file_name(format!(
+        "{}.{}.gztmp",
+        file_name.to_string_lossy(),
+        crate::utils::naming::unique_temp_suffix()
+    )))
 }
 
 /// Compresses `src` into `temp` and proves the result decompresses back to the source's exact
 /// bytes, leaving `temp` durable and ready for the caller to rename into place.
 ///
 /// Nothing is promoted here and the source is never touched, so every failure path leaves the
-/// original exactly as it was. A failure does leave the staged `<name>.gztmp` behind, which is
-/// deliberate rather than overlooked. The next attempt truncates it (`File::create`), and removing
-/// it here would add a cleanup no test can observe. The only way to fail *after* the file exists is
+/// original exactly as it was. A failure does leave the staged `<name>.<suffix>.gztmp` behind, which
+/// is deliberate rather than overlooked. The library leftovers sweep reclaims it once old
+/// (`temp_cleanup`), and removing it here would add a cleanup no test can observe. The only way to fail *after* the file exists is
 /// a verification failure, which cannot be produced without corrupting the staged file mid-call.
 fn compress_to_temp_verified(src: &Path, temp: &Path) -> AppResult<()> {
     let digest = compress_file_to_temp(src, temp, MAX_LIVE_CHAT_DECOMPRESSED_BYTES)?;
@@ -1296,21 +1302,37 @@ mod tests {
     }
 
     #[test]
+    fn two_compressions_of_one_replay_stage_in_different_files() {
+        // Two downloads of the same video store under the same content-addressed name.
+        let dest = Path::new("live_chat").join("abc.live_chat.json.gz");
+        let first = temp_sibling_path(&dest).unwrap();
+        let second = temp_sibling_path(&dest).unwrap();
+
+        assert_ne!(first, second);
+        for staged in [&first, &second] {
+            assert_eq!(staged.parent(), dest.parent());
+            assert_eq!(
+                staged.extension().and_then(|ext| ext.to_str()),
+                Some("gztmp")
+            );
+        }
+    }
+
+    #[test]
     fn compress_existing_counts_a_file_it_could_not_compress_and_keeps_going() {
         // The `failed` counter on the compression branch, which had nothing behind it. Making one
         // file fail was assumed to need a permission trick no test can do portably, so the count
         // went unasserted and a mutation of it would have been invisible.
         //
-        // It does not need one. `compress_file_in_place` stages through a `<name>.gztmp` sibling, so
-        // putting a *directory* at that path makes the staged write fail on both platforms, with no
-        // permissions involved. The directory itself is skipped by the loop's `is_file` guard, so it
-        // does not disturb the scan.
+        // It does not need one. `compress_file_in_place` stages through a
+        // `<name>.<suffix>.gztmp` sibling, so a name of 250 characters, which both platforms
+        // accept, makes the staged one longer than the 255 a file name may have, and the staged
+        // write fails with no permissions involved.
         let dir = temp_dir("compress-failure");
         fs::create_dir_all(&dir).unwrap();
 
-        let doomed = dir.join("blocked.live_chat.json");
+        let doomed = dir.join(format!("{}.live_chat.json", "b".repeat(235)));
         fs::write(&doomed, b"never compressed\n").unwrap();
-        fs::create_dir_all(dir.join("blocked.live_chat.json.gztmp")).unwrap();
 
         // A healthy sibling, because "best effort" is the other half of the claim. One file failing
         // must not abort the pass or skip the files after it.

@@ -60,8 +60,9 @@ Look for this before writing an exclusion.
 **"There is no portable way to trigger this branch" is a statement about the caller, not about the
 decision.** `live_chat_storage.rs` was expected to need two exclusions for its failure counters.
 Moving one decision into `record_unreadable_entry` put it one call from a test, and the other turned
-out to be reachable after all (a *directory* at the `.gztmp` staging path makes the staged write
-fail on every platform, with no permissions involved). It went in with no exclusions at all.
+out to be reachable after all (a source name long enough that its `.gztmp` staging name passes the
+255-character limit makes the staged write fail on every platform, with no permissions involved).
+It went in with no exclusions at all.
 
 ### Exclusions go stale silently, which is why they are gated
 
