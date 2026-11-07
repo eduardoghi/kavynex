@@ -271,6 +271,76 @@ describe("useChannelMediaList", () => {
         );
     });
 
+    it("leaves the loading flag of a newer query's append to that append", async () => {
+        // An append of the old query settled after the new query's append had begun, and cleared
+        // the flag that append had set, so the grid showed it as finished and asked for one more.
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow({ id: 1 })], 3));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        let resolveOldAppend: (value: MediaPage) => void = () => {};
+        vi.mocked(listChannelMediaPage).mockReturnValueOnce(
+            new Promise<MediaPage>((resolve) => {
+                resolveOldAppend = resolve;
+            })
+        );
+
+        let oldAppend: Promise<void> = Promise.resolve();
+        act(() => {
+            oldAppend = result.current.loadMore();
+        });
+
+        expect(result.current.isLoadingMore).toBe(true);
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow({ id: 7 })], 4));
+
+        await act(async () => {
+            await result.current.applyQuery(filteredQuery);
+        });
+
+        // The new query is not held back by the old append still in flight.
+        expect(result.current.isLoadingMore).toBe(false);
+
+        let resolveNewAppend: (value: MediaPage) => void = () => {};
+        vi.mocked(listChannelMediaPage).mockReturnValueOnce(
+            new Promise<MediaPage>((resolve) => {
+                resolveNewAppend = resolve;
+            })
+        );
+
+        let newAppend: Promise<void> = Promise.resolve();
+        act(() => {
+            newAppend = result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 1, watched: "watched" })
+        );
+
+        await act(async () => {
+            resolveOldAppend(page([createMediaRow({ id: 2 })], 3));
+            await oldAppend;
+        });
+
+        expect(result.current.isLoadingMore).toBe(true);
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([7]);
+
+        await act(async () => {
+            resolveNewAppend(page([createMediaRow({ id: 8 })], 4));
+            await newAppend;
+        });
+
+        expect(result.current.isLoadingMore).toBe(false);
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([7, 8]);
+    });
+
     it("appends the next page on loadMore", async () => {
         vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
             page([createMediaRow({ id: 1, title: "Item 1" })], 2)

@@ -173,6 +173,10 @@ export function useChannelMediaList({
             filtersRef.current = filters;
             const requestId = requestGuard.begin();
             lastRequestIdRef.current = requestId;
+            // An append of the query before this one is now dropped when it settles, and leaves the
+            // loading flags to this query, so they are cleared here rather than by it.
+            loadingMoreRef.current = false;
+            setIsLoadingMore(false);
             setIsLoadingMedia(true);
             setLoadMoreFailed(false);
             setLoadError(null);
@@ -307,8 +311,12 @@ export function useChannelMediaList({
             logError("media-list", "Failed to load more channel media.", error, { channelId });
             onError(resolveErrorMessage(error, "Failed to load more media."));
         } finally {
-            loadingMoreRef.current = false;
-            setIsLoadingMore(false);
+            // Only for the query it belongs to. A stale append clearing them would show a newer
+            // append as finished and let a second one start beside it.
+            if (requestGuard.isCurrent(requestId)) {
+                loadingMoreRef.current = false;
+                setIsLoadingMore(false);
+            }
         }
     }, [onError, requestGuard, setLoadedRows]);
 
