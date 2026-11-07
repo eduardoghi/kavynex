@@ -132,20 +132,21 @@ pub fn stage_media_import_cancellable_sync(
     stage_media_import_recorded_sync(path, mode, library_path, cancel, None)
 }
 
-/// Called by a Move import right before it touches the user's file, with the library-relative path
-/// the file is about to take and the path it comes from. Media creation records a crash marker here
-/// (`pending_media::record_moved_import`), since on a volume without hard links the move renames the
-/// file into the library, and a crash before the row lands would otherwise leave the user's only
-/// copy there under a hash name with nothing saying where it came from.
-pub type BeforeMove<'a> = &'a dyn Fn(&str, &Path);
+/// Called right before an import writes into the library, with the library-relative path the file
+/// is about to take, the path it comes from and the mode, which is Copy for a Move of a file already
+/// in the library. Media creation records its crash marker here, so the file is named by a marker of
+/// this process before it exists. The startup sweep then cannot take it for an earlier run's
+/// leftover while the row is not in yet, and a Move that renames the user's file into the library (a
+/// volume without hard links) records where it came from (`pending_media::record_moved_import`).
+pub type BeforeWrite<'a> = &'a dyn Fn(&str, &Path, ImportMode);
 
-/// [`stage_media_import_cancellable_sync`] with a [`BeforeMove`] hook.
+/// [`stage_media_import_cancellable_sync`] with a [`BeforeWrite`] hook.
 pub fn stage_media_import_recorded_sync(
     path: &str,
     mode: ImportMode,
     library_path: &str,
     cancel: Option<&AtomicBool>,
-    before_move: Option<BeforeMove<'_>>,
+    before_write: Option<BeforeWrite<'_>>,
 ) -> AppResult<StagedMediaImport> {
     let trimmed = path.trim();
 
@@ -253,6 +254,18 @@ pub fn stage_media_import_recorded_sync(
         mode
     };
 
+    // Spelled out rather than resolved, since the destination may not exist yet.
+    if let Some(before_write) = before_write {
+        before_write(
+            &format!(
+                "{media_subdir}/{}",
+                content_addressed_media_name(&hash, &ext)
+            ),
+            &source,
+            mode,
+        );
+    }
+
     let (source_to_remove, library_holds_only_copy, renamed_from) = match mode {
         ImportMode::Copy => {
             if destination_existed {
@@ -283,17 +296,6 @@ pub fn stage_media_import_recorded_sync(
             // source is still owed its removal and the Move actually frees it. Pass the hash we
             // already computed above so the identical-content check does not re-hash the
             // (possibly multi-GB) source a second time.
-            // Spelled out rather than resolved, since the destination does not exist yet.
-            if let Some(before_move) = before_move {
-                before_move(
-                    &format!(
-                        "{media_subdir}/{}",
-                        content_addressed_media_name(&hash, &ext)
-                    ),
-                    &source,
-                );
-            }
-
             let staged =
                 stage_move_cancellable(&source, &destination, &hash, cancel).map_err(|error| {
                     if error.code == AppErrorCode::DestinationAlreadyExists.as_str() {
@@ -584,10 +586,11 @@ mod tests {
     }
 
     #[test]
-    fn a_move_import_announces_the_file_it_is_about_to_take_and_a_copy_does_not() {
+    fn an_import_announces_the_file_it_is_about_to_write_before_writing_it() {
         // Media creation writes its crash marker from this call, so it has to come before the file
-        // is touched and name the library path the import ends up with.
-        let root = unique_test_dir("before-move");
+        // exists in the library and name the path the import ends up with, for a Copy as much as a
+        // Move.
+        let root = unique_test_dir("before-write");
         let source_dir = root.join("source");
         let library_dir = root.join("library");
         fs::create_dir_all(&library_dir).unwrap();
@@ -597,14 +600,37 @@ mod tests {
         fs::write(&source, b"video-bytes").unwrap();
 
         let announced = std::cell::RefCell::new(Vec::new());
-        let record = |relative: &str, from: &Path| {
+        let record = |relative: &str, from: &Path, mode: ImportMode| {
             assert!(from.is_file(), "announced before the source is touched");
+            assert!(
+                !library_dir.join(relative).exists() || mode == ImportMode::Move,
+                "announced before the library file is written"
+            );
             announced
                 .borrow_mut()
-                .push((relative.to_string(), from.to_path_buf()));
+                .push((relative.to_string(), from.to_path_buf(), mode));
         };
 
-        let staged = stage_media_import_recorded_sync(
+        let copied = stage_media_import_recorded_sync(
+            source.to_string_lossy().as_ref(),
+            ImportMode::Copy,
+            library_dir.to_string_lossy().as_ref(),
+            None,
+            Some(&record),
+        )
+        .unwrap();
+
+        assert_eq!(
+            announced.borrow().as_slice(),
+            &[(
+                copied.relative_path.clone(),
+                source.clone(),
+                ImportMode::Copy
+            )]
+        );
+
+        announced.borrow_mut().clear();
+        let moved = stage_media_import_recorded_sync(
             source.to_string_lossy().as_ref(),
             ImportMode::Move,
             library_dir.to_string_lossy().as_ref(),
@@ -615,20 +641,12 @@ mod tests {
 
         assert_eq!(
             announced.borrow().as_slice(),
-            &[(staged.relative_path.clone(), source.clone())]
+            &[(
+                moved.relative_path.clone(),
+                source.clone(),
+                ImportMode::Move
+            )]
         );
-
-        announced.borrow_mut().clear();
-        stage_media_import_recorded_sync(
-            source.to_string_lossy().as_ref(),
-            ImportMode::Copy,
-            library_dir.to_string_lossy().as_ref(),
-            None,
-            Some(&record),
-        )
-        .unwrap();
-
-        assert!(announced.borrow().is_empty(), "a Copy never takes the file");
 
         let _ = fs::remove_dir_all(root);
     }

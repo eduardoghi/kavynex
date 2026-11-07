@@ -544,20 +544,33 @@ async fn prepare_local_artifacts<R: Runtime>(
     // has to rename the file in, a marker written just before says where it came from, and the
     // startup sweep puts it back if the app closes before the row lands.
     let staged = run_blocking(move || {
-        let record = |relative: &str, source: &Path| match pending_media::record_moved_import(
-            &marker_app,
-            relative,
-            source,
-        ) {
-            Ok(name) => {
-                *marker_slot
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(name);
+        let record = |relative: &str, source: &Path, mode: ImportMode| {
+            let recorded = match mode {
+                ImportMode::Move => {
+                    pending_media::record_moved_import(&marker_app, relative, source)
+                }
+                // A copy leaves the source where it is, so the library file is an ordinary
+                // artifact the sweep may trash if this creation never registers.
+                ImportMode::Copy => pending_media::record_pending_media_artifacts(
+                    &marker_app,
+                    PendingMediaArtifacts {
+                        file_path: Some(relative.to_string()),
+                        ..PendingMediaArtifacts::default()
+                    },
+                ),
+            };
+
+            match recorded {
+                Ok(name) => {
+                    *marker_slot
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(name);
+                }
+                Err(error) => logger::warn(
+                    "media_creation",
+                    format!("could not record the import marker: {error}"),
+                ),
             }
-            Err(error) => logger::warn(
-                "media_creation",
-                format!("could not record the Move import marker: {error}"),
-            ),
         };
 
         library::media::stage_media_import_recorded_sync(
@@ -600,14 +613,9 @@ async fn prepare_local_artifacts<R: Runtime>(
         media_subdir_from_extension(&extension_from_path(Path::new(&staged.relative_path)))
             .to_string();
 
-    // Only a renamed file needs the marker past this point. A linked or copied source is still
-    // where the user had it.
-    let interim_marker = if staged.renamed_from.is_some() {
-        moved_marker
-    } else {
-        clear_marker_best_effort(app, moved_marker).await;
-        None
-    };
+    // Kept until the registration's own marker is down, so the file stays named by a marker of
+    // this process the whole time its row is not in yet.
+    let interim_marker = moved_marker;
 
     Ok(PreparedArtifacts {
         file_path: staged.relative_path,
