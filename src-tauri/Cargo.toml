@@ -72,7 +72,11 @@ tower-service = "0.3"
 same-file = "1.0.6"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-updater = "2"
+# Without the default `zip` feature, which the updater only needs for a zipped Windows payload or a
+# gzipped AppImage. This app publishes neither (the NSIS/MSI installers and the AppImage go out
+# as-is, and the macOS `.app.tar.gz` does not depend on the feature), and leaving it on kept zip 4
+# and its extract advisories in the tree.
+tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 # `kill(2)` for utils/process.rs's process-tree kill on Unix. Already present transitively (via
 # tokio, among others); pinned here as a direct dependency because the code names the symbol.
