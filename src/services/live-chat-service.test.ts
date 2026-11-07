@@ -47,6 +47,33 @@ function rawLine(renderer: Record<string, unknown>, offset = "0"): string {
 }
 
 describe("readLiveChatMessagesFromFile", () => {
+    it("hands over what it has read so far, sorted, while a long replay is still read", async () => {
+        const line = (id: string, offset: string): string =>
+            rawLine({ id, authorName: { simpleText: "@a" }, message: { runs: [{ text: id }] } }, offset);
+        vi.mocked(streamLiveChatFile).mockImplementation(async (_relativePath, onLines) => {
+            onLines([line("b", "2000"), line("a", "1000")]);
+            onLines([line("c", "3000")]);
+        });
+        // Each batch lands past the interval, so each one is handed over.
+        let now = 0;
+        const clock = vi.spyOn(Date, "now").mockImplementation(() => {
+            now += 1000;
+            return now;
+        });
+        const partials: string[][] = [];
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json", undefined, (partial) =>
+            partials.push(partial.map((message) => message.message_id ?? ""))
+        );
+
+        clock.mockRestore();
+        expect(partials).toEqual([
+            ["a", "b"],
+            ["a", "b", "c"],
+        ]);
+        expect(messages.map((message) => message.message_id)).toEqual(["a", "b", "c"]);
+    });
+
     beforeEach(() => {
         vi.clearAllMocks();
     });

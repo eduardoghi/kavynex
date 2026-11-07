@@ -128,6 +128,23 @@ describe("LiveChatPanel", () => {
         expect(screen.getByRole("img", { name: "Super Sticker" })).toBeInTheDocument();
     });
 
+    it("shows the messages read so far while the rest of the replay still loads", () => {
+        const message = makeChatMessage();
+
+        renderWithMantine(
+            <LiveChatPanel
+                liveChatMessages={[message]}
+                visibleLiveChatMessages={[message]}
+                activePin={null}
+                isLoadingLiveChat
+                shellBorder="rgba(255,255,255,0.1)"
+            />
+        );
+
+        expect(screen.getByRole("log", { name: "Live chat messages" })).toBeInTheDocument();
+        expect(screen.queryByText("Loading live chat replay...")).not.toBeInTheDocument();
+    });
+
     it("announces additions in the live region during ordinary playback", () => {
         const message = makeChatMessage();
 

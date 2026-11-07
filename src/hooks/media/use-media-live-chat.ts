@@ -46,9 +46,16 @@ export function useMediaLiveChat(
             setError(null);
 
             try {
+                // What has been read so far is shown as it arrives, so a long replay does not keep
+                // the panel empty until its last line. The loading state stays on until the end.
                 const rows = await readLiveChatMessagesFromFile(
                     media.live_chat_file_path,
-                    controller.signal
+                    controller.signal,
+                    (partial) => {
+                        if (!cancelled()) {
+                            setLiveChatMessages(partial);
+                        }
+                    }
                 );
 
                 if (!cancelled()) {

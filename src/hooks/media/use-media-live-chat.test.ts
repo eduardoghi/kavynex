@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useMediaLiveChat } from "./use-media-live-chat";
 import {
@@ -44,10 +44,41 @@ describe("useMediaLiveChat", () => {
 
         expect(readMock).toHaveBeenCalledWith(
             "live_chat/clip.live_chat.json.gz",
-            expect.any(AbortSignal)
+            expect.any(AbortSignal),
+            expect.any(Function)
         );
         expect(result.current.liveChatMessages).toHaveLength(1);
         expect(result.current.error).toBeNull();
+    });
+
+    it("shows what has been read while the rest of the replay still loads", async () => {
+        let finish: (rows: LiveChatMessageItem[]) => void = () => {};
+        const first = { message_id: "m1", message_text: "hi" } as unknown as LiveChatMessageItem;
+        readMock.mockImplementation((_path, _signal, onPartial) => {
+            onPartial?.([first]);
+            return new Promise((resolve) => {
+                finish = resolve;
+            });
+        });
+
+        const { result } = renderHook(() =>
+            useMediaLiveChat(
+                createMedia({
+                    id: 8,
+                    has_live_chat: 1,
+                    live_chat_file_path: "live_chat/long.live_chat.json.gz",
+                }),
+                "/library"
+            )
+        );
+
+        await waitFor(() => expect(result.current.liveChatMessages).toHaveLength(1));
+        expect(result.current.isLoadingLiveChat).toBe(true);
+
+        act(() => finish([first, first]));
+
+        await waitFor(() => expect(result.current.isLoadingLiveChat).toBe(false));
+        expect(result.current.liveChatMessages).toHaveLength(2);
     });
 
     it("does not read and stays empty without a live chat file", async () => {

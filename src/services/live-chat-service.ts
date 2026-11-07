@@ -107,9 +107,14 @@ export class LiveChatInterner {
 // incrementally here, so a long dense stream is never held as one giant decompressed string on
 // either side of the IPC boundary. Only the compact parsed messages below are retained (they must
 // be, so the playback-time window can seek anywhere in the timeline).
+//
+// `onPartial` receives what has been read so far, sorted, at most every
+// LIVE_CHAT_PARTIAL_INTERVAL_MS, so the panel can show the start of a long replay while the rest is
+// still read. The returned list is the complete one.
 export async function readLiveChatMessagesFromFile(
     relativePath: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    onPartial?: (messages: LiveChatMessageItem[]) => void
 ): Promise<LiveChatMessageItem[]> {
     const messages: LiveChatMessageItem[] = [];
     const interner = new LiveChatInterner();
@@ -121,6 +126,7 @@ export async function readLiveChatMessagesFromFile(
     let parsedLines = 0;
     let failedLines = 0;
     let duplicateMessages = 0;
+    let lastPartialAt = Date.now();
 
     await streamLiveChatFile(
         relativePath,
@@ -152,6 +158,11 @@ export async function readLiveChatMessagesFromFile(
                     failedLines += 1;
                 }
             }
+
+            if (onPartial && Date.now() - lastPartialAt >= LIVE_CHAT_PARTIAL_INTERVAL_MS) {
+                lastPartialAt = Date.now();
+                onPartial(sortedByOffset([...messages]));
+            }
         },
         signal
     );
@@ -171,12 +182,19 @@ export async function readLiveChatMessagesFromFile(
         });
     }
 
-    // Keep messages ordered by playback offset so the visible-window lookup can binary
-    // search instead of scanning. Array.prototype.sort is stable, so messages that share
-    // an offset keep their original (chronological) order.
-    messages.sort((a, b) => a.message_offset_ms - b.message_offset_ms);
+    return sortedByOffset(messages);
+}
 
-    return messages;
+// How often a long replay's partial list reaches the panel while it is read. Each one is a sorted
+// copy, cheap on a list the file already holds nearly in order, and rare enough that a replay of a
+// million messages is not copied thousands of times.
+export const LIVE_CHAT_PARTIAL_INTERVAL_MS = 400;
+
+// Ordered by playback offset so the visible-window lookup can binary search instead of scanning.
+// Array.prototype.sort is stable, so messages that share an offset keep their original
+// (chronological) order.
+function sortedByOffset(messages: LiveChatMessageItem[]): LiveChatMessageItem[] {
+    return messages.sort((a, b) => a.message_offset_ms - b.message_offset_ms);
 }
 
 // Number of leading messages (offset <= playback time) kept mounted at once, matching the
