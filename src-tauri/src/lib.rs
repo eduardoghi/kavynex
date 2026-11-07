@@ -587,6 +587,10 @@ pub fn run() {
                         ),
                     }
 
+                    // The large scratch copies a restore or a snapshot check that did not finish
+                    // left beside the database.
+                    services::db_backup::remove_interrupted_scratch(&db_path);
+
                     match services::db_backup::apply_pending_database_import(&db_path) {
                         Ok(true) => {
                             services::logger::info("app", "applied a pending database import");

@@ -3800,3 +3800,41 @@ async fn a_restore_stops_at_an_archive_it_cannot_read_instead_of_taking_an_older
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn startup_removes_the_scratch_copies_an_interrupted_run_left() {
+    // Each is as large as the database, and a crash left it until the same step ran again.
+    let dir = temp_dir("interrupted-scratch");
+    let db = dir.join("kavynex.db");
+    std::fs::write(&db, b"live").unwrap();
+    let staged = super::restore::restore_staging_path(&db);
+    std::fs::write(&staged, b"staged restore").unwrap();
+
+    let scratch = [
+        super::restore::restore_unpacked_path(&db),
+        super::restore::restore_partial_path(&db),
+        super::snapshot::library_check_scratch_path(&db),
+        dir.join("kavynex.db.bak-20260101T000000Z.gz.tmp"),
+    ];
+    for path in &scratch {
+        std::fs::write(path, b"scratch").unwrap();
+    }
+    assert_eq!(
+        super::archive::archive_scratch_paths(&db).len(),
+        1,
+        "the archive scratch name is the one a write uses"
+    );
+
+    remove_interrupted_scratch(&db);
+
+    for path in &scratch {
+        assert!(!path.exists(), "{} is left", path.display());
+    }
+    assert!(db.exists(), "the live database stays");
+    assert!(
+        staged.exists(),
+        "a staged restore is finished at startup, not removed"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

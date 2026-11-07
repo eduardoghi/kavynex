@@ -90,7 +90,9 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   next startup), `.import-applying` (see below), `.restore.partial` (a snapshot being copied for a
   restore, renamed to `.restore.tmp` once it is complete), `.restore.tmp` (a snapshot ready to be
   restored), `.corrupt.tmp` (a database being moved aside), and `.export-staging` next to a chosen
-  *export* destination rather than here.
+  *export* destination rather than here. A `.gz.tmp`, `.restore.unpacked`, `.library-check.tmp` or
+  `.restore.partial` that a crash left is removed at the next startup
+  (`db_backup::remove_interrupted_scratch`), since each is as large as the database.
 
 `.import-applying` is written once an import has moved the current database aside into
 `.pre-import`, and removed once the swap (or its rollback) has put a database back in place, so it

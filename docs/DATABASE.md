@@ -496,7 +496,8 @@ a live write-ahead log.
 
 An archive is written under a `.gz.tmp` name, read back and compared with what was read from the
 snapshot, then renamed into place, and it keeps the snapshot's modification time. A `.gz.tmp` left by
-a run that died is removed by the next one. When the previous `.bak` cannot be archived (a full disk,
+a run that died is removed at the next startup, with the other large scratch copies a restore or a
+check leaves (`db_backup::remove_interrupted_scratch`). When the previous `.bak` cannot be archived (a full disk,
 a file another program holds open), it stays where it is and the fresh snapshot is not promoted over
 it. It stays in `.bak.tmp`, already flushed and checked, where a restore still finds it, the run
 reports an error, and the next one tries again. Since each archive has its own name and is only ever

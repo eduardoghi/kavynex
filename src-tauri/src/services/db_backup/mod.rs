@@ -281,6 +281,21 @@ fn remove_scratch_database(path: &Path) {
     remove_stale_sidecars(path);
 }
 
+/// Removes the scratch copies a run that ended midway left beside the database. A restore unpacks a
+/// whole archive (`.restore.unpacked`) and copies the chosen one (`.restore.partial`), the
+/// empty-database guard unpacks one to look inside (`.library-check.tmp`), and an archive is written
+/// under a scratch name first. Each is as large as the database, and only the next run of the same
+/// step replaced it, so a crash left gigabytes in the config directory until then.
+///
+/// For startup, before any backup work can run (the app is single-instance). The staged restore
+/// (`.restore.tmp`) is not scratch, since [`resume_interrupted_restore`] finishes from it.
+pub fn remove_interrupted_scratch(db_path: &Path) {
+    remove_scratch_database(&restore::restore_unpacked_path(db_path));
+    remove_scratch_database(&restore::restore_partial_path(db_path));
+    remove_scratch_database(&snapshot::library_check_scratch_path(db_path));
+    archive::remove_archive_scratch(db_path);
+}
+
 /// True when `modified` is within `min_interval_secs` of `now`. Extracted as a pure function so the
 /// backward-clock branch can be tested without setting a file mtime into the future. A `modified`
 /// timestamp in the future relative to `now` (the system clock moved backward. An NTP correction,
