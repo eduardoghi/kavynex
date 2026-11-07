@@ -651,6 +651,12 @@ describe("useChannels", () => {
         });
 
         expect(onError).toHaveBeenCalledWith("Failed to select avatar file.");
+        // The cause reaches the log rather than being dropped with the generic message.
+        expect(mockedLogError).toHaveBeenCalledWith(
+            "channels",
+            "Failed to open the avatar file dialog.",
+            expect.anything()
+        );
         expect(updateChannelAvatarAction).not.toHaveBeenCalled();
     });
 

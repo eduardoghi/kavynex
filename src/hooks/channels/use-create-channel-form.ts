@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ChannelAvatarMode } from "../../types/media";
+import { logError } from "../../utils/app-logger";
 import { pickImageFilePath } from "../../utils/pick-image-file";
 
 type UseCreateChannelFormOptions = {
@@ -71,7 +72,8 @@ export function useCreateChannelForm({
 
             setNewChannelAvatarMode("manual");
             setNewChannelAvatarPath(normalizedPath);
-        } catch {
+        } catch (error) {
+            logError("channels", "Failed to open the avatar file dialog.", error);
             onError("Failed to select avatar file.");
         }
     }, [onError]);

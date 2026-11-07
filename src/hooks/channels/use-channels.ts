@@ -247,16 +247,20 @@ export function useChannels({
 
     const updateChannelAvatarFromFile = useCallback(
         async (channel: Channel): Promise<void> => {
+            let picked: string | null;
+
+            // Only the dialog is in here. The update reports its own failures, and the generic
+            // message below would have hidden them.
             try {
-                const normalizedPath = await pickImageFilePath();
-
-                if (!normalizedPath) {
-                    return;
-                }
-
-                await updateChannelAvatarAction(channel, "manual", normalizedPath);
-            } catch {
+                picked = await pickImageFilePath();
+            } catch (error) {
+                logError("channels", "Failed to open the avatar file dialog.", error);
                 onError("Failed to select avatar file.");
+                return;
+            }
+
+            if (picked) {
+                await updateChannelAvatarAction(channel, "manual", picked);
             }
         },
         [updateChannelAvatarAction, onError]
