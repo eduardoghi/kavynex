@@ -7,7 +7,7 @@ import { CreateChannelModal } from "../modals/create-channel-modal";
 import { ErrorModal } from "../modals/error-modal";
 import { useHasBeenTrue } from "../../hooks/use-has-been-true";
 import { useYtDlpTerminal, type YtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
-import { describeChannelDeletion } from "./channel-deletion-copy";
+import { describeChannelDeletion, describeMediaDeletion } from "./channel-deletion-copy";
 import { formatTimestamp } from "../../utils/number-format";
 
 // The two heaviest modals, and the two the app can run a whole session without opening. Settings
@@ -149,7 +149,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         Delete <b>{mediaToDelete?.title ?? "this item"}</b>?
                     </>
                 }
-                description="This permanently deletes the media file, its thumbnail and live chat replay from disk, and removes its saved comments. This cannot be undone."
+                description={describeMediaDeletion(settings.settings.deleteSkipsTrash)}
             />
 
             <ConfirmDeleteModal
@@ -163,7 +163,10 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                         Delete channel <b>{channels.channelToDelete?.name ?? "this channel"}</b>?
                     </>
                 }
-                description={describeChannelDeletion(channels.channelToDeleteMediaCount)}
+                description={describeChannelDeletion(
+                    channels.channelToDeleteMediaCount,
+                    settings.settings.deleteSkipsTrash
+                )}
             />
 
             {settingsWasOpened ? (

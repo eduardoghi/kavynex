@@ -366,19 +366,35 @@ describe("HomeModals", () => {
         expect(props.databaseRecovery.startEmpty).toHaveBeenCalledTimes(1);
     });
 
-    it("warns that deleting media permanently removes the file from disk", () => {
+    it("says deleting media moves the files to the trash by default", () => {
         renderWithMantine(<HomeModals {...createProps()} />);
+
+        expect(
+            screen.getByText(
+                "This moves the media file, its thumbnail and live chat replay to the library's trash, where they stay for 30 days, and removes its saved comments, which the trash does not keep."
+            )
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText(
+                "This moves all of this channel's saved videos, audio, thumbnails and live chat replays to the library's trash, where they stay for 30 days, and removes its comments, which the trash does not keep."
+            )
+        ).toBeInTheDocument();
+    });
+
+    it("warns that deleting removes the files from disk when they skip the trash", () => {
+        const props = createProps();
+        props.settings = {
+            ...props.settings,
+            settings: { ...props.settings.settings, deleteSkipsTrash: true },
+        };
+
+        renderWithMantine(<HomeModals {...props} />);
 
         expect(
             screen.getByText(
                 "This permanently deletes the media file, its thumbnail and live chat replay from disk, and removes its saved comments. This cannot be undone."
             )
         ).toBeInTheDocument();
-    });
-
-    it("warns that deleting a channel permanently removes its files from disk", () => {
-        renderWithMantine(<HomeModals {...createProps()} />);
-
         expect(
             screen.getByText(
                 "This permanently deletes all of this channel's saved videos, audio, thumbnails and live chat replays from disk, and removes its comments. This cannot be undone."
@@ -396,7 +412,7 @@ describe("HomeModals", () => {
 
         expect(
             screen.getByText(
-                "This permanently deletes all 27 of the channel's saved videos and audio files, their thumbnails and live chat replays from disk, and removes their comments. This cannot be undone."
+                "This moves all 27 of the channel's saved videos and audio files, their thumbnails and live chat replays to the library's trash, where they stay for 30 days, and removes their comments, which the trash does not keep."
             )
         ).toBeInTheDocument();
     });
