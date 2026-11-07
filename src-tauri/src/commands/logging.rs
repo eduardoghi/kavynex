@@ -113,7 +113,7 @@ pub async fn log_frontend_error(scope: String, message: String) {
 
 fn write_frontend_report(scope: &str, message: &str) {
     let scope = sanitize_log_text(scope, MAX_SCOPE_CHARS);
-    let message = sanitize_log_text(&message, MAX_MESSAGE_CHARS);
+    let message = sanitize_log_text(message, MAX_MESSAGE_CHARS);
 
     let scope = if scope.is_empty() {
         "frontend".to_string()
