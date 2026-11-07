@@ -170,6 +170,35 @@ async fn a_partial_unique_index_does_not_count_as_the_media_key() {
 }
 
 #[tokio::test]
+async fn a_unique_index_on_an_expression_is_read_rather_than_failing_the_import() {
+    // Its column reads as NULL, which failed the decode and refused the import with a generic
+    // error. It matches no column, and the real key beside it is still found.
+    let pool = memory_pool().await;
+
+    for statement in [
+        "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, file_path TEXT)",
+        "CREATE UNIQUE INDEX videos_lower_path ON videos(lower(file_path))",
+    ] {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+    }
+
+    assert!(!table_has_unique_index_on(&pool, "videos", &["file_path"])
+        .await
+        .unwrap());
+
+    sqlx::query("CREATE UNIQUE INDEX videos_key ON videos(channel_id, file_path)")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert!(
+        table_has_unique_index_on(&pool, "videos", &["channel_id", "file_path"])
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
 async fn introspection_helpers_see_the_videos_constraints() {
     // Backs the import-validation helpers against the real schema. The (channel_id, file_path)
     // unique key comes from a table-level UNIQUE constraint (an auto-index, not a named

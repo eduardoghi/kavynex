@@ -51,7 +51,10 @@ pub(crate) async fn table_has_unique_index_on(
     table: &'static str,
     columns: &[&str],
 ) -> AppResult<bool> {
-    let rows: Vec<(String, i64, String)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+    // The column name is NULL for an expression (`CREATE UNIQUE INDEX ... ON t(lower(x))`), which a
+    // hand-made database can carry. Read as text it failed the decode and the import was refused
+    // with a generic error, so it is optional here and simply matches no column.
+    let rows: Vec<(String, i64, Option<String>)> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT il.name, ii.seqno, ii.name \
          FROM pragma_index_list('{table}') AS il \
          JOIN pragma_index_info(il.name) AS ii \
@@ -61,7 +64,7 @@ pub(crate) async fn table_has_unique_index_on(
     .await
     .map_err(|error| db_error("failed to read table indexes", error))?;
 
-    let mut by_index: std::collections::BTreeMap<String, Vec<(i64, String)>> =
+    let mut by_index: std::collections::BTreeMap<String, Vec<(i64, Option<String>)>> =
         std::collections::BTreeMap::new();
     for (index_name, seqno, column) in rows {
         by_index
@@ -77,7 +80,7 @@ pub(crate) async fn table_has_unique_index_on(
             && index_columns
                 .iter()
                 .zip(columns)
-                .all(|((_, got), want)| got == want)
+                .all(|((_, got), want)| got.as_deref() == Some(*want))
         {
             return Ok(true);
         }
