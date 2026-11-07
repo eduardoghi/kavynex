@@ -81,6 +81,8 @@ describe("executeCreateChannel", () => {
 
         expect(createChannel).toHaveBeenCalledWith("Canal", "@canal", null);
         expect(result).toEqual({ channelId: 9, avatarFailure: failure, bannerFailure: null });
+        // The banner would fail for the same reason, after a wait of its own.
+        expect(downloadBanner).not.toHaveBeenCalled();
     });
 
     it("sets the banner after creating a channel with its YouTube avatar", async () => {

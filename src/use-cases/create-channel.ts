@@ -20,8 +20,10 @@ export type CreateChannelResult = {
     // Why the YouTube avatar could not be downloaded, or null. The channel is created without one
     // then, since the avatar can be set later and a network hiccup should not cost the channel.
     avatarFailure: unknown;
-    // Why the banner could not be set, or null. Fetched only with a YouTube avatar, since that is
-    // the choice to reach the channel's page, and a channel with no banner is not a failure.
+    // Why the banner could not be set, or null. Fetched only with a YouTube avatar that arrived,
+    // since that is the choice to reach the channel's page, and a channel with no banner is not a
+    // failure. After an avatar that did not (no network, a wrong handle), the banner would fail the
+    // same way, after a second wait.
     bannerFailure: unknown;
 };
 
@@ -55,7 +57,7 @@ export async function executeCreateChannel(
     let bannerFailure: unknown = null;
 
     // After the row exists, so a banner that cannot be had costs nothing but the banner.
-    if (avatar.mode === "youtube" && channelId !== null) {
+    if (avatar.mode === "youtube" && avatarFailure === null && channelId !== null) {
         try {
             const bannerPath = await downloadChannelImageFromHandle("banner", youtubeHandle);
             await updateChannelImageWithCleanup("banner", channelId, bannerPath);
