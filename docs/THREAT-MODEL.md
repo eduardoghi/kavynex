@@ -480,7 +480,7 @@ avatar through `insert_channel` or `replace_channel_avatar`, a banner through
 name a file the user keeps in that folder. `thumbnail::persist::delete_thumbnail_file_sync` therefore
 unlinks only `thumbnails/thumb_<sha256>.<ext>`, the one name the app writes there, and leaves
 anything else where it is. A deletion that moves files to the library trash instead
-(`library::trash`) loses nothing either way, since the trash can be moved back from.
+(`library::trash`) loses nothing either way, since a file in the trash can still be copied back by hand.
 
 `scripts/verify-command-surface-is-used.js` runs in CI and refuses a registered command that no
 wrapper in `src/` calls, so a command left behind by a caller that moved fails the build instead of

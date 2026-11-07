@@ -36,7 +36,7 @@ export function TrashSection({
                 checked={deleteSkipsTrash}
                 onChange={(event) => onChangeDeleteSkipsTrash(event.currentTarget.checked)}
                 label="Delete files right away"
-                description={`When off, deleting a media or a channel moves its files to the library's .trash folder, where they stay for ${ORPHAN_GRACE_PERIOD_DAYS} days and can be moved back. When on, the files are deleted at once and cannot be recovered.`}
+                description={`When off, deleting a media or a channel moves its files to the library's .trash folder, where they stay for ${ORPHAN_GRACE_PERIOD_DAYS} days. A file can be copied back out of that folder by hand and imported again. When on, the files are deleted at once and cannot be recovered.`}
             />
 
             {trashSummary && (
