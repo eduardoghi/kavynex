@@ -22,12 +22,97 @@ pub(crate) fn sanitize_log_text(value: &str, max_chars: usize) -> String {
         .collect()
 }
 
+/// How many frontend reports one window of [`REPORT_WINDOW`] writes. A component failing on every
+/// render reports dozens a second, each a write to the log file and possibly a rotation, and the
+/// first few are what explain it.
+const MAX_REPORTS_PER_WINDOW: u32 = 20;
+const REPORT_WINDOW: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Counts the frontend reports of the current window, and the ones it dropped.
+#[derive(Debug)]
+struct ReportBudget {
+    window_start: std::time::Instant,
+    written: u32,
+    dropped: u32,
+}
+
+/// What [`ReportBudget::admit`] decided for one report.
+#[derive(Debug, PartialEq, Eq)]
+enum Admission {
+    /// Write it, after saying how many the previous window dropped, when it dropped any.
+    Write {
+        dropped_before: u32,
+    },
+    Drop,
+}
+
+impl ReportBudget {
+    fn new(now: std::time::Instant) -> Self {
+        Self {
+            window_start: now,
+            written: 0,
+            dropped: 0,
+        }
+    }
+
+    fn admit(&mut self, now: std::time::Instant) -> Admission {
+        let mut dropped_before = 0;
+
+        if now.duration_since(self.window_start) >= REPORT_WINDOW {
+            dropped_before = self.dropped;
+            *self = Self::new(now);
+        }
+
+        if self.written >= MAX_REPORTS_PER_WINDOW {
+            self.dropped = self.dropped.saturating_add(1);
+            return Admission::Drop;
+        }
+
+        self.written += 1;
+        Admission::Write { dropped_before }
+    }
+}
+
+fn report_budget() -> &'static std::sync::Mutex<ReportBudget> {
+    static BUDGET: std::sync::OnceLock<std::sync::Mutex<ReportBudget>> = std::sync::OnceLock::new();
+    BUDGET.get_or_init(|| std::sync::Mutex::new(ReportBudget::new(std::time::Instant::now())))
+}
+
 /// Persists an error reported by the frontend into the backend log file. Uncaught webview
 /// errors (render crashes, unhandled rejections) otherwise only reach the devtools
 /// console, which is gone by the time a bug report is written.
+///
+/// Async, so the write runs on a worker rather than the main thread a synchronous command runs on,
+/// and bounded by [`ReportBudget`]. A frontend reporting in a loop froze the window with log writes.
 #[tauri::command]
-pub fn log_frontend_error(scope: String, message: String) {
-    let scope = sanitize_log_text(&scope, MAX_SCOPE_CHARS);
+pub async fn log_frontend_error(scope: String, message: String) {
+    let admission = report_budget()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .admit(std::time::Instant::now());
+
+    let Admission::Write { dropped_before } = admission else {
+        return;
+    };
+
+    let _ = run_blocking(move || {
+        if dropped_before > 0 {
+            logger::warn(
+                "frontend",
+                format!(
+                    "{dropped_before} frontend error report(s) were dropped for coming too fast"
+                ),
+            );
+        }
+
+        write_frontend_report(&scope, &message);
+        Ok(())
+    })
+    .await;
+}
+
+fn write_frontend_report(scope: &str, message: &str) {
+    let scope = sanitize_log_text(scope, MAX_SCOPE_CHARS);
     let message = sanitize_log_text(&message, MAX_MESSAGE_CHARS);
 
     let scope = if scope.is_empty() {
@@ -95,6 +180,23 @@ mod tests {
             serde_json::json!({ "scope": "player", "message": "render crashed" }),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn a_burst_of_reports_is_cut_off_and_the_next_window_says_how_many_went() {
+        let start = std::time::Instant::now();
+        let mut budget = ReportBudget::new(start);
+
+        for _ in 0..MAX_REPORTS_PER_WINDOW {
+            assert_eq!(budget.admit(start), Admission::Write { dropped_before: 0 });
+        }
+
+        assert_eq!(budget.admit(start), Admission::Drop);
+        assert_eq!(budget.admit(start), Admission::Drop);
+
+        let later = start + REPORT_WINDOW;
+        assert_eq!(budget.admit(later), Admission::Write { dropped_before: 2 });
+        assert_eq!(budget.admit(later), Admission::Write { dropped_before: 0 });
     }
 
     #[test]
