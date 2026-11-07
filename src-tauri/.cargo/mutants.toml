@@ -226,9 +226,8 @@ exclude_re = [
     # Equivalent: `64 * 1024` is the size of each piece of a cut line read and dropped. At `64 + 1024`
     # the same bytes are dropped in more pieces, and the count and the next line are the same.
     'replace \* with \+ in read_capped_line',
-    # Equivalent: `generations > 0` and `>= 0` differ only for zero generations, and the three
-    # callers pass BACKUP_ROTATED_GENERATIONS (6), CORRUPT_ROTATED_GENERATIONS (2) and
-    # EXTERNAL_BACKUP_ROTATED_GENERATIONS (2).
+    # Equivalent: `generations > 0` and `>= 0` differ only for zero generations, and the two
+    # callers pass CORRUPT_ROTATED_GENERATIONS (2) and EXTERNAL_BACKUP_ROTATED_GENERATIONS (2).
     'replace > with >= in rotate_generations',
     # Equivalent: the owner-write bit is only set once `readonly()` said no write bit is set at all,
     # so `mode ^ 0o200` and `mode | 0o200` give the same mode.

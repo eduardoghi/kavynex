@@ -48,8 +48,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   - **A file that outgrew itself becomes a directory of the same name**, with the coupled
     core in `mod.rs` and the separable part split off, so `db_schema/` (`ddl.rs`,
     `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
-    `restore.rs`, `integrity.rs`, `external.rs`, `import.rs`, `gates.rs`, `compaction.rs`,
-    `lineage.rs`), `video_repository/` (`media_page.rs`) and
+    `archive.rs`, `restore.rs`, `integrity.rs`, `external.rs`, `import.rs`, `gates.rs`,
+    `compaction.rs`, `lineage.rs`), `video_repository/` (`media_page.rs`) and
     `yt_dlp/download/` (`command.rs`, `redaction.rs`, `placement.rs`, `post_download.rs`).
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
@@ -554,7 +554,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download/` (`mod.rs`, `fetch.rs`, `process.rs`), `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
 | Database schema/migrations | `services/db_schema/` | (none) |
-| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the export and import gates in `gates.rs`, compaction in `compaction.rs`, the mirror's lineage ids in `lineage.rs`) | `services/database-service.ts` |
+| Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the compressed daily archives in `archive.rs`, the export and import gates in `gates.rs`, compaction in `compaction.rs`, the mirror's lineage ids in `lineage.rs`) | `services/database-service.ts` |
 | Media playback | `services/media_protocol.rs` | `utils/media-utils.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |

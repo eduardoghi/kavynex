@@ -5,6 +5,7 @@
 //! four is a submodule of its own, split off as the file outgrew itself:
 //!
 //! - `snapshot.rs`: the automatic `.bak` family and the status report over it.
+//! - `archive.rs`: the older daily snapshots, compressed and named by when they were taken.
 //! - `restore.rs`: restoring from one, and finishing a restore a crash interrupted.
 //! - `import.rs`: staging a user-selected database and applying it at the next startup.
 //! - `external.rs`: the user-triggered export and the once-a-day off-volume mirror.
@@ -77,8 +78,9 @@ fn remove_stale_sidecars(staging: &Path) {
 /// first meant that a held `.bak` let them move up and fall off the end one a day, until only the
 /// held file was left.
 ///
-/// Shared by the `.bak`, `.corrupt` and external-mirror families, which is why it takes the
-/// per-generation path function rather than knowing any of their names.
+/// Shared by the `.corrupt` and external-mirror families, which is why it takes the per-generation
+/// path function rather than knowing any of their names. The daily snapshots are archived instead
+/// (see `archive.rs`).
 #[must_use]
 fn rotate_generations(
     db_path: &Path,
@@ -285,7 +287,7 @@ fn total_size_bytes(paths: &[PathBuf]) -> u64 {
 }
 
 /// Every file this module owns beside the live database in the app config directory. The database
-/// itself, SQLite's WAL sidecars, all seven backup generations, all three corrupt snapshots, the
+/// itself, SQLite's WAL sidecars, the daily snapshot and its archives, all three corrupt snapshots, the
 /// import undo/staging files, every short-lived scratch file, and the two markers.
 /// `docs/DIRECTORIES.md` documents the same set for the user.
 ///
@@ -305,17 +307,19 @@ fn managed_database_paths(db_path: &Path) -> Vec<PathBuf> {
         sibling(db_path, "-shm"),
     ];
 
-    // `.bak` plus `.bak.1`..`.bak.N`, and the scratch file a snapshot vacuums into.
-    paths.extend(
-        (0..=snapshot::BACKUP_ROTATED_GENERATIONS)
-            .map(|generation| snapshot::generation_backup_path(db_path, generation)),
-    );
+    // `.bak`, its archives (named by time, so read from the directory) and an archive a write cut
+    // short, and the scratch file a snapshot vacuums into.
+    paths.push(snapshot::backup_path(db_path));
+    paths.extend(archive::archived_backups(db_path));
+    paths.extend(archive::archive_scratch_paths(db_path));
     paths.push(snapshot::temp_backup_path(db_path));
-    // Where `.bak` waits while the older generations shift (see rotate_generations). Normally gone a
-    // moment later, and left only by a run that died midway.
-    paths.push(parked_generation_path(&snapshot::generation_backup_path(
-        db_path, 0,
-    )));
+    // Where an archive is unpacked to be checked, by a restore or by the empty-database guard.
+    paths.push(restore::restore_unpacked_path(db_path));
+    paths.push(snapshot::library_check_scratch_path(db_path));
+    // The positional generations a build from before the archives kept, and the name `.bak` waited
+    // under while they shifted. Archived and removed by the next daily snapshot.
+    paths.extend(archive::legacy_generation_paths(db_path));
+    paths.push(parked_generation_path(&snapshot::backup_path(db_path)));
 
     // The copy a damaged database gets while it holds the rotation still, and its scratch name.
     paths.push(snapshot::after_damage_path(db_path));
@@ -520,6 +524,9 @@ pub async fn is_schema_migration_pending(db_path: &Path) -> bool {
     }
 }
 
+// The older daily snapshots, compressed and named by when they were taken.
+mod archive;
+
 // The automatic `.bak` snapshot family and the status report over it.
 mod snapshot;
 pub use snapshot::{
@@ -530,9 +537,11 @@ pub use snapshot::{
 // The parent module's snapshot tests assert against these internals. Test-only so a non-test build
 // does not flag them unused.
 #[cfg(test)]
+use archive::{archive_path, archived_backups, legacy_generation_path, BACKUP_ARCHIVES_KEPT};
+#[cfg(test)]
 use snapshot::{
-    backup_path, generation_backup_path, pre_migration_versions_to_prune, temp_backup_path,
-    BACKUP_MIN_INTERVAL_SECS, BACKUP_ROTATED_GENERATIONS, PRE_MIGRATION_SNAPSHOTS_KEPT,
+    backup_path, pre_migration_versions_to_prune, temp_backup_path, BACKUP_MIN_INTERVAL_SECS,
+    PRE_MIGRATION_SNAPSHOTS_KEPT,
 };
 
 // Restoring from a snapshot, and finishing a restore a crash interrupted.

@@ -26,9 +26,11 @@ Alongside `kavynex.db`, SQLite's WAL mode (see `docs/DATABASE.md`) creates sidec
 `kavynex.db-wal` and `kavynex.db-shm` in the same directory while the app is running.
 The backup/restore/import machinery in `services/db_backup/` also writes siblings here:
 
-- `kavynex.db.bak` plus `kavynex.db.bak.1` .. `kavynex.db.bak.6`: the rotated automatic
-  snapshots (`BACKUP_ROTATED_GENERATIONS` = 6, so up to seven exist). More than one is kept
-  because the newest can itself have captured an already-degrading database.
+- `kavynex.db.bak` plus up to six `kavynex.db.bak-<UTC time>.gz`: the automatic daily snapshots.
+  The newest is the plain `.bak`, and the older ones are gzip archives named by when they were taken
+  (`BACKUP_ARCHIVES_KEPT` = 6, so up to seven exist). More than one is kept because the newest can
+  itself have captured an already-degrading database. A build from before the archives kept them
+  as `kavynex.db.bak.1` .. `kavynex.db.bak.6`, which the next daily snapshot archives and removes.
 - `kavynex.db.corrupt` plus `kavynex.db.corrupt.1` .. `kavynex.db.corrupt.2`: databases moved
   aside after a failed restore, rotated the same way so a repeated restore keeps the earlier
   evidence. Fewer generations than `.bak`, since each is a full copy of an already-broken database.
@@ -66,8 +68,8 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   of rotating them out (`db_backup/lineage.rs`). A database older than this file has none until an
   import replaces it.
 - `set-aside-backups/<UTC time>/`: the snapshots that were here when Start empty was chosen, renamed
-  to `kavynex-bak.db`, `kavynex-bak-1.db`, `kavynex-pre-migration-v15.db` and so on so Settings >
-  Database > Import reads them directly. Nothing deletes this folder. Diagnostics reports it and opens
+  to `kavynex-bak.db`, `kavynex-bak-<UTC time>.db`, `kavynex-pre-migration-v15.db` and so on so
+  Settings > Database > Import reads them directly. An archive is unpacked into its `.db` there. Nothing deletes this folder. Diagnostics reports it and opens
   it.
 - `library-migration-commit` (beside the database, not a `kavynex.db.` sibling): the new library
   path and, on a second line, the folder the move left, written once a library move has copied
@@ -77,7 +79,10 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   It is removed once the new path is stored, and choosing another library in Settings removes it
   too.
 - Short-lived scratch files, present only during the corresponding operation: `.bak.tmp` (the
-  snapshot being vacuumed, before it is promoted to `.bak`), `.bak.rotating` and `.corrupt.rotating`
+  snapshot being vacuumed, before it is promoted to `.bak`), `.bak-<UTC time>.gz.tmp` (an archive
+  being written and checked), `.restore.unpacked` and `.library-check.tmp` (an archive unpacked to be
+  checked by a restore, or to ask whether it holds a library while the database is empty),
+  `.bak.rotating` (left only by a build from before the archives) and `.corrupt.rotating`
   (the newest generation parked while the older ones shift, put back by the next run when one died
   midway, with `kavynex-backup.db.rotating` the same in the external folder), `.after-damage.tmp`
   (the same for `.after-damage`), `.import-staged` / `.import-staged.tmp` (an import waiting for the
@@ -117,13 +122,14 @@ almost-complete:
   since the next launch opens at the size in `src-tauri/tauri.conf.json` and writes a fresh one.
 
 See `docs/DATABASE.md` for the rotation, restore and import rules these files follow. The
-counts above are `BACKUP_ROTATED_GENERATIONS` / `CORRUPT_ROTATED_GENERATIONS` in
-`db_backup/snapshot.rs` and `db_backup/restore.rs`, which is what to read if this list and the code
+counts above are `BACKUP_ARCHIVES_KEPT` / `CORRUPT_ROTATED_GENERATIONS` in
+`db_backup/archive.rs` and `db_backup/restore.rs`, which is what to read if this list and the code
 ever disagree.
 
 Those counts bound how *many* snapshots exist, never how *large* they get, and each `.bak`,
 `.corrupt`, `.pre-import` and `.pre-migration-v<N>` is a full copy of the database, which grows
-with every comment backed up. Up to thirteen such copies can therefore sit in this one directory. Because that is not
+with every comment backed up. The daily archives are compressed, to about a third of a library
+database's size, and the others are not. Up to thirteen such copies can therefore sit in this one directory. Because that is not
 otherwise visible anywhere (and on Windows this is the roaming profile), **Settings > Database**
 reports the total these files currently occupy alongside the date of the last automatic snapshot;
 `db_backup/mod.rs::managed_database_paths` is the set it sums. It stayed in `mod.rs` when the
@@ -131,14 +137,14 @@ snapshot and restore machinery moved into submodules of their own, because it is
 that has to know about all of them at once.
 
 All of the snapshots above sit on the same volume as the live database, so a disk failure takes
-them with it. Every generation, not just the newest. The seven `.bak` files and the `.corrupt` ones
+them with it. Every generation, not just the newest. The `.bak` and its archives and the `.corrupt` ones
 are siblings of `kavynex.db`, so the rotation buys nothing against losing the disk. It is depth
 against corruption, not against hardware.
 
 Nor against the uninstaller, which is the third way this directory goes and the one no rotation
 can answer. On Windows, the NSIS uninstaller's **Delete the application data** checkbox removes both
 `%APPDATA%\com.kavynex.app` and `%LOCALAPPDATA%\com.kavynex.app`, so the database and all seven
-generations go in one click. The checkbox is tauri-bundler's, not something this project added, and
+daily snapshots go in one click. The checkbox is tauri-bundler's, not something this project added, and
 its label names none of the above. `src-tauri/windows/hooks.nsh` puts a second confirmation in front
 of it that does, and answering No keeps the directory while the app is still removed. The `.msi` has
 no such option. `PRIVACY.md` states the consequence for the user.

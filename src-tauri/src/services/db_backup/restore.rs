@@ -15,6 +15,7 @@ use crate::services::logger;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
+use super::archive::{is_archive, unpack_archive};
 use super::snapshot::backup_candidates;
 use super::{
     backup_error, database_quick_check_retrying, database_schema_version, rotate_generations,
@@ -158,6 +159,17 @@ pub(super) fn restore_staging_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".restore.tmp")
 }
 
+/// Where an archived snapshot is unpacked so it can be checked, and copied from once it is chosen.
+pub(super) fn restore_unpacked_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".restore.unpacked")
+}
+
+fn remove_unpacked(db_path: &Path) {
+    let unpacked = restore_unpacked_path(db_path);
+    let _ = std::fs::remove_file(&unpacked);
+    super::remove_stale_sidecars(&unpacked);
+}
+
 /// Where the snapshot is copied and prepared before it takes [`restore_staging_path`]'s name.
 ///
 /// That name is what tells the next launch the staging finished (see
@@ -229,13 +241,42 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     // and the quick_check/copy on it. Failing a recovery exactly when it matters most.
     let _guard = BACKUP_IN_PROGRESS.lock().await;
 
-    let mut chosen: Option<PathBuf> = None;
+    // The candidate chosen, and the file holding its database. They differ for an archive, which is
+    // unpacked to a scratch file first and checked there.
+    let mut chosen: Option<(PathBuf, PathBuf)> = None;
     let mut skipped_newer_schema = false;
 
     for candidate in backup_candidates(db_path) {
-        match database_quick_check_retrying(&candidate).await {
+        let readable = if is_archive(db_path, &candidate) {
+            let unpacked = restore_unpacked_path(db_path);
+            remove_unpacked(db_path);
+
+            let result = {
+                let (archive, unpacked) = (candidate.clone(), unpacked.clone());
+                run_blocking(move || unpack_archive(&archive, &unpacked)).await
+            };
+
+            if let Err(error) = result {
+                remove_unpacked(db_path);
+                logger::warn(
+                    "db_backup",
+                    format!(
+                        "restore: passed over {}, which could not be unpacked: {error}",
+                        logger::redact_path(&candidate)
+                    ),
+                );
+                continue;
+            }
+
+            unpacked
+        } else {
+            candidate.clone()
+        };
+
+        match database_quick_check_retrying(&readable).await {
             QuickCheck::Healthy => {}
             QuickCheck::Damaged => {
+                remove_unpacked(db_path);
                 logger::warn(
                     "db_backup",
                     format!(
@@ -249,6 +290,7 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
             // says nothing about its contents, and moving on would restore one up to six days older
             // and report success. Trying again once the hold is gone gets the newest one.
             QuickCheck::Unreadable(detail) => {
+                remove_unpacked(db_path);
                 logger::warn(
                     "db_backup",
                     format!(
@@ -264,19 +306,20 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
         // "succeed" for `ensure_schema` to reject it on the next open (DatabaseSchemaTooNew),
         // leaving the app unable to start. Catching it here fails the restore itself with a clear
         // message. A backup written by this or an older build always passes.
-        if let Some(version) = database_schema_version(&candidate).await {
+        if let Some(version) = database_schema_version(&readable).await {
             if version > crate::services::db_schema::SCHEMA_VERSION {
+                remove_unpacked(db_path);
                 skipped_newer_schema = true;
                 continue;
             }
         }
 
-        chosen = Some(candidate);
+        chosen = Some((candidate, readable));
         break;
     }
 
-    let backup = match chosen {
-        Some(backup) => backup,
+    let (backup, readable) = match chosen {
+        Some(chosen) => chosen,
         None if skipped_newer_schema => {
             return Err(AppError::from_code_with_details(
                 AppErrorCode::DatabaseSchemaTooNew,
@@ -315,9 +358,9 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
     let _ = std::fs::remove_file(&partial);
     super::remove_stale_sidecars(&partial);
     {
-        let copy_source = backup.clone();
+        let copy_source = readable.clone();
         let copy_dest = partial.clone();
-        run_blocking(move || {
+        let copied = run_blocking(move || {
             std::fs::copy(&copy_source, &copy_dest)
                 .map_err(|error| backup_error("failed to stage restored database", error))?;
             // Flush the staged bytes to disk before the renames below. Without this a power loss
@@ -325,7 +368,10 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
             // would make it the live database on the next launch. This matches copy_file_atomic.
             crate::services::filesystem::fsync_file(&copy_dest)
         })
-        .await?;
+        .await;
+
+        remove_unpacked(db_path);
+        copied?;
     }
 
     if let Some(paths) = machine_paths.as_ref() {

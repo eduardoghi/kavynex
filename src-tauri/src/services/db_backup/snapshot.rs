@@ -1,5 +1,5 @@
-//! The automatic `.bak` snapshot family. Taking one, rotating the generations, and reporting on
-//! what is there.
+//! The automatic `.bak` snapshot family. Taking one, archiving the previous one, and reporting on
+//! what is there. The archives themselves are `archive.rs`.
 //!
 //! Split out of `mod.rs` alongside `restore.rs`, which was the largest file in the tree and held
 //! three independent machines (this one, the restore, and the marker-driven import), plus every
@@ -21,9 +21,13 @@ use serde::Serialize;
 use crate::services::logger;
 use crate::AppResult;
 
+use super::archive::{
+    archive_snapshot, archived_backups, is_archive, legacy_generation_paths, prune_archives,
+    remove_archive_scratch, unpack_archive,
+};
 use super::{
     backup_error, database_schema_version, escape_sql_literal, is_healthy, is_recent,
-    managed_database_paths, modified_ms, open, rotate_generations, sibling, total_size_bytes,
+    managed_database_paths, modified_ms, open, parked_generation_path, sibling, total_size_bytes,
     BACKUP_IN_PROGRESS,
 };
 
@@ -31,24 +35,16 @@ use super::{
 // backup within this window already predates the current launch's migrations.
 pub(super) const BACKUP_MIN_INTERVAL_SECS: u64 = 24 * 60 * 60;
 
-// Keep several rotated generations of the snapshot (`.bak`, `.bak.1`, ...), not just one, so a
-// corruption that goes unnoticed for a few days cannot overwrite every good snapshot with a
-// degraded one before it is caught. This many *rotated* generations are kept in addition to the
-// current `.bak`.
-pub(super) const BACKUP_ROTATED_GENERATIONS: usize = 6;
-
+/// The newest snapshot. Older ones are archives (see `archive.rs`), several of them rather than one,
+/// so a corruption that goes unnoticed for a few days cannot replace every good snapshot with a
+/// degraded one before it is caught.
 pub(super) fn backup_path(db_path: &Path) -> PathBuf {
     sibling(db_path, ".bak")
 }
 
-/// The current snapshot is `.bak` (generation 0), and older generations are `.bak.1` (newest
-/// rotated) through `.bak.{BACKUP_ROTATED_GENERATIONS}` (oldest kept).
-pub(super) fn generation_backup_path(db_path: &Path, generation: usize) -> PathBuf {
-    if generation == 0 {
-        backup_path(db_path)
-    } else {
-        sibling(db_path, &format!(".bak.{generation}"))
-    }
+/// Where an archive is unpacked to ask whether it holds a library.
+pub(super) fn library_check_scratch_path(db_path: &Path) -> PathBuf {
+    sibling(db_path, ".library-check.tmp")
 }
 
 /// Whether the database behind `pool` has any channel or media. A query that fails answers yes, so a
@@ -62,13 +58,40 @@ pub(super) async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
     .unwrap_or(true)
 }
 
-/// Whether any of the daily generations holds a library.
+/// Whether any of the daily snapshots holds a library.
+///
+/// An archive is unpacked to answer. That only happens while the live database is empty, which is
+/// the one case that asks. One that cannot be unpacked counts as holding a library, for the reason
+/// [`any_holds_library`] gives for a file it cannot read.
 pub(super) async fn any_generation_holds_library(db_path: &Path) -> bool {
-    let generations: Vec<PathBuf> = (0..=BACKUP_ROTATED_GENERATIONS)
-        .map(|generation| generation_backup_path(db_path, generation))
-        .collect();
+    let mut plain = vec![backup_path(db_path)];
+    plain.extend(legacy_generation_paths(db_path));
 
-    any_holds_library(&generations).await
+    if any_holds_library(&plain).await {
+        return true;
+    }
+
+    for archive in archived_backups(db_path) {
+        let scratch = library_check_scratch_path(db_path);
+        let unpacked = {
+            let scratch = scratch.clone();
+            crate::utils::task::run_blocking(move || unpack_archive(&archive, &scratch)).await
+        };
+
+        let holds = match unpacked {
+            Ok(()) => any_holds_library(std::slice::from_ref(&scratch)).await,
+            Err(_) => true,
+        };
+
+        let _ = std::fs::remove_file(&scratch);
+        super::remove_stale_sidecars(&scratch);
+
+        if holds {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Whether any of the snapshot files `paths` holds a channel or a media.
@@ -112,11 +135,55 @@ pub(super) async fn any_holds_library(paths: &[PathBuf]) -> bool {
     false
 }
 
-/// Shifts the rotated backup generations up by one so a fresh snapshot can be promoted into
-/// `.bak`. `.bak.{N}` is overwritten by `.bak.{N-1}`, down to `.bak` becoming `.bak.1`. Returns
-/// whether `.bak` is free (see [`rotate_generations`]).
+/// Archives the current `.bak` so a fresh snapshot can take its name, and deletes the archives past
+/// the ones kept. Returns whether `.bak` may be replaced.
+///
+/// It may not when it could not be archived (a full disk, a file another program holds). The caller
+/// then keeps the fresh snapshot in `.bak.tmp`, where a restore still finds it, and the next run
+/// tries again. Replacing `.bak` anyway would lose the previous snapshot.
+///
+/// The positional generations a build from before the archives left (`.bak.1` .. `.bak.6`, and a
+/// `.bak.rotating` from a rotation that died midway) are archived first, under their own times, and
+/// removed. Best effort. One that cannot be archived stays, and a restore still reads it.
 fn rotate_backups(db_path: &Path) -> bool {
-    rotate_generations(db_path, BACKUP_ROTATED_GENERATIONS, generation_backup_path)
+    remove_archive_scratch(db_path);
+
+    let newest = backup_path(db_path);
+    let parked = parked_generation_path(&newest);
+
+    if parked.exists() && !newest.exists() {
+        let _ = crate::services::filesystem::rename_retrying(&parked, &newest);
+    }
+
+    for legacy in std::iter::once(parked).chain(legacy_generation_paths(db_path)) {
+        if !legacy.exists() {
+            continue;
+        }
+
+        match archive_snapshot(db_path, &legacy) {
+            Ok(_) => {
+                let _ = std::fs::remove_file(&legacy);
+            }
+            Err(error) => logger::warn(
+                "db_backup",
+                format!("an older backup could not be archived and stays as it is: {error}"),
+            ),
+        }
+    }
+
+    if newest.exists() {
+        if let Err(error) = archive_snapshot(db_path, &newest) {
+            logger::warn(
+                "db_backup",
+                format!("the previous snapshot could not be archived, so it was kept: {error}"),
+            );
+            return false;
+        }
+    }
+
+    prune_archives(db_path);
+
+    true
 }
 
 pub(super) fn temp_backup_path(db_path: &Path) -> PathBuf {
@@ -301,8 +368,8 @@ pub async fn snapshot_before_migration(db_path: &Path, from_version: i64) -> App
 /// Creates a consistent snapshot of the database (via `VACUUM INTO`) before migrations run,
 /// so a bad migration or corruption can be rolled back. Best effort and throttled to once a
 /// day. A source database that fails `quick_check` is skipped so a corrupt DB never
-/// overwrites a good backup. Keeps several rotated generations (`.bak` plus `.bak.1`..
-/// `.bak.{BACKUP_ROTATED_GENERATIONS}`). Returns true when a new snapshot was written.
+/// overwrites a good backup. Keeps the newest snapshot as `.bak` and the older ones as archives
+/// (see `archive.rs`). Returns true when a new snapshot was written.
 pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
     if !db_path.exists() {
         return Ok(false);
@@ -413,48 +480,45 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         ));
     }
 
-    // The flush, the rotation and the promotion are blocking filesystem work, and the flush of a
-    // freshly vacuumed database can take seconds on a slow or scanned disk. Off the async runtime,
-    // as the utils::task convention has it.
+    // The flush, the archiving and the promotion are blocking filesystem work, and compressing the
+    // previous snapshot reads all of it. Off the async runtime, as the utils::task convention has
+    // it.
     let db_path = db_path.to_path_buf();
 
     crate::utils::task::run_blocking(move || {
-        // On disk before anything is rotated. SQLite does not sync a VACUUM INTO target, and the
+        // On disk before anything is archived. SQLite does not sync a VACUUM INTO target, and the
         // throttle reads `.bak`'s mtime, so a snapshot promoted and then cut short by a power loss
         // would read as a recent good backup and stop the next one from being taken for a day.
         crate::services::filesystem::fsync_file(&temp)?;
 
-        // Shift the existing generations up, then promote the fresh snapshot into `.bak`. A rotation
-        // that stopped short leaves the previous `.bak` in place, and promoting over it would discard
-        // it. The fresh snapshot stays in `.bak.tmp` instead, already flushed and checked, where a
-        // restore still finds it, and the next run tries the rotation again.
+        // Archive the previous `.bak`, then promote the fresh snapshot over it. One that could not
+        // be archived stays, and promoting over it would discard it. The fresh snapshot stays in
+        // `.bak.tmp` instead, already flushed and checked, where a restore still finds it, and the
+        // next run tries again.
         if !rotate_backups(&db_path) {
             return Err(backup_error(
                 "failed to rotate the database backups",
-                "a backup generation could not be moved, so the newest snapshot was kept in .bak.tmp",
+                "the previous snapshot could not be archived, so the newest one was kept in .bak.tmp",
             ));
         }
 
-        // Rotation has already moved the previous `.bak` to `.bak.1`, so a failure here leaves
-        // generation 0 absent until the next successful backup. A restore still succeeds (the
-        // candidate list falls through to `.bak.1` and beyond), but the newest snapshot silently
-        // did not land, which is only inferable from backup timestamps. Log it before propagating
-        // so the state is observable.
+        // The previous `.bak` is archived by now, so a failure here loses nothing. The fresh snapshot
+        // stays in `.bak.tmp`, where a restore still finds it. Logged before propagating so the
+        // state is observable.
         if let Err(error) = crate::services::filesystem::rename_retrying(&temp, &backup) {
             logger::warn(
                 "db_backup",
                 format!(
-                    "failed to promote the fresh snapshot after rotating generations. \
-                     The newest backup slot is empty until the next run: {error}"
+                    "failed to promote the fresh snapshot, so it stays in .bak.tmp until the next \
+                     run: {error}"
                 ),
             );
 
             return Err(backup_error("failed to store database backup", error));
         }
 
-        // Flush the directory entry so a crash right after the rename cannot lose it. The rotation
-        // renames above live in the same directory, so this one flush covers the whole `.bak`
-        // family. Without it an unclean shutdown could silently revert to a rotated generation.
+        // Flush the directory entry so a crash right after the rename cannot lose it. The archive
+        // was flushed with its own directory entry already.
         // Mirrors the fsync the restore/import swaps already do (see resume_interrupted_restore /
         // apply_pending_database_import). Best effort, like those.
         crate::services::filesystem::fsync_parent_dir(&backup);
@@ -499,19 +563,28 @@ pub fn set_aside_backups_for_empty_start(db_path: &Path) -> AppResult<Option<Pat
         .unwrap_or_else(|| "kavynex.db".to_string());
 
     for candidate in candidates {
+        let archived = is_archive(db_path, &candidate);
         let suffix = candidate
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .and_then(|name| name.strip_prefix(&prefix).map(str::to_string))
             .unwrap_or_default();
+        let suffix = suffix.strip_suffix(".gz").unwrap_or(&suffix);
 
-        // `.bak` -> `kavynex-bak.db`, `.bak.3` -> `kavynex-bak-3.db`, `.pre-migration-v15` ->
-        // `kavynex-pre-migration-v15.db`.
+        // `.bak` -> `kavynex-bak.db`, `.bak-20261106T120000Z.gz` -> `kavynex-bak-20261106T120000Z.db`,
+        // `.bak.3` -> `kavynex-bak-3.db`, `.pre-migration-v15` -> `kavynex-pre-migration-v15.db`.
         let label = suffix.trim_start_matches('.').replace('.', "-");
         let target = folder.join(format!("kavynex-{label}.db"));
 
-        crate::services::filesystem::rename_retrying(&candidate, &target)
-            .map_err(|error| backup_error("failed to set aside an old backup", error))?;
+        // An archive is unpacked rather than moved, since Import reads a database, not a gzip.
+        if archived {
+            unpack_archive(&candidate, &target)?;
+            std::fs::remove_file(&candidate)
+                .map_err(|error| backup_error("failed to set aside an old backup", error))?;
+        } else {
+            crate::services::filesystem::rename_retrying(&candidate, &target)
+                .map_err(|error| backup_error("failed to set aside an old backup", error))?;
+        }
         // Both directories changed. The one the file left and the one it arrived in.
         crate::services::filesystem::fsync_parent_dir(&target);
     }
@@ -534,8 +607,10 @@ pub fn has_backup_candidates(db_path: &Path) -> bool {
     !backup_candidates(db_path).is_empty()
 }
 
-/// The existing backup files, most recent first. Rotation always writes the freshest snapshot
-/// to `.bak` (generation 0), so it precedes the rotated `.bak.1`.. `.bak.N` generations.
+/// The existing backup files, most recent first. The freshest snapshot is always `.bak`, so it
+/// precedes the archives, newest first. The positional generations of a build from before the
+/// archives follow, for as long as one could not be archived. An archive is not a database a caller
+/// can open, so a caller that checks or copies one unpacks it first (see `archive::is_archive`).
 ///
 /// `.bak.tmp` is included last. `backup_database` snapshots into it and only renames it into
 /// `.bak` once the `VACUUM INTO` succeeds, so a run that died in that window leaves a complete,
@@ -554,8 +629,9 @@ pub(super) fn backup_candidates(db_path: &Path) -> Vec<PathBuf> {
     let mut pre_migration_versions = pre_migration_versions_on_disk(db_path);
     pre_migration_versions.sort_unstable_by(|left, right| right.cmp(left));
 
-    (0..=BACKUP_ROTATED_GENERATIONS)
-        .map(|generation| generation_backup_path(db_path, generation))
+    std::iter::once(backup_path(db_path))
+        .chain(archived_backups(db_path))
+        .chain(legacy_generation_paths(db_path))
         .chain(
             pre_migration_versions
                 .into_iter()
@@ -588,10 +664,10 @@ pub struct DatabaseBackupStatus {
 /// Reports whether a backup file exists (without verifying its integrity), when the most recent
 /// one was written, and how much disk the database and its snapshots occupy in total.
 ///
-/// The size is reported because nothing else in the app makes it visible. Up to thirteen full copies
-/// of the database can sit in the app config directory (seven `.bak` generations, three `.corrupt`
-/// ones, one `.pre-import`, two `.pre-migration-v<N>`), the rotation bounds how *many* exist but
-/// never how *large* they get,
+/// The size is reported because nothing else in the app makes it visible. Up to thirteen copies of
+/// the database can sit in the app config directory (`.bak` and six compressed archives, three
+/// `.corrupt` ones, one `.pre-import`, two `.pre-migration-v<N>`), the retention bounds how *many*
+/// exist but never how *large* they get,
 /// and that directory is the roaming profile on Windows. A database that grows with every comment
 /// backed up can therefore take gigabytes there with nothing saying so.
 pub fn database_backup_status(db_path: &Path) -> DatabaseBackupStatus {

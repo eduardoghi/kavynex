@@ -481,23 +481,32 @@ open cut short leaves behind (`database::database_holds_data`). The
 startup recovery offers the restore, or starting with an empty library (`start_with_empty_database`,
 refused once the database opened or its file is back).
 
-Rotation keeps several generations. Before the fresh snapshot is written, the existing generations
-are shifted up by one (`.bak` -> `.bak.1`, `.bak.1` -> `.bak.2`, and so on), dropping the oldest.
-`BACKUP_ROTATED_GENERATIONS` (6) rotated files are kept in addition to the
-current `.bak`, so up to seven snapshots can exist (`.bak` plus `.bak.1`..`.bak.6`). Keeping more
-than one guards against the case where the newest snapshot itself captured an already-degrading
-database before the corruption was caught. A `.bak.tmp` is used during the `VACUUM INTO` and only
-renamed into `.bak` after it succeeds. Because `VACUUM INTO` requires the destination not to
-already exist, and produces a single, fully checkpointed file, `.bak` is always a complete,
-WAL-free snapshot, never combined with a live write-ahead log.
+Several snapshots are kept. The newest is `.bak`, uncompressed, since it is the one a restore
+reaches first and the one the throttle reads. Before a fresh snapshot replaces it, the previous `.bak`
+is gzip-compressed into an archive named by when it was taken, `kavynex.db.bak-20261106T120000Z.gz`
+(`db_backup/archive.rs`), and the archives past the newest `BACKUP_ARCHIVES_KEPT` (6) are deleted,
+so up to seven snapshots can exist. Keeping more than one guards against the case where the newest
+snapshot itself captured an already-degrading database before the corruption was caught. A library
+database compresses to about a third of its size, and these copies sit in the roaming profile on
+Windows. A `.bak.tmp` is used during the `VACUUM INTO` and only renamed into `.bak` after it
+succeeds. Because `VACUUM INTO` requires the destination not to already exist, and produces a
+single, fully checkpointed file, `.bak` is always a complete, WAL-free snapshot, never combined with
+a live write-ahead log.
 
-A generation that cannot be moved (a file another program holds open, a read-only one) stops the
-rotation where it is, and `.bak` is then still in its slot. The fresh snapshot is not promoted over
+An archive is written under a `.gz.tmp` name, read back and compared with what was read from the
+snapshot, then renamed into place, and it keeps the snapshot's modification time. A `.gz.tmp` left by
+a run that died is removed by the next one. When the previous `.bak` cannot be archived (a full disk,
+a file another program holds open), it stays where it is and the fresh snapshot is not promoted over
 it. It stays in `.bak.tmp`, already flushed and checked, where a restore still finds it, the run
-reports an error, and the next one tries the rotation again. Promoting anyway would discard the
-previous snapshot every day the file stays held. `.bak` itself is moved first, to `.bak.rotating`,
-before the older generations shift, so when it is the held file nothing above it moves either. A
-`.bak.rotating` left by a run that died midway is put back by the next one.
+reports an error, and the next one tries again. Since each archive has its own name and is only ever
+deleted, a held archive keeps itself and nothing else, where the positional names of earlier builds
+(`.bak.1` .. `.bak.6`, shifted up by one each day) let one held file cost a generation a day. Those
+positional generations, and a `.bak.rotating` an interrupted rotation of theirs left, are archived
+under their own times and removed by the first daily snapshot of a build with archives.
+
+Two snapshots with different bytes dated the same second do not overwrite each other. The second
+takes the same name with `-2` (and so on) before `.gz`. One whose bytes match an archive already
+there is that archive, written by a run that stopped before removing the original.
 
 A database whose `user_version` is above this build's `SCHEMA_VERSION` (an older version installed
 over a newer one) is not snapshotted at all. This build can neither open it nor restore a copy of
@@ -522,10 +531,13 @@ manual way back after a migration that went wrong or a downgrade. `DIRECTORIES.m
 
 ### Restore (`restore_database_from_backup`)
 
-Used when opening the live database fails. It walks every generation in turn (`.bak`, then
-`.bak.1` through `.bak.6`, then the `.pre-migration-v<N>` snapshots, newest version first), and
-takes the first that itself passes `quick_check`, so a run of bad snapshots does not cost the
-recovery. A pre-migration snapshot holds an older schema, which the migrations bring forward again
+Used when opening the live database fails. It walks every snapshot in turn (`.bak`, then the
+archives newest first, then any `.bak.1` .. `.bak.6` an earlier build left that were not archived
+yet, then the `.pre-migration-v<N>` snapshots, newest version first), and takes the first that
+itself passes `quick_check`, so a run of bad snapshots does not cost the recovery. An archive is
+unpacked to `kavynex.db.restore.unpacked` first, checked there, and copied from there when chosen,
+and the unpacked file is removed either way. One that cannot be unpacked is passed over like a
+damaged one. A pre-migration snapshot holds an older schema, which the migrations bring forward again
 on the next open. `.bak.tmp` is offered last, since `backup_database` vacuums
 into it and only promotes it once that succeeds, so a run that died in that window strands a
 complete snapshot there that nothing else would look at, but a run that died *during* the

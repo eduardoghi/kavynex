@@ -290,8 +290,8 @@ directory.
 ## Kavynex reports a corrupted database
 
 Nothing is silently lost. When the database cannot be opened, Kavynex says so on startup and
-offers to restore the most recent healthy snapshot (the daily `.bak` generations, then the
-pre-migration snapshots). The external backup folder is not part of that restore. To go back to a
+offers to restore the most recent healthy snapshot (the daily `.bak` and its compressed archives,
+then the pre-migration snapshots). The external backup folder is not part of that restore. To go back to a
 copy there, use Settings > Database > **Import database**. A restored-over file is preserved next to
 the database as `kavynex.db.corrupt` rather than deleted, so it can still be inspected. See
 `DATABASE.md` for the full backup/restore model and `DIRECTORIES.md` for where these files
@@ -313,8 +313,9 @@ If the check still finds damage after the rebuild, restore a backup by hand:
 3. In the config directory (`DIRECTORIES.md` lists it per OS), rename `kavynex.db` to
    `kavynex.db.damaged` and delete `kavynex.db-wal` and `kavynex.db-shm` if they are there.
 4. Copy `kavynex.db.bak` (the newest daily snapshot) to `kavynex.db`. The older ones are
-   `kavynex.db.bak.1` and up, and `kavynex.db.pre-migration-v<N>` is the database as it was just
-   before an upgrade.
+   `kavynex.db.bak-<UTC time>.gz`, gzip archives named by when they were taken. Extract one (7-Zip
+   on Windows, `gunzip -k` elsewhere) and rename what comes out to `kavynex.db`.
+   `kavynex.db.pre-migration-v<N>` is the database as it was just before an upgrade.
 5. Start Kavynex and run Diagnostics.
 
 ## Kavynex says its database file is missing
@@ -329,7 +330,8 @@ moves the backups into a `set-aside-backups/<UTC time>/` folder next to where th
 (`docs/DIRECTORIES.md` lists it per OS) and opens a new, empty library. Left where they were, the
 new library's own daily backup would replace them one a day. Diagnostics lists the folder and opens
 it. To go back to one of them, pick it in **Settings > Database > Import**. The files there are named
-`kavynex-bak.db`, `kavynex-bak-1.db` and so on, newest first, and keep their original dates.
+`kavynex-bak.db` (the newest), `kavynex-bak-<UTC time>.db` for the older ones, and
+`kavynex-pre-migration-v<N>.db`.
 
 If an external backup folder is set, the copies of the old library there are not replaced either.
 The new database's first copy renames them to `kavynex-backup-previous-<time>.db` and keeps them.

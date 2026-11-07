@@ -185,7 +185,7 @@ async fn an_empty_database_is_not_rotated_over_snapshots_of_a_library() {
     let dir = temp_dir("empty-over-library");
     let db = dir.join("kavynex.db");
     seed_kavynex_db(&db, "kept").await;
-    std::fs::copy(&db, generation_backup_path(&db, 1)).unwrap();
+    std::fs::copy(&db, legacy_generation_path(&db, 1)).unwrap();
 
     let pool = open(&db).await.unwrap();
     sqlx::query("DELETE FROM videos")
@@ -197,7 +197,7 @@ async fn an_empty_database_is_not_rotated_over_snapshots_of_a_library() {
     assert!(!backup_database(&db).await.unwrap());
     assert!(!backup_path(&db).exists(), "nothing was promoted");
     assert_eq!(
-        read_title(&generation_backup_path(&db, 1)).await,
+        read_title(&legacy_generation_path(&db, 1)).await,
         "kept",
         "the snapshot of the library is where it was"
     );
@@ -211,6 +211,33 @@ async fn an_empty_database_is_not_rotated_over_snapshots_of_a_library() {
     pool.close().await;
 
     assert!(backup_database(&db).await.unwrap());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn an_empty_database_is_not_rotated_over_an_archive_of_a_library() {
+    // The same guard, for a library whose only copy left is an archive, which has to be unpacked to
+    // be asked.
+    let dir = temp_dir("empty-over-archive");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "kept").await;
+    let archive = super::archive::archive_snapshot(&db, &db).unwrap();
+
+    let pool = open(&db).await.unwrap();
+    sqlx::query("DELETE FROM videos")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    assert!(!backup_database(&db).await.unwrap());
+    assert!(!backup_path(&db).exists(), "nothing was promoted");
+    assert_eq!(archived_backups(&db), vec![archive]);
+    assert!(
+        !super::snapshot::library_check_scratch_path(&db).exists(),
+        "the unpacked copy is gone"
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -486,7 +513,15 @@ async fn an_empty_start_moves_the_snapshots_where_import_can_read_them() {
     let db = dir.join("kavynex.db");
     seed_kavynex_db(&db, "the old library").await;
     assert!(backup_database(&db).await.unwrap());
-    std::fs::copy(backup_path(&db), generation_backup_path(&db, 2)).unwrap();
+    std::fs::copy(backup_path(&db), legacy_generation_path(&db, 2)).unwrap();
+    let archive = super::archive::archive_snapshot(&db, &backup_path(&db)).unwrap();
+    let archive_label = archive
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .trim_start_matches("kavynex.db.")
+        .trim_end_matches(".gz")
+        .to_string();
     std::fs::remove_file(&db).unwrap();
 
     let folder = set_aside_backups_for_empty_start(&db)
@@ -499,6 +534,12 @@ async fn an_empty_start_moves_the_snapshots_where_import_can_read_them() {
         "the old library"
     );
     assert!(folder.join("kavynex-bak-2.db").exists());
+    // An archive is unpacked into a database Import can read, not moved as a gzip.
+    assert_eq!(
+        read_title(&folder.join(format!("kavynex-{archive_label}.db"))).await,
+        "the old library"
+    );
+    assert!(!archive.exists());
     assert!(folder.starts_with(dir.join(SET_ASIDE_BACKUPS_DIR)));
 
     assert!(
@@ -659,13 +700,15 @@ fn managed_database_paths_names_every_file_this_module_writes() {
         "kavynex.db-wal",
         "kavynex.db-shm",
         "kavynex.db.bak",
+        "kavynex.db.bak.tmp",
+        "kavynex.db.restore.unpacked",
+        "kavynex.db.library-check.tmp",
         "kavynex.db.bak.1",
         "kavynex.db.bak.2",
         "kavynex.db.bak.3",
         "kavynex.db.bak.4",
         "kavynex.db.bak.5",
         "kavynex.db.bak.6",
-        "kavynex.db.bak.tmp",
         "kavynex.db.bak.rotating",
         "kavynex.db.after-damage",
         "kavynex.db.after-damage.tmp",
@@ -1092,8 +1135,8 @@ fn a_rotation_interrupted_after_parking_puts_the_snapshot_back() {
 
 #[tokio::test]
 async fn a_backup_whose_rotation_stops_short_keeps_the_previous_snapshot() {
-    // A generation another program holds stops the rotation with `.bak` still in its slot.
-    // Promoting the fresh snapshot then overwrote it, every day the hold lasted.
+    // A previous snapshot that could not be archived stays in its slot. Promoting the fresh one
+    // over it would lose it, every day the problem lasted.
     let dir = temp_dir("rotate-blocked-backup");
     let db = dir.join("kavynex.db");
     seed_db(&db).await;
@@ -1103,12 +1146,13 @@ async fn a_backup_whose_rotation_stops_short_keeps_the_previous_snapshot() {
     let a_day_ago = SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS + 60);
     filetime_set(&backup_path(&db), a_day_ago);
 
-    // Every generation from 1 up holds a file, and the oldest slot is a directory that neither
-    // `rename` nor `remove_file` can clear, the stand-in for a file held open on Windows.
-    for generation in 1..BACKUP_ROTATED_GENERATIONS {
-        std::fs::write(generation_backup_path(&db, generation), b"older").unwrap();
-    }
-    std::fs::create_dir(generation_backup_path(&db, BACKUP_ROTATED_GENERATIONS)).unwrap();
+    // A directory under the archive's name, which the finished archive cannot be renamed onto, the
+    // stand-in for a disk that will not take it.
+    let taken_at = std::fs::metadata(backup_path(&db))
+        .unwrap()
+        .modified()
+        .unwrap();
+    std::fs::create_dir(archive_path(&db, taken_at)).unwrap();
 
     assert!(backup_database(&db).await.is_err());
 
@@ -1116,6 +1160,10 @@ async fn a_backup_whose_rotation_stops_short_keeps_the_previous_snapshot() {
     assert!(
         temp_backup_path(&db).exists(),
         "the fresh snapshot is kept where a restore still finds it"
+    );
+    assert!(
+        super::archive::archive_scratch_paths(&db).is_empty(),
+        "the archive that could not be stored is not left half written"
     );
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -1727,7 +1775,10 @@ async fn generations_of_an_empty_library_do_not_count_as_a_library() {
     let dir = temp_dir("generations-empty-library");
     let db = dir.join("kavynex.db");
     empty_kavynex_db(&backup_path(&db)).await;
-    empty_kavynex_db(&generation_backup_path(&db, 1)).await;
+    empty_kavynex_db(&legacy_generation_path(&db, 1)).await;
+    let empty_archive = dir.join("empty-archive.db");
+    empty_kavynex_db(&empty_archive).await;
+    super::archive::archive_snapshot(&db, &empty_archive).unwrap();
 
     assert!(!super::snapshot::any_generation_holds_library(&db).await);
 
@@ -1915,19 +1966,121 @@ async fn restore_falls_back_to_rotated_backup_when_primary_is_corrupt() {
     let db = dir.join("kavynex.db");
     seed_db(&db).await;
 
-    // First backup becomes the rotated generation after a second run.
+    // First backup becomes an archive after a second run.
     assert!(backup_database(&db).await.unwrap());
-    // Force a second, non-throttled backup so the first rotates to .bak.1.
+    // Force a second, non-throttled backup so the first is archived.
     let old = SystemTime::now() - std::time::Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * 2);
     filetime_set(&backup_path(&db), old);
     assert!(backup_database(&db).await.unwrap());
+    assert_eq!(archived_backups(&db).len(), 1);
 
-    // Corrupt the current .bak so restore must fall back to the rotated .bak.1.
+    // Corrupt the current .bak so restore must fall back to the archive, which it unpacks.
     std::fs::write(backup_path(&db), b"corrupt bak").unwrap();
     std::fs::write(&db, b"corrupt db").unwrap();
 
     restore_database_from_backup(&db).await.unwrap();
     assert_eq!(read_single_value(&db).await, "hello");
+    assert!(
+        !super::restore::restore_unpacked_path(&db).exists(),
+        "the unpacked copy is gone"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn an_archive_holds_the_snapshot_and_its_time() {
+    let dir = temp_dir("archive-round-trip");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    let a_day_ago = SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS + 60);
+    filetime_set(&backup_path(&db), a_day_ago);
+    let taken_at = std::fs::metadata(backup_path(&db))
+        .unwrap()
+        .modified()
+        .unwrap();
+
+    let archive = super::archive::archive_snapshot(&db, &backup_path(&db)).unwrap();
+
+    // Named by when the snapshot was taken, and dated the same, so Settings still shows that time.
+    assert_eq!(archive, archive_path(&db, taken_at));
+    assert_eq!(
+        std::fs::metadata(&archive).unwrap().modified().unwrap(),
+        taken_at
+    );
+    assert!(
+        std::fs::metadata(&archive).unwrap().len()
+            < std::fs::metadata(backup_path(&db)).unwrap().len()
+    );
+
+    let unpacked = dir.join("unpacked.db");
+    super::archive::unpack_archive(&archive, &unpacked).unwrap();
+    assert_eq!(
+        std::fs::read(&unpacked).unwrap(),
+        std::fs::read(backup_path(&db)).unwrap()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn the_next_backup_archives_the_generations_an_older_build_left() {
+    // A library upgraded from a build with `.bak.1` .. `.bak.6`. Each is archived under its own time
+    // and removed, and the previous `.bak` with them.
+    let dir = temp_dir("legacy-generations");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+    assert!(backup_database(&db).await.unwrap());
+
+    for (generation, days) in [(1, 2), (2, 3)] {
+        let legacy = legacy_generation_path(&db, generation);
+        std::fs::copy(backup_path(&db), &legacy).unwrap();
+        filetime_set(
+            &legacy,
+            SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * days),
+        );
+    }
+
+    filetime_set(
+        &backup_path(&db),
+        SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS + 60),
+    );
+    assert!(backup_database(&db).await.unwrap());
+
+    assert!(!legacy_generation_path(&db, 1).exists());
+    assert!(!legacy_generation_path(&db, 2).exists());
+    assert_eq!(archived_backups(&db).len(), 3);
+    assert!(backup_path(&db).exists());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn only_the_newest_archives_are_kept() {
+    let dir = temp_dir("archive-prune");
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("kavynex.db");
+
+    let archives: Vec<PathBuf> = (0..BACKUP_ARCHIVES_KEPT + 2)
+        .map(|days| {
+            let path = archive_path(
+                &db,
+                SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * days as u64),
+            );
+            std::fs::write(&path, b"x").unwrap();
+            path
+        })
+        .collect();
+
+    super::archive::prune_archives(&db);
+
+    // `archives` was built newest first, which is the order the listing returns too.
+    assert_eq!(
+        archived_backups(&db),
+        archives[..BACKUP_ARCHIVES_KEPT].to_vec()
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -2831,7 +2984,7 @@ async fn a_restore_stops_at_a_held_snapshot_instead_of_taking_an_older_one() {
     let dir = temp_dir("restore-held");
     let db = dir.join("kavynex.db");
     seed_kavynex_db(&db, "older").await;
-    std::fs::copy(&db, generation_backup_path(&db, 1)).unwrap();
+    std::fs::copy(&db, legacy_generation_path(&db, 1)).unwrap();
     seed_kavynex_db(&dir.join("newer.db"), "newer").await;
     std::fs::rename(dir.join("newer.db"), backup_path(&db)).unwrap();
     std::fs::write(&db, b"not a database").unwrap();
@@ -3378,8 +3531,20 @@ fn the_daily_backups_come_before_the_pre_migration_snapshots_newest_first() {
     std::fs::create_dir_all(&dir).unwrap();
     let db = dir.join("kavynex.db");
 
+    let older = archive_path(
+        &db,
+        SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * 3),
+    );
+    let newer = archive_path(
+        &db,
+        SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS),
+    );
+
     for path in [
         sibling(&db, ".bak"),
+        older.clone(),
+        newer.clone(),
+        legacy_generation_path(&db, 1),
         snapshot::pre_migration_path(&db, 13),
         snapshot::pre_migration_path(&db, 14),
     ] {
@@ -3390,6 +3555,9 @@ fn the_daily_backups_come_before_the_pre_migration_snapshots_newest_first() {
         snapshot::backup_candidates(&db),
         vec![
             sibling(&db, ".bak"),
+            newer,
+            older,
+            legacy_generation_path(&db, 1),
             snapshot::pre_migration_path(&db, 14),
             snapshot::pre_migration_path(&db, 13),
         ]
@@ -3416,6 +3584,66 @@ async fn a_restore_keeps_the_corrupt_databases_write_ahead_log_beside_it() {
         std::fs::read(restore::corrupt_wal_path(&db)).unwrap(),
         b"uncheckpointed frames"
     );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn only_a_timestamped_gzip_beside_the_database_is_an_archive() {
+    let db = Path::new("/config/kavynex.db");
+    let is = |name: &str| super::archive::is_archive(db, &db.with_file_name(name));
+
+    assert!(is("kavynex.db.bak-20261106T120000Z.gz"));
+    assert!(is("kavynex.db.bak-20261106T120000Z-2.gz"));
+    assert!(!is("kavynex.db.bak-.gz"));
+    assert!(!is("kavynex.db.bak-a.b.gz"));
+    assert!(!is("kavynex.db.bak-20261106T120000Z.gz.tmp"));
+    assert!(!is("kavynex.db.bak.1"));
+    assert!(!is("other.db.bak-20261106T120000Z.gz"));
+    assert!(!super::archive::is_archive(
+        db,
+        Path::new("/elsewhere/kavynex.db.bak-20261106T120000Z.gz")
+    ));
+}
+
+#[test]
+fn two_different_snapshots_dated_alike_are_both_archived() {
+    // Same modification time to the second, different bytes. The second must not be taken for the
+    // first one already archived, which would drop it.
+    let dir = temp_dir("archive-same-second");
+    std::fs::create_dir_all(&dir).unwrap();
+    let db = dir.join("kavynex.db");
+    let taken_at = SystemTime::now() - Duration::from_secs(60);
+
+    let first = dir.join("first");
+    let second = dir.join("second");
+    std::fs::write(&first, b"one snapshot").unwrap();
+    std::fs::write(&second, b"another snapshot").unwrap();
+    filetime_set(&first, taken_at);
+    filetime_set(&second, taken_at);
+
+    let first_archive = super::archive::archive_snapshot(&db, &first).unwrap();
+    let again = super::archive::archive_snapshot(&db, &first).unwrap();
+    let second_archive = super::archive::archive_snapshot(&db, &second).unwrap();
+
+    assert_eq!(again, first_archive, "the same bytes reuse their archive");
+    assert_ne!(second_archive, first_archive);
+    assert_eq!(archived_backups(&db).len(), 2);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn an_archive_a_write_cut_short_left_is_removed_by_the_next_backup() {
+    let dir = temp_dir("archive-scratch");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+
+    let scratch = dir.join("kavynex.db.bak-20261106T120000Z.gz.tmp");
+    std::fs::write(&scratch, b"half an archive").unwrap();
+
+    assert!(backup_database(&db).await.unwrap());
+    assert!(!scratch.exists());
 
     let _ = std::fs::remove_dir_all(&dir);
 }
