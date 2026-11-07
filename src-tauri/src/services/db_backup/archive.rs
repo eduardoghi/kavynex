@@ -118,11 +118,35 @@ fn files_beside(db_path: &Path, extension: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The archives beside `db_path`, newest first. The time in the name sorts as text.
+/// The archives beside `db_path`, newest first. By the time in the name, which sorts as text, and
+/// then by the number a later snapshot of the same second carries. The names alone do not sort that
+/// way, since `-1` sorts before the `.gz` of the first one and `-10` before `-2`.
 pub(super) fn archived_backups(db_path: &Path) -> Vec<PathBuf> {
     let mut archives = files_beside(db_path, ARCHIVE_EXTENSION);
-    archives.sort_unstable_by(|left, right| right.cmp(left));
+    archives.sort_by_cached_key(|archive| std::cmp::Reverse(archive_order(db_path, archive)));
     archives
+}
+
+/// When an archive was taken, as its time and its number within that second (0 for the first).
+fn archive_order(db_path: &Path, archive: &Path) -> (String, u32) {
+    let stamp = db_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .zip(archive.file_name().and_then(|name| name.to_str()))
+        .and_then(|(db_name, name)| {
+            name.strip_prefix(db_name)?
+                .strip_prefix(ARCHIVE_INFIX)?
+                .strip_suffix(ARCHIVE_EXTENSION)
+        })
+        .unwrap_or_default();
+
+    match stamp
+        .rsplit_once('-')
+        .and_then(|(time, copy)| Some((time, copy.parse::<u32>().ok()?)))
+    {
+        Some((time, copy)) => (time.to_string(), copy),
+        None => (stamp.to_string(), 0),
+    }
 }
 
 /// Archives a write that did not finish left behind.

@@ -3838,3 +3838,35 @@ fn startup_removes_the_scratch_copies_an_interrupted_run_left() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn archives_of_the_same_second_sort_by_the_number_a_later_one_carries() {
+    // As text, `-1` sorts before the first one's `.gz` and `-10` before `-2`, which made the
+    // restore and the pruning treat a later snapshot as an older one.
+    let dir = temp_dir("same-second-order");
+    let db = dir.join("kavynex.db");
+    let name = |suffix: &str| dir.join(format!("kavynex.db.bak-{suffix}.gz"));
+
+    for suffix in [
+        "20260101T000000Z",
+        "20260101T000000Z-1",
+        "20260101T000000Z-2",
+        "20260101T000000Z-10",
+        "20251231T235959Z",
+    ] {
+        std::fs::write(name(suffix), b"archive").unwrap();
+    }
+
+    assert_eq!(
+        archived_backups(&db),
+        vec![
+            name("20260101T000000Z-10"),
+            name("20260101T000000Z-2"),
+            name("20260101T000000Z-1"),
+            name("20260101T000000Z"),
+            name("20251231T235959Z"),
+        ]
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
