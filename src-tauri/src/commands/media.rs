@@ -1,6 +1,5 @@
 use tauri::{AppHandle, Runtime};
 
-use crate::services::library::guard::configured_library_path;
 use crate::services::media_creation::{self, CreateMediaRequest, CreatedMedia};
 use crate::AppResult;
 
@@ -13,14 +12,13 @@ use crate::AppResult;
 /// is a lock in `library::cleanup` instead of the add-media modal refusing to open twice. See
 /// `services::media_creation` for the ordering and `docs/THREAT-MODEL.md` for the trust boundary.
 ///
-/// The library is the configured one, read from the settings before any file is written. The
-/// request carries no library path.
+/// The library is the configured one, which `create_media_async` reads from the settings before
+/// any file is written. Whatever library path the request carries is ignored.
 #[tauri::command]
 pub async fn create_media<R: Runtime>(
     app: AppHandle<R>,
-    mut request: CreateMediaRequest,
+    request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
-    request.library_path = configured_library_path(&app).await?;
     media_creation::ensure_request_files_were_chosen(&request)?;
 
     media_creation::create_media_async(&app, request).await

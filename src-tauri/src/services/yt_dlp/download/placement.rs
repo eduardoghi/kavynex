@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
 
 use crate::services::filesystem::replace_file_safely;
+use crate::services::library::lock::{library_read_guard, LibraryPass, LibraryReadGuard};
 use crate::services::logger;
 use crate::services::yt_dlp::events::emit_download_log_infallible;
 use crate::utils::format::is_allowed_media_extension;
@@ -108,6 +109,22 @@ pub(super) fn find_downloaded_media_file(
     pick_downloaded_media(candidates, expected_ext).ok_or_else(not_found)
 }
 
+/// The library read guard for one write a download makes into the library.
+///
+/// With a pass, refused once a library move ran since the download began, because `library_dir`
+/// is then the folder the library left. Without one (the tests), the plain guard.
+pub(super) fn download_library_guard(pass: Option<LibraryPass>) -> AppResult<LibraryReadGuard> {
+    match pass {
+        None => Ok(library_read_guard()),
+        Some(pass) => pass.file_guard().ok_or_else(|| {
+            AppError::from_code(
+                AppErrorCode::InvalidLibraryPath,
+                "the library folder was moved while the download ran",
+            )
+        }),
+    }
+}
+
 /// Returns the final path and whether a library file with the same content was kept (the fresh
 /// download was discarded). The caller surfaces the second value to the user.
 ///
@@ -121,6 +138,7 @@ pub(super) fn place_downloaded_file(
     downloaded_temp: &Path,
     media_dir: &Path,
     library_dir: &Path,
+    library_pass: Option<LibraryPass>,
 ) -> AppResult<(PathBuf, bool)> {
     // The backstop for pick_downloaded_media. Nothing but a media file may land in `video/` or
     // `audio/`, whatever chose it.
@@ -142,8 +160,8 @@ pub(super) fn place_downloaded_file(
 
     // Serialize the placement into the library against a concurrent migration (see library::lock)
     // so a just-finished download cannot land in the old directory while the migration is
-    // copying/removing it.
-    let _library_guard = crate::services::library::lock::library_read_guard();
+    // copying/removing it, and refuse it when a migration already finished while the download ran.
+    let _library_guard = download_library_guard(library_pass)?;
 
     let final_destination = media_dir
         .join(crate::services::library::media::content_addressed_media_name(&digest, &extension));
@@ -179,10 +197,11 @@ pub(super) async fn place_downloaded_file_async(
     downloaded_temp: PathBuf,
     media_dir: PathBuf,
     library_dir: PathBuf,
+    library_pass: Option<LibraryPass>,
 ) -> AppResult<(PathBuf, String, bool)> {
     run_blocking(move || {
         let (final_destination, kept_existing) =
-            place_downloaded_file(&downloaded_temp, &media_dir, &library_dir)?;
+            place_downloaded_file(&downloaded_temp, &media_dir, &library_dir, library_pass)?;
         let file_path = placed_file_relative_path(&library_dir, &final_destination)?;
 
         Ok((final_destination, file_path, kept_existing))

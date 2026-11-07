@@ -5,8 +5,8 @@
  *
  * Deliberately the same field set the frontend already assembled for its own orchestration, so the
  * move is a change of *who runs the steps* rather than of what the user is asked for. Every value
- * here is caller-supplied and none is trusted. The library is not among them (the command fills
- * `library_path` from the settings), the title goes through the shared validator, and every produced
+ * here is caller-supplied and none is trusted. The library is not among them (`create_media_async`
+ * fills `library_path` from the settings), the title goes through the shared validator, and every produced
  * path is re-checked as a managed library-relative path before it reaches a row. The media type is
  * not asked for at all. A download reports it and a local import takes it from its extension, the
  * same rule that picks the file's subdirectory, so a row cannot say "video" about a file in

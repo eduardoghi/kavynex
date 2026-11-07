@@ -400,7 +400,10 @@ by `id` and stops at its row and text caps.
 `isYtDlpRunning`, `isCancellingYtDlp`, `isGeneratingThumb` or `isLoadingYtDlpFormats` is set. This is
 UX only, since closing the modal mid-run would discard a terminal the user is watching. Two creations
 racing the reference-counted cleanup is handled by the lock in `library::cleanup`, not by the modal,
-so a queue or a batch import is a UX question rather than a correctness one.
+so a queue or a batch import is a UX question rather than a correctness one. The same goes for a
+library move during a creation. `CREATION_GATE` (`services/media_creation.rs`) refuses the move
+while a creation runs, and a creation reads the library folder from the settings only once it holds
+the gate.
 
 ### Changing the library folder
 
@@ -441,6 +444,15 @@ arrive whole (`LIBRARY_COPY_INCOMPLETE`); a commit
 marker is written next to the database before the old directory goes, so a crash mid-move is
 self-healed by `reconcile_interrupted_migration` on the next `get_app_settings`; and once the move
 succeeds the old directory's asset-scope grant is revoked.
+
+The move is refused with `MEDIA_CREATION_IN_PROGRESS` while a media is being added, since a creation
+reads the library folder once and a download can run for hours after that, so a move finishing in
+between would leave the file in the folder the library left. The add-media modal already keeps the
+folder change disabled meanwhile, but that is the UI. The refusal is the backend's own. The move
+holds `CREATION_GATE` until it has stored the new folder in the settings itself, so a creation that
+starts during the move waits and then reads the new folder. The frontend's own write that follows
+stores the same path again. The download also begins a `LibraryPass` before it resolves the folder,
+and a move it did not see sends the file to the recovered downloads rather than into the old folder.
 
 A current folder that does not exist is refused with `LIBRARY_FOLDER_UNREACHABLE` while the
 database still lists media or avatars, since the likeliest cause is a drive that is not connected.

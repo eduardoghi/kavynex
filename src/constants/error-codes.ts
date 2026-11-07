@@ -135,8 +135,9 @@ export const LIBRARY_MIGRATION_CANCELLED_ERROR_CODE = "LIBRARY_MIGRATION_CANCELL
 export const LIBRARY_VERIFICATION_IN_PROGRESS_ERROR_CODE =
     "LIBRARY_VERIFICATION_IN_PROGRESS" as const;
 export const LIBRARY_VERIFICATION_FAILED_ERROR_CODE = "LIBRARY_VERIFICATION_FAILED" as const;
-// Removing orphan files is refused while a media is being added, since that media's files are in
-// the library before anything references them. Nothing is wrong and the action is to wait.
+// Removing orphan files and moving the library are refused while a media is being added. That
+// media's files are in the library before anything references them, and it writes into the folder it
+// read when it started. Nothing is wrong and the action is to wait.
 export const MEDIA_CREATION_IN_PROGRESS_ERROR_CODE = "MEDIA_CREATION_IN_PROGRESS" as const;
 // Removing orphan files is refused when the database does not describe the library folder well
 // enough to call its unreferenced files leftovers. Diagnostics says why before offering it, so this

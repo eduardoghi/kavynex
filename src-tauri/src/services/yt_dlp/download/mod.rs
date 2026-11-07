@@ -12,6 +12,7 @@ use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
+use crate::services::library::lock::LibraryPass;
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
@@ -584,6 +585,12 @@ pub async fn download_media_from_url_async<R: Runtime>(
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
+    // Begun before the library is resolved, so a library move that finishes while yt-dlp runs is
+    // seen when the file is placed, and the file goes to the recovered downloads instead of into
+    // the folder the library left. A media creation already excludes a move for its whole run (see
+    // services::media_creation), so this is the backstop for any other caller.
+    let library_pass = LibraryPass::begin();
+
     // Resolving the library touches the disk it lives on, which may be an external or network
     // drive that stalls, so it runs off the async runtime with the temp directory's creation.
     let (library_dir, temp_dir) = {
@@ -926,9 +933,13 @@ pub async fn download_media_from_url_async<R: Runtime>(
         let downloaded_temp =
             find_downloaded_media_file(&temp_dir, &file_name_prefix, expected_ext.as_deref())?;
 
-        let placement =
-            place_downloaded_file_async(downloaded_temp.clone(), media_dir, library_dir.clone())
-                .await;
+        let placement = place_downloaded_file_async(
+            downloaded_temp.clone(),
+            media_dir,
+            library_dir.clone(),
+            Some(library_pass),
+        )
+        .await;
 
         let (final_destination, file_path, kept_existing) = match placement {
             Ok(placed) => placed,
@@ -987,6 +998,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 &temp_dir,
                 &file_prefix,
                 run_live_chat_dir.as_deref(),
+                Some(library_pass),
             )
             .await
         } else {
@@ -1476,11 +1488,35 @@ mod tests {
         let temp_file = base.join("youtube_ID_137.live_chat.json");
         fs::write(&temp_file, b"{}").unwrap();
 
-        let error = place_downloaded_file(&temp_file, &media_dir, &base)
+        let error = place_downloaded_file(&temp_file, &media_dir, &base, None)
             .expect_err("a replay must never be stored as the video");
 
         assert_eq!(error.code, AppErrorCode::InvalidDownloadedFile.as_str());
         assert!(!media_dir.join("youtube_ID_137.live_chat.json").exists());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn place_downloaded_file_refuses_a_library_that_was_moved_while_the_download_ran() {
+        // The download resolved its library folder before yt-dlp ran, and a move that finished in
+        // the meantime makes that the folder the library left. The file must not be written there.
+        let base = unique_temp_dir("place-library-moved");
+        let media_dir = base.join("video");
+        fs::create_dir_all(&media_dir).unwrap();
+
+        let temp_file = base.join("youtube_ID_137.mp4");
+        fs::write(&temp_file, b"downloaded bytes").unwrap();
+
+        let pass = crate::services::library::lock::LibraryPass::begin();
+        drop(crate::services::library::lock::library_write_guard());
+
+        let error = place_downloaded_file(&temp_file, &media_dir, &base, Some(pass))
+            .expect_err("a library moved during the download must refuse the placement");
+
+        assert_eq!(error.code, AppErrorCode::InvalidLibraryPath.as_str());
+        assert!(temp_file.is_file(), "the download must stay where it was");
+        assert_eq!(fs::read_dir(&media_dir).unwrap().count(), 0);
 
         let _ = fs::remove_dir_all(&base);
     }
@@ -1506,7 +1542,7 @@ mod tests {
         fs::write(&temp_file, b"fresh-download").unwrap();
 
         let (final_path, kept_existing) =
-            place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+            place_downloaded_file(&temp_file, &media_dir, &base, None).unwrap();
 
         assert!(
             !kept_existing,
@@ -1535,7 +1571,7 @@ mod tests {
         fs::write(&temp_file, b"same-content").unwrap();
 
         let (final_path, kept_existing) =
-            place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+            place_downloaded_file(&temp_file, &media_dir, &base, None).unwrap();
 
         assert!(
             kept_existing,
@@ -1561,7 +1597,7 @@ mod tests {
         fs::write(&temp_file, b"intact-content").unwrap();
 
         let (final_path, kept_existing) =
-            place_downloaded_file(&temp_file, &media_dir, &base).unwrap();
+            place_downloaded_file(&temp_file, &media_dir, &base, None).unwrap();
 
         assert!(!kept_existing, "a damaged copy is not a copy worth keeping");
         assert_eq!(final_path, damaged);
@@ -1969,6 +2005,7 @@ mod tests {
             &temp_dir,
             "youtube_ID_137",
             Some(&live_chat_dir),
+            None,
         )
         .await;
 
@@ -2002,6 +2039,7 @@ mod tests {
             &temp_dir,
             "youtube_ID_137",
             Some(&not_a_dir),
+            None,
         )
         .await;
 
@@ -2027,6 +2065,7 @@ mod tests {
             &temp_dir,
             "youtube_ID_137",
             Some(&live_chat_dir_in(&library)),
+            None,
         )
         .await;
 
@@ -2045,7 +2084,8 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
 
         let app = mock_app();
-        let stored = store_live_chat(app.handle(), "run-1", &root, "youtube_ID_137", None).await;
+        let stored =
+            store_live_chat(app.handle(), "run-1", &root, "youtube_ID_137", None, None).await;
 
         assert_eq!(stored.unwrap(), None);
 

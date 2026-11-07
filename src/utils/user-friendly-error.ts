@@ -164,7 +164,7 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     [LIBRARY_VERIFICATION_FAILED_ERROR_CODE]:
         "The library check stopped before it could finish. Nothing was changed, and you can run it again.",
     [MEDIA_CREATION_IN_PROGRESS_ERROR_CODE]:
-        "A media is being added. Wait for it to finish, then remove the orphan files again.",
+        "A media is being added. Wait for it to finish, then try again.",
     [ORPHAN_REMOVAL_REFUSED_ERROR_CODE]:
         "The orphan files were not removed, because the library's database was recently imported or restored, or most of the library's files are unreferenced. Open Diagnostics again to see which.",
     [ASSET_SCOPE_RESTART_REQUIRED_ERROR_CODE]:

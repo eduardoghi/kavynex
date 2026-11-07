@@ -8,6 +8,7 @@ use std::sync::atomic::AtomicBool;
 use tauri::{AppHandle, Runtime};
 
 use crate::models::yt_dlp::YtDlpMetadata;
+use crate::services::library::lock::LibraryPass;
 use crate::services::logger;
 use crate::services::thumbnail::download::download_media_thumbnail_async;
 use crate::services::yt_dlp::events::emit_download_log_infallible;
@@ -171,8 +172,18 @@ pub(super) async fn store_live_chat_best_effort<R: Runtime>(
     temp_dir: &Path,
     file_prefix: &str,
     live_chat_dir: Option<&Path>,
+    library_pass: Option<LibraryPass>,
 ) -> Option<String> {
-    match store_live_chat(app, run_id, temp_dir, file_prefix, live_chat_dir).await {
+    match store_live_chat(
+        app,
+        run_id,
+        temp_dir,
+        file_prefix,
+        live_chat_dir,
+        library_pass,
+    )
+    .await
+    {
         Ok(path) => path,
         Err(error) => {
             logger::warn(
@@ -202,6 +213,7 @@ pub(super) async fn store_live_chat<R: Runtime>(
     temp_dir: &Path,
     file_prefix: &str,
     live_chat_dir: Option<&Path>,
+    library_pass: Option<LibraryPass>,
 ) -> AppResult<Option<String>> {
     let Some(temp_live_chat_file) = find_live_chat_temp_file(temp_dir, file_prefix) else {
         return Ok(None);
@@ -250,7 +262,7 @@ pub(super) async fn store_live_chat<R: Runtime>(
         let destination = final_live_chat_destination.clone();
 
         run_blocking(move || {
-            let _library_guard = crate::services::library::lock::library_read_guard();
+            let _library_guard = super::placement::download_library_guard(library_pass)?;
 
             // Created now, and only inside a library folder that is still there.
             if let Some(dir) = destination.parent() {

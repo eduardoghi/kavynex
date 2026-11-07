@@ -804,6 +804,37 @@ mod registration {
     }
 
     #[tokio::test]
+    async fn a_creation_writes_into_the_configured_library_whatever_the_request_names() {
+        // A creation that waited for a library move must land in the folder the settings hold once
+        // it runs, not in the one it was asked about before the move. So the library is read from
+        // the settings under the gate, and the request's own path counts for nothing.
+        let (app, library) = app_with_library("create-configured").await;
+        let source = source_media_outside_the_library("create-configured");
+        let left_behind = std::env::temp_dir().join(format!(
+            "kavynex_mediareg_left_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&left_behind).unwrap();
+
+        let mut request = local_request(&library, &source, "configured");
+        request.library_path = left_behind.to_string_lossy().to_string();
+
+        let created = create_media_async(app.handle(), request)
+            .await
+            .expect("the creation must run against the configured library");
+
+        assert!(library.join(&created.file_path).is_file());
+        assert!(
+            !left_behind.join(&created.file_path).exists(),
+            "nothing may be written into the folder the request named"
+        );
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(&left_behind);
+        let _ = std::fs::remove_dir_all(source.parent().unwrap());
+    }
+
+    #[tokio::test]
     async fn a_local_import_takes_its_media_type_from_where_the_file_lands() {
         // The request carries no media type, so nothing the renderer believes about the file can
         // end up in a row that disagrees with its subdirectory.

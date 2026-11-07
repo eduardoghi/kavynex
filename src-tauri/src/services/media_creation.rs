@@ -55,8 +55,8 @@ pub enum MediaSourceMode {
 ///
 /// Deliberately the same field set the frontend already assembled for its own orchestration, so the
 /// move is a change of *who runs the steps* rather than of what the user is asked for. Every value
-/// here is caller-supplied and none is trusted. The library is not among them (the command fills
-/// `library_path` from the settings), the title goes through the shared validator, and every produced
+/// here is caller-supplied and none is trusted. The library is not among them (`create_media_async`
+/// fills `library_path` from the settings), the title goes through the shared validator, and every produced
 /// path is re-checked as a managed library-relative path before it reaches a row. The media type is
 /// not asked for at all. A download reports it and a local import takes it from its extension, the
 /// same rule that picks the file's subdirectory, so a row cannot say "video" about a file in
@@ -240,13 +240,19 @@ pub(crate) fn ensure_request_files_were_chosen(request: &CreateMediaRequest) -> 
     ensure_chosen_if_present(ChosenFile::Source, request.cookies_path.as_deref())
 }
 
-/// Held shared by every media creation for its whole run, and exclusively by the orphan removal.
+/// Held shared by every media creation for its whole run, and exclusively by the orphan removal and
+/// the library move.
 ///
 /// A creation writes its artifacts into the library before the row that references them lands, so
 /// for that stretch they look exactly like orphans. A count checked once when the removal starts is
 /// not enough, since a creation starting a moment later could place its file while the removal is
 /// still listing the folder. With the gate, a creation that starts during a removal waits for it,
 /// and a removal that finds a creation running is refused (`try_exclude_creations`).
+///
+/// The move needs the same exclusion for a different reason. A creation reads the library folder
+/// once and a download can run for hours, so a move that finished in the meantime would leave the
+/// file in the folder the library left. The move is refused while a creation runs, and a creation
+/// that starts during a move waits for it and then reads the new folder.
 static CREATION_GATE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 /// The exclusive side of [`CREATION_GATE`], or `None` while a creation is running.
@@ -1233,13 +1239,16 @@ async fn ensure_youtube_media_is_new<R: Runtime>(
 /// Creates a media. Produces its artifacts, records the crash marker, inserts the row, clears the
 /// marker.
 ///
-/// `library_path` is verified against the persisted settings by the command layer before this runs,
-/// like every other library write.
+/// The library is the configured one, read from the settings once the gate is held. A library move
+/// is refused while a creation holds the gate and stores its new folder before letting go of it,
+/// so a creation that waited for a move reads the folder the library is in now rather than the one
+/// it left. Whatever `library_path` the request carried is replaced.
 pub async fn create_media_async<R: Runtime>(
     app: &AppHandle<R>,
-    request: CreateMediaRequest,
+    mut request: CreateMediaRequest,
 ) -> AppResult<CreatedMedia> {
     let _creation = CREATION_GATE.read().await;
+    request.library_path = library::guard::configured_library_path(app).await?;
     let request = normalize_create_media_request(request)?;
 
     ensure_channel_exists(app, request.channel_id).await?;

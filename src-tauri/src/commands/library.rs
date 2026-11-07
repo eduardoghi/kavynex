@@ -132,6 +132,18 @@ pub async fn migrate_library_directory<R: Runtime>(
     // services::chosen_folders.
     crate::services::chosen_folders::ensure_chosen(FolderPurpose::Library, &new_library_path, &[])?;
 
+    // A media creation reads the library folder once, and a download can then run for hours, so a
+    // move that finished in between would leave its file in the folder the library left. Refused
+    // rather than waited for, since the wait could be that long. Held until the new folder is
+    // stored below, so a creation that starts during the move reads the new folder once it may
+    // run. See services::media_creation.
+    let Some(_creations_excluded) = crate::services::media_creation::try_exclude_creations() else {
+        return Err(AppError::from_code(
+            AppErrorCode::MediaCreationInProgress,
+            "a media is being added, so the library folder cannot be moved now",
+        ));
+    };
+
     // Keep the old path (already the canonical form register_library_asset_scope authorized)
     // so its asset-scope grant can be withdrawn once the migration actually moves the library.
     let old_dir_for_scope = old_library_path.trim().to_string();
@@ -205,7 +217,59 @@ pub async fn migrate_library_directory<R: Runtime>(
         revoke_directory_from_asset_scope(&app, &old_dir_for_scope);
     }
 
+    if result.changed {
+        store_migrated_library_path(&app, &result.final_library_path, config_dir.as_deref()).await;
+    }
+
     Ok(result)
+}
+
+/// Stores the folder a library move ended in, while the move still excludes media creations.
+///
+/// The frontend stores it as well once the command returns, and reports a failure to the user. This
+/// write is for the gap before that. A creation waiting for the move would otherwise run as soon as
+/// the gate is released and read the folder the library just left. Best effort. A failure is logged
+/// and the frontend's write still follows.
+///
+/// The commit marker is cleared once the folder is stored, like `set_app_settings` does when the
+/// library changes. Its only job was to point the next launch at a folder the settings did not hold
+/// yet, and the frontend's write that follows no longer counts as a change, so it would not clear it.
+async fn store_migrated_library_path<R: Runtime>(
+    app: &AppHandle<R>,
+    library_path: &str,
+    config_dir: Option<&std::path::Path>,
+) {
+    let stored = async {
+        let pool = crate::services::database::shared_pool(app).await?;
+
+        crate::services::database::set_app_settings_in_pool(
+            &pool,
+            &crate::services::database::StoredAppSettings {
+                library_path: Some(library_path.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+    }
+    .await;
+
+    if let Err(error) = stored {
+        logger::warn(
+            "library",
+            format!("could not store the new library folder after the move: {error}"),
+        );
+        return;
+    }
+
+    if let Some(config_dir) = config_dir.filter(|dir| !dir.as_os_str().is_empty()) {
+        let marker = library::recovery::commit_marker_path(config_dir);
+
+        let _ = run_blocking(move || {
+            library::recovery::clear_commit_marker(&marker);
+            Ok(())
+        })
+        .await;
+    }
 }
 
 /// Removes the orphan files Diagnostics reports, the ones named like the app's own artifacts. See
@@ -977,5 +1041,102 @@ mod tests {
 
         let _ = fs::remove_dir_all(&configured);
         let _ = fs::remove_dir_all(&elsewhere);
+    }
+
+    #[test]
+    fn a_library_move_is_refused_while_a_media_creation_holds_the_gate() {
+        // A creation reads the library folder once and a download runs for hours, so a move in
+        // between would strand its file in the folder the library left. Holding the exclusive side
+        // stands in for a running creation, since either one makes the move fail to take it.
+        let old_library = unique_test_dir("move-refused-old");
+        let new_library = unique_test_dir("move-refused-new");
+        fs::create_dir_all(&old_library).unwrap();
+        fs::create_dir_all(&new_library).unwrap();
+        crate::services::chosen_folders::record(
+            FolderPurpose::Library,
+            &new_library.to_string_lossy(),
+        );
+
+        let app = mock_builder()
+            .invoke_handler(tauri::generate_handler![migrate_library_directory])
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        app.manage(memory_db_with_library(&old_library));
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+
+        let refused = {
+            // Another test can hold the gate for a moment, so this waits for it.
+            let _creation = tauri::async_runtime::block_on(async {
+                loop {
+                    if let Some(gate) = crate::services::media_creation::try_exclude_creations() {
+                        break gate;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            });
+
+            invoke(
+                &webview,
+                "migrate_library_directory",
+                serde_json::json!({
+                    "oldLibraryPath": old_library.to_string_lossy(),
+                    "newLibraryPath": new_library.to_string_lossy(),
+                    "onProgress": "__CHANNEL__:1",
+                }),
+            )
+            .expect_err("the move must be refused while a creation runs")
+        };
+
+        assert_eq!(
+            refused["code"],
+            AppErrorCode::MediaCreationInProgress.as_str()
+        );
+        assert!(old_library.is_dir(), "nothing may have been moved");
+
+        let _ = fs::remove_dir_all(&old_library);
+        let _ = fs::remove_dir_all(&new_library);
+    }
+
+    #[test]
+    fn a_finished_move_stores_the_new_folder_and_clears_the_commit_marker() {
+        // Stored before the move lets creations run again, so one that waited for it reads the
+        // new folder. The marker only had to cover the gap until the settings held it.
+        let old_library = unique_test_dir("move-store-old");
+        let new_library = unique_test_dir("move-store-new");
+        let config_dir = unique_test_dir("move-store-config");
+        fs::create_dir_all(&config_dir).unwrap();
+
+        let marker = library::recovery::commit_marker_path(&config_dir);
+        fs::write(&marker, new_library.to_string_lossy().as_bytes()).unwrap();
+
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(memory_db_with_library(&old_library));
+
+        let stored = tauri::async_runtime::block_on(async {
+            store_migrated_library_path(
+                app.handle(),
+                &new_library.to_string_lossy(),
+                Some(&config_dir),
+            )
+            .await;
+
+            let pool = crate::services::database::shared_pool(app.handle())
+                .await
+                .unwrap();
+            crate::services::database::get_app_settings_from_pool(&pool)
+                .await
+                .unwrap()
+                .library_path
+        });
+
+        assert_eq!(
+            stored.as_deref(),
+            Some(new_library.to_string_lossy().as_ref())
+        );
+        assert!(!marker.exists(), "the commit marker must be cleared");
+
+        let _ = fs::remove_dir_all(&config_dir);
     }
 }
