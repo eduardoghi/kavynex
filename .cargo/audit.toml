@@ -1,0 +1,9 @@
+# cargo-audit's configuration. It reads `.cargo/audit.toml` under the directory it runs in, which is
+# the repository root in ci.yml, release.yml and scheduled-audit.yml, so the advisories it ignores are
+# listed once here instead of as an `--ignore` flag in each of them.
+#
+# Every id here is also in src-tauri/deny.toml's `ignore`, with the reason it is accepted.
+# scripts/verify-advisory-ignores.js fails CI when the two lists differ or a workflow passes its own
+# `--ignore` again.
+[advisories]
+ignore = ["RUSTSEC-2024-0429"]

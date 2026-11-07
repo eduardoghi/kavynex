@@ -59,6 +59,11 @@ jobs:
             - name: Verify Rust toolchain and cargo tool pins
               run: node scripts/verify-rust-toolchain.js
 
+            # cargo-audit (.cargo/audit.toml) and cargo-deny (src-tauri/deny.toml) each list the
+            # advisories this project accepts. They have to agree, and no workflow adds its own.
+            - name: Verify the accepted RustSec advisories
+              run: node scripts/verify-advisory-ignores.js
+
             # `tauri build` refuses an @tauri-apps npm package and its Rust crate on different
             # major.minor releases, and nothing in this workflow runs `tauri build`, so without this
             # step the skew would surface only in release.yml. Dependabot bumps the two sides in
@@ -531,13 +536,13 @@ jobs:
             # below does. It is deny-all or nothing. Worth revisiting whenever sqlx moves.
             #
             # RUSTSEC-2024-0429 (glib unsound, via that same GTK3 tree) is ignored by name rather
-            # than by omission. Naming it is what makes a *new* unsound advisory fail the run
-            # instead of hiding among the allowed warnings. Re-check it when GTK3 moves.
+            # than by omission, in .cargo/audit.toml, which cargo-audit reads from the repository
+            # root. Naming it is what makes a *new* unsound advisory fail the run instead of hiding
+            # among the allowed warnings. Re-check it when GTK3 moves.
             - name: Audit Rust dependencies
               run: >
                   cargo audit --file src-tauri/Cargo.lock
                   --deny unsound
-                  --ignore RUSTSEC-2024-0429
 
             - name: Install cargo-deny
               run: cargo install cargo-deny@0.20.2 --locked

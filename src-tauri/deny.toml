@@ -82,7 +82,9 @@ unmaintained = "workspace"
 unsound = "all"
 yanked = "deny"
 # Each entry is a known case this project cannot act on. When the upstream moves and one stops
-# matching, cargo-deny warns "advisory was not encountered", which is the cue to delete it.
+# matching, cargo-deny warns "advisory was not encountered", which is the cue to delete it. An
+# advisory id here is also in the repository's .cargo/audit.toml, for cargo-audit
+# (scripts/verify-advisory-ignores.js checks the two agree).
 ignore = [
     { id = "RUSTSEC-2024-0429", reason = "glib unsound, via tauri's GTK3 tree. Re-check when GTK3 moves." },
     { crate = "spin@0.9.8", reason = "yanked, via sqlx-sqlite -> flume. Re-check when sqlx moves." },

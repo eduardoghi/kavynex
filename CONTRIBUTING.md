@@ -76,6 +76,9 @@ Repository consistency (plain Node, no install needed. CI runs all nine on every
 
 - `node scripts/verify-release-version.js`: fails when `package.json`,
   `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml` disagree about the version.
+- `node scripts/verify-advisory-ignores.js`: fails when the RustSec advisories `.cargo/audit.toml`
+  ignores for cargo-audit and those `src-tauri/deny.toml` ignores for cargo-deny differ, or when a
+  workflow passes cargo-audit an `--ignore` of its own.
 - `node scripts/verify-node-version.js`: fails when the Node version in `.nvmrc` and the
   `node-version:` values in the workflows disagree.
 - `node scripts/verify-rust-toolchain.js`: fails when the channel in `rust-toolchain.toml` and the
