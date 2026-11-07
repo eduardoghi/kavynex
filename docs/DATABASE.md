@@ -507,7 +507,7 @@ positional generations, and a `.bak.rotating` an interrupted rotation of theirs 
 under their own times and removed by the first daily snapshot of a build with archives.
 
 Two snapshots with different bytes dated the same second do not overwrite each other. The second
-takes the same name with `-2` (and so on) before `.gz`. One whose bytes match an archive already
+takes the same name with `-1` (then `-2`, and so on) before `.gz`, and is read as the newer one. One whose bytes match an archive already
 there is that archive, written by a run that stopped before removing the original.
 
 A database whose `user_version` is above this build's `SCHEMA_VERSION` (an older version installed
