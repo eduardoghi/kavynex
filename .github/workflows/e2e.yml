@@ -108,11 +108,13 @@ jobs:
 
     # Like scheduled-audit.yml and mutation.yml, a failing scheduled run opens (or comments on) a
     # tracking issue, since the email GitHub sends is easy to miss. Results are checked explicitly
-    # rather than with `failure()`, which does not match a job cancelled by its own timeout.
+    # rather than with `failure()`, which does not match a job cancelled by its own timeout, and
+    # under `!cancelled()` rather than `always()`, which is true only when the whole run was
+    # cancelled, by hand. A job past its `timeout-minutes` is cancelled alone and still alerts.
     alert-on-failure:
         name: Open an issue on failure
         needs: [e2e]
-        if: always() && (needs.e2e.result == 'failure' || needs.e2e.result == 'cancelled')
+        if: "!cancelled() && (needs.e2e.result == 'failure' || needs.e2e.result == 'cancelled')"
         runs-on: ubuntu-26.04
         timeout-minutes: 10
         permissions:

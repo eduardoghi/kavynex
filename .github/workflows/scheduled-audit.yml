@@ -470,12 +470,12 @@ jobs:
         # Both jobs above `cargo install` two tools from source with no build cache under a
         # 30-minute ceiling, which is the shape that hits a timeout first.
         #
-        # So the dependency results are checked explicitly rather than leaning on a status function.
-        # `always()` is what lets this run at all once a dependency is cancelled. The consequence is
-        # that cancelling the run by hand also opens an issue, which is the right direction to err.
-        # Kept identical to mutation.yml's condition on purpose, so the two do not drift.
+        # So the dependency results are checked explicitly rather than leaning on `failure()`, under
+        # `!cancelled()`, which is false only when the whole run was cancelled by hand. A job past
+        # its own `timeout-minutes` is cancelled alone, so it still alerts. Kept identical to
+        # mutation.yml's condition on purpose, so the two do not drift.
         if: >
-            always() &&
+            !cancelled() &&
             (needs.js-advisories.result == 'failure' || needs.js-advisories.result == 'cancelled' ||
              needs.rust-advisories.result == 'failure' || needs.rust-advisories.result == 'cancelled' ||
              needs.yt-dlp-fixture-freshness.result == 'failure' || needs.yt-dlp-fixture-freshness.result == 'cancelled' ||

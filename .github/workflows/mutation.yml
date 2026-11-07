@@ -386,13 +386,13 @@ jobs:
         # stop producing a verdict while the one mechanism built to make that visible stayed quiet,
         # and a gate that goes silent reads as green, which is worse than one that fails loudly.
         #
-        # So the dependency results are checked explicitly instead of leaning on a status function.
-        # `always()` is what lets this run at all once a dependency is cancelled. The consequence is
-        # that cancelling the run by hand also opens an issue. That is the right direction to err:
-        # a stray comment on an existing tracking issue costs a moment, whereas the alternative is
-        # the failure mode this whole condition exists to close.
+        # So the dependency results are checked explicitly instead of leaning on `failure()`. Under
+        # `!cancelled()`, which still lets this run once a dependency is cancelled, since it is a
+        # status function and so replaces the implicit `success()`. It is false only when the whole
+        # run was cancelled, which a job past its own `timeout-minutes` does not do, so a run
+        # cancelled by hand no longer opens an issue while a timeout still does.
         if: >
-            always() &&
+            !cancelled() &&
             (needs.mutation.result == 'failure' || needs.mutation.result == 'cancelled' ||
              needs.verify-exclusions.result == 'failure' || needs.verify-exclusions.result == 'cancelled' ||
              needs.rust-mutation.result == 'failure' || needs.rust-mutation.result == 'cancelled')
