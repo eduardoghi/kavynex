@@ -400,10 +400,27 @@ function extractRunsFrom(value: unknown): string {
     return extractRunsText((value as Record<string, unknown> | undefined)?.runs).trim();
 }
 
+// YouTube text is either a list of runs or one `simpleText`.
+function extractTextFrom(value: unknown): string {
+    const simpleText = (value as Record<string, unknown> | undefined)?.simpleText;
+
+    if (typeof simpleText === "string" && simpleText.trim()) {
+        return simpleText.trim();
+    }
+
+    return extractRunsFrom(value);
+}
+
 function buildMembership(renderer: Record<string, unknown>, offset: number): LiveChatMessageItem {
-    // New members carry the announcement in headerSubtext. Milestone messages add the
-    // member's own message.
-    const headerText = extractRunsFrom(renderer.headerSubtext);
+    // A new member's announcement is in headerSubtext ("Welcome to <level>!"). A milestone puts
+    // "Member for 6 months" in headerPrimaryText and the level name alone in headerSubtext, as
+    // simpleText, and may add the member's own message.
+    const headerText = [
+        extractTextFrom(renderer.headerPrimaryText),
+        extractTextFrom(renderer.headerSubtext),
+    ]
+        .filter(Boolean)
+        .join(" · ");
     const memberMessage = parseRendererMessage(renderer);
     const text =
         headerText && memberMessage ? `${headerText} (${memberMessage})` : headerText || memberMessage;

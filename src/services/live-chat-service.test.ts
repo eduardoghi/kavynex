@@ -262,6 +262,30 @@ describe("readLiveChatMessagesFromFile", () => {
         });
     });
 
+    it("parses a membership milestone with its duration and level", async () => {
+        // Read as "New member" before, since neither of its headers is a run list in headerSubtext.
+        mockFile(
+            rawItemLine({
+                liveChatMembershipItemRenderer: {
+                    id: "m2",
+                    authorName: { simpleText: "@regular" },
+                    headerPrimaryText: {
+                        runs: [{ text: "Member for " }, { text: "6" }, { text: " months" }],
+                    },
+                    headerSubtext: { simpleText: "Level 2" },
+                    message: { runs: [{ text: "half a year!" }] },
+                },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]).toMatchObject({
+            kind: "membership",
+            message_text: "Member for 6 months · Level 2 (half a year!)",
+        });
+    });
+
     it("parses a gift membership redemption", async () => {
         mockFile(
             rawItemLine({
