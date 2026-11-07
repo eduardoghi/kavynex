@@ -1015,11 +1015,19 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
     request: &CreateMediaRequest,
     mut prepared: PreparedArtifacts,
 ) -> AppResult<CreatedMedia> {
-    ensure_managed_prepared_paths(&prepared)?;
+    // Checked here, and refused through the failure branch below rather than returned on the
+    // spot. Returning skipped putting a renamed file back and left the thumbnail and the replay in
+    // the library with nothing pointing at them. No marker is written for paths that failed it,
+    // and the interim one, if any, is kept.
+    let managed = ensure_managed_prepared_paths(&prepared);
 
     let _guard = library::cleanup::media_registration_guard().await;
 
-    let marker = record_marker_best_effort(app, &prepared).await;
+    let marker = if managed.is_ok() {
+        record_marker_best_effort(app, &prepared).await
+    } else {
+        None
+    };
 
     // The marker above names everything the interim one did and more, so the interim one goes once
     // it is down. If it could not be written, the interim one is still covering the media file and
@@ -1031,7 +1039,10 @@ pub(crate) async fn register_prepared_media<R: Runtime>(
         prepared.interim_marker.take()
     };
 
-    let inserted = insert_prepared_media(app, request, &mut prepared).await;
+    let inserted = match managed {
+        Ok(()) => insert_prepared_media(app, request, &mut prepared).await,
+        Err(error) => Err(error),
+    };
 
     match inserted {
         Ok(id) => {

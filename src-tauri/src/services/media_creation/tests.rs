@@ -1367,6 +1367,45 @@ mod registration {
     }
 
     #[tokio::test]
+    async fn a_path_outside_the_layout_still_puts_a_renamed_file_back() {
+        // The check refused before the failure branch ran, so the user's file stayed in the
+        // library under a hash name.
+        let (app, library) = app_with_library("renamed-unmanaged").await;
+        let outside = std::env::temp_dir().join(format!(
+            "kavynex_renamed_unmanaged_{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&outside).unwrap();
+        let original = outside.join("clip.mp4");
+
+        let prepared = PreparedArtifacts {
+            media_file_is_only_copy: true,
+            renamed_from: Some(original.clone()),
+            live_chat_file_path: Some("../outside/chat.json".to_string()),
+            ..artifacts_on_disk(&library, "media_renamed_unmanaged")
+        };
+        let file_path = prepared.file_path.clone();
+
+        let error = register_prepared_media(
+            app.handle(),
+            &local_request(&library, &original, "renamed-unmanaged"),
+            prepared,
+        )
+        .await
+        .expect_err("a path outside the managed layout must be refused");
+
+        assert_eq!(
+            error.code,
+            crate::AppErrorCode::InvalidRelativePath.as_str()
+        );
+        assert_eq!(fs_bytes(&original), b"media bytes".to_vec());
+        assert!(!library.join(&file_path).exists());
+
+        let _ = std::fs::remove_dir_all(&library);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    #[tokio::test]
     async fn a_file_that_cannot_go_back_is_named_in_the_error() {
         let (app, library) = app_with_library("renamed-taken").await;
         let outside = std::env::temp_dir().join(format!(
