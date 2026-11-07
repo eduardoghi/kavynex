@@ -290,7 +290,9 @@ const COMMENT_INSERT_COLUMNS: &str = "INSERT INTO video_comments (\
 // The author fields follow the newest fetch only when it has them. A later fetch can come back
 // without an author (a channel since closed, a response that left the field out), and taking that
 // would turn a stored name into "Unknown author" and drop the handle the archive had. The
-// placeholder name never replaces a real one for the same reason.
+// placeholder name never replaces a real one for the same reason. The relative time ("2 years
+// ago") follows the newest fetch too, which is when it is truest, and a fetch without it keeps the
+// one stored rather than leaving the comment with no visible date.
 const COMMENT_UPSERT_CLAUSE: &str = " ON CONFLICT(video_id, comment_id) \
      WHERE comment_id IS NOT NULL AND TRIM(comment_id) <> '' DO UPDATE SET \
      author_name = CASE WHEN excluded.author_name = 'Unknown author' \
@@ -305,7 +307,7 @@ const COMMENT_UPSERT_CLAUSE: &str = " ON CONFLICT(video_id, comment_id) \
      is_favorited = excluded.is_favorited, \
      is_pinned = excluded.is_pinned, \
      is_edited = excluded.is_edited, \
-     time_text = excluded.time_text, \
+     time_text = COALESCE(excluded.time_text, video_comments.time_text), \
      published_at = COALESCE(video_comments.published_at, excluded.published_at)";
 
 async fn upsert_comments_with_id(
@@ -796,6 +798,49 @@ mod tests {
         assert_eq!(author_name, "Alice");
         assert_eq!(author_handle.as_deref(), Some("@alice"));
         assert_eq!(like_count, 9, "what the fetch does carry still updates");
+    }
+
+    #[tokio::test]
+    async fn a_refetch_without_a_relative_time_keeps_the_stored_one() {
+        let pool = create_test_pool().await;
+        let dated = YtDlpComment {
+            time_text: Some("2 years ago".to_string()),
+            ..sample_comment("Great video!")
+        };
+        merge_media_comments_in_pool(&pool, 1, vec![dated])
+            .await
+            .expect("first fetch");
+
+        let undated = YtDlpComment {
+            time_text: None,
+            ..sample_comment("Great video!")
+        };
+        merge_media_comments_in_pool(&pool, 1, vec![undated])
+            .await
+            .expect("second fetch");
+
+        let (kept,): (Option<String>,) =
+            sqlx::query_as("SELECT time_text FROM video_comments WHERE video_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("read comment");
+        assert_eq!(kept.as_deref(), Some("2 years ago"));
+
+        // A fetch that does carry one takes it, since it is the newer reading.
+        let newer = YtDlpComment {
+            time_text: Some("3 years ago".to_string()),
+            ..sample_comment("Great video!")
+        };
+        merge_media_comments_in_pool(&pool, 1, vec![newer])
+            .await
+            .expect("third fetch");
+
+        let (updated,): (Option<String>,) =
+            sqlx::query_as("SELECT time_text FROM video_comments WHERE video_id = 1")
+                .fetch_one(&pool)
+                .await
+                .expect("read comment");
+        assert_eq!(updated.as_deref(), Some("3 years ago"));
     }
 
     async fn stored_texts(pool: &SqlitePool) -> (String, Option<String>) {
