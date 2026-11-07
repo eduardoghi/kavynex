@@ -684,7 +684,9 @@ async fn execute_plan_locked_with<R: Runtime>(
 }
 
 /// The configured library folder, refused when it does not exist right now (a drive not mounted).
-async fn reachable_library_dir<R: Runtime>(app: &AppHandle<R>) -> AppResult<std::path::PathBuf> {
+pub(crate) async fn reachable_library_dir<R: Runtime>(
+    app: &AppHandle<R>,
+) -> AppResult<std::path::PathBuf> {
     let library_path = configured_library_dir(app)
         .await?
         .to_string_lossy()

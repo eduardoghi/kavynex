@@ -776,6 +776,23 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
         return Ok(0);
     }
 
+    // The same for a library folder that is not there (an external drive not plugged in yet). It
+    // fails every marker alike, and worse than the database does. A Move import's file is looked
+    // for in the library, and a library that is not there reads as a file already gone, so the
+    // marker was cleared as having nothing to return. With the drive back, the user's only copy sat
+    // in the library with no row and no record, an orphan the orphan removal would trash.
+    if let Err(error) = crate::services::library::cleanup::reachable_library_dir(app).await {
+        logger::warn(
+            "pending_media",
+            format!(
+                "the library folder is not available, so nothing can be reconciled; leaving every \
+                 pending marker untouched for the next launch: {error}"
+            ),
+        );
+
+        return Ok(0);
+    }
+
     // The marker reads and writes are blocking disk work, and the record write retries a held
     // rename with sleeps on Windows, so each one runs on the blocking pool.
     let markers = {
@@ -885,7 +902,8 @@ pub async fn sweep_pending_media_artifacts<R: Runtime>(app: &AppHandle<R>) -> Ap
                         format!(
                             "giving up on a pending media marker after {attempts} failed attempts; \
                              its artifacts are left in the library and are reported by \
-                             Diagnostics as unreferenced files: {error}"
+                             Diagnostics as unreferenced files, and a file a Move import took is \
+                             kept there for the user to put back: {error}"
                         ),
                     );
                 } else {
@@ -1577,8 +1595,9 @@ mod tests {
         );
         let kept = decode_marker(&fs::read_to_string(&marker).unwrap()).unwrap();
         assert_eq!(
-            kept.attempts, 1,
-            "and the failed attempt counts toward the ceiling"
+            kept.attempts, 0,
+            "and is not charged an attempt, since a missing library fails every marker alike and \
+             five launches without the drive would have given up on all of them"
         );
 
         let _ = fs::remove_file(&marker);
@@ -1818,6 +1837,37 @@ mod tests {
         assert!(!marker.exists(), "a returned file needs no record");
 
         let _ = fs::remove_dir_all(&library);
+        let _ = fs::remove_dir_all(&outside);
+    }
+
+    #[tokio::test]
+    async fn the_sweep_keeps_the_record_of_a_moved_file_while_the_library_is_not_mounted() {
+        // The library on a drive not plugged in. Its file read as already gone, so the marker was
+        // cleared as having nothing to return, and with the drive back the user's only copy sat in
+        // the library with no record, for the orphan removal to trash.
+        let _sweep = SWEEP_TESTS.lock().await;
+        let (app, library) = app_with_library("moved-unmounted").await;
+        let relative = format!("video/media_moved_away_{}.mp4", unique_temp_suffix());
+        let outside = absolute_outside("moved-unmounted-from");
+        let original = outside.join("clip.mp4");
+        let marker = leftover_moved_marker(&app, &relative, &original);
+        fs::remove_dir_all(&library).unwrap();
+
+        sweep_pending_media_artifacts(app.handle()).await.unwrap();
+
+        assert!(
+            marker.exists(),
+            "the marker is the only record of where it came from"
+        );
+        assert!(moved_files_awaiting_return(app.handle()).contains(&relative));
+        assert_eq!(
+            decode_marker(&fs::read_to_string(&marker).unwrap())
+                .unwrap()
+                .attempts,
+            0
+        );
+
+        let _ = fs::remove_file(&marker);
         let _ = fs::remove_dir_all(&outside);
     }
 

@@ -21,8 +21,9 @@ function abandonedMessage(abandoned: number): string {
     return (
         `${formatCount(abandoned, "unfinished media import")} left files in your library that no ` +
         "entry points at, and the app has stopped retrying them automatically. Nothing was lost. " +
-        "Open Diagnostics to see which files they are. It can remove them, or show each one in " +
-        "your file manager."
+        "Open Diagnostics to see which files they are. It can show each one in your file manager " +
+        "and remove the ones the app made. A file a Move import took from one of your folders is " +
+        "kept for you to put back."
     );
 }
 

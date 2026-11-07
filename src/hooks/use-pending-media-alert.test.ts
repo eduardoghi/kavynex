@@ -86,7 +86,9 @@ describe("usePendingMediaAlert", () => {
         expect(message).toContain("Diagnostics");
         // And the next steps have to be the ones that exist. Diagnostics removes the orphans and
         // reveals each one in the file manager.
-        expect(message).toContain("remove them");
+        expect(message).toContain("remove the ones the app made");
+        // A Move import's file has no copy elsewhere, and Diagnostics keeps it out of the removal.
+        expect(message).toContain("kept for you to put back");
         expect(message).toContain("file manager");
         // And it must not read as data loss, because nothing was lost. The files are still there.
         expect(message).toContain("Nothing was lost");
