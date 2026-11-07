@@ -1183,6 +1183,23 @@ fn move_orphans_to_trash_sync(
 ) -> ArtifactCleanupReport {
     let _library_guard = crate::services::library::lock::library_read_guard();
 
+    // Nothing is moved when something other than a real folder inside the library sits at `.trash`,
+    // since the files would leave the library for wherever it points.
+    if let Err(error) = crate::services::library::trash::existing_trash_dir(library_dir) {
+        logger::error(
+            "library_cleanup",
+            format!("nothing was moved to the trash: {error}"),
+        );
+
+        return ArtifactCleanupReport {
+            failed_paths: deletable
+                .into_iter()
+                .map(|artifact| artifact.path)
+                .collect(),
+            ..ArtifactCleanupReport::default()
+        };
+    }
+
     let trash_dir = library_dir.join(LIBRARY_TRASH_DIR).join(format!(
         "{}-{}",
         chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),

@@ -5,14 +5,14 @@
 //! at once. The startup sweep purges a run folder once it is older than the grace period
 //! (`services::temp_cleanup`). This is the user's way to free that space sooner.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
 use crate::services::library::cleanup::LIBRARY_TRASH_DIR;
 use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
-use crate::AppResult;
+use crate::{AppError, AppErrorCode, AppResult};
 
 /// How much the library trash holds, or how much emptying it freed.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -65,11 +65,43 @@ fn summarize(path: &Path) -> LibraryTrashSummary {
     summary
 }
 
+/// The library's trash folder, or `None` when there is none yet.
+///
+/// Refused when something other than a real folder inside the library sits at that name. A link or
+/// a Windows junction there would make emptying the trash delete whatever it points at, and moving
+/// files to the trash carry the user's media out of the library to it. The startup sweep refuses the
+/// same thing (`temp_cleanup`).
+pub(crate) fn existing_trash_dir(library_dir: &Path) -> AppResult<Option<PathBuf>> {
+    let trash_dir = library_dir.join(LIBRARY_TRASH_DIR);
+
+    match std::fs::symlink_metadata(&trash_dir) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(AppError::fs_error(
+            AppErrorCode::InvalidDirectoryPath,
+            "the library trash folder could not be read",
+            &trash_dir,
+            &error,
+        )),
+        // A link, and on Windows a junction, is not a directory to `symlink_metadata`.
+        Ok(metadata) if metadata.is_dir() => {
+            crate::utils::path::ensure_existing_path_inside_dir(&trash_dir, library_dir)?;
+            Ok(Some(trash_dir))
+        }
+        Ok(_) => Err(AppError::from_code(
+            AppErrorCode::InvalidDirectoryPath,
+            "the library's .trash is not a folder inside the library (a link or a file is in its              place), so nothing is moved into it or deleted from it",
+        )),
+    }
+}
+
 /// How much the trash of the library at `library_path` holds.
 pub fn library_trash_summary_sync(library_path: &str) -> AppResult<LibraryTrashSummary> {
     let library_dir = resolve_existing_library_dir(library_path)?;
 
-    Ok(summarize(&library_dir.join(LIBRARY_TRASH_DIR)).formatted())
+    Ok(match existing_trash_dir(&library_dir)? {
+        Some(trash_dir) => summarize(&trash_dir).formatted(),
+        None => LibraryTrashSummary::default().formatted(),
+    })
 }
 
 /// Deletes everything in the trash of the library at `library_path`, for good, and returns what that
@@ -80,10 +112,13 @@ pub fn library_trash_summary_sync(library_path: &str) -> AppResult<LibraryTrashS
 /// link in the trash is removed as a link, never followed.
 pub fn empty_library_trash_sync(library_path: &str) -> AppResult<LibraryTrashSummary> {
     let library_dir = resolve_existing_library_dir(library_path)?;
-    let trash_dir = library_dir.join(LIBRARY_TRASH_DIR);
     let _library_guard = crate::services::library::lock::library_read_guard();
 
     let mut freed = LibraryTrashSummary::default();
+
+    let Some(trash_dir) = existing_trash_dir(&library_dir)? else {
+        return Ok(freed.formatted());
+    };
 
     let Ok(entries) = std::fs::read_dir(&trash_dir) else {
         return Ok(freed.formatted());
@@ -172,6 +207,43 @@ mod tests {
             dir.join("video").join("media_b.mp4").is_file(),
             "nothing outside the trash is touched"
         );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_link_in_place_of_the_trash_is_neither_read_nor_emptied() {
+        // Emptying through it would delete whatever it points at.
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-trash-link-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        let elsewhere = dir.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::fs::write(elsewhere.join("precious.txt"), b"keep me").unwrap();
+        let library = dir.join("library");
+        std::fs::create_dir_all(&library).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, library.join(LIBRARY_TRASH_DIR)).unwrap();
+
+        assert!(empty_library_trash_sync(&library.to_string_lossy()).is_err());
+        assert!(library_trash_summary_sync(&library.to_string_lossy()).is_err());
+        assert!(elsewhere.join("precious.txt").is_file());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_in_place_of_the_trash_is_refused() {
+        let dir = std::env::temp_dir().join(format!(
+            "kavynex-trash-file-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(LIBRARY_TRASH_DIR), b"not a folder").unwrap();
+
+        assert!(empty_library_trash_sync(&dir.to_string_lossy()).is_err());
+        assert!(dir.join(LIBRARY_TRASH_DIR).is_file());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
