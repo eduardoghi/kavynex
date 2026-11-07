@@ -426,22 +426,35 @@ pub fn migrate_live_chat_files<G>(
             .map_err(|e| compress_error("failed to create library live chat dir", e))?;
         let dest = dest_dir.join(name);
 
-        // A file already at the destination was migrated on a previous run. Drop the stale
-        // source copy rather than clobbering it. This check is only trustworthy because the
-        // cross-volume fallback below writes atomically (temp + fsync + rename), so a crash
-        // mid-copy can never leave a partial `dest` here that we would mistake for a complete
-        // prior migration and then delete the intact source of.
+        // A file already at the destination is usually this one, migrated on a previous run that
+        // stopped before removing the source. Only the same bytes prove that. Another replay that
+        // happens to share the name is not a copy of this one, so the source stays where it is
+        // and is reported rather than deleted on the strength of a name.
         if dest.exists() {
-            let _ = fs::remove_file(&path);
+            if crate::services::filesystem::file_paths_have_same_content_using(&path, &dest, None)
+                .unwrap_or(false)
+            {
+                let _ = fs::remove_file(&path);
+            } else {
+                crate::services::logger::warn(
+                    "live_chat",
+                    format!(
+                        "a live chat replay was left in the app data folder, because the library \
+                         already holds a different file under its name: {}",
+                        crate::services::logger::redact_path(&path)
+                    ),
+                );
+            }
+
             continue;
         }
 
-        // Prefer a rename (fast, same volume), then fall back to an atomic copy across volumes,
-        // which is the expected case when app data is on the SSD and the library is on the
-        // HDD. `copy_file_atomic` writes to a temp file, fsyncs, then renames into place, so
-        // this backup artifact is never left truncated if the process dies mid-copy.
+        // Prefer a rename (fast, same volume), then fall back to a copy across volumes, which is
+        // the expected case when app data is on the SSD and the library is on the HDD. The copy is
+        // written to a temp file, read back and compared, and only then renamed into place, so the
+        // source is removed only once an intact copy exists.
         if crate::services::filesystem::rename_retrying(&path, &dest).is_err() {
-            crate::services::filesystem::copy_file_atomic(&path, &dest)?;
+            crate::services::filesystem::copy_file_atomic_verified(&path, &dest, None)?;
             let _ = fs::remove_file(&path);
         }
 
@@ -1173,6 +1186,38 @@ mod tests {
     }
 
     #[test]
+    fn a_replay_is_removed_only_when_the_library_holds_the_same_bytes_under_its_name() {
+        let app_data = temp_dir("mig-same-name");
+        let library = temp_dir("mig-same-name-library");
+        let source = app_data.join("live_chat");
+        let dest = library.join("live_chat");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&dest).unwrap();
+
+        // A copy an earlier run made and stopped before removing the source.
+        fs::write(source.join("copied.live_chat.json"), b"same").unwrap();
+        fs::write(dest.join("copied.live_chat.json"), b"same").unwrap();
+        // Another replay that happens to share the name.
+        fs::write(source.join("other.live_chat.json"), b"mine").unwrap();
+        fs::write(dest.join("other.live_chat.json"), b"theirs").unwrap();
+
+        migrate_live_chat_files(&app_data, &library, || Some(())).unwrap();
+
+        assert!(!source.join("copied.live_chat.json").exists());
+        assert_eq!(
+            fs::read(source.join("other.live_chat.json")).unwrap(),
+            b"mine"
+        );
+        assert_eq!(
+            fs::read(dest.join("other.live_chat.json")).unwrap(),
+            b"theirs"
+        );
+
+        let _ = fs::remove_dir_all(&app_data);
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
     fn a_live_chat_move_that_a_library_migration_got_into_stops_and_leaves_the_rest() {
         // Writing on would recreate live_chat/ under the old library path after the migration
         // removed it, where nothing would ever look.
@@ -1208,39 +1253,6 @@ mod tests {
         assert_eq!(fs::read(&file).unwrap(), original);
 
         let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn migrate_live_chat_files_never_clobbers_an_existing_destination() {
-        // A destination file already present (migrated on a previous run) must be kept
-        // intact, and the stale source dropped, never overwritten. The atomic copy in the
-        // cross-volume path guarantees such a destination is always a complete file, so this
-        // "already migrated" shortcut can be trusted.
-        let app_data = temp_dir("mig-existing-appdata");
-        let library = temp_dir("mig-existing-library");
-
-        let source = app_data.join("live_chat");
-        fs::create_dir_all(&source).unwrap();
-        fs::write(source.join("a.live_chat.json"), b"stale-source").unwrap();
-
-        let dest_dir = library.join("live_chat");
-        fs::create_dir_all(&dest_dir).unwrap();
-        fs::write(dest_dir.join("a.live_chat.json"), b"already-migrated").unwrap();
-
-        assert_eq!(
-            migrate_live_chat_files(&app_data, &library, || Some(())).unwrap(),
-            0
-        );
-
-        // The intact destination is preserved and the stale source is removed.
-        assert_eq!(
-            fs::read(dest_dir.join("a.live_chat.json")).unwrap(),
-            b"already-migrated"
-        );
-        assert!(!source.join("a.live_chat.json").exists());
-
-        let _ = fs::remove_dir_all(&app_data);
-        let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
