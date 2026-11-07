@@ -141,23 +141,23 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE, "yt-dlp finished, but no thumbnail file was produced."],
     [
         YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE,
-        "The comment download took too long and was interrupted. Your saved comments were kept.",
+        "The comment download took too long and was interrupted. Nothing already saved was changed.",
     ],
     [
         YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE,
-        "yt-dlp could not be started to download the comments. Your saved comments were kept.",
+        "yt-dlp could not be started to download the comments. Nothing already saved was changed.",
     ],
     [
         YT_DLP_COMMENTS_FAILED_ERROR_CODE,
-        "yt-dlp could not download the comments for this media. Your saved comments were kept.",
+        "yt-dlp could not download the comments for this media. Nothing already saved was changed.",
     ],
     [
         YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE,
-        "yt-dlp returned comment data Kavynex could not read. Your saved comments were kept.",
+        "yt-dlp returned comment data Kavynex could not read. Nothing already saved was changed.",
     ],
     [
         YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE,
-        "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Your saved comments were kept.",
+        "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Nothing already saved was changed.",
     ],
 
     [

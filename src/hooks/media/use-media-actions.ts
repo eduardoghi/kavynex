@@ -311,9 +311,12 @@ export function useMediaActions({
                         setActiveMedia(applyFetchResult(active));
                     }
 
+                    // Only a media that had comments stored has any to keep.
                     if (!result.updated) {
                         onNotice(
-                            "No comments were found for this media. Your saved comments were kept."
+                            media.comments_count > 0
+                                ? "No comments were found for this media. Your saved comments were kept."
+                                : "No comments were found for this media."
                         );
                         return;
                     }
@@ -331,7 +334,7 @@ export function useMediaActions({
                     onError(
                         resolveErrorMessage(
                             error,
-                            "Failed to refresh comments. Existing saved comments were preserved."
+                            "Failed to refresh comments. Nothing already saved was changed."
                         )
                     );
                 }

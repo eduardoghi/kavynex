@@ -255,19 +255,20 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     [YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE]:
         "This download is already running. Wait for it to finish, or cancel it first.",
 
-    // Every one of these ends by saying the saved comments survived, because that is what the user
+    // Every one of these ends by saying nothing stored was touched, because that is what the user
     // needs to know and cannot tell from the failure alone. It is true by construction. The refresh
-    // fetches first and only replaces what is stored once the fetch succeeded.
+    // fetches first and only replaces what is stored once the fetch succeeded. Worded so it holds
+    // for a media that has no comments stored yet too, which is where a first fetch fails.
     [YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE]:
-        "The comment download took too long and was interrupted. Your saved comments were kept.",
+        "The comment download took too long and was interrupted. Nothing already saved was changed.",
     [YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE]:
-        "yt-dlp could not be started to download the comments. Your saved comments were kept.",
+        "yt-dlp could not be started to download the comments. Nothing already saved was changed.",
     [YT_DLP_COMMENTS_FAILED_ERROR_CODE]:
-        "yt-dlp could not download the comments for this media. Your saved comments were kept.",
+        "yt-dlp could not download the comments for this media. Nothing already saved was changed.",
     [YT_DLP_COMMENTS_PARSE_FAILED_ERROR_CODE]:
-        "yt-dlp returned comment data Kavynex could not read. Your saved comments were kept.",
+        "yt-dlp returned comment data Kavynex could not read. Nothing already saved was changed.",
     [YT_DLP_COMMENTS_INCOMPLETE_ERROR_CODE]:
-        "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Your saved comments were kept.",
+        "YouTube reports this media has comments but returned none, which usually means the requests are being rate-limited. Try again in a few minutes. Nothing already saved was changed.",
     // Refused before yt-dlp is even started. The stored id is not an 11-character YouTube id. Only
     // reachable for a row that did not come from this app's own add flow (an imported database, a
     // hand-edited row), which is why it names the id rather than the network.

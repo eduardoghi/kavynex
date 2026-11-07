@@ -925,12 +925,39 @@ describe("useMediaActions", () => {
         });
 
         expect(onError).toHaveBeenCalledWith(
-            "Failed to refresh comments. Existing saved comments were preserved."
+            "Failed to refresh comments. Nothing already saved was changed."
         );
     });
 
+    it("says nothing about saved comments when a first fetch finds none", async () => {
+        const mediaPlayer = createMediaPlayer(createMediaRow({ comments_count: 0 }));
+
+        vi.mocked(refreshMediaComments).mockResolvedValue({ updated: false, totalComments: 0 });
+
+        const { result } = renderHook(() =>
+            useMediaActions({
+                libraryPath: "/library",
+                setMediaItems,
+                onItemsRemoved,
+                onItemReordered,
+                onWatchedChanged,
+                mediaPlayer,
+                onError,
+                onNotice,
+            })
+        );
+
+        await act(async () => {
+            await result.current.refreshComments(mediaPlayer.activeMedia!);
+        });
+
+        expect(onNotice).toHaveBeenCalledWith("No comments were found for this media.");
+    });
+
     it("shows a notice (not an error) and keeps counts when a refresh returns no comments", async () => {
-        const mediaPlayer = createMediaPlayer();
+        const mediaPlayer = createMediaPlayer(
+            createMediaRow({ has_comments: 1, comments_count: 3, comments_state: "available" })
+        );
 
         vi.mocked(refreshMediaComments).mockResolvedValue({
             updated: false,
