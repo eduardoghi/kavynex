@@ -7,7 +7,7 @@
 
 use std::path::Path;
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -41,24 +41,26 @@ const MAX_THUMBNAIL_RUNS_IN_FLIGHT: usize = 32;
 static THUMBNAIL_RUN_SEMAPHORE: BoundedSemaphore =
     BoundedSemaphore::new(MAX_CONCURRENT_THUMBNAIL_RUNS, MAX_THUMBNAIL_RUNS_IN_FLIGHT);
 
-/// Drains an async pipe to its end, retaining at most `max_bytes`. Bytes past the cap are read and
-/// discarded rather than left unread, so the child never blocks on a full pipe.
+/// Drains an async pipe to its end, retaining at most `max_bytes` in `buffer`. Bytes past the cap
+/// are read and discarded rather than left unread, so the child never blocks on a full pipe.
+///
+/// A chunk at a time, so what was read is there when a program yt-dlp started holds the pipe past
+/// its exit and the run stops waiting (see `utils::bounded_run`).
 async fn read_drain_capped_async(
-    stream: Option<impl AsyncRead + Unpin>,
+    mut stream: impl AsyncRead + Unpin,
     max_bytes: usize,
-) -> Vec<u8> {
-    let mut buffer: Vec<u8> = Vec::new();
-
-    let Some(mut stream) = stream else {
-        return buffer;
-    };
-
+    buffer: &Mutex<Vec<u8>>,
+) {
     let mut chunk = [0u8; 8192];
 
     loop {
         match stream.read(&mut chunk).await {
             Ok(0) | Err(_) => break,
             Ok(read) => {
+                let mut buffer = buffer
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+
                 if buffer.len() < max_bytes {
                     let take = (max_bytes - buffer.len()).min(read);
                     buffer.extend_from_slice(&chunk[..take]);
@@ -66,8 +68,6 @@ async fn read_drain_capped_async(
             }
         }
     }
-
-    buffer
 }
 
 /// Runs a yt-dlp thumbnail/avatar command under the shared timeout, capturing its output.
@@ -105,14 +105,19 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
 
     // Tracked for the app-exit sweep, and killed as a tree (yt-dlp and its FFmpeg) on the timeout or
     // on a cancel. Only the media-thumbnail path passes the run's cancel flag. The standalone and
-    // avatar paths pass None. A stream a grandchild still holds once yt-dlp exited is given up on
-    // rather than turning a finished run into a timeout (see utils::bounded_run).
+    // avatar paths pass None. A stream a grandchild still holds once yt-dlp exited is cut short
+    // with what it had printed, rather than turning a finished run into a timeout (see
+    // utils::bounded_run).
     let output = crate::utils::bounded_run::run_bounded_async(
         command,
         Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
         cancel.as_deref(),
-        |stdout| read_drain_capped_async(Some(stdout), MAX_PROCESS_OUTPUT_BYTES),
-        |stderr| read_drain_capped_async(Some(stderr), MAX_PROCESS_OUTPUT_BYTES),
+        |stdout, read| async move {
+            read_drain_capped_async(stdout, MAX_PROCESS_OUTPUT_BYTES, &read).await;
+        },
+        |stderr, read| async move {
+            read_drain_capped_async(stderr, MAX_PROCESS_OUTPUT_BYTES, &read).await;
+        },
     )
     .await
     .map_err(|failure| {
@@ -136,8 +141,8 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
 
     Ok(std::process::Output {
         status: output.status,
-        stdout: output.stdout.unwrap_or_default(),
-        stderr: output.stderr.unwrap_or_default(),
+        stdout: output.stdout,
+        stderr: output.stderr,
     })
 }
 
@@ -315,19 +320,19 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn draining_an_absent_stream_yields_nothing() {
-        // `Child::stdout` is an `Option`, and a command configured without a pipe hands back `None`.
-        assert!(read_drain_capped_async(None::<&[u8]>, 1024)
-            .await
-            .is_empty());
+    /// What [`read_drain_capped_async`] kept of `reader`.
+    async fn drained(reader: impl AsyncRead + Unpin, max_bytes: usize) -> Vec<u8> {
+        let buffer = Mutex::new(Vec::new());
+        read_drain_capped_async(reader, max_bytes, &buffer).await;
+
+        buffer.into_inner().unwrap()
     }
 
     #[tokio::test]
     async fn a_stream_under_the_cap_is_retained_whole() {
         let (reader, read_total) = CountingReader::new(b"yt-dlp: wrote thumbnail".to_vec(), 4);
 
-        let captured = read_drain_capped_async(Some(reader), 1024).await;
+        let captured = drained(reader, 1024).await;
 
         assert_eq!(captured, b"yt-dlp: wrote thumbnail");
         assert_eq!(read_total.load(Ordering::Relaxed), captured.len());
@@ -350,7 +355,7 @@ mod tests {
         let payload = vec![b'x'; 5000];
         let (reader, read_total) = CountingReader::new(payload.clone(), 30);
 
-        let captured = read_drain_capped_async(Some(reader), 100).await;
+        let captured = drained(reader, 100).await;
 
         assert_eq!(
             captured.len(),
@@ -371,7 +376,7 @@ mod tests {
         // one byte, which is the kind of off-by-one no behavioural test at 1 MiB would ever notice.
         let (reader, read_total) = CountingReader::new(vec![b'y'; 64], 8);
 
-        let captured = read_drain_capped_async(Some(reader), 0).await;
+        let captured = drained(reader, 0).await;
 
         assert!(captured.is_empty());
         assert_eq!(read_total.load(Ordering::Relaxed), 64);

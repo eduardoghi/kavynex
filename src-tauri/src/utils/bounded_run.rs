@@ -171,31 +171,37 @@ impl Drain {
     }
 }
 
-/// What an async run's readers returned once the program exited. A reader that had not finished
-/// within [`PIPE_DRAIN_AFTER_EXIT`] of it, or that panicked, is `None`.
+/// What an async run's readers held once the program exited.
 pub(crate) struct AsyncOutput<O, E> {
     pub status: ExitStatus,
-    pub stdout: Option<O>,
-    pub stderr: Option<E>,
+    pub stdout: O,
+    pub stderr: E,
+    /// The stdout reader had not finished within [`PIPE_DRAIN_AFTER_EXIT`] of the exit, because a
+    /// program the run started still held the pipe (or the reader panicked). `stdout` is what it
+    /// had read by then, which is often all of it.
+    pub stdout_cut_short: bool,
 }
 
 /// Runs `command` until it exits, for at most `timeout`, or until `cancel` is set. For the async
 /// call sites (the yt-dlp metadata and thumbnail runs).
 ///
 /// Each pipe is read by the reader the caller passes, on a task of its own, so a run that needs
-/// its stdout as JSON and its stderr as filtered lines reads them that way.
+/// its stdout as JSON and its stderr as filtered lines reads them that way. The reader fills a
+/// value it shares with the run rather than returning one, so what it had read is kept when a
+/// program the run started holds the pipe past the exit. Returned only at the end, that output was
+/// lost with the reader, and a finished run whose JSON had arrived failed as if it had none.
 pub(crate) async fn run_bounded_async<O, E, ReadOut, ReadErr>(
     mut command: tokio::process::Command,
     timeout: Duration,
     cancel: Option<&AtomicBool>,
-    read_stdout: impl FnOnce(tokio::process::ChildStdout) -> ReadOut,
-    read_stderr: impl FnOnce(tokio::process::ChildStderr) -> ReadErr,
+    read_stdout: impl FnOnce(tokio::process::ChildStdout, Arc<Mutex<O>>) -> ReadOut,
+    read_stderr: impl FnOnce(tokio::process::ChildStderr, Arc<Mutex<E>>) -> ReadErr,
 ) -> Result<AsyncOutput<O, E>, RunFailure>
 where
-    ReadOut: Future<Output = O> + Send + 'static,
-    ReadErr: Future<Output = E> + Send + 'static,
-    O: Send + 'static,
-    E: Send + 'static,
+    ReadOut: Future<Output = ()> + Send + 'static,
+    ReadErr: Future<Output = ()> + Send + 'static,
+    O: Default + Send + 'static,
+    E: Default + Send + 'static,
 {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     configure_child_async(&mut command);
@@ -204,14 +210,16 @@ where
     let pid = child.id();
     let _tracked = TrackedChildGuard::register(pid);
 
+    let stdout_read = Arc::new(Mutex::new(O::default()));
+    let stderr_read = Arc::new(Mutex::new(E::default()));
     let stdout_task = child
         .stdout
         .take()
-        .map(|stdout| tauri::async_runtime::spawn(read_stdout(stdout)));
+        .map(|stdout| tauri::async_runtime::spawn(read_stdout(stdout, Arc::clone(&stdout_read))));
     let stderr_task = child
         .stderr
         .take()
-        .map(|stderr| tauri::async_runtime::spawn(read_stderr(stderr)));
+        .map(|stderr| tauri::async_runtime::spawn(read_stderr(stderr, Arc::clone(&stderr_read))));
 
     // The child is borrowed by the wait rather than moved into it, so it is still alive when a
     // timeout or a cancel kills its tree. Dropped first (and `kill_on_drop` ended it), a tree kill
@@ -244,24 +252,29 @@ where
         }
     };
 
-    let stdout = match stdout_task {
-        Some(task) => join_within(task, PIPE_DRAIN_AFTER_EXIT)
-            .await
-            .and_then(Result::ok),
-        None => None,
-    };
-    let stderr = match stderr_task {
-        Some(task) => join_within(task, PIPE_DRAIN_AFTER_EXIT)
-            .await
-            .and_then(Result::ok),
-        None => None,
-    };
+    let stdout_finished = reader_finished(stdout_task).await;
+    reader_finished(stderr_task).await;
 
     Ok(AsyncOutput {
         status,
-        stdout,
-        stderr,
+        stdout: take_read(&stdout_read),
+        stderr: take_read(&stderr_read),
+        stdout_cut_short: !stdout_finished,
     })
+}
+
+/// Waits at most [`PIPE_DRAIN_AFTER_EXIT`] for a reader, and whether it reached the end of its
+/// pipe. One still waiting is stopped, and what it read stays in its shared value.
+async fn reader_finished(task: Option<tauri::async_runtime::JoinHandle<()>>) -> bool {
+    match task {
+        Some(task) => matches!(join_within(task, PIPE_DRAIN_AFTER_EXIT).await, Some(Ok(()))),
+        None => true,
+    }
+}
+
+/// What a reader put in its shared value.
+fn take_read<T: Default>(read: &Mutex<T>) -> T {
+    std::mem::take(&mut *read.lock().unwrap_or_else(|poisoned| poisoned.into_inner()))
 }
 
 #[cfg(test)]
@@ -378,18 +391,25 @@ mod tests {
             command,
             Duration::from_secs(60),
             None,
-            |mut stdout| async move {
-                let mut buffer = Vec::new();
-                let _ = tokio::io::AsyncReadExt::read_to_end(&mut stdout, &mut buffer).await;
-                buffer
+            |mut stdout, read: Arc<Mutex<Vec<u8>>>| async move {
+                let mut chunk = [0u8; 256];
+
+                while let Ok(count @ 1..) =
+                    tokio::io::AsyncReadExt::read(&mut stdout, &mut chunk).await
+                {
+                    read.lock().unwrap().extend_from_slice(&chunk[..count]);
+                }
             },
-            |_stderr| async {},
+            |_stderr, _read: Arc<Mutex<()>>| async {},
         )
         .await
         .unwrap();
 
         assert!(output.status.success());
         assert!(started.elapsed() < PIPE_DRAIN_AFTER_EXIT + Duration::from_secs(5));
+        // What it printed before exiting is kept. Lost with the reader, a finished metadata run
+        // whose JSON had arrived failed as if it had printed nothing.
+        assert!(String::from_utf8_lossy(&output.stdout).contains("done"));
     }
 
     #[tokio::test]
@@ -403,8 +423,8 @@ mod tests {
             command,
             Duration::from_secs(30),
             Some(&cancel),
-            |_stdout| async {},
-            |_stderr| async {},
+            |_stdout, _read: Arc<Mutex<()>>| async {},
+            |_stderr, _read: Arc<Mutex<()>>| async {},
         )
         .await
         .err()

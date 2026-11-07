@@ -1,5 +1,5 @@
 use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tauri::{AppHandle, Runtime};
@@ -58,7 +58,35 @@ const MAX_CAPTURED_STDERR_LINES: usize = 100;
 /// Reads yt-dlp stdout, keeping the JSON payload line and the useful log lines, but never
 /// buffering more than `max_bytes`. Returns `(json_payload, log_lines, overflowed)`, where
 /// `overflowed` means the output exceeded the cap (and the payload may be truncated).
+/// What the stdout of a JSON run held. The JSON line, the log lines kept for the terminal, and
+/// whether the output ran past its cap.
+#[derive(Debug, Default)]
+struct JsonStdout {
+    payload: String,
+    logs: Vec<String>,
+    overflowed: bool,
+}
+
+#[cfg(test)]
 async fn read_capped_json_stdout<R>(reader: R, max_bytes: u64) -> (String, Vec<String>, bool)
+where
+    R: AsyncRead + Unpin,
+{
+    let read = Mutex::new(JsonStdout::default());
+    read_capped_json_stdout_into(reader, max_bytes, &read).await;
+    let JsonStdout {
+        payload,
+        logs,
+        overflowed,
+    } = read.into_inner().unwrap();
+
+    (payload, logs, overflowed)
+}
+
+/// Reads a JSON run's stdout into `read` a line at a time, so the JSON is there when a program
+/// yt-dlp started holds the pipe past its exit and the run stops waiting (see
+/// `utils::bounded_run`).
+async fn read_capped_json_stdout_into<R>(reader: R, max_bytes: u64, read: &Mutex<JsonStdout>)
 where
     R: AsyncRead + Unpin,
 {
@@ -66,8 +94,6 @@ where
     // the cap.
     let mut reader = BufReader::new(reader.take(max_bytes + 1));
     let mut line_buf: Vec<u8> = Vec::new();
-    let mut json_payload = String::new();
-    let mut log_lines: Vec<String> = Vec::new();
 
     while let Some(mut line) = read_lossy_line(&mut reader, &mut line_buf).await {
         // Trimmed in place, since this line can be the whole metadata JSON.
@@ -77,10 +103,12 @@ where
             continue;
         }
 
+        let mut read = read.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
         if is_json_payload_line(&line) {
-            json_payload = line;
+            read.payload = line;
         } else if should_keep_terminal_line(&line) {
-            log_lines.push(line);
+            read.logs.push(line);
         }
     }
 
@@ -88,9 +116,9 @@ where
     // i.e. the real output exceeded `max_bytes`. This is an exact signal, unlike summing decoded
     // line lengths, which drifts from the raw byte count on CRLF line endings or on invalid UTF-8
     // replaced by the (multi-byte) U+FFFD.
-    let overflowed = reader.get_ref().limit() == 0;
-
-    (json_payload, log_lines, overflowed)
+    read.lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .overflowed = reader.get_ref().limit() == 0;
 }
 
 type NormalizedDownloadMetadata = (String, String, String, Option<String>, Option<String>);
@@ -523,10 +551,12 @@ fn select_best_error_detail(
 
 /// Reads yt-dlp's stderr as log lines, keeping only the ones worth showing and only the most
 /// recent [`MAX_CAPTURED_STDERR_LINES`] of them.
-async fn read_filtered_stderr_lines(stderr: tokio::process::ChildStderr) -> Vec<String> {
+async fn read_filtered_stderr_lines(
+    stderr: tokio::process::ChildStderr,
+    log_lines: Arc<Mutex<Vec<String>>>,
+) {
     let mut reader = BufReader::new(stderr);
     let mut line_buf: Vec<u8> = Vec::new();
-    let mut log_lines: Vec<String> = Vec::new();
 
     // stderr carries short log lines only (the JSON payload comes on stdout), so cap each line
     // tightly. Without it a single unterminated line could balloon far past the ring buffer's
@@ -537,6 +567,10 @@ async fn read_filtered_stderr_lines(stderr: tokio::process::ChildStderr) -> Vec<
         let line = line_value.trim_end().to_string();
 
         if should_keep_terminal_line(&line) {
+            let mut log_lines = log_lines
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+
             // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
             // chatty failure (retry storms, throttling notices), since `-v` is always passed
             // here. Keep the most recent lines, the same ring-buffer cap the download flow's
@@ -548,8 +582,6 @@ async fn read_filtered_stderr_lines(stderr: tokio::process::ChildStderr) -> Vec<
             log_lines.push(line);
         }
     }
-
-    log_lines
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -602,7 +634,9 @@ async fn run_yt_dlp_and_capture_json(
         command,
         Duration::from_secs(timeout_secs),
         cancel.as_deref(),
-        |stdout| read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES),
+        |stdout, read| async move {
+            read_capped_json_stdout_into(stdout, MAX_YT_DLP_JSON_BYTES, &read).await;
+        },
         read_filtered_stderr_lines,
     )
     .await
@@ -623,15 +657,22 @@ async fn run_yt_dlp_and_capture_json(
 
     let status = run.status;
 
-    // A grandchild that inherited the pipes can keep them open after yt-dlp exited, and the JSON on
-    // stdout is the whole point of the run.
-    let (json_payload, stdout_logs, stdout_overflowed) = run.stdout.ok_or_else(|| {
-        AppError::from_code(
+    let JsonStdout {
+        payload: json_payload,
+        logs: stdout_logs,
+        overflowed: stdout_overflowed,
+    } = run.stdout;
+    let stderr_logs = run.stderr;
+
+    // A grandchild that inherited the pipes can keep them open after yt-dlp exited. The JSON line
+    // has usually arrived by then and is kept. A run cut short before it did fails here, since the
+    // JSON on stdout is the whole point of the run.
+    if run.stdout_cut_short && json_payload.trim().is_empty() {
+        return Err(AppError::from_code(
             AppErrorCode::YtDlpStdoutCaptureFailed,
             "yt-dlp exited but its output stayed open, held by a program it started",
-        )
-    })?;
-    let stderr_logs = run.stderr.unwrap_or_default();
+        ));
+    }
 
     // Ahead of the exit status. Once the reader stops at the cap it drops the pipe, and yt-dlp then
     // fails writing to it, so checked after the status this would read as an ordinary failure with
