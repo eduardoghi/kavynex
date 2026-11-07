@@ -14,7 +14,7 @@ pub async fn list_yt_dlp_formats<R: Runtime>(
     cookies_path: Option<String>,
     run_id: Option<String>,
 ) -> AppResult<YtDlpFormatsResult> {
-    chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
+    chosen_files::ensure_chosen_if_present(ChosenFile::COOKIES, cookies_path.as_deref())?;
 
     yt_dlp::list_yt_dlp_formats_async(
         &app,

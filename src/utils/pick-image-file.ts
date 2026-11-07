@@ -6,7 +6,7 @@ import { IMAGE_FILE_EXTENSIONS } from "./media-utils";
 // cancels or the selection is empty. It deliberately does not catch a dialog failure. The caller
 // surfaces a context-specific error message (e.g. "Failed to select avatar file.").
 export async function pickImageFilePath(): Promise<string | null> {
-    return pickFile({
+    return pickFile("image", {
         filters: [
             {
                 name: "Images",

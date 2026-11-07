@@ -31,7 +31,7 @@ pub async fn fetch_media_comments<R: Runtime>(
         ));
     }
 
-    chosen_files::ensure_chosen_if_present(ChosenFile::Source, cookies_path.as_deref())?;
+    chosen_files::ensure_chosen_if_present(ChosenFile::COOKIES, cookies_path.as_deref())?;
 
     // The video whose comments are fetched has to be the one the row names. Taken from the renderer
     // as it was, a stale or wrong id merged another video's comments into this media's backup.

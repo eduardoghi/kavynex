@@ -363,13 +363,18 @@ renderer's choice.
 The file-taking commands follow the same rule, through `services/chosen_files.rs`. A file reaches
 them from the backend's open dialog (`open_file_dialog`), its save dialog (`save_file_dialog`), or
 as a preview the backend wrote and returned (`generate_temporary_thumbnail`,
-`stage_manual_thumbnail`). Each is recorded with its kind, *source* or *destination*, and a
-command checks the kind it needs. So a file picked to be imported cannot be named as an export
-destination, and a save destination cannot be read. The commands are `import_database` (source),
-`export_database` (destination), `generate_temporary_thumbnail`, `stage_manual_thumbnail`,
-`persist_thumbnail_file`, the cookies file of `list_yt_dlp_formats` and `fetch_media_comments`,
-and in `create_media` the media file of a local import, a thumbnail given as a path on disk, and the
-cookies file. Anything else is refused as `INVALID_INPUT` before it is stat'ed.
+`stage_manual_thumbnail`). Each is recorded with the one use it was picked for, the way a folder is
+recorded with its purpose. The open dialog takes that use from the renderer (`FilePurpose`, one of
+media, image, cookies or database), the previews are recorded as images, and the save dialog's pick
+is the database export's destination. A command checks the use it needs. So an image picked as a
+thumbnail cannot be imported as media, where a Move would remove it from the user's folder, or read
+as a cookies file or loaded as the database, and a save destination cannot be read at all. The
+commands are `import_database` (database), `export_database` (the export destination),
+`generate_temporary_thumbnail` (media, the file the preview is made from), `stage_manual_thumbnail`
+and `persist_thumbnail_file` (image), the cookies file of `list_yt_dlp_formats` and
+`fetch_media_comments` (cookies), and in `create_media` the media file of a local import (media), a
+thumbnail given as a path on disk (image), and the cookies file (cookies). Anything else is refused
+as `INVALID_INPUT` before it is stat'ed.
 
 The extension gates and the network refusal described above still run after it. They decide what
 kind of file a pick may be, and the record decides that the user chose it. Before the record, a

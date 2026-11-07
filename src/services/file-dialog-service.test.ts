@@ -21,15 +21,16 @@ describe("file-dialog-service", () => {
         expect(invokeMock).toHaveBeenCalledWith("open_folder_dialog", { purpose: "library" });
     });
 
-    it("asks the backend for a file with the filters the caller names", async () => {
+    it("asks the backend for a file with the purpose and the filters the caller names", async () => {
         invokeMock.mockResolvedValueOnce("/backups/import.db");
 
         const filters = [{ name: "Database", extensions: ["db"] }];
 
-        await expect(pickFile({ title: "Import database", filters })).resolves.toBe(
+        await expect(pickFile("database", { title: "Import database", filters })).resolves.toBe(
             "/backups/import.db"
         );
         expect(invokeMock).toHaveBeenCalledWith("open_file_dialog", {
+            purpose: "database",
             title: "Import database",
             filters,
         });
@@ -39,9 +40,13 @@ describe("file-dialog-service", () => {
         // The command takes a Vec, which serde does not default when the key is missing.
         invokeMock.mockResolvedValueOnce(null);
 
-        await pickFile();
+        await pickFile("cookies");
 
-        expect(invokeMock).toHaveBeenCalledWith("open_file_dialog", { title: null, filters: [] });
+        expect(invokeMock).toHaveBeenCalledWith("open_file_dialog", {
+            purpose: "cookies",
+            title: null,
+            filters: [],
+        });
     });
 
     it("asks the backend for a save destination with the file name filled in", async () => {
@@ -62,7 +67,7 @@ describe("file-dialog-service", () => {
         await expect(pickFolder("externalBackup")).resolves.toBe("E:/Kavynex backups");
 
         invokeMock.mockResolvedValueOnce(null);
-        await expect(pickFile()).resolves.toBeNull();
+        await expect(pickFile("media")).resolves.toBeNull();
 
         invokeMock.mockResolvedValueOnce("   ");
         await expect(pickSaveDestination()).resolves.toBeNull();

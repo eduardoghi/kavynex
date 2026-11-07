@@ -140,7 +140,8 @@ describe("useAddMediaForm", () => {
             await result.current.pickMediaViaDialog();
         });
 
-        const filters = vi.mocked(pickFile).mock.calls[0]?.[0]?.filters ?? [];
+        expect(vi.mocked(pickFile).mock.calls[0]?.[0]).toBe("media");
+        const filters = vi.mocked(pickFile).mock.calls[0]?.[1]?.filters ?? [];
         const extensions = filters.flatMap((filter) => filter.extensions);
         expect(extensions).toContain("mp4");
         expect(extensions).toContain("opus");
@@ -160,8 +161,11 @@ describe("useAddMediaForm", () => {
         });
 
         const [cookiesCall, thumbnailCall] = vi.mocked(pickFile).mock.calls;
-        expect(cookiesCall?.[0]?.filters?.flatMap((filter) => filter.extensions)).toEqual(["txt"]);
-        expect(thumbnailCall?.[0]?.filters?.flatMap((filter) => filter.extensions)).toEqual([
+        // Each pick is accepted by the backend for its own use only.
+        expect(cookiesCall?.[0]).toBe("cookies");
+        expect(thumbnailCall?.[0]).toBe("image");
+        expect(cookiesCall?.[1]?.filters?.flatMap((filter) => filter.extensions)).toEqual(["txt"]);
+        expect(thumbnailCall?.[1]?.filters?.flatMap((filter) => filter.extensions)).toEqual([
             "png",
             "jpg",
             "jpeg",

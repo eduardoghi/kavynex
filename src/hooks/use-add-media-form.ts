@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { pickFile, type FileDialogFilter } from "../services/file-dialog-service";
+import { pickFile, type FileDialogFilter, type FilePurpose } from "../services/file-dialog-service";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../types/media";
 import {
     AUDIO_FILE_EXTENSIONS,
@@ -302,8 +302,8 @@ export function useAddMediaForm({
     );
 
     const pickSinglePathFromDialog = useCallback(
-        async (filters: FileDialogFilter[]): Promise<string> => {
-            return (await pickFile({ filters })) ?? "";
+        async (purpose: FilePurpose, filters: FileDialogFilter[]): Promise<string> => {
+            return (await pickFile(purpose, { filters })) ?? "";
         },
         []
     );
@@ -321,7 +321,7 @@ export function useAddMediaForm({
 
     const pickCookiesFileViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selectedPath = await pickSinglePathFromDialog(COOKIES_FILE_FILTERS);
+            const selectedPath = await pickSinglePathFromDialog("cookies", COOKIES_FILE_FILTERS);
 
             if (!selectedPath) {
                 return;
@@ -483,7 +483,7 @@ export function useAddMediaForm({
 
     const pickMediaViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selectedPath = await pickSinglePathFromDialog(MEDIA_FILE_FILTERS);
+            const selectedPath = await pickSinglePathFromDialog("media", MEDIA_FILE_FILTERS);
 
             if (!selectedPath) {
                 return;
@@ -497,7 +497,7 @@ export function useAddMediaForm({
 
     const pickThumbViaDialog = useCallback(async (): Promise<void> => {
         try {
-            const selectedPath = await pickSinglePathFromDialog(IMAGE_FILE_FILTERS);
+            const selectedPath = await pickSinglePathFromDialog("image", IMAGE_FILE_FILTERS);
 
             if (!selectedPath) {
                 return;

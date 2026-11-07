@@ -144,7 +144,7 @@ pub async fn export_database<R: Runtime>(
     app: AppHandle<R>,
     destination_path: String,
 ) -> AppResult<()> {
-    chosen_files::ensure_chosen(ChosenFile::Destination, &destination_path)?;
+    chosen_files::ensure_chosen(ChosenFile::DatabaseExport, &destination_path)?;
 
     // The AppHandle-bound half. Resolve the app config directory the containment guard needs. The
     // validation ordering and the single-path invariant then live in the pure
@@ -258,7 +258,7 @@ async fn checkpoint_live_database<R: Runtime>(app: &AppHandle<R>) {
 /// next startup, so the caller should relaunch the app after this succeeds.
 #[tauri::command]
 pub async fn import_database<R: Runtime>(app: AppHandle<R>, source_path: String) -> AppResult<()> {
-    chosen_files::ensure_chosen(ChosenFile::Source, &source_path)?;
+    chosen_files::ensure_chosen(ChosenFile::DATABASE, &source_path)?;
 
     // Gate the caller-supplied source before anything stats or opens it (see
     // prepare_import_source), and read from exactly the path it returns.

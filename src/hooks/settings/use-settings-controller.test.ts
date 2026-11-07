@@ -362,7 +362,7 @@ describe("useSettingsController", () => {
             await result.current.pickImportFileAction();
         });
 
-        expect(openMock).toHaveBeenCalledWith({
+        expect(openMock).toHaveBeenCalledWith("database", {
             title: "Import database",
             filters: [{ name: "Database", extensions: ["db"] }],
         });

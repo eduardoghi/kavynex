@@ -1,9 +1,10 @@
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand } from "../lib/tauri-client";
 import type { FileDialogFilter } from "../types/generated/FileDialogFilter";
+import type { FilePurpose } from "../types/generated/FilePurpose";
 import type { FolderPurpose } from "../types/generated/FolderPurpose";
 
-export type { FileDialogFilter, FolderPurpose };
+export type { FileDialogFilter, FilePurpose, FolderPurpose };
 
 // The native pickers, opened by the backend (commands/dialog.rs). The dialog plugin called from
 // the renderer would add whatever the user picks to the asset protocol's scope for the rest of
@@ -24,11 +25,15 @@ export async function pickFolder(purpose: FolderPurpose): Promise<string | null>
     return normalizePicked(await invokeCommand(TAURI_COMMANDS.OPEN_FOLDER_DIALOG, { purpose }));
 }
 
+// The backend accepts the file afterwards for `purpose` only (services/chosen_files.rs), so an image
+// picked as a thumbnail cannot be imported as media or read as cookies.
 export async function pickFile(
+    purpose: FilePurpose,
     options: { title?: string; filters?: FileDialogFilter[] } = {}
 ): Promise<string | null> {
     return normalizePicked(
         await invokeCommand(TAURI_COMMANDS.OPEN_FILE_DIALOG, {
+            purpose,
             title: options.title ?? null,
             filters: options.filters ?? [],
         })

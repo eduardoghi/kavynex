@@ -118,10 +118,10 @@ mod tests {
         import_mode: &str,
     ) -> serde_json::Value {
         // As the file picker would have, since the command accepts only what it handed out.
-        record(ChosenFile::Source, &source.to_string_lossy());
+        record(ChosenFile::MEDIA, &source.to_string_lossy());
 
         if let Some(thumbnail) = thumbnail {
-            record(ChosenFile::Source, &thumbnail.to_string_lossy());
+            record(ChosenFile::IMAGE, &thumbnail.to_string_lossy());
         }
 
         serde_json::json!({

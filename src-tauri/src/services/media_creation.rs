@@ -228,16 +228,16 @@ pub(crate) fn ensure_request_files_were_chosen(request: &CreateMediaRequest) -> 
     use crate::services::chosen_files::{ensure_chosen, ensure_chosen_if_present, ChosenFile};
 
     if matches!(request.source_mode, MediaSourceMode::Local) {
-        ensure_chosen(ChosenFile::Source, &request.source_value)?;
+        ensure_chosen(ChosenFile::MEDIA, &request.source_value)?;
     }
 
     if let ThumbnailSource::Local(path) =
         classify_thumbnail_source(request.thumbnail_source_path.as_deref())
     {
-        ensure_chosen(ChosenFile::Source, &path)?;
+        ensure_chosen(ChosenFile::IMAGE, &path)?;
     }
 
-    ensure_chosen_if_present(ChosenFile::Source, request.cookies_path.as_deref())
+    ensure_chosen_if_present(ChosenFile::COOKIES, request.cookies_path.as_deref())
 }
 
 /// Held shared by every media creation for its whole run, and exclusively by the orphan removal and

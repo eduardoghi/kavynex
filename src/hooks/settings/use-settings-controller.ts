@@ -215,7 +215,7 @@ export function useSettingsController({
         let selection: string | null;
 
         try {
-            selection = await pickFile({
+            selection = await pickFile("database", {
                 title: "Import database",
                 filters: [{ name: "Database", extensions: ["db"] }],
             });

@@ -517,7 +517,7 @@ describe("useChannels", () => {
             await result.current.pickChannelAvatarViaDialog();
         });
 
-        expect(mockedOpen).toHaveBeenCalledWith({
+        expect(mockedOpen).toHaveBeenCalledWith("image", {
             filters: [
                 {
                     name: "Images",
@@ -600,7 +600,7 @@ describe("useChannels", () => {
             await result.current.updateChannelAvatarFromFile(channelA);
         });
 
-        expect(mockedOpen).toHaveBeenCalledWith({
+        expect(mockedOpen).toHaveBeenCalledWith("image", {
             filters: [
                 {
                     name: "Images",

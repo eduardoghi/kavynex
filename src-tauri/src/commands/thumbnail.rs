@@ -14,7 +14,8 @@ pub async fn generate_temporary_thumbnail<R: Runtime>(
     app: AppHandle<R>,
     path: String,
 ) -> AppResult<String> {
-    chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
+    // The preview is made from the media file the user picked to import.
+    chosen_files::ensure_chosen(ChosenFile::MEDIA, &path)?;
 
     // Each preview hashes the whole source and can run FFmpeg for up to a minute on the blocking
     // pool every other command offloads to. Bounded like every other place that starts a child.
@@ -26,7 +27,7 @@ pub async fn generate_temporary_thumbnail<R: Runtime>(
         run_blocking(move || thumbnail::generate_temporary_thumbnail_sync(&app, &path)).await?;
 
     // The add-media form hands the preview back as the media's thumbnail.
-    chosen_files::record(ChosenFile::Source, &preview);
+    chosen_files::record(ChosenFile::IMAGE, &preview);
 
     Ok(preview)
 }
@@ -39,7 +40,7 @@ pub async fn persist_thumbnail_file<R: Runtime>(
     app: AppHandle<R>,
     path: String,
 ) -> AppResult<String> {
-    chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
+    chosen_files::ensure_chosen(ChosenFile::IMAGE, &path)?;
 
     with_configured_library_then_blocking(&app, move |library_path| {
         thumbnail::persist_thumbnail_file_sync(&path, &library_path)
@@ -111,11 +112,11 @@ pub async fn stage_manual_thumbnail<R: Runtime>(
     app: AppHandle<R>,
     path: String,
 ) -> AppResult<String> {
-    chosen_files::ensure_chosen(ChosenFile::Source, &path)?;
+    chosen_files::ensure_chosen(ChosenFile::IMAGE, &path)?;
 
     let staged = run_blocking(move || thumbnail::stage_manual_thumbnail_sync(&app, &path)).await?;
 
-    chosen_files::record(ChosenFile::Source, &staged);
+    chosen_files::record(ChosenFile::IMAGE, &staged);
 
     Ok(staged)
 }
@@ -190,7 +191,7 @@ mod tests {
         let picked = root.join("picked.png");
         fs::create_dir_all(&root).unwrap();
         fs::write(&picked, b"\x89PNG\r\n\x1a\n").unwrap();
-        chosen_files::record(ChosenFile::Source, &picked.to_string_lossy());
+        chosen_files::record(ChosenFile::IMAGE, &picked.to_string_lossy());
 
         let webview = test_webview(memory_db_with_library(&library));
 
@@ -225,7 +226,7 @@ mod tests {
         let webview = test_webview(memory_db_with_library(&library));
 
         // Picked, so the network gate is what refuses it. A picker can return a network path.
-        chosen_files::record(ChosenFile::Source, r"\\evil\share\cover.jpg");
+        chosen_files::record(ChosenFile::IMAGE, r"\\evil\share\cover.jpg");
 
         let error = invoke(
             &webview,

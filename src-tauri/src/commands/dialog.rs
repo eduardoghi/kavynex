@@ -14,6 +14,7 @@ use serde::Deserialize;
 use tauri::{Runtime, Window};
 use tauri_plugin_dialog::{DialogExt, FileDialogBuilder, FilePath};
 
+use crate::services::chosen_files::{ChosenFile, FilePurpose};
 use crate::services::chosen_folders::FolderPurpose;
 use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -103,10 +104,12 @@ pub async fn open_folder_dialog<R: Runtime>(
     Ok(picked)
 }
 
-/// Opens a single-file picker. Resolves to the chosen file, or `None` when cancelled.
+/// Opens a single-file picker. Resolves to the chosen file, or `None` when cancelled. The file is
+/// accepted afterwards for `purpose` only (see services::chosen_files).
 #[tauri::command]
 pub async fn open_file_dialog<R: Runtime>(
     window: Window<R>,
+    purpose: FilePurpose,
     title: Option<String>,
     filters: Vec<FileDialogFilter>,
 ) -> AppResult<Option<String>> {
@@ -115,13 +118,10 @@ pub async fn open_file_dialog<R: Runtime>(
 
     let picked = picked_path(picked)?;
 
-    // The commands that read a user's file accept only one picked here, or a preview the backend
-    // wrote. See services::chosen_files.
+    // The commands that read a user's file accept only one picked here for their own use, or a
+    // preview the backend wrote. See services::chosen_files.
     if let Some(path) = picked.as_deref() {
-        crate::services::chosen_files::record(
-            crate::services::chosen_files::ChosenFile::Source,
-            path,
-        );
+        crate::services::chosen_files::record(ChosenFile::Picked(purpose), path);
     }
 
     Ok(picked)
@@ -150,11 +150,9 @@ pub async fn save_file_dialog<R: Runtime>(
 
     let picked = picked_path(picked)?;
 
+    // The database export is the one caller of the save dialog.
     if let Some(path) = picked.as_deref() {
-        crate::services::chosen_files::record(
-            crate::services::chosen_files::ChosenFile::Destination,
-            path,
-        );
+        crate::services::chosen_files::record(ChosenFile::DatabaseExport, path);
     }
 
     Ok(picked)
