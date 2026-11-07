@@ -97,7 +97,8 @@ pub async fn resolve_existing_directory(db: State<'_, Db>, path: String) -> AppR
     Ok(resolved)
 }
 
-/// Whether the database lists anything stored in the library, a media or a channel avatar.
+/// Whether the database lists anything stored in the library, a media or a channel's avatar or
+/// banner.
 ///
 /// What tells a library that was never used apart from one whose drive is not connected when its
 /// folder does not exist. A failed query counts as "yes", so the migration asks rather than
@@ -109,7 +110,9 @@ async fn library_has_media<R: Runtime>(app: &AppHandle<R>) -> bool {
 
     sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM videos) OR EXISTS(
-             SELECT 1 FROM channels WHERE avatar_path IS NOT NULL AND TRIM(avatar_path) <> ''
+             SELECT 1 FROM channels
+             WHERE (avatar_path IS NOT NULL AND TRIM(avatar_path) <> '')
+                OR (banner_path IS NOT NULL AND TRIM(banner_path) <> '')
          )",
     )
     .fetch_one(&pool)
@@ -361,7 +364,7 @@ pub async fn check_library_integrity<R: Runtime>(
     let library_path = configured_library_path_in_pool(&pool).await?;
 
     let references = video_repository::list_media_integrity_references(&pool).await?;
-    let avatar_paths = channel_repository::list_channel_avatar_paths(&pool).await?;
+    let avatar_paths = channel_repository::list_channel_image_paths(&pool).await?;
     let recent_database_swap = library::cleanup::database_was_recently_swapped(db.path());
 
     run_blocking(move || {
@@ -425,7 +428,7 @@ pub async fn verify_library_content(
     };
 
     let references = video_repository::list_media_integrity_references(&pool).await?;
-    let avatar_paths = channel_repository::list_channel_avatar_paths(&pool).await?;
+    let avatar_paths = channel_repository::list_channel_image_paths(&pool).await?;
 
     // Media files and thumbnails only. Live chat replays are named after the yt-dlp output file
     // rather than after their content, so there is no digest in the name to check them against and

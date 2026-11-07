@@ -11,6 +11,7 @@ function createChannel(overrides: Partial<Channel> = {}): Channel {
         name: "Canal A",
         youtube_handle: "@canala",
         avatar_path: null,
+        banner_path: null,
         created_at: "2026-03-31T10:00:00.000Z",
         ...overrides,
     };

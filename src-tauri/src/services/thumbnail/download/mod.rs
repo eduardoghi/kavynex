@@ -44,7 +44,6 @@ use self::process::{
     build_thumbnail_command_args, run_thumbnail_yt_dlp_with_timeout, ThumbnailTarget,
     THUMBNAIL_COMMAND_TIMEOUT_SECS,
 };
-use crate::utils::format::looks_like_supported_image;
 
 /// Runs `persist_thumbnail_from_source` (full-file SHA-256 hashing plus a copy) on the
 /// blocking thread pool, so this heavy I/O never runs directly on an async task.
@@ -174,6 +173,117 @@ fn prepare_thumbnail_dirs<R: Runtime>(
     Ok((library_dir, thumb_temp_dir))
 }
 
+/// Fetches an image from YouTube's image CDNs into `dir` as `<stem>.<ext>` and returns the file.
+/// `ext` is the extension the URL names, or `None` for a URL that names none (a channel banner,
+/// `...=s0`), which is then stored under the one its bytes prove.
+///
+/// Every check of the direct branch lives here. HTTPS only, the image-CDN host allow-list before
+/// the request goes out, then the status, the content type and a sniff of the bytes before
+/// anything is written.
+async fn fetch_cdn_image(
+    url: &str,
+    dir: &Path,
+    stem: &str,
+    ext: Option<&'static str>,
+) -> AppResult<PathBuf> {
+    // Restrict the fetch to the image CDNs before it goes out, matching the host gate the
+    // yt-dlp fallback below has always applied. `http_get_image`'s SSRF guard keeps this
+    // off internal addresses and its size/content-type/magic-byte checks bound what comes
+    // back, but all three constrain the *response*. None of them stops the request from
+    // reaching an arbitrary public host in the first place. See
+    // services::thumbnail::url for the list and why it is not the yt-dlp one.
+    //
+    // This gates where the fetch starts. The same predicate is applied to every redirect
+    // destination inside `http_get_image` (through `redirect::next_hop`), because
+    // this check alone reads as a gate on the whole operation and is not one.
+    let direct_uri: Uri = url
+        .parse()
+        .map_err(|e| AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}")))?;
+
+    // Cleartext is refused here rather than by `direct_image_extension` returning None,
+    // which is the tempting place for it and the wrong one. That function decides which of
+    // the two branches handles a URL, so a None would route `http://cdn/x.jpg` into the
+    // yt-dlp fallback, which refuses it for a different reason ("must be a YouTube URL")
+    // and points whoever reads the error at the wrong list. The scheme is a policy about
+    // this branch, so it is refused on this branch, beside the host gate that answers the
+    // other half of "may this fetch start at all".
+    //
+    // `http_get_image`'s connector is `https_only()` regardless, so this is the message
+    // rather than the enforcement. Redirect hops are gated separately, on the resolved
+    // destination, in `thumbnail::redirect::next_hop`.
+    if direct_uri.scheme_str() != Some("https") {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "direct thumbnail download requires https",
+        ));
+    }
+
+    if !is_allowed_thumbnail_image_host(&direct_uri) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidUrl,
+            "direct thumbnail download is restricted to the youtube image cdns",
+        ));
+    }
+
+    let (status, headers, buffer) = http_get_image(url, THUMBNAIL_COMMAND_TIMEOUT_SECS).await?;
+
+    if !status.is_success() {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            format!("direct thumbnail download failed with status: {status}"),
+        ));
+    }
+
+    let content_type = headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(';').next())
+        .map(|v| v.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+
+    if content_type.is_empty() {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            "thumbnail response is missing a content type",
+        ));
+    }
+
+    if !ALLOWED_THUMBNAIL_CONTENT_TYPES.contains(&content_type.as_str()) {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            format!("unexpected content type for thumbnail: {content_type}"),
+        ));
+    }
+
+    // The Content-Type header is attacker-controlled (any server the URL points to),
+    // so it is only a first filter. Sniff the actual bytes against known image file
+    // signatures before writing them to disk as an "image".
+    let Some(sniffed) = crate::utils::format::sniffed_image_extension(&buffer) else {
+        return Err(AppError::from_code(
+            AppErrorCode::YtDlpThumbnailFailed,
+            "downloaded thumbnail does not look like a supported image",
+        ));
+    };
+
+    // The URL's extension when it names one, the way the file was always stored, and otherwise
+    // the format the bytes prove.
+    let file_path = dir.join(format!("{stem}.{}", ext.unwrap_or(sniffed)));
+
+    let write_destination = file_path.clone();
+
+    run_blocking(move || {
+        fs::write(&write_destination, &buffer).map_err(|e| {
+            AppError::from_code(
+                AppErrorCode::YtDlpThumbnailFailed,
+                format!("failed to write downloaded thumbnail: {e}"),
+            )
+        })
+    })
+    .await?;
+
+    Ok(file_path)
+}
+
 pub async fn download_thumbnail_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
     url: &str,
@@ -207,98 +317,12 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
 
     let result = async {
         if let Some(ext) = direct_image_extension(&normalized_url) {
-            // Restrict the fetch to the image CDNs before it goes out, matching the host gate the
-            // yt-dlp fallback below has always applied. `http_get_image`'s SSRF guard keeps this
-            // off internal addresses and its size/content-type/magic-byte checks bound what comes
-            // back, but all three constrain the *response*. None of them stops the request from
-            // reaching an arbitrary public host in the first place. See
-            // services::thumbnail::url for the list and why it is not the yt-dlp one.
-            //
-            // This gates where the fetch starts. The same predicate is applied to every redirect
-            // destination inside `http_get_image` (through `redirect::next_hop`), because
-            // this check alone reads as a gate on the whole operation and is not one.
-            let direct_uri: Uri = normalized_url.parse().map_err(|e| {
-                AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
-            })?;
-
-            // Cleartext is refused here rather than by `direct_image_extension` returning None,
-            // which is the tempting place for it and the wrong one. That function decides which of
-            // the two branches handles a URL, so a None would route `http://cdn/x.jpg` into the
-            // yt-dlp fallback, which refuses it for a different reason ("must be a YouTube URL")
-            // and points whoever reads the error at the wrong list. The scheme is a policy about
-            // this branch, so it is refused on this branch, beside the host gate that answers the
-            // other half of "may this fetch start at all".
-            //
-            // `http_get_image`'s connector is `https_only()` regardless, so this is the message
-            // rather than the enforcement. Redirect hops are gated separately, on the resolved
-            // destination, in `thumbnail::redirect::next_hop`.
-            if direct_uri.scheme_str() != Some("https") {
-                return Err(AppError::from_code(
-                    AppErrorCode::InvalidUrl,
-                    "direct thumbnail download requires https",
-                ));
-            }
-
-            if !is_allowed_thumbnail_image_host(&direct_uri) {
-                return Err(AppError::from_code(
-                    AppErrorCode::InvalidUrl,
-                    "direct thumbnail download is restricted to the youtube image cdns",
-                ));
-            }
-
-            let direct_file_path = thumb_temp_dir.join(format!("direct_thumbnail.{ext}"));
-
-            let (status, headers, buffer) =
-                http_get_image(normalized_url.as_str(), THUMBNAIL_COMMAND_TIMEOUT_SECS).await?;
-
-            if !status.is_success() {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    format!("direct thumbnail download failed with status: {status}"),
-                ));
-            }
-
-            let content_type = headers
-                .get(http::header::CONTENT_TYPE)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|v| v.split(';').next())
-                .map(|v| v.trim().to_ascii_lowercase())
-                .unwrap_or_default();
-
-            if content_type.is_empty() {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    "thumbnail response is missing a content type",
-                ));
-            }
-
-            if !ALLOWED_THUMBNAIL_CONTENT_TYPES.contains(&content_type.as_str()) {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    format!("unexpected content type for thumbnail: {content_type}"),
-                ));
-            }
-
-            // The Content-Type header is attacker-controlled (any server the URL points to),
-            // so it is only a first filter. Sniff the actual bytes against known image file
-            // signatures before writing them to disk as an "image".
-            if !looks_like_supported_image(&buffer) {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailFailed,
-                    "downloaded thumbnail does not look like a supported image",
-                ));
-            }
-
-            let write_destination = direct_file_path.clone();
-
-            run_blocking(move || {
-                fs::write(&write_destination, &buffer).map_err(|e| {
-                    AppError::from_code(
-                        AppErrorCode::YtDlpThumbnailFailed,
-                        format!("failed to write downloaded thumbnail: {e}"),
-                    )
-                })
-            })
+            let direct_file_path = fetch_cdn_image(
+                &normalized_url,
+                &thumb_temp_dir,
+                "direct_thumbnail",
+                Some(ext),
+            )
             .await?;
 
             return persist_thumbnail_from_source_async(direct_file_path, library_dir, pass).await;
@@ -594,9 +618,134 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
     result
 }
 
+/// The id yt-dlp gives a channel's banner at full size, the page's banner with its crop removed.
+/// The cropped ones it also lists (desktop, mobile, TV) carry only their position as an id.
+pub(crate) const CHANNEL_BANNER_THUMBNAIL_ID: &str = "banner_uncropped";
+
+/// The URL of the full-size banner in a channel page's JSON, or `None` when the page lists none.
+/// Pure, so what is picked out of yt-dlp's output is pinned without running it.
+fn channel_banner_url(page_json: &[u8]) -> Option<String> {
+    let page: serde_json::Value = serde_json::from_slice(page_json).ok()?;
+
+    page.get("thumbnails")?
+        .as_array()?
+        .iter()
+        .find(|thumbnail| {
+            thumbnail.get("id").and_then(serde_json::Value::as_str)
+                == Some(CHANNEL_BANNER_THUMBNAIL_ID)
+        })?
+        .get("url")?
+        .as_str()
+        .map(|url| url.trim().to_string())
+        .filter(|url| !url.is_empty())
+}
+
+/// Downloads a channel's banner, the wide image behind its avatar, into the library's
+/// `thumbnails/` and returns its stored path.
+///
+/// yt-dlp prints the channel's page (no video enumerated), which lists the banner, and the image is
+/// then fetched straight from YouTube's image CDN through [`fetch_cdn_image`], under the same
+/// https, host and content checks as any other direct thumbnail. Its URL names no extension, so the
+/// file is stored under the format its bytes prove. A channel with no banner is
+/// `CHANNEL_BANNER_NOT_FOUND`.
+pub async fn download_channel_banner_from_handle_async<R: Runtime>(
+    app: &AppHandle<R>,
+    youtube_handle: &str,
+    library_path: &str,
+) -> AppResult<String> {
+    let normalized_url = normalize_channel_handle_to_url(youtube_handle)?;
+
+    let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+
+    // See download_thumbnail_from_url_async.
+    let pass = LibraryPass::begin();
+    let (library_dir, thumb_temp_dir) = {
+        let app = app.clone();
+        let library_path = library_path.to_string();
+        let temp_dir_name = format!("channel-banner-{}", unique_temp_suffix());
+        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
+    };
+
+    let result = async {
+        let mut command = Command::new(&yt_dlp);
+        command.args(process::build_channel_images_command_args(&normalized_url));
+        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
+
+        let output = run_thumbnail_yt_dlp_with_timeout(
+            command,
+            "yt-dlp channel banner lookup timed out",
+            "failed to execute yt-dlp for the channel banner lookup",
+            None,
+        )
+        .await?;
+
+        if !output.status.success() {
+            return Err(read_process_error(
+                &output,
+                AppErrorCode::YtDlpThumbnailFailed,
+                "yt-dlp channel banner lookup failed",
+                // No cookies are passed, and the URL is the public channel page.
+                str::to_string,
+            ));
+        }
+
+        let Some(banner_url) = channel_banner_url(&output.stdout) else {
+            return Err(AppError::from_code(
+                AppErrorCode::ChannelBannerNotFound,
+                "the channel page lists no banner",
+            ));
+        };
+
+        let banner = fetch_cdn_image(&banner_url, &thumb_temp_dir, "channel_banner", None).await?;
+
+        persist_thumbnail_from_source_async(banner, library_dir, pass).await
+    }
+    .await;
+
+    let _ = run_blocking(move || {
+        let _ = fs::remove_dir_all(&thumb_temp_dir);
+        Ok::<(), AppError>(())
+    })
+    .await;
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_full_size_banner_is_picked_out_of_the_channel_page() {
+        // The shape yt-dlp prints for a channel. The cropped banners carry their position as an
+        // id, the avatar comes first, and only `banner_uncropped` is the banner at full size.
+        let page = br#"{
+            "id": "UC123",
+            "thumbnails": [
+                {"url": "https://yt3.googleusercontent.com/a=s900", "id": "avatar_uncropped"},
+                {"url": "https://yt3.googleusercontent.com/b=w1060-fcrop64", "id": "0"},
+                {"url": "  https://yt3.googleusercontent.com/b=s0  ", "id": "banner_uncropped"}
+            ]
+        }"#;
+
+        assert_eq!(
+            channel_banner_url(page).as_deref(),
+            Some("https://yt3.googleusercontent.com/b=s0")
+        );
+    }
+
+    #[test]
+    fn a_channel_page_without_a_banner_names_none() {
+        let without = br#"{"thumbnails": [{"url": "https://yt3.googleusercontent.com/a", "id": "avatar_uncropped"}]}"#;
+
+        assert_eq!(channel_banner_url(without), None);
+        assert_eq!(channel_banner_url(br#"{"id": "UC123"}"#), None);
+        assert_eq!(channel_banner_url(b"not json"), None);
+        assert_eq!(
+            channel_banner_url(br#"{"thumbnails": [{"url": " ", "id": "banner_uncropped"}]}"#),
+            None
+        );
+    }
 
     #[test]
     fn normalize_channel_handle_builds_youtube_url_from_handle() {

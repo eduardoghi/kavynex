@@ -1,6 +1,7 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectedChannelLibrarySection } from "./selected-channel-library-section";
+import { fileSrcFromStoredPath } from "../../utils/media-utils";
 import { renderWithMantine } from "../../test/test-utils";
 import type { MediaRow } from "../../types/media";
 import type { Channel } from "../../types/media";
@@ -58,6 +59,7 @@ const CHANNEL_A: Channel = {
     name: "Canal A",
     youtube_handle: "@canala",
     avatar_path: null,
+    banner_path: null,
     created_at: "2026-03-31T10:00:00.000Z",
 };
 
@@ -248,5 +250,24 @@ describe("SelectedChannelLibrarySection", () => {
             expect.objectContaining({ search: "" })
         );
         expect(screen.getByTestId("grid-titles")).toHaveTextContent("Beta");
+    });
+});
+
+describe("SelectedChannelLibrarySection banner", () => {
+    it("draws the channel's banner when it has one", () => {
+        vi.mocked(fileSrcFromStoredPath).mockImplementation((path) =>
+            path ? `asset://${path}` : ""
+        );
+
+        const { container } = renderWithMantine(
+            <SelectedChannelLibrarySection
+                {...makeProps({
+                    selectedChannel: { ...CHANNEL_A, banner_path: "thumbnails/thumb_b.jpg" },
+                })}
+            />
+        );
+
+        expect(container.querySelector('img[src="asset://thumbnails/thumb_b.jpg"]')).not.toBeNull();
+        vi.mocked(fileSrcFromStoredPath).mockImplementation(() => "");
     });
 });

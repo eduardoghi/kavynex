@@ -232,7 +232,8 @@ case has limited blast radius:
 
 `get_library_summary`, `check_library_integrity`, `verify_library_content` and `open_path_in_system`
 read the library from the settings, like `persist_thumbnail_file`,
-`download_channel_avatar_from_handle`, `resolve_display_thumbnails` and `create_media`. None of
+`download_channel_avatar_from_handle`, `download_channel_banner_from_handle`,
+`resolve_display_thumbnails` and `create_media`. None of
 them takes a `library_path` from the renderer, so the backend does not police a value it already
 has. `create_media`'s request keeps the field for the backend's own use, filled from the settings
 and never read from IPC (`#[serde(skip_deserializing)]`).
@@ -474,7 +475,8 @@ grant the root. So every path a removal resolves also has to sit in its own subt
 
 The subtree is not enough for a thumbnail either. A thumbnail or avatar path is checked to be inside
 `thumbnails/` when it is stored, not for its name, so a value a compromised renderer stored (an
-avatar through `insert_channel` or `replace_channel_avatar`) or an imported database carried could
+avatar through `insert_channel` or `replace_channel_avatar`, a banner through
+`replace_channel_banner`) or an imported database carried could
 name a file the user keeps in that folder. `thumbnail::persist::delete_thumbnail_file_sync` therefore
 unlinks only `thumbnails/thumb_<sha256>.<ext>`, the one name the app writes there, and leaves
 anything else where it is. A deletion that moves files to the library trash instead
@@ -503,7 +505,8 @@ serializing it costs nothing a user waits on, and a keying scheme would only add
 wrong.
 
 **The lock covers every unlink of a library artifact, not only that cleanup.**
-`delete_media_with_artifacts`, `delete_channel_with_artifacts` and `replace_channel_avatar` reach the
+`delete_media_with_artifacts`, `delete_channel_with_artifacts`, `replace_channel_avatar` and
+`replace_channel_banner` reach the
 same removal through `library::cleanup::execute_plan`, which takes the lock too. They keep
 `drop_paths_referenced_again`, a recount right before the unlink, as a second line. A recount alone
 is not exclusion. It answers "is this path referenced *now*", and a creation that inserts a moment
@@ -666,7 +669,7 @@ Python reprs, with every backslash doubled, so that spelling is matched too
 (`metadata.rs::redact_cookies_from_line`), along with a profile written as a path when an error
 names it on its own.
 
-## Outbound image fetches (thumbnails and channel avatars)
+## Outbound image fetches (thumbnails, channel avatars and banners)
 
 Downloading a thumbnail is the one place the backend makes an HTTP request of its own rather than
 delegating to yt-dlp, so it carries its own set of controls
@@ -684,6 +687,12 @@ delegating to yt-dlp, so it carries its own set of controls
 - Any other URL falls through to yt-dlp's generic extractor, which is restricted to YouTube by
   `is_allowed_youtube_url`. The same allow-list, for the same reason, as every other yt-dlp
   invocation, because the extractor runs with access to the user's browser cookies.
+
+A channel banner (`download_channel_banner_from_handle`) takes the first path with one difference.
+yt-dlp prints the channel's page (`--playlist-items 0`, no video, no cookies), the banner's URL is
+read from it (`banner_uncropped`), and that URL names no extension (`...=s0`). It goes through the
+same direct fetch (`fetch_cdn_image`), with every check above, and the file is named after the format
+its bytes prove (`utils::format::sniffed_image_extension`) rather than after the URL.
 
 **The transport is https, and only https.** The connector is built with `https_only()`
 (`services/thumbnail/download/fetch.rs`), the caller refuses a cleartext URL before the fetch starts

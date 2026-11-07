@@ -331,6 +331,44 @@ pub(super) async fn apply_migration_17(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// v18. Adds `channels.banner_path`, the channel's banner image, and the index the thumbnail
+/// reference count reads it through. Additive, with the stamp in the same transaction.
+pub(super) async fn apply_migration_18(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    for (column, definition) in CHANNELS_ADDITIVE_COLUMNS {
+        if !table_has_column(&mut *tx, "channels", column).await? {
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "ALTER TABLE channels ADD COLUMN {column} {definition}"
+            )))
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to add channels column", error))?;
+        }
+    }
+
+    // Only the index this version introduces. The earlier ones are the earlier migrations' to
+    // build, and a database that reached here without one of their columns is not this one's to
+    // repair.
+    for index in INDEX_DDLS.iter().filter(|index| index.since == 18) {
+        sqlx::query(index.ddl)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| db_error("failed to create index", error))?;
+    }
+
+    set_user_version(&mut tx, 18).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
 /// v10. Creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
 /// (video_id, comment_id)" invariant out of application code (media_comments::
 /// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot

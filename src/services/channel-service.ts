@@ -6,6 +6,7 @@ import {
     insertChannel,
     listChannels,
     replaceChannelAvatar,
+    replaceChannelBanner,
     updateChannelNameAndHandle,
 } from "../repositories/channel-repository";
 import {
@@ -136,6 +137,27 @@ export async function updateChannelAvatarWithCleanup(
         logError(
             "channel-service",
             "Channel avatar was updated but the previous avatar file could not be deleted; it may be orphaned in the library.",
+            null,
+            { channelId: channelId, failedPaths: report.failed_paths }
+        );
+    }
+
+    return report.failed_paths.length;
+}
+
+// The banner's counterpart of updateChannelAvatarWithCleanup, with the same atomic replace.
+export async function updateChannelBannerWithCleanup(
+    channelId: number,
+    bannerPath: string | null
+): Promise<number> {
+    validateChannelId(channelId);
+
+    const report = await replaceChannelBanner(channelId, bannerPath?.trim() || null);
+
+    if (report.failed_paths.length > 0) {
+        logError(
+            "channel-service",
+            "Channel banner was updated but the previous banner file could not be deleted; it may be orphaned in the library.",
             null,
             { channelId: channelId, failedPaths: report.failed_paths }
         );

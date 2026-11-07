@@ -162,6 +162,29 @@ pub async fn replace_channel_avatar<R: Runtime>(
     library::cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await
 }
 
+/// Sets a channel's banner, or clears it with `None`, and removes the previous banner file when
+/// nothing else references it, the same way [`replace_channel_avatar`] does for the avatar.
+#[tauri::command]
+pub async fn replace_channel_banner<R: Runtime>(
+    app: AppHandle<R>,
+    channel_id: i64,
+    banner_path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    // Only `thumbnails/`, the same rule as the avatar.
+    if let Some(path) = banner_path.as_deref() {
+        ensure_managed_library_relative_path(path)?;
+        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
+    }
+
+    library::cleanup::replace_channel_image(
+        &app,
+        channel_id,
+        library::cleanup::ChannelImage::Banner,
+        banner_path,
+    )
+    .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

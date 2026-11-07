@@ -22,7 +22,7 @@ It was built to preserve the channels I follow, and it is what I use for that.
 
 **Your library**
 
-- Organize media by channel, with the channel avatar fetched from its handle
+- Organize media by channel, with the channel avatar and banner fetched from its handle
 - Import video and audio files you already have on disk
 - Search, filter and sort within a channel
 - Mark media watched or unwatched

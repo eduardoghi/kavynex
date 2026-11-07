@@ -10,6 +10,8 @@ pub(super) const CHANNELS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS channels
     name TEXT NOT NULL CHECK (TRIM(name) <> ''),
     youtube_handle TEXT NOT NULL UNIQUE CHECK (TRIM(youtube_handle) <> ''),
     avatar_path TEXT CHECK (avatar_path IS NULL OR TRIM(avatar_path) <> ''),
+    -- The channel's banner, the wide image behind the avatar on its page. Added by v18.
+    banner_path TEXT CHECK (banner_path IS NULL OR TRIM(banner_path) <> ''),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 )";
 
@@ -202,6 +204,12 @@ pub(super) const INDEX_DDLS: &[IndexDdl] = &[
         table: "channels",
         since: BASELINE_SCHEMA_VERSION,
         ddl: "CREATE INDEX IF NOT EXISTS idx_channels_avatar_path ON channels(avatar_path)",
+    },
+    // The thumbnail reference count reads banners as well as avatars (library::cleanup).
+    IndexDdl {
+        table: "channels",
+        since: 18,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_channels_banner_path ON channels(banner_path)",
     },
     IndexDdl {
         table: "videos",
@@ -422,6 +430,15 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
 
 /// Additive columns for the video_comments table, added to a table that predates them by the
 /// migration named beside each.
+/// Additive columns for the channels table, added by the migration named beside each.
+pub(super) const CHANNELS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
+    // v18.
+    (
+        "banner_path",
+        "TEXT CHECK (banner_path IS NULL OR TRIM(banner_path) <> '')",
+    ),
+];
+
 pub(super) const VIDEO_COMMENTS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     // v17.
     (

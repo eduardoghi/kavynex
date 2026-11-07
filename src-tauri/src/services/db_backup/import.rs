@@ -285,11 +285,11 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
 /// `live_chat/`, and the write boundaries refuse anything else. An imported file never went through
 /// them. The backend contains such a path when it uses it, but the renderer builds image URLs from
 /// the stored value, and an absolute `\\host\share\x.png` there makes Windows authenticate to that
-/// host as soon as the channel list draws its avatars.
+/// host as soon as the channel list draws its avatars (or a channel page its banner).
 async fn count_unmanaged_stored_paths(pool: &SqlitePool) -> AppResult<usize> {
     // Each column is read only where the file has it. An older schema lacks some of them, and the
     // migrations add them after the swap.
-    const PATH_COLUMNS: [(&str, &str, &str); 4] = [
+    const PATH_COLUMNS: [(&str, &str, &str); 5] = [
         ("videos", "file_path", "SELECT file_path FROM videos"),
         (
             "videos",
@@ -305,6 +305,11 @@ async fn count_unmanaged_stored_paths(pool: &SqlitePool) -> AppResult<usize> {
             "channels",
             "avatar_path",
             "SELECT avatar_path FROM channels",
+        ),
+        (
+            "channels",
+            "banner_path",
+            "SELECT banner_path FROM channels",
         ),
     ];
 

@@ -58,6 +58,18 @@ pub async fn download_channel_avatar_from_handle<R: Runtime>(
     thumbnail::download_channel_avatar_from_handle_async(&app, &youtube_handle, &library_path).await
 }
 
+/// Downloads a channel's banner from its YouTube page into the configured library and returns the
+/// stored path, for `replace_channel_banner` to set.
+#[tauri::command]
+pub async fn download_channel_banner_from_handle<R: Runtime>(
+    app: AppHandle<R>,
+    youtube_handle: String,
+) -> AppResult<String> {
+    let library_path = configured_library_path(&app).await?;
+
+    thumbnail::download_channel_banner_from_handle_async(&app, &youtube_handle, &library_path).await
+}
+
 /// Resolves display-sized copies of a page of the grid's thumbnails, generating the ones that are
 /// not cached yet (see `services::thumbnail::display`).
 ///

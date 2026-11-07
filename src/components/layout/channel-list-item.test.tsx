@@ -16,6 +16,7 @@ function createChannel(overrides: Partial<Channel> = {}): Channel {
         name: "Canal A",
         youtube_handle: "@canala",
         avatar_path: null,
+        banner_path: null,
         created_at: "2026-03-31T10:00:00.000Z",
         ...overrides,
     };
@@ -38,6 +39,9 @@ function renderItem(overrides: Partial<ItemProps> = {}) {
         onUpdateChannelAvatarFromFile: vi.fn(),
         onUpdateChannelAvatarFromYouTube: vi.fn(),
         onRemoveChannelAvatar: vi.fn(),
+        onUpdateChannelBannerFromFile: vi.fn(),
+        onUpdateChannelBannerFromYouTube: vi.fn(),
+        onRemoveChannelBanner: vi.fn(),
         onClosePlayer: vi.fn(),
         ...overrides,
     };
@@ -103,10 +107,16 @@ describe("ChannelListItem", () => {
         [/choose avatar file/i, "onUpdateChannelAvatarFromFile"],
         [/load avatar from youtube/i, "onUpdateChannelAvatarFromYouTube"],
         [/remove avatar/i, "onRemoveChannelAvatar"],
+        [/choose banner image/i, "onUpdateChannelBannerFromFile"],
+        [/load banner from youtube/i, "onUpdateChannelBannerFromYouTube"],
+        [/remove banner/i, "onRemoveChannelBanner"],
         [/delete channel/i, "onRequestDeleteChannel"],
     ] as const)("routes the %s menu action to its handler with the channel", async (name, handler) => {
         const { props } = renderItem({
-            channel: createChannel({ avatar_path: "thumbnails/avatar.jpg" }),
+            channel: createChannel({
+                avatar_path: "thumbnails/avatar.jpg",
+                banner_path: "thumbnails/banner.jpg",
+            }),
         });
 
         fireEvent.click(screen.getByRole("button", { name: MENU_BUTTON }));
@@ -116,6 +126,20 @@ describe("ChannelListItem", () => {
         // Choosing from the menu must not also select the channel. The menu sits above the
         // stretched button and stops the click from reaching it.
         expect(props.onSelectChannel).not.toHaveBeenCalled();
+    });
+
+    it("disables removing the banner when there is none to remove", async () => {
+        renderItem();
+
+        fireEvent.click(screen.getByRole("button", { name: MENU_BUTTON }));
+
+        expect(await screen.findByRole("menuitem", { name: /remove banner/i })).toBeDisabled();
+    });
+
+    it("shows the row busy while its banner is being changed", () => {
+        renderItem({ isUpdatingBanner: true });
+
+        expect(screen.queryByRole("button", { name: MENU_BUTTON })).toBeNull();
     });
 
     it("disables removing the avatar when there is none to remove", async () => {

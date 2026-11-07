@@ -15,7 +15,9 @@ activity Kavynex initiates is:
   requested, directly from YouTube, and Kavynex itself fetching that video's thumbnail from
   YouTube's image servers (`i.ytimg.com`), at a URL yt-dlp reported. No cookies are sent with it.
 - yt-dlp fetching a channel's page and its avatar image from YouTube, when you ask Kavynex to get
-  a channel's avatar from its handle.
+  a channel's avatar from its handle. With that choice, and when you load a channel's banner from
+  its page, Kavynex also fetches the banner image from YouTube's image servers. No cookies are sent
+  with either.
 - A check against the GitHub releases endpoint for a newer version. Kavynex runs one such check
   on startup, and it is the only setting on this page that is **on by default**. The reason is
   that only the latest release receives fixes (see `SECURITY.md`), so this check is how a

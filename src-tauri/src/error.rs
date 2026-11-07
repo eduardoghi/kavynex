@@ -205,6 +205,8 @@ pub enum AppErrorCode {
     YtDlpThumbnailExecFailed,
     YtDlpThumbnailFailed,
     YtDlpThumbnailNotFound,
+    /// The channel's page lists no banner, so there is nothing to download.
+    ChannelBannerNotFound,
     YtDlpSelectedFormatNotFound,
     YtDlpDownloadSpawnFailed,
     YtDlpStdoutCaptureFailed,
@@ -370,6 +372,7 @@ impl AppErrorCode {
             Self::YtDlpThumbnailExecFailed => "YT_DLP_THUMBNAIL_EXEC_FAILED",
             Self::YtDlpThumbnailFailed => "YT_DLP_THUMBNAIL_FAILED",
             Self::YtDlpThumbnailNotFound => "YT_DLP_THUMBNAIL_NOT_FOUND",
+            Self::ChannelBannerNotFound => "CHANNEL_BANNER_NOT_FOUND",
             Self::YtDlpSelectedFormatNotFound => "YT_DLP_SELECTED_FORMAT_NOT_FOUND",
             Self::YtDlpDownloadSpawnFailed => "YT_DLP_DOWNLOAD_SPAWN_FAILED",
             Self::YtDlpStdoutCaptureFailed => "YT_DLP_STDOUT_CAPTURE_FAILED",

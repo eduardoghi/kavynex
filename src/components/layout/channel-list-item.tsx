@@ -1,5 +1,13 @@
 import { ActionIcon, Avatar, Group, Loader, Menu, Stack, Text } from "@mantine/core";
-import { ImagePlus, MoreVertical, Pencil, RefreshCw, Trash2, UserX } from "lucide-react";
+import {
+    ImageOff,
+    ImagePlus,
+    MoreVertical,
+    Pencil,
+    RefreshCw,
+    Trash2,
+    UserX,
+} from "lucide-react";
 import { memo, type CSSProperties } from "react";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import type { Channel, ViewMode } from "../../types/media";
@@ -39,6 +47,7 @@ type ChannelListItemProps = {
     selected: boolean;
     isDeleting: boolean;
     isUpdatingAvatar: boolean;
+    isUpdatingBanner?: boolean;
     viewMode: ViewMode;
     shellBorder: string;
     libraryPath: string;
@@ -51,6 +60,9 @@ type ChannelListItemProps = {
     onUpdateChannelAvatarFromFile: (channel: Channel) => void | Promise<void>;
     onUpdateChannelAvatarFromYouTube: (channel: Channel) => void | Promise<void>;
     onRemoveChannelAvatar: (channel: Channel) => void | Promise<void>;
+    onUpdateChannelBannerFromFile: (channel: Channel) => void | Promise<void>;
+    onUpdateChannelBannerFromYouTube: (channel: Channel) => void | Promise<void>;
+    onRemoveChannelBanner: (channel: Channel) => void | Promise<void>;
     onClosePlayer: () => void;
 };
 
@@ -63,6 +75,7 @@ export const ChannelListItem = memo(function ChannelListItem({
     selected,
     isDeleting,
     isUpdatingAvatar,
+    isUpdatingBanner = false,
     viewMode,
     shellBorder,
     libraryPath,
@@ -73,6 +86,9 @@ export const ChannelListItem = memo(function ChannelListItem({
     onUpdateChannelAvatarFromFile,
     onUpdateChannelAvatarFromYouTube,
     onRemoveChannelAvatar,
+    onUpdateChannelBannerFromFile,
+    onUpdateChannelBannerFromYouTube,
+    onRemoveChannelBanner,
     onClosePlayer,
 }: ChannelListItemProps): JSX.Element {
     const avatarSrc = fileSrcFromStoredPath(channel.avatar_path, libraryPath);
@@ -87,7 +103,7 @@ export const ChannelListItem = memo(function ChannelListItem({
 
     // Busy while an avatar update or delete is in flight, so assistive tech is told the row's
     // content (loader shown in place of the menu) is transiently changing.
-    const isBusy = isDeleting || isUpdatingAvatar;
+    const isBusy = isDeleting || isUpdatingAvatar || isUpdatingBanner;
 
     return (
         <StretchedButtonCard
@@ -202,6 +218,44 @@ export const ChannelListItem = memo(function ChannelListItem({
                                 disabled={!channel.avatar_path}
                             >
                                 Remove avatar
+                            </Menu.Item>
+
+                            <Menu.Divider />
+
+                            {/* The banner, the wide image on the channel's page. Stored in the
+                                library folder like the avatar. */}
+                            <Menu.Item
+                                leftSection={<ImagePlus size={16} />}
+                                onClick={() => {
+                                    void onUpdateChannelBannerFromFile(channel);
+                                }}
+                                disabled={!hasLibraryFolder}
+                            >
+                                Choose banner image
+                            </Menu.Item>
+
+                            <Menu.Item
+                                leftSection={<RefreshCw size={16} />}
+                                onClick={() => {
+                                    void onUpdateChannelBannerFromYouTube(channel);
+                                }}
+                                disabled={!hasLibraryFolder}
+                            >
+                                Load banner from YouTube
+                            </Menu.Item>
+
+                            {!hasLibraryFolder && (
+                                <Menu.Label>Choose a library folder to set a banner.</Menu.Label>
+                            )}
+
+                            <Menu.Item
+                                leftSection={<ImageOff size={16} />}
+                                onClick={() => {
+                                    void onRemoveChannelBanner(channel);
+                                }}
+                                disabled={!channel.banner_path}
+                            >
+                                Remove banner
                             </Menu.Item>
 
                             <Menu.Divider />

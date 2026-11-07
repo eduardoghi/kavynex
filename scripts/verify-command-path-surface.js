@@ -623,6 +623,7 @@ export const DECLARED_PATH_SURFACE = [
     { command: "persist_thumbnail_file", parameters: ["path"], guard: "user-picked" },
     { command: "register_library_asset_scope", parameters: ["library_path"], guard: "configured-library" },
     { command: "replace_channel_avatar", parameters: ["avatar_path"], guard: "managed-relative" },
+    { command: "replace_channel_banner", parameters: ["banner_path"], guard: "managed-relative" },
     { command: "resolve_display_thumbnails", parameters: ["relative_paths"], guard: "managed-relative" },
     { command: "resolve_existing_directory", parameters: ["path"], guard: "chosen-directory" },
     { command: "set_app_settings", parameters: ["library_path"], guard: "chosen-directory" },

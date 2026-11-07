@@ -88,6 +88,7 @@ describe("useHomeActions", () => {
                 name: "Canal B",
                 youtube_handle: "@canalb",
                 avatar_path: null,
+                banner_path: null,
                 created_at: "2026-03-31T10:00:00.000Z",
             },
 
@@ -100,6 +101,7 @@ describe("useHomeActions", () => {
             isDeletingChannel: false,
             isUpdatingChannelAvatar: false,
             updatingChannelAvatarId: null,
+            updatingChannelBannerId: null,
 
             setSelectedChannelId: vi.fn(),
             createChannel: vi.fn().mockResolvedValue(undefined),

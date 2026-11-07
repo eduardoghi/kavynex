@@ -1347,3 +1347,74 @@ fn deleting_a_media_removes_its_file_at_once_when_settings_say_so() {
 
     let _ = fs::remove_dir_all(&library);
 }
+
+async fn set_banner(pool: &SqlitePool, channel_id: i64, banner: &str) {
+    sqlx::query("UPDATE channels SET banner_path = ? WHERE id = ?")
+        .bind(banner)
+        .bind(channel_id)
+        .execute(pool)
+        .await
+        .expect("set banner");
+}
+
+#[tokio::test]
+async fn replace_banner_plan_deletes_the_previous_banner_and_leaves_the_avatar() {
+    let pool = create_test_pool().await;
+    let channel_id = insert_channel(&pool, "@one", Some("thumbnails/avatar.jpg")).await;
+    set_banner(&pool, channel_id, "thumbnails/old-banner.jpg").await;
+
+    let plan = replace_channel_image_and_plan_cleanup(
+        &pool,
+        channel_id,
+        ChannelImage::Banner,
+        Some("thumbnails/new-banner.jpg".to_string()),
+    )
+    .await
+    .unwrap()
+    .expect("channel exists");
+
+    assert_eq!(paths(&plan.deletable), vec!["thumbnails/old-banner.jpg"]);
+
+    let (avatar, banner) = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT avatar_path, banner_path FROM channels WHERE id = ?",
+    )
+    .bind(channel_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(avatar.as_deref(), Some("thumbnails/avatar.jpg"));
+    assert_eq!(banner.as_deref(), Some("thumbnails/new-banner.jpg"));
+}
+
+#[tokio::test]
+async fn a_banner_counts_as_a_reference_for_an_avatar_on_the_same_file() {
+    // Content-addressed, so a channel's banner and another's avatar can be the same file.
+    let pool = create_test_pool().await;
+    let channel_a = insert_channel(&pool, "@a", Some("thumbnails/shared.jpg")).await;
+    let channel_b = insert_channel(&pool, "@b", None).await;
+    set_banner(&pool, channel_b, "thumbnails/shared.jpg").await;
+
+    let plan = replace_channel_avatar_and_plan_cleanup(&pool, channel_a, None)
+        .await
+        .unwrap()
+        .expect("channel exists");
+
+    assert!(plan.deletable.is_empty());
+    assert_eq!(plan.skipped_shared_paths, vec!["thumbnails/shared.jpg"]);
+}
+
+#[tokio::test]
+async fn deleting_a_channel_plans_its_banner_too() {
+    let pool = create_test_pool().await;
+    let channel_id = insert_channel(&pool, "@one", Some("thumbnails/avatar.jpg")).await;
+    set_banner(&pool, channel_id, "thumbnails/banner.jpg").await;
+
+    let plan = delete_channel_row_and_plan_cleanup(&pool, channel_id, true)
+        .await
+        .unwrap()
+        .expect("channel exists");
+
+    let planned = paths(&plan.deletable);
+    assert!(planned.contains(&"thumbnails/banner.jpg"), "{planned:?}");
+    assert!(planned.contains(&"thumbnails/avatar.jpg"), "{planned:?}");
+}

@@ -52,6 +52,7 @@ export const TAURI_COMMANDS = {
     STAGE_MANUAL_THUMBNAIL: "stage_manual_thumbnail",
     PERSIST_THUMBNAIL_FILE: "persist_thumbnail_file",
     DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE: "download_channel_avatar_from_handle",
+    DOWNLOAD_CHANNEL_BANNER_FROM_HANDLE: "download_channel_banner_from_handle",
     RESOLVE_DISPLAY_THUMBNAILS: "resolve_display_thumbnails",
     DELETE_TEMP_THUMBNAIL: "delete_temporary_thumbnail",
 
@@ -86,6 +87,7 @@ export const TAURI_COMMANDS = {
     INSERT_CHANNEL: "insert_channel",
     UPDATE_CHANNEL_NAME_AND_HANDLE: "update_channel_name_and_handle",
     REPLACE_CHANNEL_AVATAR: "replace_channel_avatar",
+    REPLACE_CHANNEL_BANNER: "replace_channel_banner",
     DELETE_CHANNEL_WITH_ARTIFACTS: "delete_channel_with_artifacts",
 
     UPDATE_MEDIA_TITLE: "update_media_title",

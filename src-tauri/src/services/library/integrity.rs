@@ -534,8 +534,7 @@ pub async fn count_missing_library_files<R: tauri::Runtime>(
     let pool = crate::services::database::shared_pool(app).await?;
     let references =
         crate::services::video_repository::list_media_integrity_references(&pool).await?;
-    let avatar_paths =
-        crate::services::channel_repository::list_channel_avatar_paths(&pool).await?;
+    let avatar_paths = crate::services::channel_repository::list_channel_image_paths(&pool).await?;
 
     crate::utils::task::run_blocking(move || {
         let check = check_library_integrity_for_references(

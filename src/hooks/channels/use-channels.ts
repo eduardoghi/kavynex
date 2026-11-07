@@ -74,6 +74,8 @@ export type ChannelsController = {
     isDeletingChannel: boolean;
     isUpdatingChannelAvatar: boolean;
     updatingChannelAvatarId: number | null;
+    // The channel whose banner is being changed, for its page to show it.
+    updatingChannelBannerId: number | null;
 
     setSelectedChannelId: (value: number | null) => void;
     createChannel: () => Promise<void>;
@@ -81,6 +83,9 @@ export type ChannelsController = {
     updateChannelAvatarFromFile: (channel: Channel) => Promise<void>;
     updateChannelAvatarFromYouTube: (channel: Channel) => Promise<void>;
     removeChannelAvatar: (channel: Channel) => Promise<void>;
+    updateChannelBannerFromFile: (channel: Channel) => Promise<void>;
+    updateChannelBannerFromYouTube: (channel: Channel) => Promise<void>;
+    removeChannelBanner: (channel: Channel) => Promise<void>;
     confirmDeleteChannel: () => Promise<void>;
     closeDeleteChannelModal: () => void;
 };
@@ -104,6 +109,7 @@ export function useChannels({
         null
     );
     const [updatingChannelAvatarId, setUpdatingChannelAvatarId] = useState<number | null>(null);
+    const [updatingChannelBannerId, setUpdatingChannelBannerId] = useState<number | null>(null);
 
     // Latest wins over the count query. A second delete request before the first count answers
     // must not land the first channel's number under the second channel's name.
@@ -127,6 +133,7 @@ export function useChannels({
         setNewChannelAvatarMode: createForm.setNewChannelAvatarMode,
         setNewChannelAvatarPath: createForm.setNewChannelAvatarPath,
         setUpdatingChannelAvatarId,
+        setUpdatingChannelBannerId,
         channelToDelete,
         setChannelToDelete,
         setConfirmDeleteChannelOpen,
@@ -140,6 +147,7 @@ export function useChannels({
         createChannelAction,
         updateChannelIdentityAction,
         updateChannelAvatarAction,
+        updateChannelBannerAction,
         loadChannels,
     } = channelActions;
 
@@ -268,6 +276,39 @@ export function useChannels({
         [updateChannelAvatarAction]
     );
 
+    const updateChannelBannerFromFile = useCallback(
+        async (channel: Channel): Promise<void> => {
+            let picked: string | null;
+
+            try {
+                picked = await pickImageFilePath();
+            } catch (error) {
+                logError("channels", "Failed to open the banner file dialog.", error);
+                onError("Failed to select the banner file.");
+                return;
+            }
+
+            if (picked) {
+                await updateChannelBannerAction(channel, "manual", picked);
+            }
+        },
+        [updateChannelBannerAction, onError]
+    );
+
+    const updateChannelBannerFromYouTube = useCallback(
+        async (channel: Channel): Promise<void> => {
+            await updateChannelBannerAction(channel, "youtube");
+        },
+        [updateChannelBannerAction]
+    );
+
+    const removeChannelBanner = useCallback(
+        async (channel: Channel): Promise<void> => {
+            await updateChannelBannerAction(channel, "none");
+        },
+        [updateChannelBannerAction]
+    );
+
     const closeDeleteChannelModal = useCallback((): void => {
         if (channelActions.isDeletingChannel) {
             return;
@@ -378,6 +419,7 @@ export function useChannels({
         isDeletingChannel,
         isUpdatingChannelAvatar,
         updatingChannelAvatarId,
+        updatingChannelBannerId,
 
         setSelectedChannelId,
         createChannel,
@@ -385,6 +427,9 @@ export function useChannels({
         updateChannelAvatarFromFile,
         updateChannelAvatarFromYouTube,
         removeChannelAvatar,
+        updateChannelBannerFromFile,
+        updateChannelBannerFromYouTube,
+        removeChannelBanner,
         confirmDeleteChannel,
         closeDeleteChannelModal,
     });

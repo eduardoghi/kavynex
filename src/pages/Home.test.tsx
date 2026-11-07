@@ -144,6 +144,7 @@ function controller(overrides: {
             isDeletingChannel: overrides.isDeletingChannel ?? false,
             channelToDeleteMediaCount: null,
             updatingChannelAvatarId: null,
+            updatingChannelBannerId: null,
             setCreateChannelOpen,
             setSelectedChannelId,
             requestEditChannel: vi.fn(),
@@ -151,6 +152,9 @@ function controller(overrides: {
             updateChannelAvatarFromFile: vi.fn(),
             updateChannelAvatarFromYouTube: vi.fn(),
             removeChannelAvatar: vi.fn(),
+            updateChannelBannerFromFile: vi.fn(),
+            updateChannelBannerFromYouTube: vi.fn(),
+            removeChannelBanner: vi.fn(),
         },
         media: {
             mediaPlayer: {

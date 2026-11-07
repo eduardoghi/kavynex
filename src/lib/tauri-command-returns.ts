@@ -88,6 +88,7 @@ export type TauriCommandReturns = {
     stage_manual_thumbnail: string;
     persist_thumbnail_file: string;
     download_channel_avatar_from_handle: string;
+    download_channel_banner_from_handle: string;
     // One entry per requested path, in order. Not a nullable string. "no derivative" carries
     // whether asking again could change the answer, which is what stops the caller re-asking
     // forever about a path that can never be resolved. See the DisplayThumbnail doc comment.
@@ -125,6 +126,7 @@ export type TauriCommandReturns = {
     insert_channel: number;
     update_channel_name_and_handle: void;
     replace_channel_avatar: ArtifactCleanupReport;
+    replace_channel_banner: ArtifactCleanupReport;
     delete_channel_with_artifacts: ArtifactCleanupReport;
 
     update_media_title: void;

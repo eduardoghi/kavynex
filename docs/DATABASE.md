@@ -22,6 +22,7 @@ CREATE TABLE channels (
     name TEXT NOT NULL CHECK (TRIM(name) <> ''),
     youtube_handle TEXT NOT NULL UNIQUE CHECK (TRIM(youtube_handle) <> ''),
     avatar_path TEXT CHECK (avatar_path IS NULL OR TRIM(avatar_path) <> ''),
+    banner_path TEXT CHECK (banner_path IS NULL OR TRIM(banner_path) <> ''),
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 )
 ```
@@ -32,6 +33,9 @@ The column's `UNIQUE` compares case, so that second rule lives in the insert and
 (`channel_repository.rs`, `COLLATE NOCASE`). A database from before the rule can hold two such
 channels. Both keep working, either can still be renamed while keeping its own handle, and Diagnostics
 reports them (`CHANNELS_SHARING_A_HANDLE`). `avatar_path` is a path relative to the library directory.
+`banner_path` (v18) is the channel's banner, the wide image behind its avatar, stored the same way
+under `thumbnails/`. Both count as thumbnail references, so a banner a media or another channel also
+uses is kept when one of them goes.
 
 ### `videos`
 
@@ -172,7 +176,8 @@ ones the app's queries rely on are:
   `file_path =` predicate.
 - `(channel_id, thumbnail_path)`, which serves the other half of a channel delete, collecting the
   thumbnails its videos point at before deciding which are still referenced elsewhere, and
-  `videos(thumbnail_path)` and `channels(avatar_path)` for the same reference counts.
+  `videos(thumbnail_path)`, `channels(avatar_path)` and `channels(banner_path)` for the same
+  reference counts.
 - `video_comments(video_id)` for loading a media's comments.
 - The partial unique index on `(channel_id, youtube_video_id)`. It never shows up in a query plan
   and is not meant to, since it exists to enforce one row per YouTube video per channel.
@@ -240,7 +245,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `17`), in `db_schema/mod.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `18`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -678,7 +683,7 @@ live connection pool is a singleton that cannot be reopened mid-session:
    comment read would fail.
 
    The rows are checked as well. `PRAGMA foreign_key_check` must come back empty, and every stored
-   file path (`file_path`, `thumbnail_path`, `live_chat_file_path`, `avatar_path`, each where the
+   file path (`file_path`, `thumbnail_path`, `live_chat_file_path`, `avatar_path`, `banner_path`, each where the
    schema has it) must be a relative path under one of the managed folders. The app writes nothing
    else, and the renderer builds image URLs from those values, so an absolute `\\host\share` path in
    a hostile file would make Windows authenticate to that host as soon as the channel list drew its

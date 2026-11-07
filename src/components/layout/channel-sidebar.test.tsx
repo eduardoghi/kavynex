@@ -43,6 +43,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -72,6 +75,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -108,6 +114,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -134,6 +143,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal A",
                         youtube_handle: "@canala",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-03-31T10:00:00.000Z",
                     },
                     {
@@ -141,6 +151,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal B",
                         youtube_handle: "@canalb",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-03-31T10:00:00.000Z",
                     },
                 ]}
@@ -157,6 +168,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -180,6 +194,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal A",
                         youtube_handle: "@canala",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-03-31T10:00:00.000Z",
                     },
                 ]}
@@ -196,6 +211,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -217,6 +235,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal A",
                         youtube_handle: "@canala",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-03-31T10:00:00.000Z",
                     },
                 ]}
@@ -233,6 +252,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={onClosePlayer}
             />,
             { withAppShell: true }
@@ -253,6 +275,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal A",
                         youtube_handle: "@canala",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-03-31T10:00:00.000Z",
                     },
                 ]}
@@ -269,6 +292,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -283,6 +309,7 @@ describe("ChannelSidebar", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -304,6 +331,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -323,6 +353,7 @@ describe("ChannelSidebar", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -344,6 +375,9 @@ describe("ChannelSidebar", () => {
                     onUpdateChannelAvatarFromFile={vi.fn()}
                     onUpdateChannelAvatarFromYouTube={vi.fn()}
                     onRemoveChannelAvatar={vi.fn()}
+                    onUpdateChannelBannerFromFile={vi.fn()}
+                    onUpdateChannelBannerFromYouTube={vi.fn()}
+                    onRemoveChannelBanner={vi.fn()}
                     onClosePlayer={vi.fn()}
                 />,
                 { withAppShell: true }
@@ -372,6 +406,7 @@ describe("ChannelSidebar", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -393,6 +428,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -415,6 +453,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal A",
                         youtube_handle: "@a",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-01-01T00:00:00.000Z",
                     },
                     {
@@ -422,6 +461,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal B",
                         youtube_handle: "@b",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-01-02T00:00:00.000Z",
                     },
                 ]}
@@ -438,6 +478,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }
@@ -462,6 +505,7 @@ describe("ChannelSidebar", () => {
                         name: "Canal A",
                         youtube_handle: "@canala",
                         avatar_path: null,
+                        banner_path: null,
                         created_at: "2026-03-31T10:00:00.000Z",
                     },
                 ]}
@@ -481,6 +525,9 @@ describe("ChannelSidebar", () => {
                 onUpdateChannelAvatarFromFile={vi.fn()}
                 onUpdateChannelAvatarFromYouTube={vi.fn()}
                 onRemoveChannelAvatar={vi.fn()}
+                onUpdateChannelBannerFromFile={vi.fn()}
+                onUpdateChannelBannerFromYouTube={vi.fn()}
+                onRemoveChannelBanner={vi.fn()}
                 onClosePlayer={vi.fn()}
             />,
             { withAppShell: true }

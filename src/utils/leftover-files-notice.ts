@@ -10,3 +10,8 @@ export function leftoverFilesNotice(what: "media" | "channel", count: number): s
 export function leftoverAvatarNotice(): string {
     return "The channel avatar was changed, but the previous image could not be removed from the library folder. Diagnostics can remove leftover files later.";
 }
+
+// The same for a channel banner.
+export function leftoverBannerNotice(): string {
+    return "The channel banner was changed, but the previous image could not be removed from the library folder. Diagnostics can remove leftover files later.";
+}

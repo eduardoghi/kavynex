@@ -17,12 +17,15 @@ pub struct ChannelRow {
     pub name: String,
     pub youtube_handle: String,
     pub avatar_path: Option<String>,
+    /// The channel's banner, the wide image behind the avatar on its page. Under `thumbnails/`, the
+    /// same as the avatar.
+    pub banner_path: Option<String>,
     pub created_at: String,
 }
 
 pub async fn list_channels(pool: &SqlitePool) -> AppResult<Vec<ChannelRow>> {
     sqlx::query_as::<_, ChannelRow>(
-        "SELECT id, name, youtube_handle, avatar_path, created_at
+        "SELECT id, name, youtube_handle, avatar_path, banner_path, created_at
          FROM channels
          ORDER BY name ASC",
     )
@@ -31,25 +34,29 @@ pub async fn list_channels(pool: &SqlitePool) -> AppResult<Vec<ChannelRow>> {
     .map_err(|error| db_error("failed to list channels", error))
 }
 
-/// Every non-blank channel avatar path.
+/// Every non-blank channel image path, avatars and banners together.
 ///
-/// Read by the library integrity check, which has to count an avatar as a *referenced* thumbnail.
-/// Avatars live under `thumbnails/` but are referenced by the channels table rather than by any
-/// media row, so without them an avatar that is not also a media thumbnail would be reported as an
-/// orphan. Inviting the user to delete a file the app is still using.
+/// Read by the library integrity check, which has to count a channel image as a *referenced*
+/// thumbnail. Both live under `thumbnails/` but are referenced by the channels table rather than by
+/// any media row, so without them an avatar or a banner that is not also a media thumbnail would be
+/// reported as an orphan. Inviting the user to delete a file the app is still using.
 ///
-/// Selects only the column it needs rather than reusing `list_channels`. This runs on every
+/// Selects only the columns it needs rather than reusing `list_channels`. This runs on every
 /// Diagnostics open, the blank filter is what keeps an empty-string path out of the expected set,
-/// and `idx_channels_avatar_path` can serve it without touching the table.
-pub async fn list_channel_avatar_paths(pool: &SqlitePool) -> AppResult<Vec<String>> {
+/// and the two column indexes can serve it without touching the table.
+pub async fn list_channel_image_paths(pool: &SqlitePool) -> AppResult<Vec<String>> {
     sqlx::query_scalar::<_, String>(
         "SELECT avatar_path
          FROM channels
-         WHERE avatar_path IS NOT NULL AND TRIM(avatar_path) <> ''",
+         WHERE avatar_path IS NOT NULL AND TRIM(avatar_path) <> ''
+         UNION ALL
+         SELECT banner_path
+         FROM channels
+         WHERE banner_path IS NOT NULL AND TRIM(banner_path) <> ''",
     )
     .fetch_all(pool)
     .await
-    .map_err(|error| db_error("failed to list channel avatar paths", error))
+    .map_err(|error| db_error("failed to list channel image paths", error))
 }
 
 pub async fn find_channel_by_youtube_handle(
@@ -57,7 +64,7 @@ pub async fn find_channel_by_youtube_handle(
     youtube_handle: &str,
 ) -> AppResult<Option<ChannelRow>> {
     sqlx::query_as::<_, ChannelRow>(
-        "SELECT id, name, youtube_handle, avatar_path, created_at
+        "SELECT id, name, youtube_handle, avatar_path, banner_path, created_at
          FROM channels
          WHERE youtube_handle = ? COLLATE NOCASE
          ORDER BY youtube_handle = ? DESC, id
@@ -75,7 +82,7 @@ pub async fn get_channel_by_id(
     channel_id: i64,
 ) -> AppResult<Option<ChannelRow>> {
     sqlx::query_as::<_, ChannelRow>(
-        "SELECT id, name, youtube_handle, avatar_path, created_at
+        "SELECT id, name, youtube_handle, avatar_path, banner_path, created_at
          FROM channels
          WHERE id = ?
          LIMIT 1",
@@ -230,6 +237,7 @@ mod tests {
                 name TEXT NOT NULL,
                 youtube_handle TEXT NOT NULL UNIQUE,
                 avatar_path TEXT,
+                banner_path TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );",
         )

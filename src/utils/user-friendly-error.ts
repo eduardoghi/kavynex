@@ -68,6 +68,7 @@ import {
     INVALID_DOWNLOADED_FILE_ERROR_CODE,
     YT_DLP_THUMBNAIL_EXEC_FAILED_ERROR_CODE,
     YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE,
+    CHANNEL_BANNER_NOT_FOUND_ERROR_CODE,
     YT_DLP_METADATA_PARSE_FAILED_ERROR_CODE,
     FFMPEG_NOT_FOUND_ERROR_CODE,
     FFMPEG_FAILED_ERROR_CODE,
@@ -250,6 +251,7 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
         "yt-dlp could not be started to download the thumbnail.",
     [YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE]:
         "yt-dlp finished, but no thumbnail file was produced.",
+    [CHANNEL_BANNER_NOT_FOUND_ERROR_CODE]: "This channel has no banner on YouTube.",
     [YT_DLP_SELECTED_FORMAT_NOT_FOUND_ERROR_CODE]:
         "The selected format is no longer offered for this media. Load the formats again and pick another one.",
     [YT_DLP_RUN_ALREADY_ACTIVE_ERROR_CODE]:

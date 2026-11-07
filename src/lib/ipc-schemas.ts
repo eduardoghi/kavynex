@@ -72,6 +72,7 @@ const channelSchema = z.object({
     name: z.string(),
     youtube_handle: z.string(),
     avatar_path: z.string().nullable(),
+    banner_path: z.string().nullable(),
     created_at: z.string(),
 });
 
@@ -392,6 +393,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     find_channel_by_youtube_handle: channelSchema.nullable() satisfies z.ZodType<Channel | null>,
     get_channel_by_id: channelSchema.nullable() satisfies z.ZodType<Channel | null>,
     replace_channel_avatar: artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
+    replace_channel_banner: artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     delete_channel_with_artifacts:
         artifactCleanupReportSchema satisfies z.ZodType<ArtifactCleanupReport>,
     list_media_page: mediaPageSchema satisfies z.ZodType<MediaPage>,

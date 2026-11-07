@@ -34,6 +34,7 @@ type ChannelSidebarProps = {
     loading?: boolean;
     deletingChannelId?: number | null;
     updatingChannelAvatarId?: number | null;
+    updatingChannelBannerId?: number | null;
     libraryPath: string;
     // See ChannelListItem. A folder can be configured while `libraryPath` is still handed empty.
     hasLibraryFolder?: boolean;
@@ -48,6 +49,9 @@ type ChannelSidebarProps = {
     onUpdateChannelAvatarFromFile: (channel: Channel) => void | Promise<void>;
     onUpdateChannelAvatarFromYouTube: (channel: Channel) => void | Promise<void>;
     onRemoveChannelAvatar: (channel: Channel) => void | Promise<void>;
+    onUpdateChannelBannerFromFile: (channel: Channel) => void | Promise<void>;
+    onUpdateChannelBannerFromYouTube: (channel: Channel) => void | Promise<void>;
+    onRemoveChannelBanner: (channel: Channel) => void | Promise<void>;
     onClosePlayer: () => void;
 };
 
@@ -59,6 +63,7 @@ export function ChannelSidebar({
     loading = false,
     deletingChannelId = null,
     updatingChannelAvatarId = null,
+    updatingChannelBannerId = null,
     libraryPath,
     hasLibraryFolder = true,
     appIconSrc,
@@ -70,6 +75,9 @@ export function ChannelSidebar({
     onUpdateChannelAvatarFromFile,
     onUpdateChannelAvatarFromYouTube,
     onRemoveChannelAvatar,
+    onUpdateChannelBannerFromFile,
+    onUpdateChannelBannerFromYouTube,
+    onRemoveChannelBanner,
     onClosePlayer,
 }: ChannelSidebarProps): JSX.Element {
     const scrollViewportRef = useRef<HTMLDivElement>(null);
@@ -274,6 +282,16 @@ export function ChannelSidebar({
                                                     onUpdateChannelAvatarFromYouTube
                                                 }
                                                 onRemoveChannelAvatar={onRemoveChannelAvatar}
+                                                isUpdatingBanner={
+                                                    channel.id === updatingChannelBannerId
+                                                }
+                                                onUpdateChannelBannerFromFile={
+                                                    onUpdateChannelBannerFromFile
+                                                }
+                                                onUpdateChannelBannerFromYouTube={
+                                                    onUpdateChannelBannerFromYouTube
+                                                }
+                                                onRemoveChannelBanner={onRemoveChannelBanner}
                                                 onClosePlayer={onClosePlayer}
                                             />
                                         </Box>

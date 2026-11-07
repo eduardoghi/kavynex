@@ -129,6 +129,7 @@ const mockChannelsState = {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         },
     ],
@@ -138,6 +139,7 @@ const mockChannelsState = {
         name: "Canal A",
         youtube_handle: "@canala",
         avatar_path: null,
+        banner_path: null,
         created_at: "2026-03-31T10:00:00.000Z",
     },
 
@@ -179,6 +181,7 @@ const mockChannelsState = {
     isDeletingChannel: false,
     isUpdatingChannelAvatar: false,
     updatingChannelAvatarId: null,
+    updatingChannelBannerId: null,
 
     setSelectedChannelId: vi.fn(),
     createChannel: vi.fn(),
@@ -186,6 +189,9 @@ const mockChannelsState = {
     updateChannelAvatarFromFile: vi.fn().mockResolvedValue(undefined),
     updateChannelAvatarFromYouTube: vi.fn().mockResolvedValue(undefined),
     removeChannelAvatar: vi.fn().mockResolvedValue(undefined),
+    updateChannelBannerFromFile: vi.fn().mockResolvedValue(undefined),
+    updateChannelBannerFromYouTube: vi.fn().mockResolvedValue(undefined),
+    removeChannelBanner: vi.fn().mockResolvedValue(undefined),
     confirmDeleteChannel: vi.fn(),
     closeDeleteChannelModal: vi.fn(),
 };

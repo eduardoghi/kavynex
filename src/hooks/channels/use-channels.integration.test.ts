@@ -40,6 +40,7 @@ function channel(id: number, name: string): Channel {
         name,
         youtube_handle: `@${name.toLowerCase()}`,
         avatar_path: null,
+        banner_path: null,
         created_at: "2026-10-10T10:00:00.000Z",
     };
 }
@@ -75,6 +76,7 @@ describe("useChannels with its real actions", () => {
         vi.mocked(executeCreateChannel).mockResolvedValueOnce({
             channelId: 2,
             avatarFailure: null,
+            bannerFailure: null,
         });
 
         let creating: Promise<void> = Promise.resolve();

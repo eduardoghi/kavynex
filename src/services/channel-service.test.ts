@@ -54,6 +54,7 @@ describe("channel-service", () => {
                 name: "Canal A",
                 youtube_handle: "@canala",
                 avatar_path: null,
+                banner_path: null,
                 created_at: "2026-03-31T10:00:00.000Z",
             },
         ]);
@@ -127,6 +128,7 @@ describe("channel-service", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         });
 
@@ -157,6 +159,7 @@ describe("channel-service", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         });
 
@@ -278,6 +281,7 @@ describe("updateChannelNameHandle", () => {
             name: "foo",
             youtube_handle: "@foo",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-01-01 00:00:00",
         });
     });
@@ -290,6 +294,7 @@ describe("updateChannelNameHandle", () => {
             name: "Foo",
             youtube_handle: "@Foo",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-01-01 00:00:00",
         });
 
@@ -314,6 +319,7 @@ describe("updateChannelNameHandle", () => {
             name: "Bar",
             youtube_handle: "@bar",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-01-01 00:00:00",
         });
 

@@ -55,6 +55,16 @@ export async function replaceChannelAvatar(
     });
 }
 
+export async function replaceChannelBanner(
+    channelId: number,
+    bannerPath: string | null
+): Promise<ArtifactCleanupReport> {
+    return invokeCommand(TAURI_COMMANDS.REPLACE_CHANNEL_BANNER, {
+        channelId,
+        bannerPath,
+    });
+}
+
 export async function deleteChannelWithArtifacts(
     channelId: number
 ): Promise<ArtifactCleanupReport> {

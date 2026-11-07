@@ -16,12 +16,14 @@ vi.mock("../../services/channel-service", () => ({
     deleteChannelWithThumbnailCleanup: vi.fn(),
     listAllChannels: vi.fn(),
     updateChannelAvatarWithCleanup: vi.fn(),
+    updateChannelBannerWithCleanup: vi.fn(),
     updateChannelNameHandle: vi.fn(),
 }));
 
 vi.mock("../../services/thumbnail-service", () => ({
     persistThumbnailFile: vi.fn(),
     downloadChannelAvatarFromHandle: vi.fn(),
+    downloadChannelBannerFromHandle: vi.fn(),
 }));
 
 import {
@@ -30,10 +32,12 @@ import {
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
+    updateChannelBannerWithCleanup,
     updateChannelNameHandle,
 } from "../../services/channel-service";
 import {
     downloadChannelAvatarFromHandle,
+    downloadChannelBannerFromHandle,
     persistThumbnailFile,
 } from "../../services/thumbnail-service";
 
@@ -60,6 +64,7 @@ describe("useChannelActions", () => {
                 name: "Canal A",
                 youtube_handle: "@canala",
                 avatar_path: null,
+                banner_path: null,
                 created_at: "2026-03-31T10:00:00.000Z",
             },
         ]);
@@ -76,6 +81,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -93,6 +99,7 @@ describe("useChannelActions", () => {
                 name: "Canal A",
                 youtube_handle: "@canala",
                 avatar_path: null,
+                banner_path: null,
                 created_at: "2026-03-31T10:00:00.000Z",
             },
         ]);
@@ -106,6 +113,7 @@ describe("useChannelActions", () => {
                 name: "Canal A",
                 youtube_handle: "@canala",
                 avatar_path: null,
+                banner_path: null,
                 created_at: "2026-03-31T10:00:00.000Z",
             },
         ]);
@@ -122,6 +130,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -167,6 +176,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -212,6 +222,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -255,6 +266,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -293,6 +305,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -332,6 +345,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -374,6 +388,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -414,6 +429,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -450,6 +466,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -488,6 +505,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -528,6 +546,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -562,6 +581,7 @@ describe("useChannelActions", () => {
                 name: "Canal Editado",
                 youtube_handle: "@canaleditado",
                 avatar_path: null,
+                banner_path: null,
                 created_at: "2026-03-31T10:00:00.000Z",
             },
         ]);
@@ -578,6 +598,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -622,6 +643,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -654,6 +676,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -680,6 +703,7 @@ describe("useChannelActions", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -699,6 +723,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -724,12 +749,118 @@ describe("useChannelActions", () => {
         expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
     });
 
+    describe("banner", () => {
+        const channel = {
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            banner_path: "thumbnails/old-banner.jpg",
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+
+        function renderBannerActions(libraryPath = "/library") {
+            const setUpdatingChannelBannerId = vi.fn();
+            const rendered = renderHook(() =>
+                useChannelActions({
+                    libraryPath,
+                    onError,
+                    selectedChannelId: null,
+                    setChannels,
+                    setSelectedChannelId,
+                    setNewChannelName,
+                    setNewYoutubeHandle,
+                    setNewChannelAvatarMode,
+                    setNewChannelAvatarPath,
+                    setUpdatingChannelAvatarId,
+                    setUpdatingChannelBannerId,
+                    channelToDelete: null,
+                    setChannelToDelete,
+                    setConfirmDeleteChannelOpen,
+                })
+            );
+
+            return { ...rendered, setUpdatingChannelBannerId };
+        }
+
+        it("loads the banner from YouTube and stores it on the channel", async () => {
+            vi.mocked(downloadChannelBannerFromHandle).mockResolvedValueOnce("thumbnails/b.jpg");
+            vi.mocked(updateChannelBannerWithCleanup).mockResolvedValueOnce(0);
+            vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+            const { result, setUpdatingChannelBannerId } = renderBannerActions();
+
+            await act(async () => {
+                await result.current.updateChannelBannerAction(channel, "youtube");
+            });
+
+            expect(downloadChannelBannerFromHandle).toHaveBeenCalledWith("@canala");
+            expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(10, "thumbnails/b.jpg");
+            expect(setUpdatingChannelBannerId).toHaveBeenCalledWith(10);
+            expect(setUpdatingChannelBannerId).toHaveBeenLastCalledWith(null);
+            // The avatar's busy state is the avatar's.
+            expect(setUpdatingChannelAvatarId).not.toHaveBeenCalled();
+        });
+
+        it("stores a picked image as the banner", async () => {
+            vi.mocked(persistThumbnailFile).mockResolvedValueOnce("thumbnails/picked.png");
+            vi.mocked(updateChannelBannerWithCleanup).mockResolvedValueOnce(0);
+            vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+            const { result } = renderBannerActions();
+
+            await act(async () => {
+                await result.current.updateChannelBannerAction(channel, "manual", "C:/pic.png");
+            });
+
+            expect(persistThumbnailFile).toHaveBeenCalledWith("C:/pic.png");
+            expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(10, "thumbnails/picked.png");
+        });
+
+        it("removes the banner", async () => {
+            vi.mocked(updateChannelBannerWithCleanup).mockResolvedValueOnce(0);
+            vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+            const { result } = renderBannerActions();
+
+            await act(async () => {
+                await result.current.updateChannelBannerAction(channel, "none");
+            });
+
+            expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(10, null);
+            expect(downloadChannelBannerFromHandle).not.toHaveBeenCalled();
+        });
+
+        it("reports a banner that could not be loaded", async () => {
+            vi.mocked(downloadChannelBannerFromHandle).mockRejectedValueOnce(new Error("offline"));
+            const { result } = renderBannerActions();
+
+            await act(async () => {
+                await result.current.updateChannelBannerAction(channel, "youtube");
+            });
+
+            expect(onError).toHaveBeenCalledWith("Failed to update the channel banner.");
+            expect(updateChannelBannerWithCleanup).not.toHaveBeenCalled();
+        });
+
+        it("needs a library folder to store a banner", async () => {
+            const { result } = renderBannerActions("");
+
+            await act(async () => {
+                await result.current.updateChannelBannerAction(channel, "youtube");
+            });
+
+            expect(onError).toHaveBeenCalledWith(
+                "Choose a library folder before setting a channel banner."
+            );
+            expect(downloadChannelBannerFromHandle).not.toHaveBeenCalled();
+        });
+    });
+
     it("says so when the previous avatar file could not be removed", async () => {
         const channel = {
             id: 10,
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: "thumbnails/old-avatar.png",
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
         const onNotice = vi.fn();
@@ -751,6 +882,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -777,6 +909,7 @@ describe("useChannelActions", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -798,6 +931,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -822,6 +956,7 @@ describe("useChannelActions", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: "thumbnails/old-avatar.png",
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -840,6 +975,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -860,6 +996,7 @@ describe("useChannelActions", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -875,6 +1012,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -901,6 +1039,7 @@ describe("useChannelActions", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -916,6 +1055,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -942,6 +1082,7 @@ describe("useChannelActions", () => {
             name: "Canal A",
             youtube_handle: "@canala",
             avatar_path: null,
+            banner_path: null,
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
@@ -957,6 +1098,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -998,11 +1140,13 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: {
                     id: 10,
                     name: "Canal A",
                     youtube_handle: "@canala",
                     avatar_path: null,
+                    banner_path: null,
                     created_at: "2026-03-31T10:00:00.000Z",
                 },
                 setChannelToDelete,
@@ -1032,6 +1176,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -1058,6 +1203,7 @@ describe("useChannelActions", () => {
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
                 setUpdatingChannelAvatarId,
+                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,

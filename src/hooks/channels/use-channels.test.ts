@@ -34,6 +34,7 @@ const channelA = {
     name: "Canal A",
     youtube_handle: "@canala",
     avatar_path: null,
+    banner_path: null,
     created_at: "2026-03-31T10:00:00.000Z",
 };
 
@@ -54,6 +55,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -700,6 +703,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -757,6 +762,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -807,6 +814,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: true,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -912,6 +921,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -962,6 +973,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -1008,6 +1021,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -1060,6 +1075,8 @@ describe("useChannels", () => {
                 isCreatingChannel: false,
                 isDeletingChannel: false,
                 isUpdatingChannelAvatar: false,
+                isUpdatingChannelBanner: false,
+                updateChannelBannerAction: vi.fn(),
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);

@@ -82,21 +82,36 @@ fn looks_like_bmp(bytes: &[u8]) -> bool {
 /// URL points to), so it is not sufficient on its own to prove the bytes are actually an
 /// image before they are written to disk and later served from the library.
 pub fn looks_like_supported_image(bytes: &[u8]) -> bool {
+    sniffed_image_extension(bytes).is_some()
+}
+
+/// The extension of the image format `bytes` start with, or `None` when it is none this app
+/// accepts. For an image whose URL names no extension (a channel banner, `...=s0`), so the file
+/// is stored under the one its content proves.
+pub fn sniffed_image_extension(bytes: &[u8]) -> Option<&'static str> {
     const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
     const JPEG_SIGNATURE: &[u8] = b"\xFF\xD8\xFF";
     const GIF_SIGNATURE: &[u8] = b"GIF8";
 
-    if bytes.starts_with(PNG_SIGNATURE)
-        || bytes.starts_with(JPEG_SIGNATURE)
-        || bytes.starts_with(GIF_SIGNATURE)
-        || looks_like_bmp(bytes)
-    {
-        return true;
+    if bytes.starts_with(PNG_SIGNATURE) {
+        return Some("png");
+    }
+
+    if bytes.starts_with(JPEG_SIGNATURE) {
+        return Some("jpg");
+    }
+
+    if bytes.starts_with(GIF_SIGNATURE) {
+        return Some("gif");
+    }
+
+    if looks_like_bmp(bytes) {
+        return Some("bmp");
     }
 
     // WEBP. A RIFF container with a "WEBP" fourCC at offset 8.
     if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-        return true;
+        return Some("webp");
     }
 
     // AVIF. An ISOBMFF `ftyp` box (offset 4) whose brand (offset 8) is avif/avis.
@@ -104,10 +119,10 @@ pub fn looks_like_supported_image(bytes: &[u8]) -> bool {
         && &bytes[4..8] == b"ftyp"
         && (&bytes[8..12] == b"avif" || &bytes[8..12] == b"avis")
     {
-        return true;
+        return Some("avif");
     }
 
-    false
+    None
 }
 
 pub fn is_allowed_thumbnail_extension(ext: &str) -> bool {
@@ -177,6 +192,26 @@ pub fn normalize_yt_dlp_upload_date(upload_date: Option<String>) -> Option<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_image_is_named_after_the_format_its_bytes_prove() {
+        let mut bmp = b"BM".to_vec();
+        bmp.extend_from_slice(&[0; 8]);
+        bmp.extend_from_slice(&26_u32.to_le_bytes());
+
+        for (bytes, expected) in [
+            (b"\x89PNG\r\n\x1a\nrest".to_vec(), Some("png")),
+            (b"\xFF\xD8\xFF\xE0rest".to_vec(), Some("jpg")),
+            (b"GIF89a".to_vec(), Some("gif")),
+            (b"RIFF\x00\x00\x00\x00WEBPVP8 ".to_vec(), Some("webp")),
+            (b"\x00\x00\x00\x1cftypavif".to_vec(), Some("avif")),
+            (bmp, Some("bmp")),
+            (b"<html>".to_vec(), None),
+        ] {
+            assert_eq!(sniffed_image_extension(&bytes), expected);
+            assert_eq!(looks_like_supported_image(&bytes), expected.is_some());
+        }
+    }
 
     /// Writes the extension lists to `src/types/generated/fileExtensions.ts`, so the file pickers
     /// and the frontend's checks offer what this module accepts and nothing else. The name starts

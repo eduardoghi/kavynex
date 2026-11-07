@@ -29,7 +29,9 @@ import type { MediaQueryFilters } from "../../utils/media-library-filters";
 import { useChannelLibraryFilters } from "../../hooks/channels/use-channel-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
 import { toUnionValue } from "../../utils/guards";
+import { useState } from "react";
 import { AppButton } from "../ui/app-button";
+
 
 // The per-card actions the grid exposes on each media row. Grouped into one object rather than
 // passed as eight separate props (most of them optional callbacks) so the section's contract stays
@@ -108,6 +110,11 @@ export function SelectedChannelLibrarySection({
     cardActions,
 }: SelectedChannelLibrarySectionProps): JSX.Element {
     const avatarSrc = fileSrcFromStoredPath(selectedChannel.avatar_path, libraryPath);
+    const bannerSrc = fileSrcFromStoredPath(selectedChannel.banner_path, libraryPath);
+    // A banner whose file is gone from the library draws nothing rather than a broken image. The
+    // section remounts per channel (Home keys it), so this starts over with each one.
+    const [failedBannerSrc, setFailedBannerSrc] = useState<string | null>(null);
+    const showBanner = !!bannerSrc && bannerSrc !== failedBannerSrc;
 
     // Filter/sort/search state and the backend query it drives live in a dedicated hook so this
     // component stays presentational. See use-channel-library-filters for the debounce and the
@@ -138,6 +145,25 @@ export function SelectedChannelLibrarySection({
 
     return (
         <Stack gap="lg">
+            {showBanner && (
+                <Box
+                    component="img"
+                    src={bannerSrc}
+                    // Decorative, like the avatar. The channel's name is the heading below it.
+                    alt=""
+                    onError={() => setFailedBannerSrc(bannerSrc)}
+                    style={{
+                        display: "block",
+                        width: "100%",
+                        // YouTube shows the middle band of a 16:9 banner on desktop, about this wide.
+                        aspectRatio: "6.2 / 1",
+                        objectFit: "cover",
+                        borderRadius: "var(--mantine-radius-md)",
+                        border: `1px solid ${shellBorder}`,
+                    }}
+                />
+            )}
+
             <Group justify="space-between" align="center" wrap="wrap">
                 <Group gap="md" wrap="nowrap">
                     <Avatar

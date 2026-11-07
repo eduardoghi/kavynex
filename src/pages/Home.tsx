@@ -124,6 +124,7 @@ export default function Home(): JSX.Element {
                         channels.isDeletingChannel ? (channels.channelToDelete?.id ?? null) : null
                     }
                     updatingChannelAvatarId={channels.updatingChannelAvatarId}
+                    updatingChannelBannerId={channels.updatingChannelBannerId}
                     // Avatars are library images, refused until the library's asset scope is
                     // registered and not requested again after, so they wait for it.
                     libraryPath={settings.libraryAssetsReady ? controller.libraryPath : ""}
@@ -137,6 +138,9 @@ export default function Home(): JSX.Element {
                     onUpdateChannelAvatarFromFile={channels.updateChannelAvatarFromFile}
                     onUpdateChannelAvatarFromYouTube={channels.updateChannelAvatarFromYouTube}
                     onRemoveChannelAvatar={channels.removeChannelAvatar}
+                    onUpdateChannelBannerFromFile={channels.updateChannelBannerFromFile}
+                    onUpdateChannelBannerFromYouTube={channels.updateChannelBannerFromYouTube}
+                    onRemoveChannelBanner={channels.removeChannelBanner}
                     onClosePlayer={playerActions.closePlayer}
                 />
 

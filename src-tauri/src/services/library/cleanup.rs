@@ -115,14 +115,17 @@ pub(crate) async fn count_media_rows_using_file(pool: &SqlitePool, path: &str) -
     count_media_files_referencing(&mut conn, path).await
 }
 
-/// A thumbnail is referenced both by video rows and by channel avatars, so a single count
+/// A thumbnail is referenced by video rows and by channel avatars and banners, so a single count
 /// covers every surviving use regardless of which side the deletion came from.
 async fn count_thumbnails_referencing(conn: &mut SqliteConnection, path: &str) -> AppResult<i64> {
     let (forward, backward) = path_spellings(path);
     let (total,): (i64,) = sqlx::query_as(
         "SELECT (SELECT COUNT(*) FROM videos WHERE thumbnail_path IN (?, ?))
-              + (SELECT COUNT(*) FROM channels WHERE avatar_path IN (?, ?))",
+              + (SELECT COUNT(*) FROM channels WHERE avatar_path IN (?, ?))
+              + (SELECT COUNT(*) FROM channels WHERE banner_path IN (?, ?))",
     )
+    .bind(&forward)
+    .bind(&backward)
     .bind(&forward)
     .bind(&backward)
     .bind(&forward)
@@ -262,14 +265,14 @@ pub async fn delete_channel_row_and_plan_cleanup(
         .await
         .map_err(|error| db_error("failed to start channel deletion transaction", error))?;
 
-    let channel: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT avatar_path FROM channels WHERE id = ?")
+    let channel: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT avatar_path, banner_path FROM channels WHERE id = ?")
             .bind(channel_id)
             .fetch_optional(&mut *tx)
             .await
             .map_err(|error| db_error("failed to load channel for deletion", error))?;
 
-    let Some((avatar_path,)) = channel else {
+    let Some((avatar_path, banner_path)) = channel else {
         return Ok(None);
     };
 
@@ -308,7 +311,7 @@ pub async fn delete_channel_row_and_plan_cleanup(
 
     let mut plan = ArtifactCleanupPlan::default();
 
-    // BTreeSet dedupes (the avatar can also be a media thumbnail) and keeps the plan
+    // BTreeSet dedupes (the avatar or banner can also be a media thumbnail) and keeps the plan
     // order deterministic for tests and logs.
     let media_files: BTreeSet<String> = file_paths
         .into_iter()
@@ -319,6 +322,7 @@ pub async fn delete_channel_row_and_plan_cleanup(
         .into_iter()
         .map(|(value,)| value)
         .chain(avatar_path)
+        .chain(banner_path)
         .filter_map(|value| normalized(Some(value)))
         .collect();
 
@@ -1278,8 +1282,7 @@ pub async fn remove_orphan_artifacts<R: Runtime>(
     let pool = shared_pool(app).await?;
     let references =
         crate::services::video_repository::list_media_integrity_references(&pool).await?;
-    let avatar_paths =
-        crate::services::channel_repository::list_channel_avatar_paths(&pool).await?;
+    let avatar_paths = crate::services::channel_repository::list_channel_image_paths(&pool).await?;
     let expected =
         crate::services::library::integrity::expected_library_paths(&references, avatar_paths);
     let library_dir = configured_library_dir(app).await?;
@@ -1339,61 +1342,96 @@ pub async fn remove_orphan_artifacts<R: Runtime>(
     .await
 }
 
+/// One of the two images a channel stores under `thumbnails/`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelImage {
+    /// The round picture beside the channel's name.
+    Avatar,
+    /// The wide image behind the avatar on the channel's page.
+    Banner,
+}
+
+impl ChannelImage {
+    fn select_sql(self) -> &'static str {
+        match self {
+            Self::Avatar => "SELECT avatar_path FROM channels WHERE id = ?",
+            Self::Banner => "SELECT banner_path FROM channels WHERE id = ?",
+        }
+    }
+
+    fn update_sql(self) -> &'static str {
+        match self {
+            Self::Avatar => "UPDATE channels SET avatar_path = ? WHERE id = ?",
+            Self::Banner => "UPDATE channels SET banner_path = ? WHERE id = ?",
+        }
+    }
+}
+
 /// Updates a channel's avatar path and decides, within the same transaction, whether the
 /// previous avatar file became unreferenced. Returns `None` when the channel does not exist.
-///
-/// A thumbnail is referenced both by video rows and by channel avatars, and avatars and
-/// thumbnails are content-addressed (they can share a path), so the previous avatar is only
-/// planned for deletion when nothing else (no video thumbnail and no other channel avatar),
-/// still points at it. Doing this in one transaction (row write plus reference decision)
-/// closes the check-then-act race the frontend had when it updated the avatar and then
-/// counted references over separate IPC calls, and fixes a latent gap where that count
-/// ignored video-thumbnail references entirely.
+/// See [`replace_channel_image_and_plan_cleanup`].
 pub async fn replace_channel_avatar_and_plan_cleanup(
     pool: &SqlitePool,
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<Option<ArtifactCleanupPlan>> {
-    let next_avatar = normalized(avatar_path);
+    replace_channel_image_and_plan_cleanup(pool, channel_id, ChannelImage::Avatar, avatar_path)
+        .await
+}
+
+/// Updates one of a channel's images and decides, within the same transaction, whether the
+/// previous file became unreferenced. Returns `None` when the channel does not exist.
+///
+/// A thumbnail is referenced by video rows and by channel avatars and banners, and all of them are
+/// content-addressed (they can share a path), so the previous file is only planned for deletion
+/// when nothing else (no video thumbnail and no other channel image) still points at it. Doing this
+/// in one transaction (row write plus reference decision) closes the check-then-act race the
+/// frontend had when it updated the avatar and then counted references over separate IPC calls.
+pub async fn replace_channel_image_and_plan_cleanup(
+    pool: &SqlitePool,
+    channel_id: i64,
+    image: ChannelImage,
+    path: Option<String>,
+) -> AppResult<Option<ArtifactCleanupPlan>> {
+    let next = normalized(path);
 
     let mut tx = pool
         .begin_with(BEGIN_IMMEDIATE)
         .await
-        .map_err(|error| db_error("failed to start channel avatar update transaction", error))?;
+        .map_err(|error| db_error("failed to start channel image update transaction", error))?;
 
-    let existing: Option<(Option<String>,)> =
-        sqlx::query_as("SELECT avatar_path FROM channels WHERE id = ?")
-            .bind(channel_id)
-            .fetch_optional(&mut *tx)
-            .await
-            .map_err(|error| db_error("failed to load channel for avatar update", error))?;
+    let existing: Option<(Option<String>,)> = sqlx::query_as(image.select_sql())
+        .bind(channel_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to load channel for image update", error))?;
 
-    let Some((previous_avatar,)) = existing else {
+    let Some((previous,)) = existing else {
         return Ok(None);
     };
 
-    let previous_avatar = normalized(previous_avatar);
+    let previous = normalized(previous);
 
-    if previous_avatar == next_avatar {
+    if previous == next {
         return Ok(Some(ArtifactCleanupPlan::default()));
     }
 
-    sqlx::query("UPDATE channels SET avatar_path = ? WHERE id = ?")
-        .bind(next_avatar.as_deref())
+    sqlx::query(image.update_sql())
+        .bind(next.as_deref())
         .bind(channel_id)
         .execute(&mut *tx)
         .await
-        .map_err(|error| db_error("failed to update channel avatar path", error))?;
+        .map_err(|error| db_error("failed to update channel image path", error))?;
 
     let mut plan = ArtifactCleanupPlan::default();
 
-    if let Some(previous) = previous_avatar {
+    if let Some(previous) = previous {
         plan_artifact(&mut tx, ArtifactKind::Thumbnail, previous, &mut plan).await?;
     }
 
     tx.commit()
         .await
-        .map_err(|error| db_error("failed to commit channel avatar update", error))?;
+        .map_err(|error| db_error("failed to commit channel image update", error))?;
 
     Ok(Some(plan))
 }
@@ -1406,11 +1444,22 @@ pub async fn replace_channel_avatar<R: Runtime>(
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
+    replace_channel_image(app, channel_id, ChannelImage::Avatar, avatar_path).await
+}
+
+/// [`replace_channel_avatar`] for either of a channel's images.
+pub async fn replace_channel_image<R: Runtime>(
+    app: &AppHandle<R>,
+    channel_id: i64,
+    image: ChannelImage,
+    path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
     let pool = shared_pool(app).await?;
 
-    // A replaced avatar is removed at once. It was fetched from the channel, so it can be fetched
-    // again, and the trash is for what a deletion the user made could take back.
-    match replace_channel_avatar_and_plan_cleanup(&pool, channel_id, avatar_path).await? {
+    // A replaced image is removed at once. It was fetched from the channel or picked from the
+    // user's files, so it can be had again, and the trash is for what a deletion the user made
+    // could take back.
+    match replace_channel_image_and_plan_cleanup(&pool, channel_id, image, path).await? {
         Some(plan) => execute_plan(app, plan, Disposal::Delete).await,
         None => Ok(ArtifactCleanupReport::default()),
     }

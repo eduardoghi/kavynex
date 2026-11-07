@@ -454,6 +454,14 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
     .await
     .unwrap();
 
+    // v18 added `banner_path` to the channels table.
+    if version >= 18 {
+        sqlx::query("ALTER TABLE channels ADD COLUMN banner_path TEXT")
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
     // v17 added `original_text` to the comments table.
     if version >= 17 {
         sqlx::query("ALTER TABLE video_comments ADD COLUMN original_text TEXT")
@@ -719,6 +727,14 @@ async fn every_historical_version_migrates_to_the_current_schema() {
                 "a database stamped v{from_version} reached head without {name}"
             );
         }
+
+        // The channels column v18 adds, which the channel list and its banner read.
+        assert!(
+            table_has_column(&pool, "channels", "banner_path")
+                .await
+                .unwrap(),
+            "a database stamped v{from_version} reached head without channels.banner_path"
+        );
 
         // The row survived and carries the normalized title every later query depends on. A
         // NULL here is the silent failure mode: LIKE never matches it, so the media stays in
@@ -2023,10 +2039,11 @@ async fn apply_table_rebuilds_keeps_foreign_key_children_when_rebuilding_a_paren
             name TEXT NOT NULL CHECK (TRIM(name) <> ''),
             youtube_handle TEXT NOT NULL UNIQUE CHECK (TRIM(youtube_handle) <> ''),
             avatar_path TEXT CHECK (avatar_path IS NULL OR TRIM(avatar_path) <> ''),
+            banner_path TEXT CHECK (banner_path IS NULL OR TRIM(banner_path) <> ''),
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             note TEXT CHECK (note IS NULL OR TRIM(note) <> '')
         )",
-        carried_columns: "id, name, youtube_handle, avatar_path, created_at",
+        carried_columns: "id, name, youtube_handle, avatar_path, banner_path, created_at",
     };
 
     apply_table_rebuilds(&pool, std::slice::from_ref(&rebuild), 8)

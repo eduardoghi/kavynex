@@ -8,14 +8,20 @@ import {
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelAvatarWithCleanup,
+    updateChannelBannerWithCleanup,
     updateChannelNameHandle,
 } from "../../services/channel-service";
 import {
     downloadChannelAvatarFromHandle,
+    downloadChannelBannerFromHandle,
     persistThumbnailFile,
 } from "../../services/thumbnail-service";
 import { logError } from "../../utils/app-logger";
-import { leftoverAvatarNotice, leftoverFilesNotice } from "../../utils/leftover-files-notice";
+import {
+    leftoverAvatarNotice,
+    leftoverBannerNotice,
+    leftoverFilesNotice,
+} from "../../utils/leftover-files-notice";
 import { executeCreateChannel, type CreateChannelAvatar } from "../../use-cases/create-channel";
 
 type UseChannelActionsOptions = {
@@ -30,6 +36,7 @@ type UseChannelActionsOptions = {
     setNewChannelAvatarMode: (value: ChannelAvatarMode) => void;
     setNewChannelAvatarPath: (value: string) => void;
     setUpdatingChannelAvatarId: (value: number | null) => void;
+    setUpdatingChannelBannerId: (value: number | null) => void;
     channelToDelete: Channel | null;
     setChannelToDelete: (value: Channel | null) => void;
     setConfirmDeleteChannelOpen: (value: boolean) => void;
@@ -42,6 +49,7 @@ type UseChannelActionsReturn = {
     isCreatingChannel: boolean;
     isDeletingChannel: boolean;
     isUpdatingChannelAvatar: boolean;
+    isUpdatingChannelBanner: boolean;
     isEditingChannel: boolean;
     loadChannels: () => Promise<void>;
     createChannelAction: (
@@ -60,6 +68,12 @@ type UseChannelActionsReturn = {
         avatarMode: ChannelAvatarMode,
         avatarPath?: string
     ) => Promise<void>;
+    // The banner's counterpart, with the same three sources. "none" removes it.
+    updateChannelBannerAction: (
+        channel: Channel,
+        source: ChannelAvatarMode,
+        bannerPath?: string
+    ) => Promise<void>;
     confirmDeleteChannelAction: () => Promise<void>;
 };
 
@@ -75,6 +89,7 @@ export function useChannelActions({
     setNewChannelAvatarMode,
     setNewChannelAvatarPath,
     setUpdatingChannelAvatarId,
+    setUpdatingChannelBannerId,
     channelToDelete,
     setChannelToDelete,
     setConfirmDeleteChannelOpen,
@@ -86,6 +101,8 @@ export function useChannelActions({
     const { isRunning: isCreatingChannel, runWithFlag: runCreateChannel } = useAsyncFlag();
     const { isRunning: isDeletingChannel, runWithFlag: runDeleteChannel } = useAsyncFlag();
     const { isRunning: isUpdatingChannelAvatar, runWithFlag: runUpdateChannelAvatar } =
+        useAsyncFlag();
+    const { isRunning: isUpdatingChannelBanner, runWithFlag: runUpdateChannelBanner } =
         useAsyncFlag();
     const { isRunning: isEditingChannel, runWithFlag: runEditChannel } = useAsyncFlag();
 
@@ -197,6 +214,17 @@ export function useChannelActions({
                 setNewYoutubeHandle("");
                 setNewChannelAvatarMode("none");
                 setNewChannelAvatarPath("");
+
+                // Logged only. The channel and its avatar are there, and the banner can be loaded
+                // from the channel's page.
+                if (result.bannerFailure !== null) {
+                    logError(
+                        "channels",
+                        "Created the channel without its YouTube banner.",
+                        result.bannerFailure,
+                        { youtubeHandle: normalizedYoutubeHandle }
+                    );
+                }
 
                 if (result.avatarFailure !== null) {
                     logError(
@@ -358,6 +386,71 @@ export function useChannelActions({
         ]
     );
 
+    const updateChannelBannerAction = useCallback(
+        async (channel: Channel, source: ChannelAvatarMode, bannerPath = ""): Promise<void> => {
+            const normalizedLibraryPath = libraryPath.trim();
+            const normalizedBannerPath = bannerPath.trim();
+
+            await runUpdateChannelBanner(async () => {
+                setUpdatingChannelBannerId(channel.id);
+
+                try {
+                    let nextBannerPath: string | null = null;
+
+                    if (source !== "none" && !normalizedLibraryPath) {
+                        onError("Choose a library folder before setting a channel banner.");
+                        return;
+                    }
+
+                    if (source === "manual") {
+                        if (!normalizedBannerPath) {
+                            onError("Select an image file before updating the banner.");
+                            return;
+                        }
+
+                        nextBannerPath = await persistThumbnailFile(normalizedBannerPath);
+                    } else if (source === "youtube") {
+                        nextBannerPath = await downloadChannelBannerFromHandle(
+                            channel.youtube_handle
+                        );
+                    }
+
+                    const leftoverFiles = await updateChannelBannerWithCleanup(
+                        channel.id,
+                        nextBannerPath
+                    );
+
+                    if (leftoverFiles > 0) {
+                        onNotice?.(leftoverBannerNotice());
+                    }
+
+                    await reloadChannelsAfterChange(
+                        "The banner was changed, but the channel list could not be reloaded. Restart the app if it does not show the new banner."
+                    );
+                } catch (error) {
+                    logError("channels", "Failed to update channel banner.", error, {
+                        channelId: channel.id,
+                        youtubeHandle: channel.youtube_handle,
+                        source,
+                        bannerPath: normalizedBannerPath,
+                        libraryPath: normalizedLibraryPath,
+                    });
+                    onError(resolveErrorMessage(error, "Failed to update the channel banner."));
+                } finally {
+                    setUpdatingChannelBannerId(null);
+                }
+            });
+        },
+        [
+            libraryPath,
+            onError,
+            onNotice,
+            reloadChannelsAfterChange,
+            runUpdateChannelBanner,
+            setUpdatingChannelBannerId,
+        ]
+    );
+
     const confirmDeleteChannelAction = useCallback(async (): Promise<void> => {
         if (!channelToDelete) {
             return;
@@ -422,11 +515,13 @@ export function useChannelActions({
         isCreatingChannel,
         isDeletingChannel,
         isUpdatingChannelAvatar,
+        isUpdatingChannelBanner,
         isEditingChannel,
         loadChannels,
         createChannelAction,
         updateChannelIdentityAction,
         updateChannelAvatarAction,
+        updateChannelBannerAction,
         confirmDeleteChannelAction,
     });
 }

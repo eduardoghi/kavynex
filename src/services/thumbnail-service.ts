@@ -78,6 +78,21 @@ export async function downloadChannelAvatarFromHandle(youtubeHandle: string): Pr
     );
 }
 
+// The channel's banner, the wide image behind its avatar, stored in the library like the avatar.
+export async function downloadChannelBannerFromHandle(youtubeHandle: string): Promise<string> {
+    const normalizedYoutubeHandle = normalizeString(youtubeHandle);
+
+    if (!normalizedYoutubeHandle) {
+        throw new ClientError("YouTube handle is required.");
+    }
+
+    return normalizeString(
+        await invokeCommand(TAURI_COMMANDS.DOWNLOAD_CHANNEL_BANNER_FROM_HANDLE, {
+            youtubeHandle: normalizedYoutubeHandle,
+        })
+    );
+}
+
 /**
  * What one call learned about the paths it asked about.
  *

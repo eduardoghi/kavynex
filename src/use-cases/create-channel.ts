@@ -1,8 +1,15 @@
-import { createChannel, ensureChannelCanBeCreated } from "../services/channel-service";
+import { CHANNEL_BANNER_NOT_FOUND_ERROR_CODE } from "../constants/error-codes";
+import {
+    createChannel,
+    ensureChannelCanBeCreated,
+    updateChannelBannerWithCleanup,
+} from "../services/channel-service";
 import {
     downloadChannelAvatarFromHandle,
+    downloadChannelBannerFromHandle,
     persistThumbnailFile,
 } from "../services/thumbnail-service";
+import { parseAppError } from "../utils/app-error";
 
 export type CreateChannelAvatar =
     | { mode: "none" }
@@ -14,6 +21,9 @@ export type CreateChannelResult = {
     // Why the YouTube avatar could not be downloaded, or null. The channel is created without one
     // then, since the avatar can be set later and a network hiccup should not cost the channel.
     avatarFailure: unknown;
+    // Why the banner could not be set, or null. Fetched only with a YouTube avatar, since that is
+    // the choice to reach the channel's page, and a channel with no banner is not a failure.
+    bannerFailure: unknown;
 };
 
 // Creates a channel and its avatar. Reloading the channel list is left to the caller, because a
@@ -43,6 +53,19 @@ export async function executeCreateChannel(
     }
 
     const channelId = await createChannel(name, youtubeHandle, avatarPath);
+    let bannerFailure: unknown = null;
 
-    return { channelId, avatarFailure };
+    // After the row exists, so a banner that cannot be had costs nothing but the banner.
+    if (avatar.mode === "youtube" && channelId !== null) {
+        try {
+            const bannerPath = await downloadChannelBannerFromHandle(youtubeHandle);
+            await updateChannelBannerWithCleanup(channelId, bannerPath);
+        } catch (error) {
+            if (parseAppError(error).code !== CHANNEL_BANNER_NOT_FOUND_ERROR_CODE) {
+                bannerFailure = error;
+            }
+        }
+    }
+
+    return { channelId, avatarFailure, bannerFailure };
 }

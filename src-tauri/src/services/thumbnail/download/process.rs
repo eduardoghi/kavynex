@@ -163,6 +163,27 @@ pub(super) enum ThumbnailTarget {
 // `width * height * 4` bytes regardless of how the file is compressed, so it reduces disk and I/O,
 // never the webview's bitmap memory.
 
+/// Builds the yt-dlp argument vector that prints a channel's page as JSON without enumerating a
+/// single video (`--playlist-items 0`), for the images it lists. The banner is among them, under
+/// the id [`CHANNEL_BANNER_THUMBNAIL_ID`](super::CHANNEL_BANNER_THUMBNAIL_ID), but yt-dlp ranks it
+/// below the avatar, so `--write-thumbnail` (the avatar's flow) never writes it. The URL is last and
+/// preceded by `--`, as in [`build_thumbnail_command_args`].
+pub(super) fn build_channel_images_command_args(url: &str) -> Vec<String> {
+    [
+        "--ignore-config",
+        "--playlist-items",
+        "0",
+        "--skip-download",
+        "--dump-single-json",
+        "--no-warnings",
+        "--",
+        url,
+    ]
+    .iter()
+    .map(|arg| arg.to_string())
+    .collect()
+}
+
 /// Builds the yt-dlp argument vector for writing a thumbnail (converted to
 /// [`THUMBNAIL_OUTPUT_FORMAT`]) into `temp_dir` under `file_prefix`.
 ///
@@ -216,6 +237,25 @@ pub(super) fn build_thumbnail_command_args(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_channel_page_is_printed_without_enumerating_a_video_and_the_url_comes_last() {
+        let args = build_channel_images_command_args("https://www.youtube.com/@chan");
+
+        assert_eq!(
+            args,
+            [
+                "--ignore-config",
+                "--playlist-items",
+                "0",
+                "--skip-download",
+                "--dump-single-json",
+                "--no-warnings",
+                "--",
+                "https://www.youtube.com/@chan",
+            ]
+        );
+    }
     use std::path::PathBuf;
     use std::pin::Pin;
     use std::sync::atomic::{AtomicUsize, Ordering};
