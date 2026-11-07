@@ -377,7 +377,8 @@ Inside the library directory, media services create these subfolders on demand:
   folder per run that keeps each file's library-relative path (`video/media_<sha256>.mp4`, say).
   **Empty trash** in the same section deletes it all at once.
   The startup sweep (`temp_cleanup::cleanup_library_leftovers_sync`) deletes a run folder once it
-  is 30 days old (`ORPHAN_GRACE_PERIOD`). To bring a file back, move it to the same path under the
+  is 30 days old (`ORPHAN_GRACE_PERIOD`), counted from the time in its name, so moving the library
+  does not restart the count. To bring a file back, move it to the same path under the
   library folder. A file already in the library under that name is the same bytes. Diagnostics
   reports what the trash holds and opens it, since a folder whose name starts with a dot is hidden
   by default on macOS and Linux. A library move carries the trash along with the media folders.

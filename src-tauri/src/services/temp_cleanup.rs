@@ -50,6 +50,12 @@ fn remove_path_if_old(path: &Path, max_age: Duration) -> (bool, bool) {
         return (false, false);
     }
 
+    remove_entry(path)
+}
+
+/// Removes `path`, a folder with everything in it or a file. Whether it went, and whether removing
+/// it failed.
+fn remove_entry(path: &Path) -> (bool, bool) {
     let result = if path.is_dir() {
         fs::remove_dir_all(path)
     } else if path.is_file() {
@@ -523,8 +529,22 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
     Ok(summary)
 }
 
-/// Purges what the orphan removal moved aside, one folder per run, once the run is older than
-/// `max_age`. A link in the trash folder's place is left alone rather than followed.
+/// When a trash run was made, read from its name (`<UTC time>-<suffix>`, which
+/// `library::cleanup` gives every run), or `None` for a name that does not start with one.
+///
+/// The name rather than the folder's time, which a library move resets. The move copies the trash
+/// with the rest, and a run then waited its whole grace period again in the new folder.
+fn trash_run_made_at(name: &str) -> Option<std::time::SystemTime> {
+    let stamp = name.get(..16)?;
+    let made = chrono::NaiveDateTime::parse_from_str(stamp, "%Y%m%dT%H%M%SZ").ok()?;
+
+    Some(std::time::SystemTime::from(made.and_utc()))
+}
+
+/// Purges what was moved to the library's trash, one folder per run, once the run is older than
+/// `max_age`, counted from the time in its name (see [`trash_run_made_at`]) and from the folder's
+/// own time only for a name without one. A link in the trash folder's place is left alone rather
+/// than followed.
 fn purge_library_trash(library_dir: &Path, max_age: Duration) -> AppResult<CleanupSummary> {
     let trash_dir = library_dir.join(crate::services::library::cleanup::LIBRARY_TRASH_DIR);
 
@@ -532,7 +552,31 @@ fn purge_library_trash(library_dir: &Path, max_age: Duration) -> AppResult<Clean
         return Ok(CleanupSummary::default());
     }
 
-    cleanup_dir_children(&trash_dir, max_age)
+    let mut summary = CleanupSummary::default();
+    let entries = fs::read_dir(&trash_dir).map_err(|e| {
+        AppError::from_code(
+            AppErrorCode::TempDirectoryReadFailed,
+            format!("failed to read the library trash: {e}"),
+        )
+    })?;
+
+    for entry in entries.flatten() {
+        summary.scanned_entries += 1;
+
+        let path = entry.path();
+        let made_at = trash_run_made_at(&entry.file_name().to_string_lossy())
+            .or_else(|| entry_modified_time(&path));
+
+        if !made_at.is_some_and(|made_at| is_older_than_threshold(made_at, max_age)) {
+            continue;
+        }
+
+        let (removed, failed) = remove_entry(&path);
+        summary.removed_entries += usize::from(removed);
+        summary.failed_removals += usize::from(failed);
+    }
+
+    Ok(summary)
 }
 
 /// Sweeps the library's managed subdirectories (video/audio/thumbnails/live_chat) for
@@ -968,11 +1012,41 @@ mod tests {
     }
 
     #[test]
+    fn a_trash_run_ages_from_the_time_in_its_name_not_from_its_folder() {
+        // A library move copies the trash, and the copies' folder times are the move's.
+        let library = unique_test_dir("library-trash-named");
+        let trash = library.join(crate::services::library::cleanup::LIBRARY_TRASH_DIR);
+        let old_run = trash.join("20200101T000000Z-1");
+        let new_name = format!("{}-2", chrono::Utc::now().format("%Y%m%dT%H%M%SZ"));
+        let new_run = trash.join(&new_name);
+        // Both folders were just made, as a move's copies are.
+        fs::create_dir_all(&old_run).unwrap();
+        fs::create_dir_all(&new_run).unwrap();
+
+        let summary =
+            purge_library_trash(&library, Duration::from_secs(30 * 24 * 60 * 60)).unwrap();
+
+        assert_eq!(summary.removed_entries, 1);
+        assert!(!old_run.exists(), "named in 2020, so past thirty days");
+        assert!(new_run.exists(), "named today, whatever its folder says");
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn a_trash_run_name_without_a_time_reads_as_none() {
+        assert!(trash_run_made_at("20260101T000000Z-1").is_some());
+        assert_eq!(trash_run_made_at("run-1"), None);
+        assert_eq!(trash_run_made_at("2026"), None);
+        assert_eq!(trash_run_made_at("20261399T000000Z-1"), None);
+    }
+
+    #[test]
     fn the_library_trash_is_purged_one_run_at_a_time_past_its_age() {
         let library = unique_test_dir("library-trash");
         let run = library
             .join(crate::services::library::cleanup::LIBRARY_TRASH_DIR)
-            .join("20260101T000000Z-1");
+            .join(format!("{}-1", chrono::Utc::now().format("%Y%m%dT%H%M%SZ")));
         fs::create_dir_all(run.join("video")).unwrap();
         fs::write(run.join("video").join("media_a.mp4"), b"x").unwrap();
 
