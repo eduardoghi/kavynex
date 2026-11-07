@@ -253,15 +253,42 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
 
             let result = {
                 let (archive, unpacked) = (candidate.clone(), unpacked.clone());
-                run_blocking(move || unpack_archive(&archive, &unpacked)).await
+                run_blocking(move || Ok(unpack_archive(&archive, &unpacked))).await?
             };
 
             if let Err(error) = result {
                 remove_unpacked(db_path);
+
+                // A damaged archive is passed over like a damaged snapshot. One that could not be
+                // unpacked for any other reason (the disk filled up, another program holds it) says
+                // nothing about its contents, and moving on would restore an older one and report
+                // success. Stopped instead, as an unreadable snapshot is.
+                if !error.archive_is_damaged() {
+                    logger::warn(
+                        "db_backup",
+                        format!(
+                            "restore: stopped at {}, which could not be unpacked: {error}",
+                            logger::redact_path(&candidate)
+                        ),
+                    );
+
+                    if error.is_out_of_space() {
+                        return Err(AppError::from_code_with_details(
+                            AppErrorCode::NotEnoughSpaceForDatabase,
+                            "the drive holding the database does not have room to unpack the backup",
+                            error.to_string(),
+                        ));
+                    }
+
+                    return Err(super::database_unreadable_error(
+                        error.into_app_error().to_string(),
+                    ));
+                }
+
                 logger::warn(
                     "db_backup",
                     format!(
-                        "restore: passed over {}, which could not be unpacked: {error}",
+                        "restore: passed over {}, which is damaged: {error}",
                         logger::redact_path(&candidate)
                     ),
                 );

@@ -3713,3 +3713,90 @@ fn a_copy_that_would_not_fit_on_the_drive_is_refused() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// An archive of the database at `db`, taken `days_ago`, holding whatever `db` holds now.
+fn archive_of(db: &Path, days_ago: u64) -> PathBuf {
+    let copy = db.with_file_name(format!("archive-source-{days_ago}.db"));
+    std::fs::copy(db, &copy).unwrap();
+    filetime_set(
+        &copy,
+        SystemTime::now() - Duration::from_secs(BACKUP_MIN_INTERVAL_SECS * days_ago),
+    );
+    let archive = super::archive::archive_snapshot(db, &copy).unwrap();
+    std::fs::remove_file(&copy).unwrap();
+    archive
+}
+
+#[tokio::test]
+async fn an_empty_start_keeps_an_archive_it_cannot_unpack_rather_than_failing() {
+    // Failing left the damaged archive where it was, so every retry stopped at the same file and
+    // the user could not get past the recovery screen.
+    let dir = temp_dir("empty-start-damaged-archive");
+    let db = dir.join("kavynex.db");
+    seed_kavynex_db(&db, "the old library").await;
+    assert!(backup_database(&db).await.unwrap());
+    let damaged = archive_of(&db, 2);
+    std::fs::write(&damaged, b"not a gzip at all").unwrap();
+    std::fs::remove_file(&db).unwrap();
+
+    let folder = set_aside_backups_for_empty_start(&db)
+        .unwrap()
+        .expect("there were snapshots to move");
+
+    assert!(!has_backup_candidates(&db));
+    assert_eq!(
+        read_title(&folder.join("kavynex-bak.db")).await,
+        "the old library"
+    );
+    let kept_as_is = std::fs::read_dir(&folder)
+        .unwrap()
+        .flatten()
+        .any(|entry| entry.file_name().to_string_lossy().ends_with(".db.gz"));
+    assert!(kept_as_is, "the damaged archive is kept, unopened");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
+async fn a_restore_passes_over_a_damaged_archive_to_the_next_snapshot() {
+    let dir = temp_dir("restore-damaged-archive");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+
+    let older = archive_of(&db, 3);
+    let newer = archive_of(&db, 1);
+    std::fs::write(&newer, b"not a gzip at all").unwrap();
+    assert_eq!(archived_backups(&db), vec![newer, older]);
+
+    std::fs::write(&db, b"corrupt db").unwrap();
+
+    restore_database_from_backup(&db).await.unwrap();
+    assert_eq!(read_single_value(&db).await, "hello");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn a_restore_stops_at_an_archive_it_cannot_read_instead_of_taking_an_older_one() {
+    // A held archive says nothing about its contents. Moving on would restore one days older and
+    // report success.
+    let dir = temp_dir("restore-held-archive");
+    let db = dir.join("kavynex.db");
+    seed_db(&db).await;
+
+    archive_of(&db, 3);
+    let newer = archive_of(&db, 1);
+    std::fs::write(&db, b"corrupt db").unwrap();
+
+    let held = hold_exclusively(&newer);
+    let error = restore_database_from_backup(&db)
+        .await
+        .expect_err("the newest archive is only held, not damaged");
+    drop(held);
+
+    assert_eq!(error.code, AppErrorCode::DatabaseUnavailable.as_str());
+    assert_eq!(std::fs::read(&db).unwrap(), b"corrupt db");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

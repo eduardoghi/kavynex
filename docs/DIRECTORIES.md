@@ -69,7 +69,8 @@ The backup/restore/import machinery in `services/db_backup/` also writes sibling
   import replaces it.
 - `set-aside-backups/<UTC time>/`: the snapshots that were here when Start empty was chosen, renamed
   to `kavynex-bak.db`, `kavynex-bak-<UTC time>.db`, `kavynex-pre-migration-v15.db` and so on so
-  Settings > Database > Import reads them directly. An archive is unpacked into its `.db` there. Nothing deletes this folder. Diagnostics reports it and opens
+  Settings > Database > Import reads them directly. An archive is unpacked into its `.db` there,
+  and one that cannot be unpacked is kept as it is, as `kavynex-bak-<UTC time>.db.gz`. Nothing deletes this folder. Diagnostics reports it and opens
   it.
 - `library-migration-commit` (beside the database, not a `kavynex.db.` sibling): the new library
   path and, on a second line, the folder the move left, written once a library move has copied

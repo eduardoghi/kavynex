@@ -75,12 +75,12 @@ pub(super) async fn any_generation_holds_library(db_path: &Path) -> bool {
         let scratch = library_check_scratch_path(db_path);
         let unpacked = {
             let scratch = scratch.clone();
-            crate::utils::task::run_blocking(move || unpack_archive(&archive, &scratch)).await
+            crate::utils::task::run_blocking(move || Ok(unpack_archive(&archive, &scratch))).await
         };
 
         let holds = match unpacked {
-            Ok(()) => any_holds_library(std::slice::from_ref(&scratch)).await,
-            Err(_) => true,
+            Ok(Ok(())) => any_holds_library(std::slice::from_ref(&scratch)).await,
+            Ok(Err(_)) | Err(_) => true,
         };
 
         let _ = std::fs::remove_file(&scratch);
@@ -582,11 +582,26 @@ pub fn set_aside_backups_for_empty_start(db_path: &Path) -> AppResult<Option<Pat
         let label = suffix.trim_start_matches('.').replace('.', "-");
         let target = folder.join(format!("kavynex-{label}.db"));
 
-        // An archive is unpacked rather than moved, since Import reads a database, not a gzip.
+        // An archive is unpacked rather than moved, since Import reads a database, not a gzip. One
+        // that cannot be unpacked (damaged, or the disk is full) is moved as it is, under a `.db.gz`
+        // name, rather than failing the start. Failing would leave it where it was, so every retry
+        // stopped at the same file and the user could not get past the recovery screen.
         if archived {
-            unpack_archive(&candidate, &target)?;
-            std::fs::remove_file(&candidate)
-                .map_err(|error| backup_error("failed to set aside an old backup", error))?;
+            match unpack_archive(&candidate, &target) {
+                Ok(()) => std::fs::remove_file(&candidate)
+                    .map_err(|error| backup_error("failed to set aside an old backup", error))?,
+                Err(error) => {
+                    logger::warn(
+                        "db_backup",
+                        format!("an old backup could not be unpacked, so it was set aside as it is: {error}"),
+                    );
+
+                    let kept = folder.join(format!("kavynex-{label}.db.gz"));
+                    crate::services::filesystem::rename_retrying(&candidate, &kept).map_err(
+                        |error| backup_error("failed to set aside an old backup", error),
+                    )?;
+                }
+            }
         } else {
             crate::services::filesystem::rename_retrying(&candidate, &target)
                 .map_err(|error| backup_error("failed to set aside an old backup", error))?;

@@ -271,21 +271,58 @@ fn unpacked_digest(archive: &Path) -> AppResult<String> {
     Ok(crate::utils::hash::hex_digest(hasher))
 }
 
+/// Why an archive could not be unpacked, keeping the I/O error so a caller can tell a broken archive
+/// from a disk or a lock that kept it from being read or written.
+#[derive(Debug)]
+pub(super) struct UnpackError {
+    message: &'static str,
+    error: std::io::Error,
+}
+
+impl UnpackError {
+    /// The archive itself is broken (a truncated or altered gzip). Nothing about the disk, so the
+    /// next snapshot is worth trying.
+    pub(super) fn archive_is_damaged(&self) -> bool {
+        matches!(
+            self.error.kind(),
+            std::io::ErrorKind::InvalidData
+                | std::io::ErrorKind::InvalidInput
+                | std::io::ErrorKind::UnexpectedEof
+        )
+    }
+
+    /// The drive the archive was unpacked to filled up.
+    pub(super) fn is_out_of_space(&self) -> bool {
+        self.error.kind() == std::io::ErrorKind::StorageFull
+    }
+
+    pub(super) fn into_app_error(self) -> crate::AppError {
+        backup_error(self.message, self.error)
+    }
+}
+
+impl std::fmt::Display for UnpackError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.message, self.error)
+    }
+}
+
 /// Writes the database an archive holds to `destination`, replacing whatever is there, and flushes
 /// it. A destination left by a failure is removed.
-pub(super) fn unpack_archive(archive: &Path, destination: &Path) -> AppResult<()> {
+pub(super) fn unpack_archive(archive: &Path, destination: &Path) -> Result<(), UnpackError> {
+    let failed = |message| move |error| UnpackError { message, error };
+
     let unpacked = (|| {
-        let mut decoder =
-            GzDecoder::new(BufReader::new(File::open(archive).map_err(|error| {
-                backup_error("failed to read a backup archive", error)
-            })?));
-        let mut file = File::create(destination)
-            .map_err(|error| backup_error("failed to unpack a backup archive", error))?;
+        let mut decoder = GzDecoder::new(BufReader::new(
+            File::open(archive).map_err(failed("failed to read a backup archive"))?,
+        ));
+        let mut file =
+            File::create(destination).map_err(failed("failed to unpack a backup archive"))?;
 
         std::io::copy(&mut decoder, &mut file)
-            .map_err(|error| backup_error("failed to unpack a backup archive", error))?;
+            .map_err(failed("failed to unpack a backup archive"))?;
         file.sync_all()
-            .map_err(|error| backup_error("failed to flush an unpacked backup", error))
+            .map_err(failed("failed to flush an unpacked backup"))
     })();
 
     if unpacked.is_err() {

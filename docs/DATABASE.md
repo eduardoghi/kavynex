@@ -536,8 +536,11 @@ archives newest first, then any `.bak.1` .. `.bak.6` an earlier build left that 
 yet, then the `.pre-migration-v<N>` snapshots, newest version first), and takes the first that
 itself passes `quick_check`, so a run of bad snapshots does not cost the recovery. An archive is
 unpacked to `kavynex.db.restore.unpacked` first, checked there, and copied from there when chosen,
-and the unpacked file is removed either way. One that cannot be unpacked is passed over like a
-damaged one. A pre-migration snapshot holds an older schema, which the migrations bring forward again
+and the unpacked file is removed either way. A damaged archive (a truncated or altered gzip) is
+passed over like a damaged snapshot. One that could not be unpacked for any other reason (the disk
+filled up, another program holds it) stops the restore instead, as an unreadable snapshot does
+(`NotEnoughSpaceForDatabase` or `DatabaseUnavailable`), since passing over it would restore an
+older snapshot and report success. A pre-migration snapshot holds an older schema, which the migrations bring forward again
 on the next open. `.bak.tmp` is offered last, since `backup_database` vacuums
 into it and only promotes it once that succeeds, so a run that died in that window strands a
 complete snapshot there that nothing else would look at, but a run that died *during* the
