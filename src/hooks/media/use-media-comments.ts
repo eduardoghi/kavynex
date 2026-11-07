@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMemoObject } from "../use-memo-object";
 import type { MediaCommentRow, MediaRow } from "../../types/media";
 import { listMediaComments } from "../../services/media-service";
@@ -24,24 +24,31 @@ export function useMediaComments(
     const [comments, setComments] = useState<MediaCommentRow[]>([]);
     const [isLoadingComments, setIsLoadingComments] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // The media the comments in state were loaded for, so a refresh can tell "already showing this
+    // media's saved comments" from "nothing loaded for it yet".
+    const loadedMediaIdRef = useRef<number | null>(null);
 
     useEffect(() => {
         let cancelled = false;
 
         async function loadComments(): Promise<void> {
-            // A refresh is in flight (isRefreshingComments true). Its own indicator covers the UI,
-            // and reloading now would only re-read the pre-refresh rows. Skip until it completes,
-            // and the flip back to false re-runs this effect and loads the freshly written comments.
-            // This is what keeps the effect from firing a redundant fetch on the refresh's rising
-            // edge as well as its falling edge.
-            if (isRefreshingComments) {
-                return;
-            }
-
             if (!media?.id || !media.has_comments) {
+                loadedMediaIdRef.current = null;
                 setComments([]);
                 setError(null);
                 setIsLoadingComments(false);
+                return;
+            }
+
+            // A refresh is in flight and this media's saved comments are already showing. Reloading
+            // now would only re-read the pre-refresh rows, so this waits, and the flip back to false
+            // re-runs the effect and loads the freshly written ones. That keeps a refresh to one
+            // fetch, on its falling edge.
+            //
+            // When nothing is loaded for it yet (the player opened while the refresh was running),
+            // the saved comments are loaded now. Waiting left the panel empty for the whole refresh,
+            // reading "none were found in the local database" as if the comments were lost.
+            if (isRefreshingComments && loadedMediaIdRef.current === media.id) {
                 return;
             }
 
@@ -52,10 +59,12 @@ export function useMediaComments(
                 const rows = await listMediaComments(media.id);
 
                 if (!cancelled) {
+                    loadedMediaIdRef.current = media.id;
                     setComments(rows);
                 }
             } catch (loadFailure) {
                 if (!cancelled) {
+                    loadedMediaIdRef.current = null;
                     setComments([]);
                     setError(
                         resolveErrorMessage(

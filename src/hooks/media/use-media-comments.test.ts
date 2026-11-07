@@ -82,23 +82,64 @@ describe("useMediaComments", () => {
         expect(result.current.error).not.toBeNull();
     });
 
-    it("waits for a refresh to complete before reloading, not firing on its rising edge", async () => {
+    it("does not reload on a refresh's rising edge, only once it completes", async () => {
         listMock.mockResolvedValue([commentRow()]);
         const target = createMedia({ id: 7, has_comments: 1 });
 
-        const { rerender } = renderHook(
+        const { rerender, result } = renderHook(
+            ({ refreshing }: { refreshing: boolean }) => useMediaComments(target, refreshing),
+            { initialProps: { refreshing: false } }
+        );
+
+        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+
+        // The refresh starting would only re-read the rows already showing. Give any stray effect
+        // a tick to run, then confirm it stayed quiet and kept them.
+        rerender({ refreshing: true });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(listMock).toHaveBeenCalledTimes(1);
+        expect(result.current.comments).toHaveLength(1);
+
+        // The refresh completing (the falling edge) is what triggers the reload.
+        rerender({ refreshing: false });
+
+        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    });
+
+    it("loads the saved comments when it mounts while a refresh is running", async () => {
+        // The player reopened on a media whose refresh is still going. Waiting for the refresh
+        // left the panel empty, reading as if the saved comments were lost.
+        listMock.mockResolvedValue([commentRow()]);
+        const target = createMedia({ id: 7, has_comments: 1 });
+
+        const { result, rerender } = renderHook(
             ({ refreshing }: { refreshing: boolean }) => useMediaComments(target, refreshing),
             { initialProps: { refreshing: true } }
         );
 
-        // While a refresh is in flight nothing is fetched. Reloading now would only re-read the
-        // pre-refresh rows. Give any stray effect a tick to run, then confirm it stayed quiet.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(listMock).not.toHaveBeenCalled();
+        await waitFor(() => expect(result.current.comments).toHaveLength(1));
+        expect(listMock).toHaveBeenCalledTimes(1);
 
-        // The refresh completing (the falling edge) is what triggers the single reload.
         rerender({ refreshing: false });
 
-        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(1));
+        await waitFor(() => expect(listMock).toHaveBeenCalledTimes(2));
+    });
+
+    it("loads another media's comments during a refresh rather than keeping the previous one's", async () => {
+        listMock.mockImplementation((mediaId: number) =>
+            Promise.resolve([commentRow({ video_id: mediaId, comment_id: `c${mediaId}` })])
+        );
+
+        const { result, rerender } = renderHook(
+            ({ mediaId }: { mediaId: number }) =>
+                useMediaComments(createMedia({ id: mediaId, has_comments: 1 }), true),
+            { initialProps: { mediaId: 7 } }
+        );
+
+        await waitFor(() => expect(result.current.comments[0]?.video_id).toBe(7));
+
+        rerender({ mediaId: 8 });
+
+        await waitFor(() => expect(result.current.comments[0]?.video_id).toBe(8));
     });
 });
