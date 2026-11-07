@@ -174,7 +174,8 @@ export function LiveChatPanel({
     // through AsyncStatusRegion instead. Keeping them mutually exclusive means the list's sizer is
     // the first (and only) child of the scroll viewport, so the virtualizer's offsets are not thrown
     // off by a status node rendered above it. Shown while the rest of a long replay is still read,
-    // too, since what arrived so far is already in order (use-media-live-chat).
+    // too, once what arrived so far reaches the playhead (LiveChatReplay holds the window back
+    // until then).
     const showMessageList = !error && inlineMessages.length > 0;
 
     // Virtualize the inline list so a dense replay does not mount every visible-window row (up to a

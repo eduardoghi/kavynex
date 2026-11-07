@@ -11,6 +11,9 @@ import { LiveChatPanel } from "./live-chat-panel";
 // window keeps the replay in sync without re-rendering the chat list on every tick.
 const PLAYBACK_SYNC_THROTTLE_MS = 300;
 
+// What the panel shows in place of a window the read has not reached yet.
+const NO_MESSAGES: LiveChatMessageItem[] = [];
+
 type LiveChatReplayProps = {
     liveChatMessages: LiveChatMessageItem[];
     playerElement: HTMLMediaElement | null;
@@ -159,11 +162,19 @@ export function LiveChatReplay({
         [liveChatPins, currentPlaybackTime]
     );
 
+    // A long replay is shown as it is read, in offset order, so the last message read is how far
+    // the read has got. Until that passes the playhead, the window above holds whatever came last
+    // before the read stopped (the tail of minute 10 with the video at an hour), and the pin is the
+    // last one read, not the one in effect. The panel keeps its loading state until then.
+    const lastReadOffsetMs = liveChatMessages[liveChatMessages.length - 1]?.message_offset_ms ?? -1;
+    const readIsBehindPlayhead =
+        isLoadingLiveChat && lastReadOffsetMs <= Math.floor(currentPlaybackTime * 1000);
+
     return (
         <LiveChatPanel
             liveChatMessages={liveChatMessages}
-            visibleLiveChatMessages={visibleLiveChatMessages}
-            activePin={activePin}
+            visibleLiveChatMessages={readIsBehindPlayhead ? NO_MESSAGES : visibleLiveChatMessages}
+            activePin={readIsBehindPlayhead ? null : activePin}
             isLoadingLiveChat={isLoadingLiveChat}
             error={error}
             announceAdditions={announceAdditions}
