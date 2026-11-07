@@ -1,91 +1,43 @@
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { KNOWN_ERROR_CODES } from "./error-codes";
+import { FRONTEND_ONLY_ERROR_CODES } from "./error-codes";
 import { toUserFriendlyError } from "../utils/user-friendly-error";
 
-// error-codes.ts is a hand-maintained mirror of a curated subset of the Rust
-// `AppErrorCode` enum in src-tauri/src/error.rs. It does not (and is not meant to) mirror
-// every backend code. Most of the ~110 backend codes are internal failure reasons that
-// never need frontend-specific handling and simply fall back to the generic error message.
-// It also declares a handful of frontend-only codes for validation that happens purely in
-// the UI before a backend call is ever made (e.g. duplicate-channel checks), which have no
-// backend counterpart at all.
+// Every code the backend emits, read from the union ts-rs generates from the Rust enum
+// (src/types/generated/AppErrorCode.ts). A Rust test holds that union to the codes the backend
+// actually sends, and CI fails when the generated file is stale, so this is the backend's own list
+// rather than a second reading of error.rs.
 //
-// What we *can* verify automatically is that every code the frontend does claim to mirror
-// still exists, verbatim, among the backend's codes. Catching a Rust code being renamed or
-// removed without updating the TS side.
-const testFileDir = dirname(fileURLToPath(import.meta.url));
-const errorRsPath = resolve(testFileDir, "../../src-tauri/src/error.rs");
-
-// Client-side-only codes. Validated in the frontend before a backend call is made, so they
-// are never returned by src-tauri/src/error.rs and have no backend code to mirror.
-//
-// Codes the backend also emits are NOT listed here. They have to mirror a real backend code,
-// which the check below validates:
-// - CHANNEL_ALREADY_EXISTS / VIDEO_ALREADY_EXISTS_FOR_CHANNEL: frontend pre-check AND a
-//   backend constraint violation (the duplicate-insert race).
-// - INVALID_CHANNEL_NAME / INVALID_YOUTUBE_HANDLE / INVALID_MEDIA_TITLE /
-//   INVALID_MEDIA_CREATION_ARGUMENTS: frontend validation for fast UX AND backend validation
-//   at the command boundary (utils::validation), since the backend is the durable trust
-//   boundary.
-// INVALID_CHANNEL_ID stays frontend-only. Channel ids reach the backend as a typed i64, so
-// there is no backend code that rejects an invalid one.
-// CLIENT_ERROR tags a user-facing error authored purely on the frontend (utils/app-error.ts's
-// ClientError), so it has no backend counterpart in error.rs.
-const FRONTEND_ONLY_ERROR_CODES = new Set([
-    "CLIENT_ERROR",
-    "INVALID_CHANNEL_ID",
-    "MEDIA_IMPORT_FAILED",
-    "MEDIA_WITHOUT_YOUTUBE_SOURCE",
-    "YOUTUBE_COMMENTS_EMPTY_REFRESH",
-]);
-
-function extractRustErrorCodes(source: string): Set<string> {
-    const asStrMatch = source.match(
-        /pub fn as_str\(self\) -> &'static str \{\s*match self \{([\s\S]*?)\n\s*\}\s*\n\s*\}/
-    );
-
-    if (!asStrMatch) {
-        throw new Error("Could not locate the `as_str` match block in error.rs");
-    }
-
-    const matchBody = asStrMatch[1]!;
-    const codePattern = /Self::\w+\s*=>\s*"([A-Z0-9_]+)"/g;
-    const codes = new Set<string>();
-
-    for (const match of matchBody.matchAll(codePattern)) {
-        codes.add(match[1]!);
-    }
-
-    return codes;
-}
+// error-codes.ts mirrors only a curated subset of it, the codes the frontend handles by name, and
+// its `satisfies` clause already fails `tsc` for one that is not in the union or declared
+// frontend-only. What a type cannot say is below.
+const BACKEND_ERROR_CODES: readonly string[] = readFileSync(
+    resolve(process.cwd(), "src/types/generated/AppErrorCode.ts"),
+    "utf-8"
+)
+    .split('"')
+    .filter((_, index) => index % 2 === 1);
 
 describe("error codes stay in sync with the backend", () => {
-    const rustCodes = extractRustErrorCodes(readFileSync(errorRsPath, "utf-8"));
-
-    it("finds a sane number of codes in error.rs (regression guard for the extraction regex)", () => {
-        expect(rustCodes.size).toBeGreaterThan(50);
-    });
-
-    it.each(
-        KNOWN_ERROR_CODES.filter((code) => !FRONTEND_ONLY_ERROR_CODES.has(code))
-    )("mirrors the backend code for %s", (code) => {
-        expect(rustCodes.has(code)).toBe(true);
+    it("reads the backend's codes (a guard for the reading itself)", () => {
+        expect(BACKEND_ERROR_CODES.length).toBeGreaterThan(100);
+        expect(BACKEND_ERROR_CODES).toContain("APP_ERROR");
     });
 
     it("does not list a frontend-only code that the backend has started emitting", () => {
         // If this fails, the backend now emits one of these codes for real. Drop it from
-        // FRONTEND_ONLY_ERROR_CODES and let the mirroring check above cover it instead.
+        // FRONTEND_ONLY_ERROR_CODES (error-codes.ts), and the type check covers it from then on.
+        const emitted = new Set(BACKEND_ERROR_CODES);
+
         for (const code of FRONTEND_ONLY_ERROR_CODES) {
-            expect(rustCodes.has(code)).toBe(false);
+            expect(emitted.has(code), code).toBe(false);
         }
     });
 });
 
-// The checks above run frontend -> backend. Every code the frontend claims to mirror still exists
-// in Rust, which catches a rename. This is the other direction, and it is deliberately *total*.
+// The type check runs frontend -> backend. Every code the frontend claims to mirror is in the union,
+// which catches a rename. This is the other direction, and it is deliberately *total*.
 // Every code error.rs emits is either catalogued with a message of its own, or named below as one
 // that falls back on purpose. There is no third outcome, and that is the whole point.
 //
@@ -189,17 +141,11 @@ const INTERNAL_BACKEND_CODES = new Set([
 const RAW_BACKEND_TEXT = "raw internal backend text";
 
 describe("every backend error code is classified", () => {
-    const rustCodes = [...extractRustErrorCodes(readFileSync(errorRsPath, "utf-8"))];
-
     // Derived rather than written out, so the assertions below survive a rewording of the fallback.
     // The code cannot collide with a real one. error.rs has no variant named for this test.
     const genericFallback = toUserFriendlyError({
         code: "SYNTHETIC_UNCATALOGUED_CODE_FOR_THIS_TEST",
         message: "",
-    });
-
-    it("finds a sane number of codes in error.rs (regression guard for the extraction regex)", () => {
-        expect(rustCodes.length).toBeGreaterThan(100);
     });
 
     it("derives a generic fallback rather than a real message", () => {
@@ -208,7 +154,7 @@ describe("every backend error code is classified", () => {
         expect(genericFallback).toContain("check the app log file");
     });
 
-    it.each(rustCodes)("resolves %s the way its classification says it does", (code) => {
+    it.each(BACKEND_ERROR_CODES)("resolves %s the way its classification says it does", (code) => {
         const message = toUserFriendlyError({ code, message: RAW_BACKEND_TEXT });
 
         if (INTERNAL_BACKEND_CODES.has(code)) {
@@ -238,11 +184,11 @@ describe("every backend error code is classified", () => {
         }
     });
 
-    it("does not name a code error.rs no longer emits", () => {
-        const emitted = new Set(rustCodes);
+    it("does not name a code the backend no longer emits", () => {
+        const emitted = new Set(BACKEND_ERROR_CODES);
 
         for (const code of INTERNAL_BACKEND_CODES) {
-            expect(emitted.has(code), `${code} is not emitted by error.rs`).toBe(true);
+            expect(emitted.has(code), `${code} is not emitted by the backend`).toBe(true);
         }
     });
 });
