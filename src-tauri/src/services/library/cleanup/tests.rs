@@ -469,9 +469,10 @@ async fn replace_avatar_plan_deletes_previous_when_unreferenced() {
     let pool = create_test_pool().await;
     let channel_id = insert_channel(&pool, "@one", Some("thumbnails/old.jpg")).await;
 
-    let plan = replace_channel_avatar_and_plan_cleanup(
+    let plan = replace_channel_image_and_plan_cleanup(
         &pool,
         channel_id,
+        ChannelImage::Avatar,
         Some("thumbnails/new.jpg".to_string()),
     )
     .await
@@ -505,9 +506,10 @@ async fn replace_avatar_plan_keeps_previous_when_used_as_a_video_thumbnail() {
     )
     .await;
 
-    let plan = replace_channel_avatar_and_plan_cleanup(
+    let plan = replace_channel_image_and_plan_cleanup(
         &pool,
         channel_id,
+        ChannelImage::Avatar,
         Some("thumbnails/new.jpg".to_string()),
     )
     .await
@@ -524,7 +526,7 @@ async fn replace_avatar_plan_keeps_previous_when_used_by_another_channel() {
     let channel_a = insert_channel(&pool, "@a", Some("thumbnails/shared.jpg")).await;
     insert_channel(&pool, "@b", Some("thumbnails/shared.jpg")).await;
 
-    let plan = replace_channel_avatar_and_plan_cleanup(&pool, channel_a, None)
+    let plan = replace_channel_image_and_plan_cleanup(&pool, channel_a, ChannelImage::Avatar, None)
         .await
         .unwrap()
         .expect("channel exists");
@@ -538,9 +540,10 @@ async fn replace_avatar_plan_is_noop_when_unchanged() {
     let pool = create_test_pool().await;
     let channel_id = insert_channel(&pool, "@one", Some("thumbnails/same.jpg")).await;
 
-    let plan = replace_channel_avatar_and_plan_cleanup(
+    let plan = replace_channel_image_and_plan_cleanup(
         &pool,
         channel_id,
+        ChannelImage::Avatar,
         Some("  thumbnails/same.jpg  ".to_string()),
     )
     .await
@@ -555,7 +558,7 @@ async fn replace_avatar_plan_is_noop_when_unchanged() {
 async fn replace_avatar_plan_returns_none_for_missing_channel() {
     let pool = create_test_pool().await;
 
-    let plan = replace_channel_avatar_and_plan_cleanup(&pool, 999, None)
+    let plan = replace_channel_image_and_plan_cleanup(&pool, 999, ChannelImage::Avatar, None)
         .await
         .unwrap();
 
@@ -1394,7 +1397,7 @@ async fn a_banner_counts_as_a_reference_for_an_avatar_on_the_same_file() {
     let channel_b = insert_channel(&pool, "@b", None).await;
     set_banner(&pool, channel_b, "thumbnails/shared.jpg").await;
 
-    let plan = replace_channel_avatar_and_plan_cleanup(&pool, channel_a, None)
+    let plan = replace_channel_image_and_plan_cleanup(&pool, channel_a, ChannelImage::Avatar, None)
         .await
         .unwrap()
         .expect("channel exists");

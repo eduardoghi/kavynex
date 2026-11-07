@@ -3,25 +3,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../services/channel-service", () => ({
     createChannel: vi.fn(),
     ensureChannelCanBeCreated: vi.fn(),
-    updateChannelBannerWithCleanup: vi.fn(),
+    updateChannelImageWithCleanup: vi.fn(),
+}));
+
+// One download per image, so each test can set up and check the avatar and the banner apart.
+const { downloadAvatar, downloadBanner } = vi.hoisted(() => ({
+    downloadAvatar: vi.fn(),
+    downloadBanner: vi.fn(),
 }));
 
 vi.mock("../services/thumbnail-service", () => ({
     persistThumbnailFile: vi.fn(),
-    downloadChannelAvatarFromHandle: vi.fn(),
-    downloadChannelBannerFromHandle: vi.fn(),
+    downloadChannelImageFromHandle: vi.fn((kind: string, handle: string) =>
+        kind === "avatar" ? downloadAvatar(handle) : downloadBanner(handle)
+    ),
 }));
 
 import {
     createChannel,
     ensureChannelCanBeCreated,
-    updateChannelBannerWithCleanup,
+    updateChannelImageWithCleanup,
 } from "../services/channel-service";
-import {
-    downloadChannelAvatarFromHandle,
-    downloadChannelBannerFromHandle,
-    persistThumbnailFile,
-} from "../services/thumbnail-service";
+import { persistThumbnailFile } from "../services/thumbnail-service";
 import { executeCreateChannel } from "./create-channel";
 
 describe("executeCreateChannel", () => {
@@ -38,7 +41,7 @@ describe("executeCreateChannel", () => {
         expect(createChannel).toHaveBeenCalledWith("Canal Teste", "@canalteste", null);
         expect(result).toEqual({ channelId: 42, avatarFailure: null, bannerFailure: null });
         // The banner comes with the YouTube avatar only.
-        expect(downloadChannelBannerFromHandle).not.toHaveBeenCalled();
+        expect(downloadBanner).not.toHaveBeenCalled();
     });
 
     it("stores a picked avatar in the library and creates the channel with it", async () => {
@@ -63,13 +66,13 @@ describe("executeCreateChannel", () => {
             executeCreateChannel("Canal", "@canal", { mode: "youtube" })
         ).rejects.toThrow("channel already exists");
 
-        expect(downloadChannelAvatarFromHandle).not.toHaveBeenCalled();
+        expect(downloadAvatar).not.toHaveBeenCalled();
         expect(createChannel).not.toHaveBeenCalled();
     });
 
     it("creates the channel without an avatar when the YouTube avatar cannot be downloaded", async () => {
         const failure = new Error("network unreachable");
-        vi.mocked(downloadChannelAvatarFromHandle).mockRejectedValueOnce(failure);
+        vi.mocked(downloadAvatar).mockRejectedValueOnce(failure);
         vi.mocked(createChannel).mockResolvedValueOnce(9);
 
         const result = await executeCreateChannel("Canal", "@canal", {
@@ -81,18 +84,18 @@ describe("executeCreateChannel", () => {
     });
 
     it("sets the banner after creating a channel with its YouTube avatar", async () => {
-        vi.mocked(downloadChannelAvatarFromHandle).mockResolvedValueOnce("thumbnails/a.jpg");
-        vi.mocked(downloadChannelBannerFromHandle).mockResolvedValueOnce("thumbnails/b.jpg");
+        vi.mocked(downloadAvatar).mockResolvedValueOnce("thumbnails/a.jpg");
+        vi.mocked(downloadBanner).mockResolvedValueOnce("thumbnails/b.jpg");
         vi.mocked(createChannel).mockResolvedValueOnce(5);
 
         const result = await executeCreateChannel("Canal", "@canal", { mode: "youtube" });
 
-        expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(5, "thumbnails/b.jpg");
+        expect(updateChannelImageWithCleanup).toHaveBeenCalledWith("banner", 5, "thumbnails/b.jpg");
         expect(result.bannerFailure).toBeNull();
     });
 
     it("treats a channel with no banner as nothing to report", async () => {
-        vi.mocked(downloadChannelBannerFromHandle).mockRejectedValueOnce({
+        vi.mocked(downloadBanner).mockRejectedValueOnce({
             code: "CHANNEL_BANNER_NOT_FOUND",
             message: "the channel page lists no banner",
         });
@@ -102,12 +105,12 @@ describe("executeCreateChannel", () => {
 
         expect(result.channelId).toBe(6);
         expect(result.bannerFailure).toBeNull();
-        expect(updateChannelBannerWithCleanup).not.toHaveBeenCalled();
+        expect(updateChannelImageWithCleanup).not.toHaveBeenCalled();
     });
 
     it("keeps the channel when its banner cannot be downloaded", async () => {
         const failure = new Error("network unreachable");
-        vi.mocked(downloadChannelBannerFromHandle).mockRejectedValueOnce(failure);
+        vi.mocked(downloadBanner).mockRejectedValueOnce(failure);
         vi.mocked(createChannel).mockResolvedValueOnce(8);
 
         const result = await executeCreateChannel("Canal", "@canal", { mode: "youtube" });

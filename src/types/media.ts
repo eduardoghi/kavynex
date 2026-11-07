@@ -4,6 +4,10 @@ export type MediaSourceMode = "local" | "yt-dlp";
 export type ViewMode = "library" | "player";
 export type ChannelAvatarMode = "none" | "manual" | "youtube";
 
+// The two images a channel stores. The round avatar beside its name, and the wide banner behind it
+// on its page. Both are set, fetched and removed the same way.
+export type ChannelImageKind = "avatar" | "banner";
+
 // Generated from the Rust `MediaRow` struct by ts-rs (see src-tauri/.../video_repository.rs).
 // Do not hand-edit the shape here. Change the Rust struct and regenerate.
 export type { MediaRow } from "./generated/MediaRow";

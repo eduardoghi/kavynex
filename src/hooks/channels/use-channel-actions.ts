@@ -1,25 +1,22 @@
 import { useCallback, useState } from "react";
 import { useMemoObject } from "../use-memo-object";
-import type { Channel, ChannelAvatarMode } from "../../types/media";
+import type { Channel, ChannelAvatarMode, ChannelImageKind } from "../../types/media";
 import { resolveErrorMessage } from "../../utils/error-message";
 import { useAsyncFlag } from "../use-async-flag";
 import { useRequestGuard } from "../use-request-guard";
 import {
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
-    updateChannelAvatarWithCleanup,
-    updateChannelBannerWithCleanup,
+    updateChannelImageWithCleanup,
     updateChannelNameHandle,
 } from "../../services/channel-service";
 import {
-    downloadChannelAvatarFromHandle,
-    downloadChannelBannerFromHandle,
+    downloadChannelImageFromHandle,
     persistThumbnailFile,
 } from "../../services/thumbnail-service";
 import { logError } from "../../utils/app-logger";
 import {
-    leftoverAvatarNotice,
-    leftoverBannerNotice,
+    leftoverChannelImageNotice,
     leftoverFilesNotice,
 } from "../../utils/leftover-files-notice";
 import { executeCreateChannel, type CreateChannelAvatar } from "../../use-cases/create-channel";
@@ -35,8 +32,6 @@ type UseChannelActionsOptions = {
     setNewYoutubeHandle: (value: string) => void;
     setNewChannelAvatarMode: (value: ChannelAvatarMode) => void;
     setNewChannelAvatarPath: (value: string) => void;
-    setUpdatingChannelAvatarId: (value: number | null) => void;
-    setUpdatingChannelBannerId: (value: number | null) => void;
     channelToDelete: Channel | null;
     setChannelToDelete: (value: Channel | null) => void;
     setConfirmDeleteChannelOpen: (value: boolean) => void;
@@ -48,8 +43,12 @@ type UseChannelActionsReturn = {
     channelsLoadFailed: boolean;
     isCreatingChannel: boolean;
     isDeletingChannel: boolean;
-    isUpdatingChannelAvatar: boolean;
-    isUpdatingChannelBanner: boolean;
+    // One of the channel images is being changed. One at a time, for any channel, so the library
+    // folder can be held still for it (see useHomeUiGuards).
+    isUpdatingChannelImage: boolean;
+    // Which channel, by image, for the sidebar to show the change in progress.
+    updatingChannelAvatarId: number | null;
+    updatingChannelBannerId: number | null;
     isEditingChannel: boolean;
     loadChannels: () => Promise<void>;
     createChannelAction: (
@@ -63,16 +62,13 @@ type UseChannelActionsReturn = {
         name: string,
         youtubeHandle: string
     ) => Promise<boolean>;
-    updateChannelAvatarAction: (
-        channel: Channel,
-        avatarMode: ChannelAvatarMode,
-        avatarPath?: string
-    ) => Promise<void>;
-    // The banner's counterpart, with the same three sources. "none" removes it.
-    updateChannelBannerAction: (
+    // Sets one of the channel's images from a picked file or from YouTube, or removes it with
+    // "none".
+    updateChannelImageAction: (
+        kind: ChannelImageKind,
         channel: Channel,
         source: ChannelAvatarMode,
-        bannerPath?: string
+        imagePath?: string
     ) => Promise<void>;
     confirmDeleteChannelAction: () => Promise<void>;
 };
@@ -88,8 +84,6 @@ export function useChannelActions({
     setNewYoutubeHandle,
     setNewChannelAvatarMode,
     setNewChannelAvatarPath,
-    setUpdatingChannelAvatarId,
-    setUpdatingChannelBannerId,
     channelToDelete,
     setChannelToDelete,
     setConfirmDeleteChannelOpen,
@@ -97,12 +91,14 @@ export function useChannelActions({
     const [isLoadingChannels, setIsLoadingChannels] = useState(false);
     const [channelsLoadFailed, setChannelsLoadFailed] = useState(false);
     const loadRequestGuard = useRequestGuard();
+    const [updatingChannelImage, setUpdatingChannelImage] = useState<{
+        kind: ChannelImageKind;
+        channelId: number;
+    } | null>(null);
 
     const { isRunning: isCreatingChannel, runWithFlag: runCreateChannel } = useAsyncFlag();
     const { isRunning: isDeletingChannel, runWithFlag: runDeleteChannel } = useAsyncFlag();
-    const { isRunning: isUpdatingChannelAvatar, runWithFlag: runUpdateChannelAvatar } =
-        useAsyncFlag();
-    const { isRunning: isUpdatingChannelBanner, runWithFlag: runUpdateChannelBanner } =
+    const { isRunning: isUpdatingChannelImage, runWithFlag: runUpdateChannelImage } =
         useAsyncFlag();
     const { isRunning: isEditingChannel, runWithFlag: runEditChannel } = useAsyncFlag();
 
@@ -311,144 +307,70 @@ export function useChannelActions({
         [onError, reloadChannelsAfterChange, runEditChannel]
     );
 
-    const updateChannelAvatarAction = useCallback(
+    const updateChannelImageAction = useCallback(
         async (
+            kind: ChannelImageKind,
             channel: Channel,
-            avatarMode: ChannelAvatarMode,
-            avatarPath = ""
+            source: ChannelAvatarMode,
+            imagePath = ""
         ): Promise<void> => {
             const normalizedLibraryPath = libraryPath.trim();
-            const normalizedAvatarPath = avatarPath.trim();
+            const normalizedImagePath = imagePath.trim();
 
-            await runUpdateChannelAvatar(async () => {
-                setUpdatingChannelAvatarId(channel.id);
-
-                try {
-                    let nextAvatarPath: string | null = null;
-
-                    if (avatarMode === "manual") {
-                        if (!normalizedAvatarPath) {
-                            onError("Select an avatar file before updating the channel.");
-                            return;
-                        }
-
-                        if (!normalizedLibraryPath) {
-                            onError("Choose a library folder before importing a manual avatar.");
-                            return;
-                        }
-
-                        nextAvatarPath = await persistThumbnailFile(normalizedAvatarPath);
-                    } else if (avatarMode === "youtube") {
-                        if (!normalizedLibraryPath) {
-                            onError("Choose a library folder before importing a YouTube avatar.");
-                            return;
-                        }
-
-                        nextAvatarPath = await downloadChannelAvatarFromHandle(
-                            channel.youtube_handle
-                        );
-                    }
-
-                    const leftoverFiles = await updateChannelAvatarWithCleanup(
-                        channel.id,
-                        nextAvatarPath
-                    );
-
-                    if (leftoverFiles > 0) {
-                        onNotice?.(leftoverAvatarNotice());
-                    }
-
-                    // Reports its own failure, which says the avatar was stored.
-                    await reloadChannelsAfterChange(
-                        "The avatar was changed, but the channel list could not be reloaded. Restart the app if it does not show the new avatar."
-                    );
-                } catch (error) {
-                    logError("channels", "Failed to update channel avatar.", error, {
-                        channelId: channel.id,
-                        youtubeHandle: channel.youtube_handle,
-                        avatarMode,
-                        avatarPath: normalizedAvatarPath,
-                        libraryPath: normalizedLibraryPath,
-                    });
-                    onError(resolveErrorMessage(error, "Failed to update channel avatar."));
-                } finally {
-                    setUpdatingChannelAvatarId(null);
-                }
-            });
-        },
-        [
-            libraryPath,
-            onError,
-            onNotice,
-            reloadChannelsAfterChange,
-            runUpdateChannelAvatar,
-            setUpdatingChannelAvatarId,
-        ]
-    );
-
-    const updateChannelBannerAction = useCallback(
-        async (channel: Channel, source: ChannelAvatarMode, bannerPath = ""): Promise<void> => {
-            const normalizedLibraryPath = libraryPath.trim();
-            const normalizedBannerPath = bannerPath.trim();
-
-            await runUpdateChannelBanner(async () => {
-                setUpdatingChannelBannerId(channel.id);
+            await runUpdateChannelImage(async () => {
+                setUpdatingChannelImage({ kind, channelId: channel.id });
 
                 try {
-                    let nextBannerPath: string | null = null;
+                    let nextImagePath: string | null = null;
 
                     if (source !== "none" && !normalizedLibraryPath) {
-                        onError("Choose a library folder before setting a channel banner.");
+                        onError(`Choose a library folder before setting a channel ${kind}.`);
                         return;
                     }
 
                     if (source === "manual") {
-                        if (!normalizedBannerPath) {
-                            onError("Select an image file before updating the banner.");
+                        if (!normalizedImagePath) {
+                            onError(`Select an image file before updating the channel ${kind}.`);
                             return;
                         }
 
-                        nextBannerPath = await persistThumbnailFile(normalizedBannerPath);
+                        nextImagePath = await persistThumbnailFile(normalizedImagePath);
                     } else if (source === "youtube") {
-                        nextBannerPath = await downloadChannelBannerFromHandle(
+                        nextImagePath = await downloadChannelImageFromHandle(
+                            kind,
                             channel.youtube_handle
                         );
                     }
 
-                    const leftoverFiles = await updateChannelBannerWithCleanup(
+                    const leftoverFiles = await updateChannelImageWithCleanup(
+                        kind,
                         channel.id,
-                        nextBannerPath
+                        nextImagePath
                     );
 
                     if (leftoverFiles > 0) {
-                        onNotice?.(leftoverBannerNotice());
+                        onNotice?.(leftoverChannelImageNotice(kind));
                     }
 
+                    // Reports its own failure, which says the image was stored.
                     await reloadChannelsAfterChange(
-                        "The banner was changed, but the channel list could not be reloaded. Restart the app if it does not show the new banner."
+                        `The ${kind} was changed, but the channel list could not be reloaded. Restart the app if it does not show the new ${kind}.`
                     );
                 } catch (error) {
-                    logError("channels", "Failed to update channel banner.", error, {
+                    logError("channels", `Failed to update the channel ${kind}.`, error, {
                         channelId: channel.id,
                         youtubeHandle: channel.youtube_handle,
                         source,
-                        bannerPath: normalizedBannerPath,
+                        imagePath: normalizedImagePath,
                         libraryPath: normalizedLibraryPath,
                     });
-                    onError(resolveErrorMessage(error, "Failed to update the channel banner."));
+                    onError(resolveErrorMessage(error, `Failed to update the channel ${kind}.`));
                 } finally {
-                    setUpdatingChannelBannerId(null);
+                    setUpdatingChannelImage(null);
                 }
             });
         },
-        [
-            libraryPath,
-            onError,
-            onNotice,
-            reloadChannelsAfterChange,
-            runUpdateChannelBanner,
-            setUpdatingChannelBannerId,
-        ]
+        [libraryPath, onError, onNotice, reloadChannelsAfterChange, runUpdateChannelImage]
     );
 
     const confirmDeleteChannelAction = useCallback(async (): Promise<void> => {
@@ -514,14 +436,16 @@ export function useChannelActions({
         channelsLoadFailed,
         isCreatingChannel,
         isDeletingChannel,
-        isUpdatingChannelAvatar,
-        isUpdatingChannelBanner,
+        isUpdatingChannelImage,
+        updatingChannelAvatarId:
+            updatingChannelImage?.kind === "avatar" ? updatingChannelImage.channelId : null,
+        updatingChannelBannerId:
+            updatingChannelImage?.kind === "banner" ? updatingChannelImage.channelId : null,
         isEditingChannel,
         loadChannels,
         createChannelAction,
         updateChannelIdentityAction,
-        updateChannelAvatarAction,
-        updateChannelBannerAction,
+        updateChannelImageAction,
         confirmDeleteChannelAction,
     });
 }

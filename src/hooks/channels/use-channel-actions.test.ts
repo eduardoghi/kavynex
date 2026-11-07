@@ -10,20 +10,31 @@ vi.mock("../../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
+// One mock per image behind the shared calls, so each test sets up and checks the avatar and the
+// banner apart.
+const { downloadAvatar, downloadBanner, updateAvatar, updateBanner } = vi.hoisted(() => ({
+    downloadAvatar: vi.fn(),
+    downloadBanner: vi.fn(),
+    updateAvatar: vi.fn(),
+    updateBanner: vi.fn(),
+}));
+
 vi.mock("../../services/channel-service", () => ({
     createChannel: vi.fn(),
     ensureChannelCanBeCreated: vi.fn(),
     deleteChannelWithThumbnailCleanup: vi.fn(),
     listAllChannels: vi.fn(),
-    updateChannelAvatarWithCleanup: vi.fn(),
-    updateChannelBannerWithCleanup: vi.fn(),
+    updateChannelImageWithCleanup: vi.fn((kind: string, channelId: number, path: string | null) =>
+        kind === "avatar" ? updateAvatar(channelId, path) : updateBanner(channelId, path)
+    ),
     updateChannelNameHandle: vi.fn(),
 }));
 
 vi.mock("../../services/thumbnail-service", () => ({
     persistThumbnailFile: vi.fn(),
-    downloadChannelAvatarFromHandle: vi.fn(),
-    downloadChannelBannerFromHandle: vi.fn(),
+    downloadChannelImageFromHandle: vi.fn((kind: string, handle: string) =>
+        kind === "avatar" ? downloadAvatar(handle) : downloadBanner(handle)
+    ),
 }));
 
 import {
@@ -31,15 +42,9 @@ import {
     ensureChannelCanBeCreated,
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
-    updateChannelAvatarWithCleanup,
-    updateChannelBannerWithCleanup,
     updateChannelNameHandle,
 } from "../../services/channel-service";
-import {
-    downloadChannelAvatarFromHandle,
-    downloadChannelBannerFromHandle,
-    persistThumbnailFile,
-} from "../../services/thumbnail-service";
+import { persistThumbnailFile } from "../../services/thumbnail-service";
 
 describe("useChannelActions", () => {
     const setChannels = vi.fn();
@@ -48,7 +53,6 @@ describe("useChannelActions", () => {
     const setNewYoutubeHandle = vi.fn();
     const setNewChannelAvatarMode = vi.fn();
     const setNewChannelAvatarPath = vi.fn();
-    const setUpdatingChannelAvatarId = vi.fn();
     const setChannelToDelete = vi.fn();
     const setConfirmDeleteChannelOpen = vi.fn();
     const onError = vi.fn();
@@ -80,8 +84,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -129,8 +131,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -175,8 +175,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -204,7 +202,7 @@ describe("useChannelActions", () => {
     });
 
     it("creates channel with youtube avatar", async () => {
-        vi.mocked(downloadChannelAvatarFromHandle).mockResolvedValueOnce(
+        vi.mocked(downloadAvatar).mockResolvedValueOnce(
             "thumbnails/youtube-avatar.png"
         );
         vi.mocked(createChannel).mockResolvedValueOnce(10);
@@ -221,8 +219,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -241,7 +237,7 @@ describe("useChannelActions", () => {
         });
 
         expect(created).toBe(true);
-        expect(downloadChannelAvatarFromHandle).toHaveBeenCalledWith("@canala");
+        expect(downloadAvatar).toHaveBeenCalledWith("@canala");
         expect(createChannel).toHaveBeenCalledWith(
             "Canal A",
             "@canala",
@@ -265,8 +261,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -286,7 +280,7 @@ describe("useChannelActions", () => {
 
         // The avatar would have landed in the library with no channel pointing at it.
         expect(created).toBe(false);
-        expect(downloadChannelAvatarFromHandle).not.toHaveBeenCalled();
+        expect(downloadAvatar).not.toHaveBeenCalled();
         expect(persistThumbnailFile).not.toHaveBeenCalled();
         expect(createChannel).not.toHaveBeenCalled();
         expect(onError).toHaveBeenCalled();
@@ -304,8 +298,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -344,8 +336,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -387,8 +377,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -411,7 +399,7 @@ describe("useChannelActions", () => {
     });
 
     it("creates the channel and says so when the YouTube avatar cannot be downloaded", async () => {
-        vi.mocked(downloadChannelAvatarFromHandle).mockRejectedValueOnce(new Error("offline"));
+        vi.mocked(downloadAvatar).mockRejectedValueOnce(new Error("offline"));
         vi.mocked(createChannel).mockResolvedValueOnce(11);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
         const onNotice = vi.fn();
@@ -428,8 +416,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -465,8 +451,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -504,8 +488,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -527,7 +509,7 @@ describe("useChannelActions", () => {
         expect(onError).toHaveBeenCalledWith(
             "Choose a library folder before importing a YouTube avatar."
         );
-        expect(downloadChannelAvatarFromHandle).not.toHaveBeenCalled();
+        expect(downloadAvatar).not.toHaveBeenCalled();
         expect(createChannel).not.toHaveBeenCalled();
     });
 
@@ -545,8 +527,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -597,8 +577,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -642,8 +620,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -675,8 +651,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -708,7 +682,7 @@ describe("useChannelActions", () => {
         };
 
         vi.mocked(persistThumbnailFile).mockResolvedValueOnce("thumbnails/new-avatar.png");
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(0);
+        vi.mocked(updateAvatar).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>
@@ -722,8 +696,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -731,22 +703,82 @@ describe("useChannelActions", () => {
         );
 
         await act(async () => {
-            await result.current.updateChannelAvatarAction(
+            await result.current.updateChannelImageAction(
+                "avatar",
                 channel,
                 "manual",
                 "C:/temp/avatar.png"
             );
         });
 
-        expect(setUpdatingChannelAvatarId).toHaveBeenCalledWith(10);
         expect(persistThumbnailFile).toHaveBeenCalledWith("C:/temp/avatar.png");
-        expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
+        expect(updateAvatar).toHaveBeenCalledWith(
             10,
             "thumbnails/new-avatar.png"
         );
         expect(listAllChannels).toHaveBeenCalled();
         expect(setChannels).toHaveBeenCalled();
-        expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
+        expect(result.current.updatingChannelAvatarId).toBeNull();
+    });
+
+    it("changes one channel image at a time, and says which while it runs", async () => {
+        const channel = {
+            id: 10,
+            name: "Canal A",
+            youtube_handle: "@canala",
+            avatar_path: null,
+            banner_path: null,
+            created_at: "2026-03-31T10:00:00.000Z",
+        };
+        let finishBanner: (path: string) => void = () => {};
+        downloadBanner.mockReturnValueOnce(
+            new Promise<string>((resolve) => {
+                finishBanner = resolve;
+            })
+        );
+        updateBanner.mockResolvedValueOnce(0);
+        vi.mocked(listAllChannels).mockResolvedValueOnce([]);
+
+        const { result } = renderHook(() =>
+            useChannelActions({
+                libraryPath: "/library",
+                onError,
+                selectedChannelId: null,
+                setChannels,
+                setSelectedChannelId,
+                setNewChannelName,
+                setNewYoutubeHandle,
+                setNewChannelAvatarMode,
+                setNewChannelAvatarPath,
+                channelToDelete: null,
+                setChannelToDelete,
+                setConfirmDeleteChannelOpen,
+            })
+        );
+
+        let banner: Promise<void> = Promise.resolve();
+        act(() => {
+            banner = result.current.updateChannelImageAction("banner", channel, "youtube");
+        });
+
+        // The library folder waits on this flag, for the banner as for the avatar.
+        expect(result.current.isUpdatingChannelImage).toBe(true);
+        expect(result.current.updatingChannelBannerId).toBe(10);
+        expect(result.current.updatingChannelAvatarId).toBeNull();
+
+        await act(async () => {
+            await result.current.updateChannelImageAction("avatar", channel, "youtube");
+        });
+
+        expect(downloadAvatar).not.toHaveBeenCalled();
+
+        await act(async () => {
+            finishBanner("thumbnails/b.jpg");
+            await banner;
+        });
+
+        expect(result.current.isUpdatingChannelImage).toBe(false);
+        expect(result.current.updatingChannelBannerId).toBeNull();
     });
 
     describe("banner", () => {
@@ -760,7 +792,6 @@ describe("useChannelActions", () => {
         };
 
         function renderBannerActions(libraryPath = "/library") {
-            const setUpdatingChannelBannerId = vi.fn();
             const rendered = renderHook(() =>
                 useChannelActions({
                     libraryPath,
@@ -772,85 +803,80 @@ describe("useChannelActions", () => {
                     setNewYoutubeHandle,
                     setNewChannelAvatarMode,
                     setNewChannelAvatarPath,
-                    setUpdatingChannelAvatarId,
-                    setUpdatingChannelBannerId,
                     channelToDelete: null,
                     setChannelToDelete,
                     setConfirmDeleteChannelOpen,
                 })
             );
 
-            return { ...rendered, setUpdatingChannelBannerId };
+            return rendered;
         }
 
         it("loads the banner from YouTube and stores it on the channel", async () => {
-            vi.mocked(downloadChannelBannerFromHandle).mockResolvedValueOnce("thumbnails/b.jpg");
-            vi.mocked(updateChannelBannerWithCleanup).mockResolvedValueOnce(0);
+            vi.mocked(downloadBanner).mockResolvedValueOnce("thumbnails/b.jpg");
+            vi.mocked(updateBanner).mockResolvedValueOnce(0);
             vi.mocked(listAllChannels).mockResolvedValueOnce([]);
-            const { result, setUpdatingChannelBannerId } = renderBannerActions();
+            const { result } = renderBannerActions();
 
             await act(async () => {
-                await result.current.updateChannelBannerAction(channel, "youtube");
+                await result.current.updateChannelImageAction("banner", channel, "youtube");
             });
 
-            expect(downloadChannelBannerFromHandle).toHaveBeenCalledWith("@canala");
-            expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(10, "thumbnails/b.jpg");
-            expect(setUpdatingChannelBannerId).toHaveBeenCalledWith(10);
-            expect(setUpdatingChannelBannerId).toHaveBeenLastCalledWith(null);
-            // The avatar's busy state is the avatar's.
-            expect(setUpdatingChannelAvatarId).not.toHaveBeenCalled();
+            expect(downloadBanner).toHaveBeenCalledWith("@canala");
+            expect(updateBanner).toHaveBeenCalledWith(10, "thumbnails/b.jpg");
+            expect(result.current.updatingChannelBannerId).toBeNull();
         });
 
         it("stores a picked image as the banner", async () => {
             vi.mocked(persistThumbnailFile).mockResolvedValueOnce("thumbnails/picked.png");
-            vi.mocked(updateChannelBannerWithCleanup).mockResolvedValueOnce(0);
+            vi.mocked(updateBanner).mockResolvedValueOnce(0);
             vi.mocked(listAllChannels).mockResolvedValueOnce([]);
             const { result } = renderBannerActions();
 
             await act(async () => {
-                await result.current.updateChannelBannerAction(channel, "manual", "C:/pic.png");
+                await result.current.updateChannelImageAction("banner", channel, "manual", "C:/pic.png");
             });
 
             expect(persistThumbnailFile).toHaveBeenCalledWith("C:/pic.png");
-            expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(10, "thumbnails/picked.png");
+            expect(updateBanner).toHaveBeenCalledWith(10, "thumbnails/picked.png");
         });
 
         it("removes the banner", async () => {
-            vi.mocked(updateChannelBannerWithCleanup).mockResolvedValueOnce(0);
+            vi.mocked(updateBanner).mockResolvedValueOnce(0);
             vi.mocked(listAllChannels).mockResolvedValueOnce([]);
             const { result } = renderBannerActions();
 
             await act(async () => {
-                await result.current.updateChannelBannerAction(channel, "none");
+                await result.current.updateChannelImageAction("banner", channel, "none");
             });
 
-            expect(updateChannelBannerWithCleanup).toHaveBeenCalledWith(10, null);
-            expect(downloadChannelBannerFromHandle).not.toHaveBeenCalled();
+            expect(updateBanner).toHaveBeenCalledWith(10, null);
+            expect(downloadBanner).not.toHaveBeenCalled();
         });
 
         it("reports a banner that could not be loaded", async () => {
-            vi.mocked(downloadChannelBannerFromHandle).mockRejectedValueOnce(new Error("offline"));
+            vi.mocked(downloadBanner).mockRejectedValueOnce(new Error("offline"));
             const { result } = renderBannerActions();
 
             await act(async () => {
-                await result.current.updateChannelBannerAction(channel, "youtube");
+                await result.current.updateChannelImageAction("banner", channel, "youtube");
             });
 
             expect(onError).toHaveBeenCalledWith("Failed to update the channel banner.");
-            expect(updateChannelBannerWithCleanup).not.toHaveBeenCalled();
+            expect(updateBanner).not.toHaveBeenCalled();
         });
 
         it("needs a library folder to store a banner", async () => {
             const { result } = renderBannerActions("");
 
             await act(async () => {
-                await result.current.updateChannelBannerAction(channel, "youtube");
+                await result.current.updateChannelImageAction("banner", channel, "youtube");
             });
 
             expect(onError).toHaveBeenCalledWith(
                 "Choose a library folder before setting a channel banner."
             );
-            expect(downloadChannelBannerFromHandle).not.toHaveBeenCalled();
+            expect(downloadBanner).not.toHaveBeenCalled();
         });
     });
 
@@ -866,7 +892,7 @@ describe("useChannelActions", () => {
         const onNotice = vi.fn();
 
         vi.mocked(persistThumbnailFile).mockResolvedValueOnce("thumbnails/new-avatar.png");
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(1);
+        vi.mocked(updateAvatar).mockResolvedValueOnce(1);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>
@@ -881,8 +907,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -890,7 +914,8 @@ describe("useChannelActions", () => {
         );
 
         await act(async () => {
-            await result.current.updateChannelAvatarAction(
+            await result.current.updateChannelImageAction(
+                "avatar",
                 channel,
                 "manual",
                 "C:/temp/avatar.png"
@@ -913,10 +938,10 @@ describe("useChannelActions", () => {
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
-        vi.mocked(downloadChannelAvatarFromHandle).mockResolvedValueOnce(
+        vi.mocked(downloadAvatar).mockResolvedValueOnce(
             "thumbnails/youtube-avatar.png"
         );
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(0);
+        vi.mocked(updateAvatar).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>
@@ -930,8 +955,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -939,15 +962,15 @@ describe("useChannelActions", () => {
         );
 
         await act(async () => {
-            await result.current.updateChannelAvatarAction(channel, "youtube");
+            await result.current.updateChannelImageAction("avatar", channel, "youtube");
         });
 
-        expect(downloadChannelAvatarFromHandle).toHaveBeenCalledWith("@canala");
-        expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(
+        expect(downloadAvatar).toHaveBeenCalledWith("@canala");
+        expect(updateAvatar).toHaveBeenCalledWith(
             10,
             "thumbnails/youtube-avatar.png"
         );
-        expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
+        expect(result.current.updatingChannelAvatarId).toBeNull();
     });
 
     it("clears channel avatar when mode is none", async () => {
@@ -960,7 +983,7 @@ describe("useChannelActions", () => {
             created_at: "2026-03-31T10:00:00.000Z",
         };
 
-        vi.mocked(updateChannelAvatarWithCleanup).mockResolvedValueOnce(0);
+        vi.mocked(updateAvatar).mockResolvedValueOnce(0);
         vi.mocked(listAllChannels).mockResolvedValueOnce([]);
 
         const { result } = renderHook(() =>
@@ -974,8 +997,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -983,11 +1004,11 @@ describe("useChannelActions", () => {
         );
 
         await act(async () => {
-            await result.current.updateChannelAvatarAction(channel, "none");
+            await result.current.updateChannelImageAction("avatar", channel, "none");
         });
 
-        expect(updateChannelAvatarWithCleanup).toHaveBeenCalledWith(10, null);
-        expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
+        expect(updateAvatar).toHaveBeenCalledWith(10, null);
+        expect(result.current.updatingChannelAvatarId).toBeNull();
     });
 
     it("reports error when manual avatar update has no file", async () => {
@@ -1011,8 +1032,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -1020,14 +1039,14 @@ describe("useChannelActions", () => {
         );
 
         await act(async () => {
-            await result.current.updateChannelAvatarAction(channel, "manual", "");
+            await result.current.updateChannelImageAction("avatar", channel, "manual", "");
         });
 
         expect(onError).toHaveBeenCalledWith(
-            "Select an avatar file before updating the channel."
+            "Select an image file before updating the channel avatar."
         );
-        expect(updateChannelAvatarWithCleanup).not.toHaveBeenCalled();
-        expect(setUpdatingChannelAvatarId).toHaveBeenLastCalledWith(null);
+        expect(updateAvatar).not.toHaveBeenCalled();
+        expect(result.current.updatingChannelAvatarId).toBeNull();
     });
 
     it("deletes selected channel and resets selection", async () => {
@@ -1054,8 +1073,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -1097,8 +1114,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -1139,8 +1154,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: {
                     id: 10,
                     name: "Canal A",
@@ -1175,8 +1188,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,
@@ -1202,8 +1213,6 @@ describe("useChannelActions", () => {
                 setNewYoutubeHandle,
                 setNewChannelAvatarMode,
                 setNewChannelAvatarPath,
-                setUpdatingChannelAvatarId,
-                setUpdatingChannelBannerId: vi.fn(),
                 channelToDelete: null,
                 setChannelToDelete,
                 setConfirmDeleteChannelOpen,

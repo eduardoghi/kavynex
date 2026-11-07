@@ -21,13 +21,13 @@ export type HomeUiGuardsController = {
 type UseHomeUiGuardsOptions = {
     settingsState: AppSettingsController;
     mediaLibrary: MediaLibraryController;
-    channelsState: Pick<ChannelsController, "isUpdatingChannelAvatar">;
+    channelsState: Pick<ChannelsController, "isUpdatingChannelImage">;
 };
 
 type LibraryPathChangeGuardInput = {
     libraryPath: string;
     isMigratingLibraryPath: boolean;
-    isUpdatingChannelAvatar: boolean;
+    isUpdatingChannelImage: boolean;
     mediaPreparationState: MediaPreparationState;
     playerViewMode: MediaPlayerController["viewMode"];
 };
@@ -35,7 +35,7 @@ type LibraryPathChangeGuardInput = {
 function resolveLibraryPathChangeDisabledReason({
     libraryPath,
     isMigratingLibraryPath,
-    isUpdatingChannelAvatar,
+    isUpdatingChannelImage,
     mediaPreparationState,
     playerViewMode,
 }: LibraryPathChangeGuardInput): string {
@@ -47,8 +47,8 @@ function resolveLibraryPathChangeDisabledReason({
             : "Library folder setup is in progress.";
     }
 
-    if (isUpdatingChannelAvatar) {
-        return "Wait for the channel avatar update to finish before changing the library folder.";
+    if (isUpdatingChannelImage) {
+        return "Wait for the channel image update to finish before changing the library folder.";
     }
 
     const mediaOperationReason = resolveMediaOperationBusyReason(mediaPreparationState);
@@ -79,7 +79,7 @@ export function useHomeUiGuards({
     const { viewMode: playerViewMode } = mediaLibrary.mediaPlayer;
     const { settings, isMigratingLibraryPath } = settingsState;
     const { libraryPath: settingsLibraryPath } = settings;
-    const { isUpdatingChannelAvatar } = channelsState;
+    const { isUpdatingChannelImage } = channelsState;
 
     const mediaPreparationState = useMemo<MediaPreparationState>(
         () => ({
@@ -110,14 +110,14 @@ export function useHomeUiGuards({
         return resolveLibraryPathChangeDisabledReason({
             libraryPath: settingsLibraryPath,
             isMigratingLibraryPath,
-            isUpdatingChannelAvatar,
+            isUpdatingChannelImage,
             mediaPreparationState,
             playerViewMode,
         });
     }, [
         settingsLibraryPath,
         isMigratingLibraryPath,
-        isUpdatingChannelAvatar,
+        isUpdatingChannelImage,
         mediaPreparationState,
         playerViewMode,
     ]);

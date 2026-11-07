@@ -4,7 +4,7 @@ import {
     ensureChannelCanBeCreated,
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
-    updateChannelAvatarWithCleanup,
+    updateChannelImageWithCleanup,
     updateChannelNameHandle,
 } from "./channel-service";
 
@@ -15,6 +15,7 @@ vi.mock("../repositories/channel-repository", () => ({
     insertChannel: vi.fn(),
     listChannels: vi.fn(),
     replaceChannelAvatar: vi.fn(),
+    replaceChannelBanner: vi.fn(),
     updateChannelNameAndHandle: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ import {
     updateChannelNameAndHandle,
     listChannels,
     replaceChannelAvatar,
+    replaceChannelBanner,
 } from "../repositories/channel-repository";
 import {
     validateChannelId,
@@ -177,7 +179,7 @@ describe("channel-service", () => {
             failed_paths: [],
         });
 
-        await updateChannelAvatarWithCleanup(10, "  thumbnails/new.png  ");
+        await updateChannelImageWithCleanup("avatar", 10, "  thumbnails/new.png  ");
 
         expect(replaceChannelAvatar).toHaveBeenCalledWith(10, "thumbnails/new.png");
         expect(logError).not.toHaveBeenCalled();
@@ -190,7 +192,7 @@ describe("channel-service", () => {
             failed_paths: [],
         });
 
-        await updateChannelAvatarWithCleanup(10, "   ");
+        await updateChannelImageWithCleanup("avatar", 10, "   ");
 
         expect(replaceChannelAvatar).toHaveBeenCalledWith(10, null);
     });
@@ -203,7 +205,7 @@ describe("channel-service", () => {
         });
 
         await expect(
-            updateChannelAvatarWithCleanup(10, "thumbnails/new.png")
+            updateChannelImageWithCleanup("avatar", 10, "thumbnails/new.png")
         ).resolves.toBe(1);
 
         expect(logError).toHaveBeenCalledWith(
@@ -214,13 +216,26 @@ describe("channel-service", () => {
         );
     });
 
+    it("sets the banner through its own backend command", async () => {
+        vi.mocked(replaceChannelBanner).mockResolvedValueOnce({
+            deleted_paths: [],
+            skipped_shared_paths: [],
+            failed_paths: [],
+        });
+
+        await updateChannelImageWithCleanup("banner", 10, " thumbnails/b.jpg ");
+
+        expect(replaceChannelBanner).toHaveBeenCalledWith(10, "thumbnails/b.jpg");
+        expect(replaceChannelAvatar).not.toHaveBeenCalled();
+    });
+
     it("rejects an invalid channel id without calling the backend", async () => {
         vi.mocked(validateChannelId).mockImplementationOnce(() => {
             throw new Error("Channel id is invalid.");
         });
 
         await expect(
-            updateChannelAvatarWithCleanup(0, "thumbnails/new.png")
+            updateChannelImageWithCleanup("avatar", 0, "thumbnails/new.png")
         ).rejects.toThrow("Channel id is invalid.");
 
         expect(replaceChannelAvatar).not.toHaveBeenCalled();

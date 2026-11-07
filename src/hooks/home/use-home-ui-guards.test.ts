@@ -158,7 +158,7 @@ describe("useHomeUiGuards", () => {
 
     function createChannelsState(overrides?: Partial<any>) {
         return {
-            isUpdatingChannelAvatar: false,
+            isUpdatingChannelImage: false,
             ...overrides,
         };
     }
@@ -198,19 +198,19 @@ describe("useHomeUiGuards", () => {
         expect(result.current.libraryPathChangeDisabledReason).not.toBe("");
     });
 
-    it("disables library path change while updating channel avatar", () => {
+    it("disables library path change while a channel image (avatar or banner) is being updated", () => {
         const { result } = renderHook(() =>
             useHomeUiGuards({
                 settingsState: createSettingsState(),
                 mediaLibrary: createMediaLibrary(),
                 channelsState: createChannelsState({
-                    isUpdatingChannelAvatar: true,
+                    isUpdatingChannelImage: true,
                 }),
             })
         );
 
         expect(result.current.disableLibraryPathChange).toBe(true);
-        expect(result.current.libraryPathChangeDisabledReason).toContain("avatar");
+        expect(result.current.libraryPathChangeDisabledReason).toContain("channel image");
     });
 
     it("does not close add media modal when locked", async () => {

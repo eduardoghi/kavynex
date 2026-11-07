@@ -10,7 +10,7 @@ import { useChannels } from "./use-channels";
 vi.mock("../../services/channel-service", () => ({
     listAllChannels: vi.fn(),
     deleteChannelWithThumbnailCleanup: vi.fn(),
-    updateChannelAvatarWithCleanup: vi.fn(),
+    updateChannelImageWithCleanup: vi.fn(),
     updateChannelNameHandle: vi.fn(),
 }));
 

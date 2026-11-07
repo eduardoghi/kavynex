@@ -61,13 +61,7 @@ pub async fn insert_channel<R: Runtime>(
     youtube_handle: String,
     avatar_path: Option<String>,
 ) -> AppResult<i64> {
-    // Only `thumbnails/`, not any managed directory. The cleanup below counts thumbnail and avatar
-    // references, not media ones, so an avatar path pointing into `video/` would let a refused
-    // insert remove a media file its rows still use.
-    if let Some(path) = avatar_path.as_deref() {
-        ensure_managed_library_relative_path(path)?;
-        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
-    }
+    ensure_channel_image_path(avatar_path.as_deref())?;
 
     let inserted = insert_channel_row(&db, &name, &youtube_handle, avatar_path.as_deref()).await;
 
@@ -142,41 +136,56 @@ pub async fn update_channel_name_and_handle(
     repo::update_channel_name_and_handle(&pool, channel_id, name, youtube_handle).await
 }
 
-/// Updates a channel's avatar and removes the previous avatar file when nothing else (a
-/// video thumbnail or another channel avatar) still references it, in a single atomic
-/// operation. Files it could not remove are reported back so an orphan stays visible.
+/// Refuses a channel image path outside `thumbnails/`, and not any managed directory, because the
+/// cleanup after a refused insert or a later replace counts thumbnail and channel image references, not
+/// media ones, so a path into `video/` would be drawn as the channel's image and could let that
+/// cleanup remove a media file its rows still use.
+fn ensure_channel_image_path(path: Option<&str>) -> AppResult<()> {
+    if let Some(path) = path {
+        ensure_managed_library_relative_path(path)?;
+        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
+    }
+
+    Ok(())
+}
+
+/// Sets one of a channel's images, or clears it with `None`, and removes the previous file when
+/// nothing else (a video thumbnail or another channel image) still references it, in a single
+/// atomic operation. Files it could not remove are reported back so an orphan stays visible.
+async fn replace_channel_image<R: Runtime>(
+    app: &AppHandle<R>,
+    channel_id: i64,
+    image: library::cleanup::ChannelImage,
+    path: Option<String>,
+) -> AppResult<ArtifactCleanupReport> {
+    ensure_channel_image_path(path.as_deref())?;
+    library::cleanup::replace_channel_image(app, channel_id, image, path).await
+}
+
+/// [`replace_channel_image`] for the avatar.
 #[tauri::command]
 pub async fn replace_channel_avatar<R: Runtime>(
     app: AppHandle<R>,
     channel_id: i64,
     avatar_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
-    // Only `thumbnails/`, the same rule as insert_channel. A path into `video/` would be stored as
-    // an avatar the card then draws, and the cleanup that follows a later replace counts thumbnail
-    // and avatar references only.
-    if let Some(path) = avatar_path.as_deref() {
-        ensure_managed_library_relative_path(path)?;
-        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
-    }
-
-    library::cleanup::replace_channel_avatar(&app, channel_id, avatar_path).await
+    replace_channel_image(
+        &app,
+        channel_id,
+        library::cleanup::ChannelImage::Avatar,
+        avatar_path,
+    )
+    .await
 }
 
-/// Sets a channel's banner, or clears it with `None`, and removes the previous banner file when
-/// nothing else references it, the same way [`replace_channel_avatar`] does for the avatar.
+/// [`replace_channel_image`] for the banner.
 #[tauri::command]
 pub async fn replace_channel_banner<R: Runtime>(
     app: AppHandle<R>,
     channel_id: i64,
     banner_path: Option<String>,
 ) -> AppResult<ArtifactCleanupReport> {
-    // Only `thumbnails/`, the same rule as the avatar.
-    if let Some(path) = banner_path.as_deref() {
-        ensure_managed_library_relative_path(path)?;
-        ensure_relative_path_in_managed_dir(path, crate::constants::LIBRARY_DIR_THUMBNAILS)?;
-    }
-
-    library::cleanup::replace_channel_image(
+    replace_channel_image(
         &app,
         channel_id,
         library::cleanup::ChannelImage::Banner,

@@ -42,7 +42,7 @@ describe("useChannels", () => {
     const createChannelAction = vi.fn();
     const updateChannelIdentityAction = vi.fn();
     const confirmDeleteChannelAction = vi.fn();
-    const updateChannelAvatarAction = vi.fn();
+    const updateChannelImageAction = vi.fn();
 
     beforeEach(() => {
         vi.clearAllMocks();
@@ -54,9 +54,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -64,7 +64,7 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction,
+                updateChannelImageAction,
             };
         });
     });
@@ -611,7 +611,8 @@ describe("useChannels", () => {
                 },
             ],
         });
-        expect(updateChannelAvatarAction).toHaveBeenCalledWith(
+        expect(updateChannelImageAction).toHaveBeenCalledWith(
+            "avatar",
             channelA,
             "manual",
             "C:/new-avatar.png"
@@ -632,7 +633,7 @@ describe("useChannels", () => {
             await result.current.updateChannelAvatarFromFile(channelA);
         });
 
-        expect(updateChannelAvatarAction).not.toHaveBeenCalled();
+        expect(updateChannelImageAction).not.toHaveBeenCalled();
     });
 
     it("reports error when updating channel avatar from file fails", async () => {
@@ -650,14 +651,14 @@ describe("useChannels", () => {
             await result.current.updateChannelAvatarFromFile(channelA);
         });
 
-        expect(onError).toHaveBeenCalledWith("Failed to select avatar file.");
+        expect(onError).toHaveBeenCalledWith("Failed to select the avatar file.");
         // The cause reaches the log rather than being dropped with the generic message.
         expect(mockedLogError).toHaveBeenCalledWith(
             "channels",
             "Failed to open the avatar file dialog.",
             expect.anything()
         );
-        expect(updateChannelAvatarAction).not.toHaveBeenCalled();
+        expect(updateChannelImageAction).not.toHaveBeenCalled();
     });
 
     it("uses the latest onError callback for file avatar updates after a rerender", async () => {
@@ -677,7 +678,7 @@ describe("useChannels", () => {
             await result.current.updateChannelAvatarFromFile(channelA);
         });
 
-        expect(nextOnError).toHaveBeenCalledWith("Failed to select avatar file.");
+        expect(nextOnError).toHaveBeenCalledWith("Failed to select the avatar file.");
         expect(initialOnError).not.toHaveBeenCalled();
     });
 
@@ -693,7 +694,7 @@ describe("useChannels", () => {
             await result.current.updateChannelAvatarFromYouTube(channelA);
         });
 
-        expect(updateChannelAvatarAction).toHaveBeenCalledWith(channelA, "youtube");
+        expect(updateChannelImageAction).toHaveBeenCalledWith("avatar", channelA, "youtube");
     });
 
     it("uses the latest channelActions for youtube avatar updates after a rerender", async () => {
@@ -708,9 +709,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -718,8 +719,8 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction:
-                    renderCount === 1 ? updateChannelAvatarAction : secondUpdateAction,
+                updateChannelImageAction:
+                    renderCount === 1 ? updateChannelImageAction : secondUpdateAction,
             };
         });
 
@@ -736,8 +737,8 @@ describe("useChannels", () => {
             await result.current.updateChannelAvatarFromYouTube(channelA);
         });
 
-        expect(secondUpdateAction).toHaveBeenCalledWith(channelA, "youtube");
-        expect(updateChannelAvatarAction).not.toHaveBeenCalled();
+        expect(secondUpdateAction).toHaveBeenCalledWith("avatar", channelA, "youtube");
+        expect(updateChannelImageAction).not.toHaveBeenCalled();
     });
 
     it("removes channel avatar", async () => {
@@ -752,7 +753,7 @@ describe("useChannels", () => {
             await result.current.removeChannelAvatar(channelA);
         });
 
-        expect(updateChannelAvatarAction).toHaveBeenCalledWith(channelA, "none");
+        expect(updateChannelImageAction).toHaveBeenCalledWith("avatar", channelA, "none");
     });
 
     it("uses the latest channelActions for avatar removal after a rerender", async () => {
@@ -767,9 +768,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -777,8 +778,8 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction:
-                    renderCount === 1 ? updateChannelAvatarAction : secondUpdateAction,
+                updateChannelImageAction:
+                    renderCount === 1 ? updateChannelImageAction : secondUpdateAction,
             };
         });
 
@@ -795,8 +796,8 @@ describe("useChannels", () => {
             await result.current.removeChannelAvatar(channelA);
         });
 
-        expect(secondUpdateAction).toHaveBeenCalledWith(channelA, "none");
-        expect(updateChannelAvatarAction).not.toHaveBeenCalled();
+        expect(secondUpdateAction).toHaveBeenCalledWith("avatar", channelA, "none");
+        expect(updateChannelImageAction).not.toHaveBeenCalled();
     });
 
     it("keeps delete modal open when isDeletingChannel is true", async () => {
@@ -819,9 +820,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: true,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -829,7 +830,7 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction,
+                updateChannelImageAction,
             };
         });
 
@@ -926,9 +927,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -936,7 +937,7 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction,
+                updateChannelImageAction,
             };
         });
 
@@ -978,9 +979,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -988,7 +989,7 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction,
+                updateChannelImageAction,
             };
         });
 
@@ -1026,9 +1027,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -1036,7 +1037,7 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction,
+                updateChannelImageAction,
             };
         });
 
@@ -1080,9 +1081,9 @@ describe("useChannels", () => {
                 channelsLoadFailed: false,
                 isCreatingChannel: false,
                 isDeletingChannel: false,
-                isUpdatingChannelAvatar: false,
-                isUpdatingChannelBanner: false,
-                updateChannelBannerAction: vi.fn(),
+                isUpdatingChannelImage: false,
+                updatingChannelAvatarId: null,
+                updatingChannelBannerId: null,
                 isEditingChannel: false,
                 loadChannels: vi.fn(async () => {
                     options.setChannels([channelA]);
@@ -1090,7 +1091,7 @@ describe("useChannels", () => {
                 createChannelAction,
                 updateChannelIdentityAction,
                 confirmDeleteChannelAction,
-                updateChannelAvatarAction,
+                updateChannelImageAction,
             };
         });
 

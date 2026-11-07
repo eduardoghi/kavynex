@@ -2,6 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand } from "../lib/tauri-client";
 import { normalizeString } from "../utils/guards";
 import { ClientError } from "../utils/app-error";
+import type { ChannelImageKind } from "../types/media";
 
 export async function generateTemporaryThumbnail(mediaPath: string): Promise<string> {
     const normalizedMediaPath = normalizeString(mediaPath);
@@ -64,7 +65,17 @@ export async function persistThumbnailFile(sourcePath: string): Promise<string> 
 // (`create_media`). The avatar download below stays, because it is its own operation. A user
 // changing a channel's picture, with no artifacts-without-a-row window behind it.
 
-export async function downloadChannelAvatarFromHandle(youtubeHandle: string): Promise<string> {
+const CHANNEL_IMAGE_DOWNLOAD_COMMANDS = {
+    avatar: TAURI_COMMANDS.DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE,
+    banner: TAURI_COMMANDS.DOWNLOAD_CHANNEL_BANNER_FROM_HANDLE,
+} as const;
+
+// One of the channel's images, fetched from its YouTube page and stored in the library. Resolves
+// with its library-relative path.
+export async function downloadChannelImageFromHandle(
+    kind: ChannelImageKind,
+    youtubeHandle: string
+): Promise<string> {
     const normalizedYoutubeHandle = normalizeString(youtubeHandle);
 
     if (!normalizedYoutubeHandle) {
@@ -72,22 +83,7 @@ export async function downloadChannelAvatarFromHandle(youtubeHandle: string): Pr
     }
 
     return normalizeString(
-        await invokeCommand(TAURI_COMMANDS.DOWNLOAD_CHANNEL_AVATAR_FROM_HANDLE, {
-            youtubeHandle: normalizedYoutubeHandle,
-        })
-    );
-}
-
-// The channel's banner, the wide image behind its avatar, stored in the library like the avatar.
-export async function downloadChannelBannerFromHandle(youtubeHandle: string): Promise<string> {
-    const normalizedYoutubeHandle = normalizeString(youtubeHandle);
-
-    if (!normalizedYoutubeHandle) {
-        throw new ClientError("YouTube handle is required.");
-    }
-
-    return normalizeString(
-        await invokeCommand(TAURI_COMMANDS.DOWNLOAD_CHANNEL_BANNER_FROM_HANDLE, {
+        await invokeCommand(CHANNEL_IMAGE_DOWNLOAD_COMMANDS[kind], {
             youtubeHandle: normalizedYoutubeHandle,
         })
     );

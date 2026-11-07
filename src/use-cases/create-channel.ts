@@ -2,11 +2,10 @@ import { CHANNEL_BANNER_NOT_FOUND_ERROR_CODE } from "../constants/error-codes";
 import {
     createChannel,
     ensureChannelCanBeCreated,
-    updateChannelBannerWithCleanup,
+    updateChannelImageWithCleanup,
 } from "../services/channel-service";
 import {
-    downloadChannelAvatarFromHandle,
-    downloadChannelBannerFromHandle,
+    downloadChannelImageFromHandle,
     persistThumbnailFile,
 } from "../services/thumbnail-service";
 import { parseAppError } from "../utils/app-error";
@@ -46,7 +45,7 @@ export async function executeCreateChannel(
         avatarPath = await persistThumbnailFile(avatar.sourcePath);
     } else if (avatar.mode === "youtube") {
         try {
-            avatarPath = await downloadChannelAvatarFromHandle(youtubeHandle);
+            avatarPath = await downloadChannelImageFromHandle("avatar", youtubeHandle);
         } catch (error) {
             avatarFailure = error;
         }
@@ -58,8 +57,8 @@ export async function executeCreateChannel(
     // After the row exists, so a banner that cannot be had costs nothing but the banner.
     if (avatar.mode === "youtube" && channelId !== null) {
         try {
-            const bannerPath = await downloadChannelBannerFromHandle(youtubeHandle);
-            await updateChannelBannerWithCleanup(channelId, bannerPath);
+            const bannerPath = await downloadChannelImageFromHandle("banner", youtubeHandle);
+            await updateChannelImageWithCleanup("banner", channelId, bannerPath);
         } catch (error) {
             if (parseAppError(error).code !== CHANNEL_BANNER_NOT_FOUND_ERROR_CODE) {
                 bannerFailure = error;

@@ -1,4 +1,4 @@
-import type { Channel } from "../types/media";
+import type { Channel, ChannelImageKind } from "../types/media";
 import {
     deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
@@ -117,47 +117,32 @@ export async function updateChannelNameHandle(
     );
 }
 
-// Resolves with how many files of the previous avatar stayed behind, like the channel deletion, so
-// the caller can say so rather than only the log.
-export async function updateChannelAvatarWithCleanup(
+const REPLACE_CHANNEL_IMAGE = {
+    avatar: replaceChannelAvatar,
+    banner: replaceChannelBanner,
+} as const;
+
+// Sets one of a channel's images, or clears it with null. Resolves with how many files of the
+// previous image stayed behind, like the channel deletion, so the caller can say so rather than
+// only the log.
+export async function updateChannelImageWithCleanup(
+    kind: ChannelImageKind,
     channelId: number,
-    avatarPath: string | null
+    imagePath: string | null
 ): Promise<number> {
     validateChannelId(channelId);
-    const nextAvatarPath = avatarPath?.trim() || null;
 
-    // The backend updates the avatar and, in the same transaction, decides whether the
-    // previous avatar file became unreferenced (across both video thumbnails and other
-    // channel avatars) before removing it. Doing the row write and the reference decision
-    // atomically closes the check-then-act race the old two-call sequence had. The old file
-    // removal is best-effort, so files it could not delete are reported back as orphans.
-    const report = await replaceChannelAvatar(channelId, nextAvatarPath);
+    // The backend updates the image and, in the same transaction, decides whether the previous
+    // file became unreferenced (across video thumbnails and every channel's avatar and banner)
+    // before removing it. Doing the row write and the reference decision atomically closes the
+    // check-then-act race the old two-call sequence had. The old file removal is best-effort, so
+    // files it could not delete are reported back as orphans.
+    const report = await REPLACE_CHANNEL_IMAGE[kind](channelId, imagePath?.trim() || null);
 
     if (report.failed_paths.length > 0) {
         logError(
             "channel-service",
-            "Channel avatar was updated but the previous avatar file could not be deleted; it may be orphaned in the library.",
-            null,
-            { channelId: channelId, failedPaths: report.failed_paths }
-        );
-    }
-
-    return report.failed_paths.length;
-}
-
-// The banner's counterpart of updateChannelAvatarWithCleanup, with the same atomic replace.
-export async function updateChannelBannerWithCleanup(
-    channelId: number,
-    bannerPath: string | null
-): Promise<number> {
-    validateChannelId(channelId);
-
-    const report = await replaceChannelBanner(channelId, bannerPath?.trim() || null);
-
-    if (report.failed_paths.length > 0) {
-        logError(
-            "channel-service",
-            "Channel banner was updated but the previous banner file could not be deleted; it may be orphaned in the library.",
+            `Channel ${kind} was updated but the previous ${kind} file could not be deleted; it may be orphaned in the library.`,
             null,
             { channelId: channelId, failedPaths: report.failed_paths }
         );

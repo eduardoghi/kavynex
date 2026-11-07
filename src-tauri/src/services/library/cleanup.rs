@@ -1367,18 +1367,6 @@ impl ChannelImage {
     }
 }
 
-/// Updates a channel's avatar path and decides, within the same transaction, whether the
-/// previous avatar file became unreferenced. Returns `None` when the channel does not exist.
-/// See [`replace_channel_image_and_plan_cleanup`].
-pub async fn replace_channel_avatar_and_plan_cleanup(
-    pool: &SqlitePool,
-    channel_id: i64,
-    avatar_path: Option<String>,
-) -> AppResult<Option<ArtifactCleanupPlan>> {
-    replace_channel_image_and_plan_cleanup(pool, channel_id, ChannelImage::Avatar, avatar_path)
-        .await
-}
-
 /// Updates one of a channel's images and decides, within the same transaction, whether the
 /// previous file became unreferenced. Returns `None` when the channel does not exist.
 ///
@@ -1436,18 +1424,9 @@ pub async fn replace_channel_image_and_plan_cleanup(
     Ok(Some(plan))
 }
 
-/// Updates a channel's avatar and removes the previous avatar file when it is no longer
-/// referenced. The row write and the "is the old file still used" decision commit
-/// atomically. The unlink runs after the commit and is reported back.
-pub async fn replace_channel_avatar<R: Runtime>(
-    app: &AppHandle<R>,
-    channel_id: i64,
-    avatar_path: Option<String>,
-) -> AppResult<ArtifactCleanupReport> {
-    replace_channel_image(app, channel_id, ChannelImage::Avatar, avatar_path).await
-}
-
-/// [`replace_channel_avatar`] for either of a channel's images.
+/// Updates one of a channel's images and removes the previous file when it is no longer
+/// referenced. The row write and the "is the old file still used" decision commit atomically. The
+/// unlink runs after the commit and is reported back.
 pub async fn replace_channel_image<R: Runtime>(
     app: &AppHandle<R>,
     channel_id: i64,

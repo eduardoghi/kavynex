@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Channel, ChannelAvatarMode } from "../../types/media";
+import type { Channel, ChannelAvatarMode, ChannelImageKind } from "../../types/media";
 import { listChannelMediaPage } from "../../services/media-service";
 import { logError } from "../../utils/app-logger";
 import { findSelectedChannel } from "../../utils/controller-helpers";
@@ -72,9 +72,9 @@ export type ChannelsController = {
     reloadChannels: () => Promise<void>;
     isCreatingChannel: boolean;
     isDeletingChannel: boolean;
-    isUpdatingChannelAvatar: boolean;
+    // See useChannelActions. The library folder waits for it.
+    isUpdatingChannelImage: boolean;
     updatingChannelAvatarId: number | null;
-    // The channel whose banner is being changed, for its page to show it.
     updatingChannelBannerId: number | null;
 
     setSelectedChannelId: (value: number | null) => void;
@@ -108,8 +108,6 @@ export function useChannels({
     const [channelToDeleteMediaCount, setChannelToDeleteMediaCount] = useState<number | null>(
         null
     );
-    const [updatingChannelAvatarId, setUpdatingChannelAvatarId] = useState<number | null>(null);
-    const [updatingChannelBannerId, setUpdatingChannelBannerId] = useState<number | null>(null);
 
     // Latest wins over the count query. A second delete request before the first count answers
     // must not land the first channel's number under the second channel's name.
@@ -132,8 +130,6 @@ export function useChannels({
         setNewYoutubeHandle: createForm.setNewYoutubeHandle,
         setNewChannelAvatarMode: createForm.setNewChannelAvatarMode,
         setNewChannelAvatarPath: createForm.setNewChannelAvatarPath,
-        setUpdatingChannelAvatarId,
-        setUpdatingChannelBannerId,
         channelToDelete,
         setChannelToDelete,
         setConfirmDeleteChannelOpen,
@@ -146,8 +142,7 @@ export function useChannels({
     const {
         createChannelAction,
         updateChannelIdentityAction,
-        updateChannelAvatarAction,
-        updateChannelBannerAction,
+        updateChannelImageAction,
         loadChannels,
     } = channelActions;
 
@@ -245,8 +240,8 @@ export function useChannels({
         [deleteCountGuard]
     );
 
-    const updateChannelAvatarFromFile = useCallback(
-        async (channel: Channel): Promise<void> => {
+    const updateChannelImageFromFile = useCallback(
+        async (kind: ChannelImageKind, channel: Channel): Promise<void> => {
             let picked: string | null;
 
             // Only the dialog is in here. The update reports its own failures, and the generic
@@ -254,63 +249,35 @@ export function useChannels({
             try {
                 picked = await pickImageFilePath();
             } catch (error) {
-                logError("channels", "Failed to open the avatar file dialog.", error);
-                onError("Failed to select avatar file.");
+                logError("channels", `Failed to open the ${kind} file dialog.`, error);
+                onError(`Failed to select the ${kind} file.`);
                 return;
             }
 
             if (picked) {
-                await updateChannelAvatarAction(channel, "manual", picked);
+                await updateChannelImageAction(kind, channel, "manual", picked);
             }
         },
-        [updateChannelAvatarAction, onError]
+        [updateChannelImageAction, onError]
     );
 
-    const updateChannelAvatarFromYouTube = useCallback(
-        async (channel: Channel): Promise<void> => {
-            await updateChannelAvatarAction(channel, "youtube");
-        },
-        [updateChannelAvatarAction]
-    );
-
-    const removeChannelAvatar = useCallback(
-        async (channel: Channel): Promise<void> => {
-            await updateChannelAvatarAction(channel, "none");
-        },
-        [updateChannelAvatarAction]
-    );
-
-    const updateChannelBannerFromFile = useCallback(
-        async (channel: Channel): Promise<void> => {
-            let picked: string | null;
-
-            try {
-                picked = await pickImageFilePath();
-            } catch (error) {
-                logError("channels", "Failed to open the banner file dialog.", error);
-                onError("Failed to select the banner file.");
-                return;
-            }
-
-            if (picked) {
-                await updateChannelBannerAction(channel, "manual", picked);
-            }
-        },
-        [updateChannelBannerAction, onError]
-    );
-
-    const updateChannelBannerFromYouTube = useCallback(
-        async (channel: Channel): Promise<void> => {
-            await updateChannelBannerAction(channel, "youtube");
-        },
-        [updateChannelBannerAction]
-    );
-
-    const removeChannelBanner = useCallback(
-        async (channel: Channel): Promise<void> => {
-            await updateChannelBannerAction(channel, "none");
-        },
-        [updateChannelBannerAction]
+    // The sidebar's menu items, three per image.
+    const channelImageMenu = useMemo(
+        () => ({
+            updateChannelAvatarFromFile: (channel: Channel) =>
+                updateChannelImageFromFile("avatar", channel),
+            updateChannelAvatarFromYouTube: (channel: Channel) =>
+                updateChannelImageAction("avatar", channel, "youtube"),
+            removeChannelAvatar: (channel: Channel) =>
+                updateChannelImageAction("avatar", channel, "none"),
+            updateChannelBannerFromFile: (channel: Channel) =>
+                updateChannelImageFromFile("banner", channel),
+            updateChannelBannerFromYouTube: (channel: Channel) =>
+                updateChannelImageAction("banner", channel, "youtube"),
+            removeChannelBanner: (channel: Channel) =>
+                updateChannelImageAction("banner", channel, "none"),
+        }),
+        [updateChannelImageAction, updateChannelImageFromFile]
     );
 
     const closeDeleteChannelModal = useCallback((): void => {
@@ -344,7 +311,6 @@ export function useChannels({
         setChannelToDelete(null);
         setChannelToDeleteMediaCount(null);
         setConfirmDeleteChannelOpen(false);
-        setUpdatingChannelAvatarId(null);
         resetCreateChannelForm();
         resetEditChannelForm();
         closeCreateChannelForm();
@@ -380,7 +346,6 @@ export function useChannels({
     const isLoadingChannels = channelActions.isLoadingChannels;
     const isCreatingChannel = channelActions.isCreatingChannel;
     const isDeletingChannel = channelActions.isDeletingChannel;
-    const isUpdatingChannelAvatar = channelActions.isUpdatingChannelAvatar;
     const confirmDeleteChannel = channelActions.confirmDeleteChannelAction;
 
     return useMemoObject({
@@ -421,19 +386,14 @@ export function useChannels({
         reloadChannels: loadChannels,
         isCreatingChannel,
         isDeletingChannel,
-        isUpdatingChannelAvatar,
-        updatingChannelAvatarId,
-        updatingChannelBannerId,
+        isUpdatingChannelImage: channelActions.isUpdatingChannelImage,
+        updatingChannelAvatarId: channelActions.updatingChannelAvatarId,
+        updatingChannelBannerId: channelActions.updatingChannelBannerId,
 
         setSelectedChannelId,
         createChannel,
         requestDeleteChannel,
-        updateChannelAvatarFromFile,
-        updateChannelAvatarFromYouTube,
-        removeChannelAvatar,
-        updateChannelBannerFromFile,
-        updateChannelBannerFromYouTube,
-        removeChannelBanner,
+        ...channelImageMenu,
         confirmDeleteChannel,
         closeDeleteChannelModal,
     });

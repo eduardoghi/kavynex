@@ -99,7 +99,7 @@ describe("useHomeActions", () => {
             reloadChannels: vi.fn(),
             isCreatingChannel: false,
             isDeletingChannel: false,
-            isUpdatingChannelAvatar: false,
+            isUpdatingChannelImage: false,
             updatingChannelAvatarId: null,
             updatingChannelBannerId: null,
 
