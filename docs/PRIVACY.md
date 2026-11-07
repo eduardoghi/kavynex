@@ -68,6 +68,9 @@ in-app flows:
   is a complete backup of the media itself.
 - **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
   Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
+  It is the whole database, settings included, so it carries the full paths of your library folder
+  and of the external backup folder, which on most systems name your user account. Keep that in
+  mind before attaching an export to a bug report.
 - **The cache folder** holds nothing of yours that is not already in one of those two, only
   temporary previews and a smaller copy of each thumbnail the grid has drawn, so a card decodes a
   few hundred pixels instead of the stored image's full resolution. Deleting a media removes its
@@ -78,6 +81,13 @@ in-app flows:
 - **Recovered downloads** are downloads that finished but could not be moved into the library, kept
   in the app's local data directory until you remove them. Diagnostics says when there are any and
   opens the folder.
+
+Deleting a media or a channel in the app does not take its files off the disk at once. By default
+they go to the `.trash` folder inside the library and stay there for 30 days, so a deletion made by
+mistake can still be recovered by hand. To have them gone sooner, **Settings > Deleted media >
+Empty trash** removes everything in it now, and **Delete files right away** (under the same
+heading) skips the trash for later deletions. The comments of a deleted media leave the database at
+once either way.
 
 The database's automatic `.bak` snapshots live next to the database itself, on the same disk, so a
 drive failure takes them with it. To guard against that, **Settings > Database > Automatic external
