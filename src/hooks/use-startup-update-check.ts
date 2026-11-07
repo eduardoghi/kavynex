@@ -3,6 +3,28 @@ import { checkAppUpdate } from "../services/app-update-service";
 import { logWarn } from "../utils/app-logger";
 import { resolveErrorMessage } from "../utils/error-message";
 
+// The last version the startup notice announced. Per device, like the motion preference
+// (utils/motion-preference.ts), since it is about what this window already showed.
+export const ANNOUNCED_UPDATE_STORAGE_KEY = "kavynex.announced-update-version";
+
+// Storage can be unavailable (a locked-down profile) or throw, and the notice then simply shows
+// again on the next launch, which is what it did before it was remembered at all.
+function announcedVersion(): string | null {
+    try {
+        return window.localStorage.getItem(ANNOUNCED_UPDATE_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+}
+
+function rememberAnnouncedVersion(version: string): void {
+    try {
+        window.localStorage.setItem(ANNOUNCED_UPDATE_STORAGE_KEY, version);
+    } catch {
+        // See announcedVersion.
+    }
+}
+
 type UseStartupUpdateCheckOptions = {
     // Whether to check now. The caller has to keep this false until the stored preference is known
     // (Settings > Application update), because the in-memory default is on and the check runs at
@@ -12,8 +34,9 @@ type UseStartupUpdateCheckOptions = {
     onUpdateAvailable: (message: string) => void;
 };
 
-// Runs a single passive update check and shows a non-intrusive notice if a newer version is
-// available. It fires at most once per app session (a ref guards against re-runs) and contacts the
+// Runs a single passive update check and shows a notice if a newer version is available, once per
+// version. A user who chose to update later is not asked again on every launch, and Settings keeps
+// offering the install. It fires at most once per app session (a ref guards against re-runs) and contacts the
 // update endpoint only when `enabled` is true. The app's default is on (see
 // normalizeCheckUpdatesOnStartup, which owns that rule), so a launch checks unless the user turned
 // it off in Settings. This hook holds no opinion about that. It reads the resolved flag.
@@ -34,7 +57,8 @@ export function useStartupUpdateCheck({
             try {
                 const update = await checkAppUpdate();
 
-                if (update) {
+                if (update && update.version !== announcedVersion()) {
+                    rememberAnnouncedVersion(update.version);
                     onUpdateAvailable(
                         `Version ${update.version} of Kavynex is available. Open Settings to update.`
                     );

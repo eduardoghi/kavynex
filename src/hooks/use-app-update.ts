@@ -99,9 +99,17 @@ export function useAppUpdate(): UseAppUpdateReturn {
                 return;
             }
 
-            setUpdateInfo(null);
+            // An update an earlier check found is still held by the backend and can still be
+            // installed, so a check that fails (no network) keeps offering it rather than hiding it.
+            const earlier = lastCheckedUpdate();
+
+            setUpdateInfo(earlier);
             setStatus("error");
-            setErrorMessage("Could not check for updates.");
+            setErrorMessage(
+                earlier
+                    ? `Could not check for updates. Version ${earlier.version}, found earlier, can still be installed.`
+                    : "Could not check for updates."
+            );
         }
     }, [checkGuard]);
 

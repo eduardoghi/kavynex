@@ -141,6 +141,27 @@ describe("useAppUpdate", () => {
         );
     });
 
+    it("keeps offering an update found earlier when a later check fails", async () => {
+        // The backend still holds it, so going offline must not take the install button away.
+        const earlier = createUpdate({ version: "1.2.0" });
+        vi.mocked(lastCheckedUpdate).mockReturnValue(earlier);
+        checkAppUpdateMock.mockRejectedValueOnce(new Error("offline"));
+
+        const { result } = renderHook(() => useAppUpdate());
+
+        await act(async () => {
+            await result.current.checkForUpdate();
+        });
+
+        expect(result.current.status).toBe("error");
+        expect(result.current.updateInfo).toEqual(earlier);
+        expect(result.current.errorMessage).toBe(
+            "Could not check for updates. Version 1.2.0, found earlier, can still be installed."
+        );
+
+        vi.mocked(lastCheckedUpdate).mockReturnValue(null);
+    });
+
     it("resets the error message when a new check starts after a previous error", async () => {
         checkAppUpdateMock.mockRejectedValueOnce(new Error("boom"));
 

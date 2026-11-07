@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useStartupUpdateCheck } from "./use-startup-update-check";
+import { ANNOUNCED_UPDATE_STORAGE_KEY, useStartupUpdateCheck } from "./use-startup-update-check";
 import { checkAppUpdate } from "../services/app-update-service";
 import { logWarn } from "../utils/app-logger";
 
@@ -22,6 +22,27 @@ function updateWithVersion(version: string): Awaited<ReturnType<typeof checkAppU
 describe("useStartupUpdateCheck", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        window.localStorage.clear();
+    });
+
+    it("announces a version once, and a newer one again", async () => {
+        // A user who chose to update later is not asked on every launch.
+        window.localStorage.setItem(ANNOUNCED_UPDATE_STORAGE_KEY, "1.5.0");
+        checkAppUpdateMock.mockResolvedValueOnce(updateWithVersion("1.5.0"));
+        const quiet = vi.fn();
+
+        renderHook(() => useStartupUpdateCheck({ enabled: true, onUpdateAvailable: quiet }));
+
+        await waitFor(() => expect(checkAppUpdateMock).toHaveBeenCalledTimes(1));
+        expect(quiet).not.toHaveBeenCalled();
+
+        checkAppUpdateMock.mockResolvedValueOnce(updateWithVersion("1.6.0"));
+        const announced = vi.fn();
+
+        renderHook(() => useStartupUpdateCheck({ enabled: true, onUpdateAvailable: announced }));
+
+        await waitFor(() => expect(announced).toHaveBeenCalledTimes(1));
+        expect(window.localStorage.getItem(ANNOUNCED_UPDATE_STORAGE_KEY)).toBe("1.6.0");
     });
 
     it("does not contact the update endpoint while disabled", () => {
