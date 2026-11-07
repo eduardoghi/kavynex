@@ -263,7 +263,12 @@ where
 /// tens. The ceiling on the whole stream does not stop one line of hundreds of megabytes (a damaged
 /// or planted file), which was read whole, copied again by the lossy decode and sent to the webview
 /// as a single string in one batch.
-const MAX_LIVE_CHAT_LINE_BYTES: u64 = 1024 * 1024;
+const MAX_LIVE_CHAT_LINE_BYTES: u64 = 256 * 1024;
+
+/// How many bytes of lines one batch holds before it is sent, whatever its line count. With lines
+/// near [`MAX_LIVE_CHAT_LINE_BYTES`], a batch closed by count alone held hundreds of megabytes, and
+/// the copy serialized for the webview as much again.
+const MAX_LIVE_CHAT_BATCH_BYTES: usize = 4 * 1024 * 1024;
 
 /// Reads one line into `raw`, keeping at most [`MAX_LIVE_CHAT_LINE_BYTES`] of it. Returns how many
 /// bytes the line took from `reader` and whether it was cut. The rest of a line that was cut is read
@@ -301,7 +306,7 @@ fn read_capped_line<R: BufRead>(reader: &mut R, raw: &mut Vec<u8>) -> std::io::R
 }
 
 /// Reads `reader` line by line, decoding each line lossily, and hands `emit` batches of at most
-/// `batch_lines` lines. Aborts with `LiveChatFileUnreadable` once the decompressed byte count
+/// `batch_lines` lines and about [`MAX_LIVE_CHAT_BATCH_BYTES`]. Aborts with `LiveChatFileUnreadable` once the decompressed byte count
 /// exceeds `max_total_bytes`. Split out from [`stream_live_chat_lines`] so the ceiling can be
 /// tested against a small in-memory reader without materializing a real multi-hundred-MB stream.
 fn stream_reader_lines<R, F>(
@@ -322,6 +327,7 @@ where
     let mut reader = BufReader::new(reader.take(max_total_bytes + 1));
 
     let mut batch: Vec<String> = Vec::with_capacity(batch_lines);
+    let mut batch_bytes: usize = 0;
     let mut raw: Vec<u8> = Vec::new();
     let mut total_bytes: u64 = 0;
 
@@ -365,11 +371,14 @@ where
         // entire read on one stray byte, while decoding each line lossily is a superset that keeps
         // a single garbled line from discarding an otherwise-good replay (the parser then drops
         // just that line and counts it), consistent with `read_lossy_line` elsewhere.
-        batch.push(String::from_utf8_lossy(&raw).into_owned());
+        let line = String::from_utf8_lossy(&raw).into_owned();
+        batch_bytes += line.len();
+        batch.push(line);
 
-        if batch.len() >= batch_lines {
+        if batch.len() >= batch_lines || batch_bytes >= MAX_LIVE_CHAT_BATCH_BYTES {
             emit(std::mem::take(&mut batch))?;
             batch = Vec::with_capacity(batch_lines);
+            batch_bytes = 0;
         }
     }
 
@@ -893,8 +902,9 @@ mod tests {
         // remove the bound, neither of which any behavioral test can afford to exercise at that
         // size. A literal is the only thing that catches it.
         assert_eq!(MAX_LIVE_CHAT_DECOMPRESSED_BYTES, 536_870_912);
-        // The line ceiling the same way. `1024 + 1024` would still read every test's lines.
-        assert_eq!(MAX_LIVE_CHAT_LINE_BYTES, 1_048_576);
+        // The line and batch ceilings the same way. `256 + 1024` would still read every test's lines.
+        assert_eq!(MAX_LIVE_CHAT_LINE_BYTES, 262_144);
+        assert_eq!(MAX_LIVE_CHAT_BATCH_BYTES, 4_194_304);
     }
 
     /// Collects every streamed line into one vector, plus the number of batches `emit` was called
@@ -1311,6 +1321,24 @@ mod tests {
         assert_eq!(second.already_compressed, 2);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_batch_of_long_lines_is_sent_by_size_before_its_line_count() {
+        // Twenty lines just under the line ceiling are about five megabytes, which one batch of
+        // 500 lines held whole.
+        let line = "x".repeat(MAX_LIVE_CHAT_LINE_BYTES as usize - 1);
+        let data = format!("{line}\n").repeat(20).into_bytes();
+        let mut batches = Vec::new();
+
+        stream_reader_lines(&data[..], 500, MAX_LIVE_CHAT_DECOMPRESSED_BYTES, |batch| {
+            batches.push(batch.len());
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(batches.len() > 1, "{batches:?}");
+        assert_eq!(batches.iter().sum::<usize>(), 20);
     }
 
     #[test]
