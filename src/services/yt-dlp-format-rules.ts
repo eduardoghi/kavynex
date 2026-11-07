@@ -46,6 +46,19 @@ function isDrcFormat(format: YtDlpFormat): boolean {
     return normalizeFormatId(format.format_id).toLowerCase().endsWith("-drc");
 }
 
+// yt-dlp's rank of an audio track's language. On YouTube 10 is the original track, 5 the default
+// one, -1 a dubbed one and -10 an audio description. A format without one (a video with a single
+// track, another site) reads as 0, so it neither wins nor loses on this.
+function getLanguagePreferenceScore(format: YtDlpFormat): number {
+    return Number(format.language_preference ?? 0);
+}
+
+// 1 for the regular audio, 0 for its DRC copy, whose dynamic range YouTube compressed (quiet parts
+// louder, loud parts quieter). The two otherwise tie on every other score.
+function nonDrcScore(format: YtDlpFormat): number {
+    return isDrcFormat(format) ? 0 : 1;
+}
+
 function getResolutionScore(format: YtDlpFormat): number {
     return Math.max(0, Number(format.height ?? 0));
 }
@@ -165,6 +178,18 @@ function appendDrc(parts: string[], format: YtDlpFormat): string[] {
     return parts;
 }
 
+// The audio track's language, on a video that has several, so the tracks can be told apart in the
+// list. The original one says so.
+function appendLanguage(parts: string[], format: YtDlpFormat): string[] {
+    const language = format.language?.trim();
+
+    if (language) {
+        parts.push(format.language_preference === 10 ? `${language} (original)` : language);
+    }
+
+    return parts;
+}
+
 export function buildCompactLabel(
     kind: "merged" | "native" | "video_only" | "audio_only",
     format: YtDlpFormat,
@@ -230,6 +255,7 @@ export function buildCompactLabel(
         parts.push(abrLabel);
     }
 
+    appendLanguage(parts, format);
     appendDrc(parts, format);
 
     return appendProtocol(parts.join(" · "), format);
@@ -265,8 +291,13 @@ function m4aPreferenceScore(format: YtDlpFormat): number {
     return format.ext.trim().toLowerCase() === "m4a" ? 1 : 0;
 }
 
+// The track joined to every video-only format. The original language comes first, so a video with
+// dubbed tracks is not saved with one of them, then the uncompressed copy over the DRC one, and only
+// then the container and quality.
 function compareAudioPreference(left: YtDlpFormat, right: YtDlpFormat): number {
     return compareByDescendingScores(left, right, [
+        getLanguagePreferenceScore,
+        nonDrcScore,
         m4aPreferenceScore,
         getAbrScore,
         getFileSizeScore,
@@ -390,6 +421,8 @@ export function buildMergedFormats(formats: YtDlpFormat[]): YtDlpFormatOption[] 
                       tbr: videoFormat.tbr ?? null,
                       vcodec: videoFormat.vcodec ?? null,
                       protocol: videoFormat.protocol ?? null,
+                      language: preferredAudio.language ?? null,
+                      language_preference: preferredAudio.language_preference ?? null,
                       sort_rank: 0,
                   };
               })

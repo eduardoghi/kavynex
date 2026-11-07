@@ -80,6 +80,63 @@ describe("buildMergedFormats", () => {
         expect(merged[0]!.format_id).toBe("137+140");
     });
 
+    it("joins the video to the original audio track before a dubbed one", () => {
+        // YouTube's auto-dubbed tracks match the original on container and bitrate.
+        const merged = buildMergedFormats([
+            format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),
+            format({
+                format_id: "140-0",
+                ext: "m4a",
+                abr: 129,
+                has_video: false,
+                language: "es",
+                language_preference: -1,
+            }),
+            format({
+                format_id: "140-1",
+                ext: "m4a",
+                abr: 128,
+                has_video: false,
+                language: "en",
+                language_preference: 10,
+            }),
+        ]);
+
+        expect(merged[0]!.format_id).toBe("137+140-1");
+        expect(merged[0]!.language).toBe("en");
+    });
+
+    it("joins the video to the regular audio rather than its DRC copy", () => {
+        const merged = buildMergedFormats([
+            format({ format_id: "137", height: 1080, has_video: true, has_audio: false }),
+            format({
+                format_id: "140-drc",
+                ext: "m4a",
+                abr: 130,
+                filesize_bytes: 900,
+                has_video: false,
+            }),
+            format({ format_id: "140", ext: "m4a", abr: 128, filesize_bytes: 800, has_video: false }),
+        ]);
+
+        expect(merged[0]!.format_id).toBe("137+140");
+    });
+
+    it("names each audio track's language, and the original one as such", () => {
+        const original = buildCompactLabel(
+            "audio_only",
+            format({ ext: "m4a", abr: 128, has_video: false, language: "en", language_preference: 10 })
+        );
+        const dubbed = buildCompactLabel(
+            "audio_only",
+            format({ ext: "m4a", abr: 128, has_video: false, language: "es", language_preference: -1 })
+        );
+
+        expect(original).toContain("en (original)");
+        expect(dubbed).toContain("es");
+        expect(dubbed).not.toContain("original");
+    });
+
     it("orders video-only options by descending resolution", () => {
         const merged = buildMergedFormats([
             format({ format_id: "a", height: 720, has_video: true, has_audio: false }),

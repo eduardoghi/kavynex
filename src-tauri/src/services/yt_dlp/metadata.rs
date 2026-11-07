@@ -1113,6 +1113,12 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
                     .map(|value| value.trim().to_string())
                     .filter(|value| !value.is_empty()),
                 protocol,
+                language: format
+                    .language
+                    .as_ref()
+                    .map(|value| value.trim().to_string())
+                    .filter(|value| !value.is_empty()),
+                language_preference: format.language_preference,
             })
         })
         .collect();

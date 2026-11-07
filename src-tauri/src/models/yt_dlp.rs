@@ -180,6 +180,37 @@ where
     }))
 }
 
+/// [`lenient_u64`] for a value that may be negative. yt-dlp's `language_preference` is one, from 10
+/// for a video's original audio track down to -10 for an audio description.
+fn lenient_i64<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+
+    Ok(value.and_then(|value| {
+        value.as_i64().or_else(|| {
+            value
+                .as_f64()
+                .filter(|number| {
+                    number.is_finite() && *number >= i64::MIN as f64 && *number <= i64::MAX as f64
+                })
+                .map(|number| number.round() as i64)
+        })
+    }))
+}
+
+/// A string field that reads as absent when yt-dlp sends anything else, for the same reason as
+/// [`lenient_u64`].
+fn lenient_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+
+    Ok(value.and_then(|value| value.as_str().map(str::to_string)))
+}
+
 #[derive(Deserialize, Default, Clone, Debug)]
 pub struct YtDlpThumbnailMetadata {
     pub url: Option<String>,
@@ -206,6 +237,13 @@ pub struct YtDlpFormatMetadata {
     pub abr: Option<f64>,
     pub tbr: Option<f64>,
     pub protocol: Option<String>,
+    /// The audio track's language, on a video with more than one (YouTube's dubbed tracks).
+    #[serde(default, deserialize_with = "lenient_string")]
+    pub language: Option<String>,
+    /// How yt-dlp ranks the audio track's language. On YouTube 10 is the original track, 5 the
+    /// default one, -1 a dubbed one and -10 an audio description.
+    #[serde(default, deserialize_with = "lenient_i64")]
+    pub language_preference: Option<i64>,
 }
 
 #[derive(Deserialize, Default, Clone, Debug)]
@@ -264,6 +302,16 @@ pub struct YtDlpFormatOption {
     pub tbr: Option<f64>,
     pub vcodec: Option<String>,
     pub protocol: Option<String>,
+    /// See [`YtDlpFormatMetadata::language`]. Optional on the frontend side, since only a video
+    /// with several audio tracks has it.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub language: Option<String>,
+    /// See [`YtDlpFormatMetadata::language_preference`]. The picker joins a video to the original
+    /// track before any other, so a video with dubbed tracks is not saved with one of them.
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "number | null"))]
+    pub language_preference: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -357,6 +405,30 @@ mod tests {
         assert_eq!(format.filesize_approx, Some(4182346));
         assert_eq!(format.height, None);
         assert_eq!(format.format_id.as_deref(), Some("137"));
+    }
+
+    #[test]
+    fn an_audio_track_keeps_its_language_and_a_negative_preference() {
+        let dubbed: YtDlpFormatMetadata = serde_json::from_value(serde_json::json!({
+            "format_id": "140-0",
+            "language": "es",
+            "language_preference": -1,
+        }))
+        .unwrap();
+
+        assert_eq!(dubbed.language.as_deref(), Some("es"));
+        assert_eq!(dubbed.language_preference, Some(-1));
+
+        // Odd shapes read as absent rather than failing the format.
+        let odd: YtDlpFormatMetadata = serde_json::from_value(serde_json::json!({
+            "format_id": "140",
+            "language": 7,
+            "language_preference": "original",
+        }))
+        .unwrap();
+
+        assert_eq!(odd.language, None);
+        assert_eq!(odd.language_preference, None);
     }
 
     #[test]

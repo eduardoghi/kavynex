@@ -136,6 +136,8 @@ const ytDlpFormatSchema = z.object({
     tbr: z.number().nullable(),
     vcodec: z.string().nullable(),
     protocol: z.string().nullable(),
+    language: z.string().nullish(),
+    language_preference: z.number().nullish(),
 });
 
 const ytDlpFormatsResultSchema = z.object({
