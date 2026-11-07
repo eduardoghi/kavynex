@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { describeIssues, validateIpcResult } from "./ipc-schemas";
+import { describeIssues, mediaPageRowsSent, validateIpcResult } from "./ipc-schemas";
 import { APP_ERROR_CODE } from "../constants/error-codes";
 import type { AppErrorShape } from "../utils/app-error";
+import type { MediaRow } from "../types/media";
 
 const validChannel = {
     id: 1,
@@ -79,6 +80,67 @@ describe("validateIpcResult", () => {
         // insert_channel returns a bare number. There is no shape for a wrong value to hide in, so
         // it is not registered and the value is returned as-is.
         expect(validateIpcResult("insert_channel", 42)).toBe(42);
+    });
+});
+
+describe("list_media_page", () => {
+    const row = (id: number): MediaRow => ({
+        id,
+        channel_id: 10,
+        title: `Item ${id}`,
+        file_path: `media/item-${id}.mp4`,
+        thumbnail_path: null,
+        media_type: "video",
+        youtube_video_id: null,
+        watched_at: null,
+        published_at: null,
+        duration_seconds: 0,
+        progress_seconds: 0,
+        has_comments: 0,
+        comments_count: 0,
+        comments_state: "unknown",
+        is_live: 0,
+        has_live_chat: 0,
+        live_chat_file_path: null,
+        created_at: "2026-01-01T00:00:00Z",
+    });
+
+    it("drops a bad row and keeps the rest of the page", () => {
+        // One bad row threw for the whole page, and the channel showed no media at all.
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const page = validateIpcResult("list_media_page", {
+            items: [row(1), { ...row(2), title: 42 }, row(3)],
+            total: 3,
+        } as unknown as never);
+
+        expect(page.items.map((item) => item.id)).toEqual([1, 3]);
+        expect(page.total).toBe(3);
+        // The cursor still counts the dropped row, so the next page starts after it.
+        expect(mediaPageRowsSent(page)).toBe(3);
+        expect(spy).toHaveBeenCalledWith(
+            expect.stringContaining("kavynex:ipc"),
+            expect.stringContaining("Dropped 1 invalid row(s)"),
+            expect.objectContaining({ issues: expect.stringContaining("items.1: title:") })
+        );
+        spy.mockRestore();
+    });
+
+    it("counts the rows it kept when none was dropped", () => {
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+        const page = validateIpcResult("list_media_page", { items: [row(1), row(2)], total: 5 });
+
+        expect(mediaPageRowsSent(page)).toBe(2);
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it("still rejects a page whose own shape is wrong", () => {
+        const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+        expect(() =>
+            validateIpcResult("list_media_page", { items: "x", total: 1 } as unknown as never)
+        ).toThrow();
+        spy.mockRestore();
     });
 });
 

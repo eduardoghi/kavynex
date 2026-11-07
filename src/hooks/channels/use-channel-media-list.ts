@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MediaRow } from "../../types/media";
 import { listChannelMediaPage } from "../../services/media-service";
+import { mediaPageRowsSent } from "../../lib/ipc-schemas";
 import {
     DEFAULT_MEDIA_QUERY_FILTERS,
     isUnfilteredMediaQuery,
@@ -208,7 +209,7 @@ export function useChannelMediaList({
                 setTotal(page.total);
                 // A first page replaces the list, so the cursor restarts at what this page returned
                 // rather than accumulating.
-                setLoadedRows(page.items.length);
+                setLoadedRows(mediaPageRowsSent(page));
 
                 if (isUnfilteredMediaQuery(filters)) {
                     setChannelTotal(page.total);
@@ -288,7 +289,7 @@ export function useChannelMediaList({
             // boundary again. Its repeats are dropped below, and a row is never skipped.
             const removedMeanwhile = loadedCountRef.current !== offset;
             setLoadedRows(
-                removedMeanwhile ? loadedCountRef.current : offset + page.items.length
+                removedMeanwhile ? loadedCountRef.current : offset + mediaPageRowsSent(page)
             );
 
             // Append only the rows this list does not already hold. A row can arrive twice when the

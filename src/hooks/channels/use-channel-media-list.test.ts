@@ -10,6 +10,7 @@ import {
     type MediaQueryFilters,
 } from "../../utils/media-library-filters";
 import { useChannelMediaList } from "./use-channel-media-list";
+import { validateIpcResult } from "../../lib/ipc-schemas";
 
 vi.mock("../../services/media-service", () => ({
     listChannelMediaPage: vi.fn(),
@@ -339,6 +340,44 @@ describe("useChannelMediaList", () => {
 
         expect(result.current.isLoadingMore).toBe(false);
         expect(result.current.mediaItems.map((item) => item.id)).toEqual([7, 8]);
+    });
+
+    it("pages past rows the response check dropped", async () => {
+        // A page whose rows were all dropped as invalid kept nothing, and a cursor counting what was
+        // kept would ask for the same page again, forever.
+        const bad = { ...createMediaRow({ id: 2 }), title: 42 } as unknown as MediaRow;
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow({ id: 1 })], 3));
+
+        const { result } = renderHook(() =>
+            useChannelMediaList({ selectedChannelId: 10, onError })
+        );
+
+        await act(async () => {
+            await result.current.applyQuery(DEFAULT_MEDIA_QUERY_FILTERS);
+        });
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(
+            validateIpcResult("list_media_page", page([bad], 3))
+        );
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1]);
+
+        vi.mocked(listChannelMediaPage).mockResolvedValueOnce(page([createMediaRow({ id: 3 })], 3));
+
+        await act(async () => {
+            await result.current.loadMore();
+        });
+
+        expect(listChannelMediaPage).toHaveBeenLastCalledWith(
+            10,
+            expect.objectContaining({ offset: 2 })
+        );
+        expect(result.current.mediaItems.map((item) => item.id)).toEqual([1, 3]);
+        expect(result.current.hasMore).toBe(false);
     });
 
     it("appends the next page on loadMore", async () => {

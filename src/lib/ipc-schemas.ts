@@ -19,6 +19,10 @@
 // bare string/number/boolean or `void` is not, since there is no shape for a wrong value to hide
 // inside. Objects are parsed non-strictly (zod's default strips unknown keys), so a backend that
 // adds a new field ships before the schema learns about it rather than breaking every call.
+//
+// One result is parsed row by row rather than whole. A page of a channel's media drops (and logs) a
+// row that does not match and keeps the others, since rejecting the page left the channel empty for
+// as long as that one row stayed in the database. See `mediaPageSchema`.
 
 import { z } from "zod";
 
@@ -206,10 +210,53 @@ const libraryIntegrityReportSchema = z.object({
     invalid_live_chat_examples: z.array(z.string()),
 });
 
-const mediaPageSchema = z.object({
-    items: z.array(mediaRowSchema),
-    total: z.number(),
-});
+// How many rows the backend sent for a page, kept for the pages that had a row dropped below.
+const MEDIA_PAGE_ROWS_SENT = new WeakMap<MediaPage, number>();
+
+// One page of a channel's media, parsed row by row. A single row the schema rejects (a value the
+// database holds in a shape nothing expected) is dropped and logged, and the rest of the page is
+// kept. Parsing the page as a whole threw instead, and the channel showed no media at all, on every
+// visit, because of one row.
+const mediaPageSchema = z
+    .object({
+        items: z.array(z.unknown()),
+        total: z.number(),
+    })
+    .transform((page): MediaPage => {
+        const items: MediaPage["items"] = [];
+        const rejected: string[] = [];
+
+        page.items.forEach((row, index) => {
+            const parsed = mediaRowSchema.safeParse(row);
+
+            if (parsed.success) {
+                items.push(parsed.data);
+            } else {
+                rejected.push(`items.${index}: ${describeIssues(parsed.error)}`);
+            }
+        });
+
+        const result: MediaPage = { items, total: page.total };
+
+        if (rejected.length > 0) {
+            logError(
+                "ipc",
+                `Dropped ${rejected.length} invalid row(s) from "list_media_page"`,
+                undefined,
+                { issues: rejected.join(" | ") }
+            );
+            MEDIA_PAGE_ROWS_SENT.set(result, page.items.length);
+        }
+
+        return result;
+    });
+
+// How many rows the backend sent for `page`, the dropped ones included. The media list pages by this
+// rather than by what it kept. A page whose rows were all dropped would otherwise leave its cursor
+// where it was, and the list would ask for the same page again, forever.
+export function mediaPageRowsSent(page: MediaPage): number {
+    return MEDIA_PAGE_ROWS_SENT.get(page) ?? page.items.length;
+}
 
 const mediaRepositoryStatsSchema = z.object({
     total_media: z.number(),
