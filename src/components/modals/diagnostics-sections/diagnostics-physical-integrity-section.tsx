@@ -43,12 +43,24 @@ export function DiagnosticsPhysicalIntegritySection({
                     value={libraryIntegrity.missing_thumbnail_files}
                 />
                 <DiagnosticsMetric
+                    label="Checked live chats"
+                    value={libraryIntegrity.checked_live_chat_files}
+                />
+                <DiagnosticsMetric
+                    label="Missing live chats"
+                    value={libraryIntegrity.missing_live_chat_files}
+                />
+                <DiagnosticsMetric
                     label="Orphan media files"
                     value={libraryIntegrity.orphan_media_files}
                 />
                 <DiagnosticsMetric
                     label="Orphan thumbnails"
                     value={libraryIntegrity.orphan_thumbnail_files}
+                />
+                <DiagnosticsMetric
+                    label="Orphan live chats"
+                    value={libraryIntegrity.orphan_live_chat_files}
                 />
                 <DiagnosticsMetric
                     label="Invalid media paths"
@@ -59,12 +71,20 @@ export function DiagnosticsPhysicalIntegritySection({
                     value={libraryIntegrity.invalid_thumbnail_files}
                 />
                 <DiagnosticsMetric
+                    label="Invalid live chat paths"
+                    value={libraryIntegrity.invalid_live_chat_files}
+                />
+                <DiagnosticsMetric
                     label="Corrupt media files"
                     value={libraryIntegrity.corrupt_media_files}
                 />
                 <DiagnosticsMetric
                     label="Corrupt thumbnails"
                     value={libraryIntegrity.corrupt_thumbnail_files}
+                />
+                <DiagnosticsMetric
+                    label="Corrupt live chats"
+                    value={libraryIntegrity.corrupt_live_chat_files}
                 />
             </DiagnosticsMetricGrid>
 
@@ -79,6 +99,11 @@ export function DiagnosticsPhysicalIntegritySection({
             />
 
             <DiagnosticsExamplesList
+                label="Missing live chat examples"
+                items={libraryIntegrity.missing_live_chat_examples}
+            />
+
+            <DiagnosticsExamplesList
                 label="Orphan media examples"
                 items={libraryIntegrity.orphan_media_examples}
             />
@@ -89,10 +114,16 @@ export function DiagnosticsPhysicalIntegritySection({
             />
 
             <DiagnosticsExamplesList
+                label="Orphan live chat examples"
+                items={libraryIntegrity.orphan_live_chat_examples}
+            />
+
+            <DiagnosticsExamplesList
                 label="Invalid path examples"
                 items={[
                     ...libraryIntegrity.invalid_media_examples,
                     ...libraryIntegrity.invalid_thumbnail_examples,
+                    ...libraryIntegrity.invalid_live_chat_examples,
                 ]}
             />
 
@@ -101,6 +132,7 @@ export function DiagnosticsPhysicalIntegritySection({
                 items={[
                     ...libraryIntegrity.corrupt_media_examples,
                     ...libraryIntegrity.corrupt_thumbnail_examples,
+                    ...libraryIntegrity.corrupt_live_chat_examples,
                 ]}
             />
 
