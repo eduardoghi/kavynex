@@ -4,13 +4,11 @@ import { Database, Download, FolderClock, Undo2, Upload, X } from "lucide-react"
 import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import { AppButton } from "../../ui/app-button";
 import { fileNameFromPath } from "../../../utils/media-utils";
+import { formatTimestamp } from "../../../utils/number-format";
 
 // "the backup from <date>" in the recovery modal uses the same locale call. Keep them reading the
 // same way. A status with no backup yet has no timestamp, which the caller renders as its own line
 // rather than passing here.
-function formatBackedUpAt(backedUpAtMs: number): string {
-    return new Date(backedUpAtMs).toLocaleString("en-US");
-}
 
 // A mirror older than this is called out. The copy runs once a day while the app is open, so a few
 // days without one means the folder has been unreachable or the app has not run.
@@ -42,7 +40,7 @@ function ExternalBackupStatusLine({
 
     return (
         <Text size="sm" c={isStale ? "var(--kx-color-warning-text)" : "dimmed"}>
-            Last copy: {formatBackedUpAt(status.mirroredAtMs)}.
+            Last copy: {formatTimestamp(status.mirroredAtMs)}.
             {isStale && " That is more than three days ago."}
         </Text>
     );
@@ -136,7 +134,7 @@ export function DatabaseSection({
                 <Text size="sm" c="dimmed">
                     {backupStatus.backedUpAtMs === null
                         ? "No automatic backup yet."
-                        : `Last automatic backup: ${formatBackedUpAt(backupStatus.backedUpAtMs)}.`}{" "}
+                        : `Last automatic backup: ${formatTimestamp(backupStatus.backedUpAtMs)}.`}{" "}
                     {/* The size is shown because nothing else surfaces it: Kavynex keeps several
                         rotated snapshots beside the database, so this folder can hold many times
                         the database's own size without anything saying so. Named "on this disk"

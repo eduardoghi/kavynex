@@ -13,10 +13,11 @@ import {
     isCommentTextTruncated,
     type CommentTreeNode,
 } from "../../utils/comment-tree";
+import { formatNumber } from "../../utils/number-format";
 
 // The note under a comment the backend cut at its ceiling. One string, so a test can assert the
 // exact line and the number is formatted once.
-const TRUNCATED_NOTE = `${UI_TEXT.comments.truncatedNote} (${MAX_COMMENT_TEXT_CHARS.toLocaleString("en-US")} characters)`;
+const TRUNCATED_NOTE = `${UI_TEXT.comments.truncatedNote} (${formatNumber(MAX_COMMENT_TEXT_CHARS)} characters)`;
 
 const COMMENT_TEXT_STYLE: CSSProperties = {
     whiteSpace: "pre-wrap",

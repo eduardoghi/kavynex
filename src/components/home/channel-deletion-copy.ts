@@ -1,4 +1,5 @@
 // The description under "Delete channel?", by how much the confirmation knows is about to go.
+import { formatNumber } from "../../utils/number-format";
 //
 // The count is the channel's media total, fetched when the confirmation opens
 // (`useChannels.requestDeleteChannel`). `null` is the count not having arrived, or the query having
@@ -17,5 +18,5 @@ export function describeChannelDeletion(mediaCount: number | null): string {
         return "This permanently deletes the channel's one saved media file, its thumbnail and live chat replay from disk, and removes its comments. This cannot be undone.";
     }
 
-    return `This permanently deletes all ${mediaCount.toLocaleString("en-US")} of the channel's saved videos and audio files, their thumbnails and live chat replays from disk, and removes their comments. This cannot be undone.`;
+    return `This permanently deletes all ${formatNumber(mediaCount)} of the channel's saved videos and audio files, their thumbnails and live chat replays from disk, and removes their comments. This cannot be undone.`;
 }

@@ -15,6 +15,7 @@ import type { PendingLibraryMove } from "../../../use-cases/change-library-path"
 import type { LibraryMigrationProgress } from "../../../types/generated/LibraryMigrationProgress";
 import { AppButton } from "../../ui/app-button";
 import { displayWindowsPath } from "../../../utils/paths";
+import { formatNumber } from "../../../utils/number-format";
 
 // "12.4 GB in 1,204 video files, 33 audio files and 1,250 thumbnails", or null without a summary.
 function describeMoveSize(move: PendingLibraryMove): string | null {
@@ -25,7 +26,7 @@ function describeMoveSize(move: PendingLibraryMove): string | null {
     }
 
     const count = (value: number, one: string, many: string): string =>
-        `${value.toLocaleString()} ${value === 1 ? one : many}`;
+        `${formatNumber(value)} ${value === 1 ? one : many}`;
 
     return `${summary.formatted_size} in ${count(summary.video_files, "video file", "video files")}, ${count(summary.audio_files, "audio file", "audio files")} and ${count(summary.thumbnail_files, "thumbnail", "thumbnails")}`;
 }
@@ -48,7 +49,7 @@ function LibraryMoveProgress({ progress, onCancelRunning }: LibraryMoveProgressP
             <Progress value={percent} aria-label="Library move progress" />
             <Text size="sm" c="dimmed" role="status" aria-live="polite">
                 {progress
-                    ? `Copied ${progress.copiedFiles.toLocaleString()} of ${progress.totalFiles.toLocaleString()} files`
+                    ? `Copied ${formatNumber(progress.copiedFiles)} of ${formatNumber(progress.totalFiles)} files`
                     : "Preparing the move..."}
             </Text>
             <Group gap="sm">
@@ -285,7 +286,7 @@ export function LibraryFolderSection({
                         <Text fw={700}>
                             {isLoadingLibrarySummary
                                 ? "-"
-                                : librarySummary.video_files.toLocaleString()}
+                                : formatNumber(librarySummary.video_files)}
                         </Text>
                     </Stack>
                 </Paper>
@@ -298,7 +299,7 @@ export function LibraryFolderSection({
                         <Text fw={700}>
                             {isLoadingLibrarySummary
                                 ? "-"
-                                : librarySummary.audio_files.toLocaleString()}
+                                : formatNumber(librarySummary.audio_files)}
                         </Text>
                     </Stack>
                 </Paper>
@@ -311,7 +312,7 @@ export function LibraryFolderSection({
                         <Text fw={700}>
                             {isLoadingLibrarySummary
                                 ? "-"
-                                : librarySummary.thumbnail_files.toLocaleString()}
+                                : formatNumber(librarySummary.thumbnail_files)}
                         </Text>
                     </Stack>
                 </Paper>

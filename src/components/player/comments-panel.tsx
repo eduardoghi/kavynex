@@ -30,6 +30,7 @@ import {
 } from "../../utils/comment-tree";
 import { toUnionValue } from "../../utils/guards";
 import { formatCount } from "../../utils/pluralize";
+import { formatNumber } from "../../utils/number-format";
 
 // Cap how many top-level comment threads are mounted at once so media with thousands of
 // comments does not build an unbounded DOM. More threads are revealed on demand.
@@ -183,9 +184,7 @@ export function CommentsPanel({
                                         </Text>
 
                                         <Text c="dimmed" fw={700}>
-                                            {(
-                                                commentsCount ?? comments.length
-                                            ).toLocaleString()}
+                                            {formatNumber(commentsCount ?? comments.length)}
                                         </Text>
                                     </>
                                 ) : (
@@ -197,9 +196,9 @@ export function CommentsPanel({
                             {isCommentLoadTruncated && (
                                 <Text size="xs" c="dimmed" role="status">
                                     {UI_TEXT.comments.truncatedNoticePrefix}{" "}
-                                    {comments.length.toLocaleString()}{" "}
+                                    {formatNumber(comments.length)}{" "}
                                     {UI_TEXT.comments.truncatedNoticeMiddle}{" "}
-                                    {(commentsCount ?? 0).toLocaleString()}{" "}
+                                    {formatNumber(commentsCount ?? 0)}{" "}
                                     {UI_TEXT.comments.truncatedNoticeSuffix}
                                 </Text>
                             )}

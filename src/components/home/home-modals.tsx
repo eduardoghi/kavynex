@@ -8,6 +8,7 @@ import { ErrorModal } from "../modals/error-modal";
 import { useHasBeenTrue } from "../../hooks/use-has-been-true";
 import { useYtDlpTerminal, type YtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 import { describeChannelDeletion } from "./channel-deletion-copy";
+import { formatTimestamp } from "../../utils/number-format";
 
 // The two heaviest modals, and the two the app can run a whole session without opening. Settings
 // pulls in its five sections (the database export/import/restore flow among them) and Diagnostics
@@ -54,7 +55,7 @@ function formatBackupTimestamp(backedUpAtMs: number | null): string {
         return "the last automatic backup";
     }
 
-    return `the backup from ${new Date(backedUpAtMs).toLocaleString("en-US")}`;
+    return `the backup from ${formatTimestamp(backedUpAtMs)}`;
 }
 
 // Every modal except AddMediaModal. Split out and memoized so what changes the `media` controller's
