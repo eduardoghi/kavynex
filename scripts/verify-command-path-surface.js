@@ -545,7 +545,7 @@ export const DECLARED_NETWORK_REFUSAL_SITES = [
     "services/db_backup/gates.rs::prepare_export_destination",
     "services/db_backup/gates.rs::prepare_import_source",
     "services/library/guard.rs::paths_refer_to_same_location",
-    "services/library/media.rs::stage_media_import_cancellable_sync",
+    "services/library/media.rs::stage_media_import_recorded_sync",
     "services/library/mod.rs::resolve_path_inside_library",
     "services/media_protocol.rs::may_resolve",
     "services/thumbnail/persist.rs::persist_thumbnail_file_sync",

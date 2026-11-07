@@ -110,7 +110,7 @@ past a literal prefix match), and the functions applying it are:
 | `thumbnail::picked::validate_picked_thumbnail_path` | the image staged for a manual thumbnail |
 | `thumbnail::persist::persist_thumbnail_file_sync` | the source of a persisted thumbnail or avatar as it arrives over IPC (`persist_thumbnail_file`, and `create_media`'s local thumbnail branch), refused before the library directory is even resolved |
 | `thumbnail::persist::persist_thumbnail_guarded` | the same source one level down, behind both `persist_thumbnail_from_source` and `persist_thumbnail_from_source_in_pass`, so the download path and any later caller inherit the refusal |
-| `library::media::stage_media_import_cancellable_sync` | the import source |
+| `library::media::stage_media_import_recorded_sync` | the import source |
 | `library::guard::paths_refer_to_same_location` | a network path aimed at a local library, or at another share than the one a network-hosted library lives on |
 | `utils::path::network_share_prefix` | not a refusal of its own: the host-and-share reading the guard compares before it will canonicalize a network path against a network-hosted library |
 | `yt_dlp::cookies::normalize_cookies_path` | the `--cookies` file |
@@ -411,7 +411,7 @@ is the app's largest path surface.
 | Field | How it satisfies the rule |
 |---|---|
 | `library_path` | Not sent. The command fills it from the settings (`configured_library_path`) before any file is written, and a value in the payload is ignored. |
-| `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::stage_media_import_cancellable_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
+| `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::stage_media_import_recorded_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
 | `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. `picked.rs` guards only the staged preview (`stage_manual_thumbnail`), not this branch. The script that holds this table against the code checks that a listed site exists, not that a given parameter flows through it, so a row naming the wrong site passes it. |
 | `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |
 
@@ -517,7 +517,7 @@ running. So the worst that window produces is a refused creation when the media 
 without its thumbnail or replay when one of those went (logged, and the result the frontend gets
 says so), never a row pointing at a file that is gone. A local import in **move** mode loses nothing in that
 window either. Its source is removed only after the row lands (`media_creation::register_prepared_media`,
-through `library::media::stage_media_import_cancellable_sync`), so a refused creation leaves the
+through `library::media::stage_media_import_recorded_sync`), so a refused creation leaves the
 user's original where it was. The one Move that cannot keep its source until then is a rename on a
 volume without hard links (FAT32, exFAT), and that library file is flagged as the only copy, which
 keeps it out of both the failure cleanup and the trash step of the startup sweep. A refused
