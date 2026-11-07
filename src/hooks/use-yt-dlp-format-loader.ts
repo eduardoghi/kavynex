@@ -12,6 +12,7 @@ import {
     inferSelectedMediaType,
 } from "../services/yt-dlp-format-rules";
 import { useMemoObject } from "./use-memo-object";
+import { generateYtDlpRunId } from "../use-cases/add-media";
 import type { YtDlpRunOutcome } from "./yt-dlp-terminal-store";
 
 type UseYtDlpFormatLoaderOptions = {
@@ -40,7 +41,12 @@ type UseYtDlpFormatLoaderReturn = {
     loadYtDlpFormats: () => Promise<void>;
 };
 
-const FORMAT_LOADER_RUN_ID = "format-loader";
+// Each probe registers under its own run id. A shared one was refused by the backend ("already
+// running") when a new load began while the probe a reset cancelled was still winding down, and the
+// reset's cancel could have reached the new probe instead of the old one.
+function newFormatLoaderRunId(): string {
+    return `format-loader-${generateYtDlpRunId()}`;
+}
 
 export function useYtDlpFormatLoader({
     getUrl,
@@ -62,6 +68,8 @@ export function useYtDlpFormatLoader({
     // reset below can tell whether a backend probe is actually in flight (and therefore worth
     // cancelling) without recreating the callback on every load toggle.
     const isLoadingRef = useRef(false);
+    // The run id of the probe in flight, which a reset cancels by name.
+    const runIdRef = useRef<string | null>(null);
 
     // Guards against a stale format response overwriting state after the URL changed (or was
     // reset) while yt-dlp was running. Otherwise the formats/selection for an old URL could
@@ -80,13 +88,14 @@ export function useYtDlpFormatLoader({
         // it so yt-dlp is stopped promptly instead of running to its metadata timeout. Best effort.
         // The run may have already finished (cancelMediaDownload then rejects with "not active"),
         // which is harmless here.
-        if (isLoadingRef.current) {
-            void cancelMediaDownload(FORMAT_LOADER_RUN_ID).catch(() => undefined);
+        if (isLoadingRef.current && runIdRef.current) {
+            void cancelMediaDownload(runIdRef.current).catch(() => undefined);
         }
 
         // The probe it superseded leaves the loading flags alone when it ends, so the reset clears
         // them, and a new "Load formats" is not refused while the old probe winds down.
         isLoadingRef.current = false;
+        runIdRef.current = null;
         setIsLoadingYtDlpFormats(false);
         setYtDlpFormats([]);
         setSelectedYtDlpFormatIdState("");
@@ -126,8 +135,10 @@ export function useYtDlpFormatLoader({
         }
 
         const requestId = requestGuard.begin();
+        const runId = newFormatLoaderRunId();
 
         isLoadingRef.current = true;
+        runIdRef.current = runId;
         setIsLoadingYtDlpFormats(true);
 
         const commandParts = [
@@ -157,7 +168,7 @@ export function useYtDlpFormatLoader({
 
         commandParts.push(url);
 
-        onTerminalStart?.(FORMAT_LOADER_RUN_ID, commandParts.join(" "));
+        onTerminalStart?.(runId, commandParts.join(" "));
         onTerminalLog?.("Loading formats...");
 
         let outcome: YtDlpRunOutcome = "finished";
@@ -169,7 +180,7 @@ export function useYtDlpFormatLoader({
                 cookiesPath || null,
                 // Register the probe so a reset (URL change / modal close) can cancel it on the
                 // backend, not only discard its response on the client.
-                FORMAT_LOADER_RUN_ID
+                runId
             );
 
             // A newer request (or a reset from a URL change) superseded this one. Discard the
@@ -254,6 +265,7 @@ export function useYtDlpFormatLoader({
             // the terminal, so a stop here would mark that empty terminal finished.
             if (requestGuard.isCurrent(requestId)) {
                 isLoadingRef.current = false;
+                runIdRef.current = null;
                 setIsLoadingYtDlpFormats(false);
                 onTerminalStop?.(outcome);
             }

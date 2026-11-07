@@ -7,7 +7,7 @@ vi.mock("../services/media-download-service", () => ({
     cancelMediaDownload: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { listYtDlpFormats } from "../services/media-download-service";
+import { cancelMediaDownload, listYtDlpFormats } from "../services/media-download-service";
 import type { YtDlpFormat, YtDlpFormatsResult } from "../types/media";
 
 // The backend's shape. It carries no label. The loader runs every format through
@@ -459,6 +459,35 @@ describe("useYtDlpFormatLoader", () => {
         });
 
         expect(result.current.isLoadingYtDlpFormats).toBe(true);
+    });
+
+    it("gives each load its own run id, and a reset cancels the one it superseded", async () => {
+        // A shared run id made the backend refuse the new probe while the cancelled one was still
+        // registered, and the reset's cancel could land on the new probe instead.
+        vi.mocked(listYtDlpFormats)
+            .mockReturnValueOnce(new Promise<YtDlpFormatsResult>(() => {}))
+            .mockReturnValueOnce(new Promise<YtDlpFormatsResult>(() => {}));
+
+        const { result } = renderLoader();
+
+        act(() => {
+            void result.current.loadYtDlpFormats();
+        });
+        act(() => {
+            result.current.resetYtDlpFormats();
+        });
+        act(() => {
+            void result.current.loadYtDlpFormats();
+        });
+
+        const firstRunId = vi.mocked(listYtDlpFormats).mock.calls[0]?.[3];
+        const secondRunId = vi.mocked(listYtDlpFormats).mock.calls[1]?.[3];
+
+        expect(firstRunId).toMatch(/^format-loader-/);
+        expect(secondRunId).toMatch(/^format-loader-/);
+        expect(secondRunId).not.toBe(firstRunId);
+        expect(cancelMediaDownload).toHaveBeenCalledTimes(1);
+        expect(cancelMediaDownload).toHaveBeenCalledWith(firstRunId);
     });
 
     it("reports a cancelled load as cancelled rather than as an error", async () => {
@@ -1226,7 +1255,7 @@ describe("useYtDlpFormatLoader: command building", () => {
         // The terminal preview redacts the cookies path so it is not leaked in the UI or a
         // pasted bug report...
         expect(onTerminalStart).toHaveBeenCalledWith(
-            "format-loader",
+            expect.stringMatching(/^format-loader-/),
             "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings --cookies <redacted> https://youtube.com/watch?v=abc"
         );
         // ...but the real path is still handed to the backend command.
@@ -1234,7 +1263,7 @@ describe("useYtDlpFormatLoader: command building", () => {
             "https://youtube.com/watch?v=abc",
             "chrome",
             "/home/user/cookies.txt",
-            "format-loader"
+            expect.stringMatching(/^format-loader-/)
         );
     });
 
@@ -1246,14 +1275,14 @@ describe("useYtDlpFormatLoader: command building", () => {
         await loadFormats(result, []);
 
         expect(onTerminalStart).toHaveBeenCalledWith(
-            "format-loader",
+            expect.stringMatching(/^format-loader-/),
             "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings --cookies-from-browser firefox https://youtube.com/watch?v=abc"
         );
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             "firefox",
             null,
-            "format-loader"
+            expect.stringMatching(/^format-loader-/)
         );
     });
 
@@ -1265,14 +1294,14 @@ describe("useYtDlpFormatLoader: command building", () => {
         await loadFormats(result, []);
 
         expect(onTerminalStart).toHaveBeenCalledWith(
-            "format-loader",
+            expect.stringMatching(/^format-loader-/),
             "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings --cookies-from-browser firefox:<redacted> https://youtube.com/watch?v=abc"
         );
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             "firefox:/home/alice/.mozilla/firefox/abc.default",
             null,
-            "format-loader"
+            expect.stringMatching(/^format-loader-/)
         );
     });
 
@@ -1282,14 +1311,14 @@ describe("useYtDlpFormatLoader: command building", () => {
         await loadFormats(result, []);
 
         expect(onTerminalStart).toHaveBeenCalledWith(
-            "format-loader",
+            expect.stringMatching(/^format-loader-/),
             "yt-dlp -v --ignore-config --no-playlist --dump-single-json --no-warnings https://youtube.com/watch?v=abc"
         );
         expect(listYtDlpFormats).toHaveBeenCalledWith(
             "https://youtube.com/watch?v=abc",
             null,
             null,
-            "format-loader"
+            expect.stringMatching(/^format-loader-/)
         );
     });
 
@@ -1304,7 +1333,7 @@ describe("useYtDlpFormatLoader: command building", () => {
             "https://youtube.com/watch?v=abc",
             null,
             null,
-            "format-loader"
+            expect.stringMatching(/^format-loader-/)
         );
     });
 
