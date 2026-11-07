@@ -63,6 +63,7 @@ async fn persist_thumbnail_from_source_async(
 async fn finalize_thumbnail_download(
     output: &std::process::Output,
     thumb_temp_dir: &Path,
+    ffmpeg_location: &str,
     file_name_prefix: &str,
     library_dir: PathBuf,
     pass: LibraryPass,
@@ -73,8 +74,9 @@ async fn finalize_thumbnail_download(
             output,
             AppErrorCode::YtDlpThumbnailFailed,
             &format!("yt-dlp {subject} download failed"),
-            // Neither flow passes cookies, and the URL is a public one the user entered.
-            str::to_string,
+            // Neither flow passes cookies, and the URL is a public one the user entered. The
+            // local paths are what the error must not carry to the screen.
+            |line| redact_run_paths(line, &[thumb_temp_dir, Path::new(ffmpeg_location)]),
         ));
     }
 
@@ -91,6 +93,15 @@ async fn finalize_thumbnail_download(
     })?;
 
     persist_thumbnail_from_source_async(downloaded_thumb, library_dir, pass).await
+}
+
+/// `line` with every spelling of each of `paths` replaced, for a yt-dlp error shown on screen. The
+/// scratch folder a run writes into and the FFmpeg it was pointed at sit under the user's profile,
+/// so they name the user. The media download hides the same two (`yt_dlp::download`).
+fn redact_run_paths(line: &str, paths: &[&Path]) -> String {
+    paths.iter().fold(line.to_string(), |redacted, path| {
+        crate::services::yt_dlp::metadata::redact_path_from_line(&redacted, &path.to_string_lossy())
+    })
 }
 
 /// Turns a stored/typed channel handle into the URL yt-dlp is asked to extract from.
@@ -417,6 +428,7 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
         finalize_thumbnail_download(
             &output,
             &thumb_temp_dir,
+            &ffmpeg_location,
             &file_name_prefix,
             library_dir,
             pass,
@@ -598,6 +610,7 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
         finalize_thumbnail_download(
             &output,
             &thumb_temp_dir,
+            &ffmpeg_location,
             file_name_prefix,
             library_dir,
             pass,
@@ -684,8 +697,9 @@ pub async fn download_channel_banner_from_handle_async<R: Runtime>(
                 &output,
                 AppErrorCode::YtDlpThumbnailFailed,
                 "yt-dlp channel banner lookup failed",
-                // No cookies are passed, and the URL is the public channel page.
-                str::to_string,
+                // No cookies are passed, and the URL is the public channel page. The scratch folder
+                // the run starts in is under the user's profile.
+                |line| redact_run_paths(line, &[thumb_temp_dir.as_path()]),
             ));
         }
 
@@ -714,6 +728,18 @@ pub async fn download_channel_banner_from_handle_async<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_thumbnail_error_names_neither_the_scratch_folder_nor_ffmpeg() {
+        let scratch = Path::new(r"C:\Users\maria\AppData\Local\kavynex\yt-dlp-thumb-temp\abc");
+        let ffmpeg = Path::new(r"C:\Users\maria\tools\ffmpeg\bin");
+        let line = r"ERROR: Postprocessing: could not write 'C:\\Users\\maria\\AppData\\Local\\kavynex\\yt-dlp-thumb-temp\\abc\\t.jpg' with C:\Users\maria\tools\ffmpeg\bin\ffmpeg.exe";
+
+        let redacted = redact_run_paths(line, &[scratch, ffmpeg]);
+
+        assert!(!redacted.contains("maria"), "{redacted}");
+        assert!(redacted.starts_with("ERROR: Postprocessing"));
+    }
 
     #[test]
     fn the_full_size_banner_is_picked_out_of_the_channel_page() {
