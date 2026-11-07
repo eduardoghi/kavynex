@@ -9,9 +9,8 @@
 //! "jose" matches a stored "José" without the frontend and backend having to agree on a shared
 //! normalization spec.
 //!
-//! It mirrors the frontend's original `normalizeText` (`src/utils/media-library-filters.ts`).
-//! NFD-decompose, drop combining diacritical marks (U+0300..=U+036F), collapse whitespace runs
-//! to a single space, trim, and lowercase.
+//! The steps are to NFD-decompose, drop combining diacritical marks (U+0300..=U+036F), collapse
+//! whitespace runs to a single space, trim, and lowercase.
 
 use unicode_normalization::UnicodeNormalization;
 

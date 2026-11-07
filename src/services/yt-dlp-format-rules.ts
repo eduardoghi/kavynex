@@ -11,12 +11,14 @@
 // One value this module produces does cross back to the backend and is a shared contract with it.
 // The merged `format_id` string `<video_id>+<audio_id>` (see buildMergedFormats). That `+` join is
 // yt-dlp's own selector syntax, and the backend re-validates every id it receives against it.
-// `is_valid_format_id` (charset, non-empty `+`-separated parts) and `resolve_format_has_video`
-// (each part must resolve to a real format from the fetched metadata) in
-// `src-tauri/src/services/yt_dlp/download.rs`. So a compromised/garbled selector is rejected there,
-// not trusted. What has no compile-time or schema guard is the *semantics*. If yt-dlp ever changed
-// how `+` merges, this construction and those two Rust checks would have to move together, and
-// nothing but this note and the round-trip tests (yt-dlp-format-rules.test.ts) would flag the drift.
+// `is_valid_format_id` (charset, non-empty `+`-separated parts, in
+// `src-tauri/src/services/yt_dlp/download/command.rs`) and `resolve_format_has_video` (each part
+// must resolve to a real format from the fetched metadata, in
+// `src-tauri/src/services/yt_dlp/download/mod.rs`). So a compromised/garbled selector is rejected
+// there, not trusted. What has no compile-time or schema guard is the *semantics*. If yt-dlp ever
+// changed how `+` merges, this construction and those two Rust checks would have to move together,
+// and nothing but this note and the round-trip tests (yt-dlp-format-rules.test.ts) would flag the
+// drift.
 import type { MediaType, YtDlpFormat, YtDlpFormatOption } from "../types/media";
 
 type ExtendedYtDlpFormat = YtDlpFormatOption & {
@@ -27,7 +29,7 @@ function normalizeFormatId(value: string | null | undefined): string {
     return value?.trim() ?? "";
 }
 
-// Mirrors the backend's `is_valid_format_id` (src-tauri/src/services/yt_dlp/download/mod.rs). A
+// Mirrors the backend's `is_valid_format_id` (src-tauri/src/services/yt_dlp/download/command.rs). A
 // concrete yt-dlp format id, optionally `+`-combined for a merged video+audio selection, where every
 // part is non-empty, does not start with `-` (so the value after `-f` can never be read as a flag),
 // and is made only of ASCII alphanumerics plus `.`/`_`/`-`. `buildMergedFormats` synthesizes the
