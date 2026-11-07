@@ -1,4 +1,3 @@
-use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -7,7 +6,6 @@ use tauri::{AppHandle, Runtime};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, BufReader},
     process::Command,
-    time::timeout,
 };
 
 use crate::models::yt_dlp::{
@@ -523,6 +521,37 @@ fn select_best_error_detail(
         .unwrap_or_else(|| failed_message.to_string())
 }
 
+/// Reads yt-dlp's stderr as log lines, keeping only the ones worth showing and only the most
+/// recent [`MAX_CAPTURED_STDERR_LINES`] of them.
+async fn read_filtered_stderr_lines(stderr: tokio::process::ChildStderr) -> Vec<String> {
+    let mut reader = BufReader::new(stderr);
+    let mut line_buf: Vec<u8> = Vec::new();
+    let mut log_lines: Vec<String> = Vec::new();
+
+    // stderr carries short log lines only (the JSON payload comes on stdout), so cap each line
+    // tightly. Without it a single unterminated line could balloon far past the ring buffer's
+    // intended bound (see MAX_PROGRESS_LINE_BYTES).
+    while let Some(line_value) =
+        read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
+    {
+        let line = line_value.trim_end().to_string();
+
+        if should_keep_terminal_line(&line) {
+            // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
+            // chatty failure (retry storms, throttling notices), since `-v` is always passed
+            // here. Keep the most recent lines, the same ring-buffer cap the download flow's
+            // stderr uses (yt_dlp::download::MAX_CAPTURED_STDERR_LINES).
+            if log_lines.len() >= MAX_CAPTURED_STDERR_LINES {
+                log_lines.remove(0);
+            }
+
+            log_lines.push(line);
+        }
+    }
+
+    log_lines
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_yt_dlp_and_capture_json(
     yt_dlp: &str,
@@ -556,11 +585,7 @@ async fn run_yt_dlp_and_capture_json(
     };
 
     let mut command = Command::new(yt_dlp);
-    command
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::utils::process::configure_child_async(&mut command);
+    command.args(args);
     crate::services::binaries::expose_js_runtime_to_child(&mut command);
     // A metadata-only run writes nothing the app keeps, so it has no directory of its own to
     // start in. The default keeps it out of wherever the app was launched from (see
@@ -570,121 +595,43 @@ async fn run_yt_dlp_and_capture_json(
         &crate::utils::process::default_child_working_dir(),
     );
 
-    let mut child = command
-        .spawn()
-        .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?;
-    let child_pid = child.id();
-    // Track this yt-dlp child (metadata/comments/format listing) globally so the app-exit
-    // handler tree-kills it too. The per-download registry only knows the main download child,
-    // which spawns after this phase. Unregisters when this function returns.
-    let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
+    // Tracked for the app-exit sweep, killed as a tree on the timeout or a cancel, and its readers
+    // given at most PIPE_DRAIN_AFTER_EXIT once yt-dlp exits (see utils::bounded_run). The cancel
+    // only ever comes from the download flow. Other callers pass None.
+    let run = crate::utils::bounded_run::run_bounded_async(
+        command,
+        Duration::from_secs(timeout_secs),
+        cancel.as_deref(),
+        |stdout| read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES),
+        read_filtered_stderr_lines,
+    )
+    .await
+    .map_err(|failure| {
+        use crate::utils::bounded_run::RunFailure;
 
-    let stdout = child.stdout.take().ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::YtDlpStdoutCaptureFailed,
-            "failed to capture yt-dlp stdout",
-        )
-    })?;
-
-    let stderr = child.stderr.take().ok_or_else(|| {
-        AppError::from_code(
-            AppErrorCode::YtDlpStderrCaptureFailed,
-            "failed to capture yt-dlp stderr",
-        )
-    })?;
-
-    let stdout_task =
-        tauri::async_runtime::spawn(read_capped_json_stdout(stdout, MAX_YT_DLP_JSON_BYTES));
-
-    let stderr_task = tauri::async_runtime::spawn(async move {
-        let mut reader = BufReader::new(stderr);
-        let mut line_buf: Vec<u8> = Vec::new();
-        let mut log_lines: Vec<String> = Vec::new();
-
-        // stderr carries short log lines only (the JSON payload comes on stdout), so cap each line
-        // tightly. Without it a single unterminated line could balloon far past the ring buffer's
-        // intended bound (see MAX_PROGRESS_LINE_BYTES).
-        while let Some(line_value) =
-            read_lossy_line_capped(&mut reader, &mut line_buf, MAX_PROGRESS_LINE_BYTES).await
-        {
-            let line = line_value.trim_end().to_string();
-
-            if should_keep_terminal_line(&line) {
-                // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
-                // chatty failure (retry storms, throttling notices), since `-v` is always passed
-                // here. Keep the most recent lines, the same ring-buffer cap the download flow's
-                // stderr uses (yt_dlp::download::MAX_CAPTURED_STDERR_LINES).
-                if log_lines.len() >= MAX_CAPTURED_STDERR_LINES {
-                    log_lines.remove(0);
-                }
-
-                log_lines.push(line);
+        match failure {
+            RunFailure::Spawn(error) | RunFailure::Wait(error) => {
+                AppError::from_code(exec_code, format!("{exec_message}: {error}"))
             }
-        }
-
-        log_lines
-    });
-
-    let status = tokio::select! {
-        wait_result = timeout(Duration::from_secs(timeout_secs), child.wait()) => match wait_result {
-            Ok(status) => status
-                .map_err(|e| AppError::from_code(exec_code, format!("{exec_message}: {e}")))?,
-            Err(_) => {
-                // Kill the whole tree (yt-dlp and any ffmpeg grandchild), not just the direct
-                // child, so a hung conversion cannot outlive the timeout as an orphan.
-                if let Some(pid) = child_pid {
-                    crate::utils::process::kill_process_tree(pid).await;
-                }
-                let _ = child.kill().await;
-                return Err(AppError::from_code(timeout_code, timeout_message));
-            }
-        },
-        _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
-            // The caller signalled cancellation. Kill the whole tree immediately instead of
-            // waiting out the remaining timeout, which can be up to a minute of an unresponsive
-            // "cancel", and report it as a cancellation. Only ever reached when a cancel flag
-            // is supplied (the download flow). Other callers pass None, so this branch pends
-            // forever and the wait above drives the result.
-            if let Some(pid) = child_pid {
-                crate::utils::process::kill_process_tree(pid).await;
-            }
-            let _ = child.kill().await;
-            return Err(AppError::from_code(
+            RunFailure::TimedOut => AppError::from_code(timeout_code, timeout_message),
+            RunFailure::Cancelled => AppError::from_code(
                 AppErrorCode::YtDlpDownloadCancelled,
                 "yt-dlp download cancelled",
-            ));
+            ),
         }
-    };
+    })?;
 
-    // Bounded, since a grandchild that inherited the pipes can keep them open after yt-dlp exited
-    // (see utils::task::PIPE_DRAIN_AFTER_EXIT).
-    let drain = crate::utils::task::PIPE_DRAIN_AFTER_EXIT;
+    let status = run.status;
 
-    let (json_payload, stdout_logs, stdout_overflowed) =
-        match crate::utils::task::join_within(stdout_task, drain).await {
-            Some(joined) => joined.map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpStdoutCaptureFailed,
-                    format!("failed to read yt-dlp stdout: {e}"),
-                )
-            })?,
-            None => {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpStdoutCaptureFailed,
-                    "yt-dlp exited but its output stayed open, held by a program it started",
-                ));
-            }
-        };
-
-    let stderr_logs = match crate::utils::task::join_within(stderr_task, drain).await {
-        Some(joined) => joined.map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::YtDlpStderrCaptureFailed,
-                format!("failed to read yt-dlp stderr: {e}"),
-            )
-        })?,
-        None => Vec::new(),
-    };
+    // A grandchild that inherited the pipes can keep them open after yt-dlp exited, and the JSON on
+    // stdout is the whole point of the run.
+    let (json_payload, stdout_logs, stdout_overflowed) = run.stdout.ok_or_else(|| {
+        AppError::from_code(
+            AppErrorCode::YtDlpStdoutCaptureFailed,
+            "yt-dlp exited but its output stayed open, held by a program it started",
+        )
+    })?;
+    let stderr_logs = run.stderr.unwrap_or_default();
 
     // Ahead of the exit status. Once the reader stops at the cap it drops the pipe, and yt-dlp then
     // fails writing to it, so checked after the status this would read as an ordinary failure with

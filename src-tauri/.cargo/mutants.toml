@@ -96,13 +96,11 @@ exclude_re = [
     # resolve_display_thumbnails_sync, and the doc records why the reason once given was wrong.
     'generate_display_thumbnail',
     'run_display_ffmpeg',
-    # Boundary: the two halves of the thumbnail spawn that need a live child process, one to take
-    # its pipes and one to kill its tree on a deadline. Narrow on purpose, since
-    # read_drain_capped_async takes its cap as an argument and reads any AsyncRead, so it is tested
-    # directly against a counting reader and stays in scope, which is where the cap arithmetic and
-    # the drain-past-the-cap property actually live. build_thumbnail_command_args stays in scope
-    # too.
-    'replace wait_with_capped_output',
+    # Boundary: the thumbnail spawn, which needs a live child process (utils::bounded_run runs it and
+    # kills its tree on a deadline). Narrow on purpose, since read_drain_capped_async takes its cap
+    # as an argument and reads any AsyncRead, so it is tested directly against a counting reader and
+    # stays in scope, which is where the cap arithmetic and the drain-past-the-cap property actually
+    # live. build_thumbnail_command_args stays in scope too.
     'run_thumbnail_yt_dlp_with_timeout',
     # Equivalent: with `<=`, the extra iteration it admits is the one where buffer.len() equals
     # max_bytes, and there `max_bytes - buffer.len()` is 0, so the extend_from_slice copies nothing.
@@ -245,13 +243,6 @@ exclude_re = [
     # Equivalent: gates only an eprintln diagnostic during migration.
     # cfg-split: the symlink-cycle test is cfg(unix). The `-> true` counterpart stays in scope.
     'replace dir_entry_is_symlink -> bool with false',
-    # Equivalent: differs from `true` only for an empty extension, which Path::extension never
-    # yields. The `with false` / `delete !` variants are killed by the migration extension test.
-    # Boundary: the WAL-checkpoint "still in use" branch needs a second connection holding a lock on
-    # the source during the import. The valid path is exercised by the import tests.
-    'replace && with \|\| in stage_database_import',
-    'replace != with == in stage_database_import',
-    'replace > with (==|<|>=) in stage_database_import',
     # Equivalent against any forceable input, since distinguishing these needs a corrupt database
     # returning a controlled number of problem rows. The weekly throttle itself is NOT excluded.
     'replace && with \|\| in run_full_integrity_check',

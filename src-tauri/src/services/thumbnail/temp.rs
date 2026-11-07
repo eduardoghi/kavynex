@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tauri::{AppHandle, Runtime};
 
@@ -13,9 +12,7 @@ use crate::utils::format::{
 };
 use crate::utils::hash::file_hash;
 use crate::utils::path::{ensure_existing_path_inside_dir, extension_from_path, is_network_path};
-use crate::utils::process::{
-    default_child_working_dir, kill_process_tree_blocking, pin_working_dir, read_process_error,
-};
+use crate::utils::process::{default_child_working_dir, pin_working_dir, read_process_error};
 use crate::{AppError, AppErrorCode, AppResult};
 
 fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<PathBuf>> {
@@ -124,115 +121,42 @@ fn ensure_generated_thumbnail_exists(
 
 /// Cap on how much stdout/stderr is retained from the local ffmpeg thumbnail run. `wait_with_output`
 /// would buffer its whole output unbounded. This keeps memory bounded while still draining the pipes
-/// fully on separate threads, so neither pipe filling can deadlock the other. Mirrors the async twin
-/// in thumbnail/download/process.rs.
+/// fully, so neither pipe filling can deadlock the other (see utils::bounded_run).
 const MAX_FFMPEG_OUTPUT_BYTES: usize = 1024 * 1024; // 1 MiB per stream
 
 /// How long a single-frame thumbnail extraction may run before ffmpeg is treated as hung and its
 /// whole process tree killed. A single frame is near-instant. This is generous headroom for a cold
 /// cache or a slow disk while still bounded, unlike an unbounded `wait()`, which a crafted or
 /// truncated container fed to ffmpeg could wedge forever, leaking a blocking-pool thread and a
-/// live ffmpeg process for the rest of the session. Every other external-process call site
-/// (yt-dlp download/metadata/thumbnail, the health check) already bounds its child this way.
+/// live ffmpeg process for the rest of the session.
 const FFMPEG_THUMBNAIL_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// How often the bounded wait re-checks for exit. Short enough to fire promptly once the deadline
-/// passes, long enough not to busy-spin the blocking-pool thread. Matches binaries.rs's health check.
-const FFMPEG_THUMBNAIL_POLL: Duration = Duration::from_millis(50);
+/// Runs a prepared ffmpeg command to completion through `utils::bounded_run`, which tracks it for
+/// the app-exit sweep, drains its output and kills its tree if it overruns.
+fn run_tracked_ffmpeg(command: std::process::Command) -> AppResult<std::process::Output> {
+    use crate::utils::bounded_run::{run_bounded_blocking, Capture, RunFailure};
 
-/// Runs a prepared ffmpeg command to completion, registering its pid in the process registry
-/// for the child's lifetime so the app-exit handler (`lib.rs`) tree-kills it instead of leaving
-/// an orphan. These local-media thumbnail generations run synchronously via `std::process`,
-/// outside the per-download and yt-dlp registries, so they would otherwise be untracked on exit.
-fn run_tracked_ffmpeg(mut command: std::process::Command) -> AppResult<std::process::Output> {
-    crate::utils::process::configure_child(&mut command);
-
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            AppError::from_code(
-                AppErrorCode::FfmpegExecFailed,
-                format!("failed to execute ffmpeg: {e}"),
-            )
-        })?;
-
-    // Tracked for the child's lifetime. The guard unregisters the pid when this function returns.
-    let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
-
-    // Drain stdout and stderr on separate threads so neither pipe filling can deadlock the other
-    // (what `wait_with_output` does internally), each capped for memory. Draining on threads (rather
-    // than on this one) frees this thread to poll for the timeout below. The reads finish on their
-    // own once the child exits or is killed and its pipe ends close.
-    let stdout_stream = child.stdout.take();
-    let stdout_handle = std::thread::spawn(move || match stdout_stream {
-        Some(stream) => crate::utils::io::read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
-        None => Vec::new(),
-    });
-
-    let stderr_stream = child.stderr.take();
-    let stderr_handle = std::thread::spawn(move || match stderr_stream {
-        Some(stream) => crate::utils::io::read_drain_capped(stream, MAX_FFMPEG_OUTPUT_BYTES),
-        None => Vec::new(),
-    });
-
-    // Bounded wait. Poll `try_wait` until the child exits or the deadline passes, killing the whole
-    // tree on timeout so a wedged ffmpeg cannot hang this thread forever.
-    let deadline = Instant::now() + FFMPEG_THUMBNAIL_TIMEOUT;
-    let timed_out = loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break false,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    kill_process_tree_blocking(child.id());
-                    break true;
-                }
-                std::thread::sleep(FFMPEG_THUMBNAIL_POLL);
-            }
-            Err(e) => {
-                // The child cannot be polled, so it is not known to have exited. Killed and reaped
-                // like a timeout, so a failed wait does not leave an ffmpeg running and its drain
-                // threads blocked on pipes that never close.
-                kill_process_tree_blocking(child.id());
-                let _ = child.wait();
-                let _ = stdout_handle.join();
-                let _ = stderr_handle.join();
-
-                return Err(AppError::from_code(
-                    AppErrorCode::FfmpegExecFailed,
-                    format!("failed to wait for ffmpeg: {e}"),
-                ));
-            }
-        }
-    };
-
-    // Reap the child (it has either exited on its own or just been killed) and collect the drained
-    // output, so the timeout error can still carry ffmpeg's stderr.
-    let status = child.wait().map_err(|e| {
-        AppError::from_code(
+    run_bounded_blocking(
+        command,
+        FFMPEG_THUMBNAIL_TIMEOUT,
+        Capture::Bytes(MAX_FFMPEG_OUTPUT_BYTES),
+    )
+    .map_err(|failure| match failure {
+        RunFailure::Spawn(error) => AppError::from_code(
             AppErrorCode::FfmpegExecFailed,
-            format!("failed to execute ffmpeg: {e}"),
-        )
-    })?;
-
-    let stdout = stdout_handle.join().unwrap_or_default();
-    let stderr = stderr_handle.join().unwrap_or_default();
-
-    if timed_out {
-        return Err(AppError::from_code(
+            format!("failed to execute ffmpeg: {error}"),
+        ),
+        RunFailure::Wait(error) => AppError::from_code(
+            AppErrorCode::FfmpegExecFailed,
+            format!("failed to wait for ffmpeg: {error}"),
+        ),
+        RunFailure::TimedOut | RunFailure::Cancelled => AppError::from_code(
             AppErrorCode::FfmpegFailed,
             format!(
                 "ffmpeg timed out after {} seconds",
                 FFMPEG_THUMBNAIL_TIMEOUT.as_secs()
             ),
-        ));
-    }
-
-    Ok(std::process::Output {
-        status,
-        stdout,
-        stderr,
+        ),
     })
 }
 

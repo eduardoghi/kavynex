@@ -50,16 +50,12 @@ use crate::services::temp_paths::thumb_display_dir;
 use crate::utils::path::{
     absolute_path_from_relative, ensure_relative_path_in_managed_dir, ManagedSubtree,
 };
-use crate::utils::process::kill_process_tree_blocking;
 use crate::AppResult;
 
 /// How long one derivative generation may run before FFmpeg is treated as hung and its process
 /// tree killed. Scaling a single already-decoded image is near-instant, so this is generous
 /// headroom for a cold disk while staying bounded, matching every other external-process call site.
 const DISPLAY_THUMBNAIL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
-
-/// How often the bounded wait re-checks for exit. Matches `thumbnail/temp.rs`'s generator.
-const DISPLAY_THUMBNAIL_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// How long one resolve call may spend generating before it stops starting new FFmpeg runs.
 ///
@@ -510,9 +506,6 @@ fn run_display_ffmpeg(ffmpeg: &str, source_path: &Path, partial: &Path) -> bool 
     let out_path = partial;
     let mut command = std::process::Command::new(ffmpeg);
     command.args(build_display_thumbnail_args(source_path, out_path));
-    command.stdout(std::process::Stdio::null());
-    command.stderr(std::process::Stdio::null());
-    crate::utils::process::configure_child(&mut command);
     // Starts in the cache directory the derivative goes to rather than wherever the app was
     // launched from (see utils::process::pin_working_dir).
     let working_dir = out_path
@@ -521,30 +514,14 @@ fn run_display_ffmpeg(ffmpeg: &str, source_path: &Path, partial: &Path) -> bool 
         .unwrap_or_else(crate::utils::process::default_child_working_dir);
     crate::utils::process::pin_working_dir(&mut command, &working_dir);
 
-    let Ok(mut child) = command.spawn() else {
-        return false;
-    };
-
-    let pid = child.id();
-    // So the app-exit sweep reaches it, and an exit that skips the sweep takes it down too.
-    let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(pid));
-    let deadline = std::time::Instant::now() + DISPLAY_THUMBNAIL_TIMEOUT;
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return status.success(),
-            Ok(None) => {}
-            Err(_) => return false,
-        }
-
-        if std::time::Instant::now() >= deadline {
-            kill_process_tree_blocking(pid);
-            let _ = child.wait();
-            return false;
-        }
-
-        std::thread::sleep(DISPLAY_THUMBNAIL_POLL);
-    }
+    // Output discarded, tracked for the app-exit sweep, and killed as a tree when it overruns or
+    // can no longer be waited for (see utils::bounded_run).
+    crate::utils::bounded_run::run_bounded_blocking(
+        command,
+        DISPLAY_THUMBNAIL_TIMEOUT,
+        crate::utils::bounded_run::Capture::Discard,
+    )
+    .is_ok_and(|output| output.status.success())
 }
 
 /// Resolves the display-sized copy of one library-relative thumbnail path, generating it if it is

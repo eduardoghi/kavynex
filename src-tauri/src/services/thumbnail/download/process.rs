@@ -6,14 +6,12 @@
 //! ffmpeg child `--convert-thumbnails` spawns), and the other owns a socket.
 
 use std::path::Path;
-use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
-use tokio::time::timeout;
 
 use crate::constants::THUMBNAIL_OUTPUT_FORMAT;
 use crate::services::yt_dlp::cookies::append_auth_args;
@@ -72,28 +70,6 @@ async fn read_drain_capped_async(
     buffer
 }
 
-/// `Child::wait_with_output` with each stream capped at `MAX_PROCESS_OUTPUT_BYTES`. Reads both
-/// pipes concurrently with the wait so neither can deadlock the other (mirroring std's own
-/// implementation), but bounded.
-async fn wait_with_capped_output(
-    child: &mut tokio::process::Child,
-) -> std::io::Result<std::process::Output> {
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-
-    let (status, stdout_buf, stderr_buf) = tokio::join!(
-        child.wait(),
-        read_drain_capped_async(stdout, MAX_PROCESS_OUTPUT_BYTES),
-        read_drain_capped_async(stderr, MAX_PROCESS_OUTPUT_BYTES),
-    );
-
-    Ok(std::process::Output {
-        status: status?,
-        stdout: stdout_buf,
-        stderr: stderr_buf,
-    })
-}
-
 /// Runs a yt-dlp thumbnail/avatar command under the shared timeout, capturing its output.
 ///
 /// These invocations pass `--convert-thumbnails` (see [`THUMBNAIL_OUTPUT_FORMAT`]), which makes
@@ -125,64 +101,44 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
         permit = THUMBNAIL_RUN_SEMAPHORE.acquire(AppErrorCode::TooManyConcurrentYtDlpRuns) => permit?,
     };
 
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    crate::utils::process::configure_child_async(&mut command);
     crate::services::binaries::expose_js_runtime_to_child(&mut command);
 
-    let mut child = command.spawn().map_err(|e| {
-        AppError::from_code(
-            AppErrorCode::YtDlpThumbnailExecFailed,
-            format!("{exec_message}: {e}"),
-        )
-    })?;
-    let child_pid = child.id();
-    // Track this yt-dlp thumbnail/avatar child (and its ffmpeg grandchild via the tree kill)
-    // globally so the app-exit handler terminates it too. These run outside the per-download
-    // registry (the standalone thumbnail/avatar paths) or before its child pid is recorded
-    // (the pre-download media thumbnail). Unregisters when this function returns.
-    let _tracked_child = crate::services::process_registry::TrackedChildGuard::register(child_pid);
+    // Tracked for the app-exit sweep, and killed as a tree (yt-dlp and its FFmpeg) on the timeout or
+    // on a cancel. Only the media-thumbnail path passes the run's cancel flag. The standalone and
+    // avatar paths pass None. A stream a grandchild still holds once yt-dlp exited is given up on
+    // rather than turning a finished run into a timeout (see utils::bounded_run).
+    let output = crate::utils::bounded_run::run_bounded_async(
+        command,
+        Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
+        cancel.as_deref(),
+        |stdout| read_drain_capped_async(Some(stdout), MAX_PROCESS_OUTPUT_BYTES),
+        |stderr| read_drain_capped_async(Some(stderr), MAX_PROCESS_OUTPUT_BYTES),
+    )
+    .await
+    .map_err(|failure| {
+        use crate::utils::bounded_run::RunFailure;
 
-    // The child is borrowed rather than moved into the wait, so it is still alive when the timeout
-    // or cancel arm below kills its tree. Moved in, it was dropped (and `kill_on_drop` ended yt-dlp)
-    // before that arm ran, and on Windows a tree kill by the pid of a process already gone does not
-    // find the FFmpeg it started.
-    tokio::select! {
-        output_result = timeout(
-            Duration::from_secs(THUMBNAIL_COMMAND_TIMEOUT_SECS),
-            wait_with_capped_output(&mut child),
-        ) => match output_result {
-            Ok(result) => result.map_err(|e| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailExecFailed,
-                    format!("{exec_message}: {e}"),
-                )
-            }),
-            Err(_) => {
-                if let Some(pid) = child_pid {
-                    crate::utils::process::kill_process_tree(pid).await;
-                }
-
-                Err(AppError::from_code(
-                    AppErrorCode::YtDlpThumbnailTimeout,
-                    timeout_message.to_string(),
-                ))
-            }
-        },
-        _ = crate::utils::process::wait_for_cancel(cancel.as_deref()) => {
-            // The download was cancelled while this bounded thumbnail phase was still running.
-            // Kill the whole tree now rather than blocking cancellation until the timeout. Only
-            // reached for the media-thumbnail path (which passes the run's cancel flag). The
-            // standalone and avatar paths pass None, so this branch pends forever.
-            if let Some(pid) = child_pid {
-                crate::utils::process::kill_process_tree(pid).await;
-            }
-
-            Err(AppError::from_code(
+        match failure {
+            RunFailure::Spawn(error) | RunFailure::Wait(error) => AppError::from_code(
+                AppErrorCode::YtDlpThumbnailExecFailed,
+                format!("{exec_message}: {error}"),
+            ),
+            RunFailure::TimedOut => AppError::from_code(
+                AppErrorCode::YtDlpThumbnailTimeout,
+                timeout_message.to_string(),
+            ),
+            RunFailure::Cancelled => AppError::from_code(
                 AppErrorCode::YtDlpDownloadCancelled,
                 "yt-dlp download cancelled",
-            ))
+            ),
         }
-    }
+    })?;
+
+    Ok(std::process::Output {
+        status: output.status,
+        stdout: output.stdout.unwrap_or_default(),
+        stderr: output.stderr.unwrap_or_default(),
+    })
 }
 
 pub(super) const THUMBNAIL_COMMAND_TIMEOUT_SECS: u64 = 60;

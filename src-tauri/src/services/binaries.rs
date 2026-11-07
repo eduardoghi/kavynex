@@ -1,7 +1,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::process::Command;
+use std::time::Duration;
 
 use chrono::{NaiveDate, Utc};
 use tauri::{AppHandle, Manager, Runtime};
@@ -402,10 +402,6 @@ fn release_age_days(version: &str, today: NaiveDate) -> Option<u32> {
 /// unlike the previous unbounded `output()`.
 const HEALTH_CHECK_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// How often the wait below re-checks whether the child has exited. Short enough that the timeout
-/// fires promptly once the deadline passes, long enough not to busy-spin the blocking-pool thread.
-const HEALTH_CHECK_POLL: Duration = Duration::from_millis(50);
-
 fn run_command_and_capture_first_line(
     binary_path: &str,
     args: &[&str],
@@ -425,15 +421,14 @@ fn run_command_and_capture_first_line(
 const HEALTH_CHECK_MAX_OUTPUT_BYTES: usize = 64 * 1024;
 
 /// Runs `binary_path args`, returns its first non-empty stdout line, and (unlike a plain
-/// `Command::output()`) gives up after `timeout`, killing the whole process tree. Every other
-/// external-process call site (download, metadata, thumbnail) already bounds its child this way. A
-/// health check, whose entire job is to survive a misbehaving binary, is the last place that should
-/// block a worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
+/// `Command::output()`) gives up after `timeout`, killing the whole process tree. A health check,
+/// whose entire job is to survive a misbehaving binary, is the last place that should block a
+/// worker thread forever on a hung `.cmd`/`.bat` shim or a wedged executable.
 ///
-/// Both pipes are drained on threads while the child runs. Reading them only after it exited
-/// would assume a version banner is short, but a Windows pipe buffer is a few kilobytes and a full
-/// FFmpeg build prints about that much for `-version`. Past it the child blocks on the write and
-/// the probe would report a working FFmpeg as timed out.
+/// Through `utils::bounded_run`, which drains both pipes while the child runs. Reading them only
+/// after it exited would assume a version banner is short, but a Windows pipe buffer is a few
+/// kilobytes and a full FFmpeg build prints about that much for `-version`. Past it the child
+/// blocks on the write and the probe would report a working FFmpeg as timed out.
 fn run_command_capturing_first_line_within(
     binary_path: &str,
     args: &[&str],
@@ -441,12 +436,10 @@ fn run_command_capturing_first_line_within(
     default_message: &str,
     timeout: Duration,
 ) -> AppResult<String> {
+    use crate::utils::bounded_run::{run_bounded_blocking, Capture, RunFailure};
+
     let mut command = Command::new(binary_path);
-    command
-        .args(args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    crate::utils::process::configure_child(&mut command);
+    command.args(args);
     // A `--version` probe has no directory of its own. The default keeps it out of wherever the
     // app was launched from (see utils::process::pin_working_dir).
     crate::utils::process::pin_working_dir(
@@ -454,61 +447,22 @@ fn run_command_capturing_first_line_within(
         &crate::utils::process::default_child_working_dir(),
     );
 
-    let mut child = command.spawn().map_err(|e| {
-        AppError::from_code(
-            error_code,
-            format!("{default_message}: failed to execute command: {e}"),
-        )
+    let output = run_bounded_blocking(
+        command,
+        timeout,
+        Capture::Bytes(HEALTH_CHECK_MAX_OUTPUT_BYTES),
+    )
+    .map_err(|failure| {
+        let detail = match failure {
+            RunFailure::Spawn(error) => format!("failed to execute command: {error}"),
+            RunFailure::Wait(error) => format!("failed to wait for command: {error}"),
+            RunFailure::TimedOut | RunFailure::Cancelled => {
+                format!("timed out after {} seconds", timeout.as_secs())
+            }
+        };
+
+        AppError::from_code(error_code, format!("{default_message}: {detail}"))
     })?;
-
-    // So the app-exit sweep reaches a probe that is still running (a yt-dlp shim that hangs), and
-    // so an exit that skips the sweep takes it down too.
-    let _tracked = crate::services::process_registry::TrackedChildGuard::register(Some(child.id()));
-
-    let stdout_stream = child.stdout.take();
-    let stdout_handle = std::thread::spawn(move || match stdout_stream {
-        Some(stream) => crate::utils::io::read_drain_capped(stream, HEALTH_CHECK_MAX_OUTPUT_BYTES),
-        None => Vec::new(),
-    });
-    let stderr_stream = child.stderr.take();
-    let stderr_handle = std::thread::spawn(move || match stderr_stream {
-        Some(stream) => crate::utils::io::read_drain_capped(stream, HEALTH_CHECK_MAX_OUTPUT_BYTES),
-        None => Vec::new(),
-    });
-
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => {
-                if Instant::now() >= deadline {
-                    crate::utils::process::kill_process_tree_blocking(child.id());
-                    let _ = child.wait();
-                    return Err(AppError::from_code(
-                        error_code,
-                        format!(
-                            "{default_message}: timed out after {} seconds",
-                            timeout.as_secs()
-                        ),
-                    ));
-                }
-                std::thread::sleep(HEALTH_CHECK_POLL);
-            }
-            Err(e) => {
-                return Err(AppError::from_code(
-                    error_code,
-                    format!("{default_message}: failed to wait for command: {e}"),
-                ));
-            }
-        }
-    };
-
-    // The readers end once the child's pipes close, which its exit does.
-    let output = std::process::Output {
-        status,
-        stdout: stdout_handle.join().unwrap_or_default(),
-        stderr: stderr_handle.join().unwrap_or_default(),
-    };
 
     if !output.status.success() {
         // The tail only, like every other process error. A broken install can print a long trace,
@@ -696,6 +650,7 @@ pub fn ffmpeg_location_argument(ffmpeg_binary: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     fn make_executable(path: &Path) {
         std::fs::write(path, b"binary").unwrap();

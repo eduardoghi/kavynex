@@ -103,6 +103,13 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     kill are a pair. The Unix kill signals the negated pid,
     i.e. the group, so a child spawned without its own group is not reachable by the kill that
     every timeout path depends on.
+  - `bounded_run.rs`: running yt-dlp or FFmpeg to completion under a time limit, for every call
+    site outside the download (the health checks, the metadata, comment and format runs, the
+    thumbnail and avatar runs, the local FFmpeg thumbnails). The child setup, the tracking for the
+    app-exit sweep, both pipes drained while it runs, the deadline and the cancel flag ending in a
+    tree kill, and a bounded wait for the readers once it exits. Each of those call sites had its
+    own copy of that loop before, and the copies had drifted apart. The download keeps its own,
+    since it streams progress and has a stall watchdog.
   - `hash.rs`: SHA-256 file hashing used for the content-addressed media/thumbnail
     filenames (see `docs/DIRECTORIES.md`).
   - `naming.rs`: `unique_temp_suffix()` (pid + nanoseconds + a monotonic counter), and the
