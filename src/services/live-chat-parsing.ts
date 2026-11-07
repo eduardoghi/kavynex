@@ -427,6 +427,17 @@ function buildMembership(renderer: Record<string, unknown>, offset: number): Liv
     const memberMessage = parseRendererMessage(renderer);
     const text =
         headerText && memberMessage ? `${headerText} (${memberMessage})` : headerText || memberMessage;
+    // The member's own words as parts, the way a chat message keeps them, so a channel emoji in
+    // them is drawn as its image rather than read as its shortcut. The header around them is text.
+    const memberParts = parseMessageParts(renderer);
+    const parts: LiveChatMessagePart[] =
+        headerText && memberParts.length > 0
+            ? [
+                  { type: "text", text: `${headerText} (` },
+                  ...memberParts,
+                  { type: "text", text: ")" },
+              ]
+            : memberParts;
 
     return makeMessage({
         kind: "membership",
@@ -436,6 +447,7 @@ function buildMembership(renderer: Record<string, unknown>, offset: number): Liv
         author_channel_id: parseAuthorChannelId(renderer),
         author_thumbnail: parseAuthorThumbnail(renderer),
         message_text: text || "New member",
+        message_parts: parts,
         timestamp_text: parseTimestampText(renderer),
     });
 }
@@ -452,6 +464,7 @@ function buildGiftRedemption(
         author_channel_id: parseAuthorChannelId(renderer),
         author_thumbnail: parseAuthorThumbnail(renderer),
         message_text: parseRendererMessage(renderer) || "received a gift membership",
+        message_parts: parseMessageParts(renderer),
         timestamp_text: parseTimestampText(renderer),
     });
 }

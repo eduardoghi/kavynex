@@ -1,7 +1,7 @@
 import { Box, Group, Stack, Text, rem } from "@mantine/core";
 import { avatarInitials } from "../../../utils/avatar";
 import { SafeAvatar } from "../safe-avatar";
-import type { LiveChatVariantProps } from "./live-chat-message-content";
+import { renderMessageContent, type LiveChatVariantProps } from "./live-chat-message-content";
 
 // Membership / member-milestone announcement.
 export function MembershipChatMessage({
@@ -32,7 +32,7 @@ export function MembershipChatMessage({
                             <Text component="span" fw={800} c="var(--kx-color-success-text)">
                                 {message.author_name}
                             </Text>{" "}
-                            {message.message_text}
+                            {renderMessageContent(message)}
                             {message.timestamp_text ? (
                                 <Text component="span" size="xs" c="dimmed">
                                     {"  "}

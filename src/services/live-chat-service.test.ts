@@ -343,6 +343,40 @@ describe("readLiveChatMessagesFromFile", () => {
         expect(messages[0]?.message_text).toBe("Member for 2 months (thanks 😄:wave-hand:)");
     });
 
+    it("keeps a channel emoji in a member's message as an image part", async () => {
+        // Kept as one text before, so a custom emoji in it showed as its shortcut.
+        mockFile(
+            rawItemLine({
+                liveChatMembershipItemRenderer: {
+                    id: "m4",
+                    authorName: { simpleText: "@regular" },
+                    headerPrimaryText: { runs: [{ text: "Member for 2 months" }] },
+                    message: {
+                        runs: [
+                            { text: "thanks " },
+                            {
+                                emoji: {
+                                    isCustomEmoji: true,
+                                    shortcuts: [":heart-blue:"],
+                                    image: { thumbnails: [{ url: "//yt3.ggpht.com/h=s48" }] },
+                                },
+                            },
+                        ],
+                    },
+                },
+            })
+        );
+
+        const messages = await readLiveChatMessagesFromFile("live_chat/x.json");
+
+        expect(messages[0]?.message_parts).toEqual([
+            { type: "text", text: "Member for 2 months (" },
+            { type: "text", text: "thanks " },
+            { type: "emoji", url: "https://yt3.ggpht.com/h=s48", label: ":heart-blue:" },
+            { type: "text", text: ")" },
+        ]);
+    });
+
     it("parses a gift membership redemption", async () => {
         mockFile(
             rawItemLine({
