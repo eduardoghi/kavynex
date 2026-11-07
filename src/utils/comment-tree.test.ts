@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MediaCommentRow } from "../types/media";
 import { MAX_COMMENT_TEXT_CHARS } from "../constants/comment-text";
 import {
@@ -205,6 +205,32 @@ describe("sortCommentTree", () => {
 
         // The input keeps its original (insertion) order. The sort returned a new tree.
         expect(structure.map((node) => node.id)).toEqual(beforeOrder);
+    });
+
+    it("parses each comment's date once, however often the sort compares it", () => {
+        // Parsing on every comparison is what froze the window when 100,000 comments were sorted by
+        // date. The order must come out the same.
+        const start = Date.UTC(2026, 0, 1);
+        const comments = Array.from({ length: 200 }, (_, index) =>
+            comment({
+                id: index + 1,
+                comment_id: `c${index}`,
+                published_at: new Date(start + index * 1000).toISOString(),
+            })
+        );
+        const structure = buildCommentTree(comments);
+        const parse = vi.spyOn(Date, "parse");
+
+        try {
+            const newest = sortCommentTree(structure, "newest");
+            const oldest = sortCommentTree(structure, "oldest");
+
+            expect(parse).toHaveBeenCalledTimes(comments.length);
+            expect(newest[0]?.id).toBe(200);
+            expect(oldest[0]?.id).toBe(1);
+        } finally {
+            parse.mockRestore();
+        }
     });
 });
 

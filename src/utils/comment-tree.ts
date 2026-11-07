@@ -87,6 +87,23 @@ export function parseCommentTimestamp(comment: MediaCommentRow): number {
     return 0;
 }
 
+// The date each comment sorts by, parsed once. A sort compares every comment about log2(n) times,
+// and parsing both dates on each comparison made "Newest" or "Oldest" over 100,000 comments freeze
+// the window for seconds. Weak, so it goes with the comments it was parsed for, and a sort toggled
+// back and forth reuses it, since the sort reads the nodes `buildCommentTree` built once.
+const sortTimestamps = new WeakMap<MediaCommentRow, number>();
+
+function sortTimestamp(comment: MediaCommentRow): number {
+    let timestamp = sortTimestamps.get(comment);
+
+    if (timestamp === undefined) {
+        timestamp = parseCommentTimestamp(comment);
+        sortTimestamps.set(comment, timestamp);
+    }
+
+    return timestamp;
+}
+
 export function formatCommentPublishedAt(value: string | null, timeText: string | null): string {
     const normalizedTimeText = timeText?.trim() ?? "";
 
@@ -126,8 +143,8 @@ export function compareComments(
         return left.id - right.id;
     }
 
-    const leftTime = parseCommentTimestamp(left);
-    const rightTime = parseCommentTimestamp(right);
+    const leftTime = sortTimestamp(left);
+    const rightTime = sortTimestamp(right);
 
     if (sortMode === "newest") {
         if (rightTime !== leftTime) {
