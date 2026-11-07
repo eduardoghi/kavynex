@@ -173,8 +173,15 @@ pub(crate) fn decode_marker(contents: &str) -> Option<PendingMediaArtifacts> {
 
 /// True for a file name this module wrote. The sweep only consumes its own markers, so an
 /// unrelated file that ends up in the directory is left alone rather than deleted.
+///
+/// A bare file name only. The callers join it to the markers' directory and remove what that names,
+/// so `pending-..\..\x.json` would reach a file outside it. Only this module's own names reach it
+/// today, and this keeps it that way if one ever arrives from elsewhere.
 pub(crate) fn is_marker_file_name(name: &str) -> bool {
-    name.starts_with("pending-") && name.ends_with(".json")
+    name.starts_with("pending-")
+        && name.ends_with(".json")
+        && !name.contains(['/', '\\'])
+        && !name.contains("..")
 }
 
 /// The names of the markers this process wrote and has not cleared yet, i.e. the creations still in
@@ -1472,6 +1479,10 @@ mod tests {
             "pending.json.tmp", // wrong extension
             "..",
             "",
+            r"pending-..\..\outside.json",
+            "pending-../../outside.json",
+            "pending-a/b.json",
+            "pending-x..json",
         ] {
             assert!(!is_marker_file_name(name), "should not match: {name}");
         }
