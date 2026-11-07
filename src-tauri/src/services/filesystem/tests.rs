@@ -761,6 +761,56 @@ fn move_or_copy_file_removes_source_when_destination_has_same_content() {
     let _ = fs::remove_dir_all(dir);
 }
 
+#[test]
+fn a_move_across_volumes_copies_verified_and_then_removes_the_source() {
+    // A download placed into a library on another drive. The copy is the only one left once the
+    // source goes, so it is read back before it takes the name, and only then is the source removed.
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+
+    let source = dir.join("download.mp4");
+    let destination = dir.join("video").join("media_hash.mp4");
+    fs::write(&source, b"a download on another drive").unwrap();
+
+    move_or_copy_file_using(
+        &source,
+        &destination,
+        None,
+        |_, _| Err(cross_device_error()),
+    )
+    .unwrap();
+
+    assert!(!source.exists());
+    assert_eq!(
+        fs::read(&destination).unwrap(),
+        b"a download on another drive"
+    );
+    assert_eq!(staging_files_in(destination.parent().unwrap()), 0);
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_move_that_fails_for_another_reason_keeps_the_source() {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+
+    let source = dir.join("download.mp4");
+    let destination = dir.join("video").join("media_hash.mp4");
+    fs::write(&source, b"still here").unwrap();
+
+    let error = move_or_copy_file_using(&source, &destination, None, |_, _| {
+        Err(std::io::Error::from(ErrorKind::PermissionDenied))
+    })
+    .unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::FileMoveFailed.as_str());
+    assert_eq!(fs::read(&source).unwrap(), b"still here");
+    assert!(!destination.exists());
+
+    let _ = fs::remove_dir_all(dir);
+}
+
 /// A source and a not-yet-existing destination in a fresh directory, with the source's hash, the
 /// three things every staged-move test starts from.
 fn staged_move_fixture(contents: &[u8]) -> (PathBuf, PathBuf, PathBuf, String) {

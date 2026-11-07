@@ -791,13 +791,16 @@ pub(crate) fn copy_file_atomic_verified(
 }
 
 pub fn move_or_copy_file(source: &Path, destination: &Path) -> AppResult<()> {
-    move_or_copy_file_using(source, destination, None)
+    move_or_copy_file_using(source, destination, None, rename_retrying_patiently)
 }
 
+/// [`move_or_copy_file`] with the rename passed in, so a test can make it fail the way a move
+/// across volumes does.
 fn move_or_copy_file_using(
     source: &Path,
     destination: &Path,
     source_hash: Option<&str>,
+    rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
 ) -> AppResult<()> {
     if !source.exists() {
         return Err(AppError::from_code(
@@ -863,10 +866,14 @@ fn move_or_copy_file_using(
         ));
     }
 
-    match rename_retrying_patiently(source, destination) {
+    match rename(source, destination) {
         Ok(_) => Ok(()),
         Err(error) if is_cross_device_error(&error) => {
-            copy_file_atomic(source, destination)?;
+            // The source is removed right after, so the copy is the only one left. It is read back
+            // and compared before it takes the destination's name, the way the library migration
+            // and a staged move copy (see copy_bytes_in_chunks_verified). A copy that does not
+            // match fails here, and the source stays where it was.
+            copy_file_atomic_verified(source, destination, None)?;
 
             fs::remove_file(source).map_err(|e| {
                 AppError::fs_error(
