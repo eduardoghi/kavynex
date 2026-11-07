@@ -89,7 +89,8 @@ pub(crate) fn existing_trash_dir(library_dir: &Path) -> AppResult<Option<PathBuf
         }
         Ok(_) => Err(AppError::from_code(
             AppErrorCode::InvalidDirectoryPath,
-            "the library's .trash is not a folder inside the library (a link or a file is in its              place), so nothing is moved into it or deleted from it",
+            "the library's .trash is not a folder inside the library (a link or a file is in its \
+             place), so nothing is moved into it or deleted from it",
         )),
     }
 }
