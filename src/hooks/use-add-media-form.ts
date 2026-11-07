@@ -24,6 +24,8 @@ import {
 import {
     hasInvalidCookiesBrowserSelector,
     INVALID_COOKIES_BROWSER_PROFILE_MESSAGE,
+    isMissingCookiesFile,
+    MISSING_COOKIES_FILE_MESSAGE,
 } from "../use-cases/add-media";
 import { useMemoObject } from "./use-memo-object";
 import type { YtDlpRunOutcome } from "./yt-dlp-terminal-store";
@@ -453,6 +455,12 @@ export function useAddMediaForm({
             // ones the chosen profile can see.
             if (hasInvalidCookiesBrowserSelector(cookiesBrowser, cookiesBrowserProfile)) {
                 throw new ClientError(INVALID_COOKIES_BROWSER_PROFILE_MESSAGE);
+            }
+
+            // A cookies file chosen as the source and never picked would load the formats an
+            // anonymous visitor sees, and only the submit said why.
+            if (isMissingCookiesFile(cookiesBrowser, cookiesPath)) {
+                throw new ClientError(MISSING_COOKIES_FILE_MESSAGE);
             }
 
             await loadYtDlpFormatsFromLoader();

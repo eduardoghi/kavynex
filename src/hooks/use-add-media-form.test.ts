@@ -580,6 +580,24 @@ describe("useAddMediaForm", () => {
         expect(latestYtDlpFormatLoaderOptions().getCookiesBrowser?.()).toBe("");
     });
 
+    it("refuses to load formats when a cookies file is the source and none was picked", async () => {
+        // It would load what an anonymous visitor sees, and only the submit said why.
+        const onError = vi.fn();
+        const { result } = renderHook(() => useAddMediaForm({ onError }));
+
+        act(() => {
+            result.current.setMediaUrl("https://youtube.com/watch?v=abc");
+            result.current.setCookiesBrowser("manual");
+        });
+
+        await act(async () => {
+            await result.current.loadYtDlpFormats();
+        });
+
+        expect(mockLoadYtDlpFormats).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalled();
+    });
+
     it("refuses to load formats when the profile does not form a usable selector", async () => {
         // The service layer would drop an invalid selector and probe without cookies, and the
         // formats that came back would not be the ones the chosen profile can see. Refusing here

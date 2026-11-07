@@ -48,6 +48,15 @@ export function hasInvalidCookiesBrowserSelector(
     return selector !== "" && normalizeCookiesBrowser(selector) === null;
 }
 
+export const MISSING_COOKIES_FILE_MESSAGE =
+    "Choose the cookies file, or set the cookies option to a browser or to none.";
+
+// True when the cookies source is a file and none was picked. A run would go ahead without
+// cookies, so this is refused both before loading formats and before a submit.
+export function isMissingCookiesFile(cookiesBrowser: string, cookiesPath: string): boolean {
+    return cookiesBrowser === "manual" && !cookiesPath.trim();
+}
+
 // The outcome of validating the form before a submit. A hard error to surface, a silent skip
 // (busy. A preparation/download/cancel is already in flight), or a green light with the resolved
 // source.
@@ -105,11 +114,8 @@ export function validateAddMediaForm(
     // The same reasoning for a cookies file that was chosen as the source and never picked. The run
     // would go ahead without cookies and fail on a members-only or age-restricted video for a reason
     // that names something else.
-    if (sourceMode === "yt-dlp" && form.cookiesBrowser === "manual" && !form.cookiesPath.trim()) {
-        return {
-            status: "error",
-            message: "Choose the cookies file, or set the cookies option to a browser or to none.",
-        };
+    if (sourceMode === "yt-dlp" && isMissingCookiesFile(form.cookiesBrowser, form.cookiesPath)) {
+        return { status: "error", message: MISSING_COOKIES_FILE_MESSAGE };
     }
 
     return { status: "ok", sourceMode, sourceValue };
