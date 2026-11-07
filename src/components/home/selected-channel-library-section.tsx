@@ -25,6 +25,7 @@ import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
 import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
 import { formatCount } from "../../utils/pluralize";
+import { formatNumber } from "../../utils/number-format";
 import type { MediaQueryFilters } from "../../utils/media-library-filters";
 import { useChannelLibraryFilters } from "../../hooks/channels/use-channel-library-filters";
 import type { Channel, MediaRow } from "../../types/media";
@@ -137,7 +138,7 @@ export function SelectedChannelLibrarySection({
 
     // "showing <loaded> of <total matching the filters>". With no filter active, total is the
     // whole channel, and with a filter, it is the filtered match count.
-    const filteredCountLabel = `${UI_TEXT.library.showing} ${mediaItems.length} ${UI_TEXT.library.of} ${formatCount(total, "item")}`;
+    const filteredCountLabel = `${UI_TEXT.library.showing} ${formatNumber(mediaItems.length)} ${UI_TEXT.library.of} ${formatCount(total, "item")}`;
     // What a screen reader is told. The match count, which changes with a search or a filter, and
     // not the loaded count, which grows with every page the grid fetches while scrolling and had the
     // line read out again each time.

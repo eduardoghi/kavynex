@@ -131,6 +131,19 @@ describe("SelectedChannelLibrarySection", () => {
         expect(screen.getByText(/Showing 2 of 300 items/)).toBeInTheDocument();
     });
 
+    it("groups the digits of both counts in the label", () => {
+        // The total was grouped and the loaded count was not, so the label read "1500 of 3,000".
+        const mediaItems = Array.from({ length: 1500 }, (_, index) =>
+            createMediaRow({ id: index + 1 })
+        );
+
+        renderWithMantine(
+            <SelectedChannelLibrarySection {...makeProps({ mediaItems, total: 3000 })} />
+        );
+
+        expect(screen.getByText(/Showing 1,500 of 3,000 items/)).toBeInTheDocument();
+    });
+
     it("requests the first page on mount with the default filters", () => {
         const onApplyQuery = vi.fn();
 
