@@ -570,7 +570,7 @@ fn a_renamed_file_is_dated_when_it_arrived() {
         .set_modified(years_ago)
         .unwrap();
 
-    mark_arrived_now(&file);
+    stamp_modified(&file, std::time::SystemTime::now());
 
     let age = std::time::SystemTime::now()
         .duration_since(fs::metadata(&file).unwrap().modified().unwrap())

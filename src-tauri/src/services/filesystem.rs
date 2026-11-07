@@ -339,20 +339,30 @@ fn copy_bytes_whole(source: &Path, temp_destination: &Path) -> AppResult<()> {
             )
         })?;
 
-    let stamped = retry_while_held(|| fs::OpenOptions::new().write(true).open(temp_destination))
-        .and_then(|file| file.set_modified(std::time::SystemTime::now()));
+    stamp_modified(temp_destination, std::time::SystemTime::now());
+
+    Ok(())
+}
+
+/// Sets `path`'s modification time to `time`, and logs a warning when it cannot. Best effort. A file
+/// system that refuses it (some network and cloud-synced ones do) leaves the time the file had.
+///
+/// Opening the file for writing is retried while another program holds it ([`retry_while_held`]).
+/// On Windows an antivirus opens a file the moment it appears, which is exactly when the time is
+/// set, and giving up at once left a file that had just arrived looking as old as its source.
+pub(crate) fn stamp_modified(path: &Path, time: std::time::SystemTime) {
+    let stamped = retry_while_held(|| fs::OpenOptions::new().write(true).open(path))
+        .and_then(|file| file.set_modified(time));
 
     if let Err(error) = stamped {
         crate::services::logger::warn(
             "filesystem",
             format!(
-                "copied {} but could not set its modification time: {error}",
-                crate::services::logger::redact_path(temp_destination)
+                "could not set the modification time of {}: {error}",
+                crate::services::logger::redact_path(path)
             ),
         );
     }
-
-    Ok(())
 }
 
 /// Gives the owner write access to a copy that came out read-only.
@@ -1015,7 +1025,7 @@ fn stage_move_using(
             // A rename keeps the source's modification time, and the orphan removal spares only a
             // file written in the last hour. This one is the user's only copy, so it gets the time
             // it arrived at, like every copied file does.
-            mark_arrived_now(destination);
+            stamp_modified(destination, std::time::SystemTime::now());
             Ok(StagedMove::SourceConsumed)
         }
         Err(error) if is_cross_device_error(&error) => {
@@ -1028,14 +1038,6 @@ fn stage_move_using(
             destination,
             &error,
         )),
-    }
-}
-
-/// Sets `path`'s modification time to now. Best effort. A file that cannot be opened for writing
-/// keeps the time it had.
-fn mark_arrived_now(path: &Path) {
-    if let Ok(file) = fs::File::options().write(true).open(path) {
-        let _ = file.set_modified(std::time::SystemTime::now());
     }
 }
 

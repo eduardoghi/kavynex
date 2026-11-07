@@ -193,9 +193,7 @@ pub(super) fn archive_snapshot(db_path: &Path, snapshot: &Path) -> AppResult<Pat
         return Err(error);
     }
 
-    if let Ok(file) = File::options().write(true).open(&target) {
-        let _ = file.set_modified(taken_at);
-    }
+    crate::services::filesystem::stamp_modified(&target, taken_at);
     crate::services::filesystem::fsync_parent_dir(&target);
 
     Ok(target)
