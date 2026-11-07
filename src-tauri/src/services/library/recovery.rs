@@ -65,11 +65,12 @@ pub fn write_commit_marker(
     crate::services::filesystem::write_file_durably(marker_path, content.as_bytes())
 }
 
-/// Removes the commit marker. Best effort. A failure leaves a marker that the next evaluation
-/// re-examines, and the second line keeps it from acting on a library chosen since. Logged, since
-/// a marker that will not go is a file another program is holding.
+/// Removes the commit marker. Best effort, retried while another program holds it (an antivirus
+/// scanning the file just written). A failure leaves a marker that the next evaluation re-examines,
+/// and the second line keeps it from acting on a library chosen since. Logged, since a marker that
+/// will not go is a file another program is still holding.
 pub fn clear_commit_marker(marker_path: &Path) {
-    match std::fs::remove_file(marker_path) {
+    match crate::services::filesystem::retry_while_held(|| std::fs::remove_file(marker_path)) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => crate::services::logger::warn(

@@ -453,7 +453,9 @@ pub fn clear_pending_media_artifacts<R: Runtime>(
 
     let path = pending_media_dir(app)?.join(marker);
 
-    match fs::remove_file(&path) {
+    // Retried while held. An antivirus scanning the marker it saw written a moment ago would
+    // otherwise fail a creation that already succeeded.
+    match crate::services::filesystem::retry_while_held(|| fs::remove_file(&path)) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(AppError::from_code(
