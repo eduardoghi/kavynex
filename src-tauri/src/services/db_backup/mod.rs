@@ -209,11 +209,10 @@ async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // `.foreign_keys(true)`. Nothing depends on it either way. This pool only reads (quick_check,
     // VACUUM INTO, import validation), so there is no INSERT/UPDATE/DELETE for it to guard.
     //
-    // It is deliberately *not* opened with `query_only`/`read_only` even though it never
-    // mutates the source: SQLite requires a writable connection for `VACUUM INTO` (it fails
-    // with "attempt to write a readonly database" otherwise). Concurrency is still safe. The
-    // main pool runs in WAL mode, where the read snapshot `VACUUM INTO` holds does not block
-    // the writer, so the once-a-day background snapshot cannot starve a concurrent write.
+    // It is opened writable, but not because `VACUUM INTO` needs that. It only reads its source,
+    // and the import runs it on [`connect_read_only`]. Concurrency is still safe. The main pool
+    // runs in WAL mode, where the read snapshot `VACUUM INTO` holds does not block the writer, so
+    // the once-a-day background snapshot cannot starve a concurrent write.
 
     SqlitePoolOptions::new()
         .max_connections(1)

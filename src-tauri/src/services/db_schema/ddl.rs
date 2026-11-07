@@ -428,9 +428,8 @@ pub(super) const TRIGGER_DDLS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Additive columns for the video_comments table, added to a table that predates them by the
-/// migration named beside each.
-/// Additive columns for the channels table, added by the migration named beside each.
+/// Additive columns for the channels table, added to a table that predates them by the migration
+/// named beside each.
 pub(super) const CHANNELS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     // v18.
     (
@@ -439,6 +438,8 @@ pub(super) const CHANNELS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     ),
 ];
 
+/// Additive columns for the video_comments table, added to a table that predates them by the
+/// migration named beside each.
 pub(super) const VIDEO_COMMENTS_ADDITIVE_COLUMNS: &[(&str, &str)] = &[
     // v17.
     (
