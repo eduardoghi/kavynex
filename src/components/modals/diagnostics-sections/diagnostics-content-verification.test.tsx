@@ -124,6 +124,41 @@ describe("DiagnosticsContentVerification", () => {
         expect(screen.queryByText(/match the content they were saved with/)).not.toBeInTheDocument();
     });
 
+    it("names the damage a run found before it was stopped", () => {
+        hookState = {
+            running: false,
+            progress: null,
+            result: {
+                status: "done",
+                report: report({
+                    checked: 40,
+                    verified: 38,
+                    corrupt: 2,
+                    corruptExamples: ["video/media_a.mp4", "video/media_b.mp4"],
+                    cancelled: true,
+                }),
+            },
+        };
+
+        renderWithMantine(<DiagnosticsContentVerification libraryPath="/library" />);
+
+        expect(
+            screen.getByText(
+                /Stopped early: 40 file\(s\) checked, the rest were not\. 2 of them do not match/
+            )
+        ).toBeInTheDocument();
+    });
+
+    it("says it is stopping until the run ends", async () => {
+        hookState = { running: true, progress: { checked: 3, total: 10 }, result: null };
+
+        renderWithMantine(<DiagnosticsContentVerification libraryPath="/library" />);
+        await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+        expect(cancel).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole("button", { name: "Stopping..." })).toBeDisabled();
+    });
+
     it("explains the files it could not check rather than counting them as damage", () => {
         hookState = {
             running: false,

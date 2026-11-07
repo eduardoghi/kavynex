@@ -1,4 +1,5 @@
 import { Box, Code, Group, Progress, Stack, Text } from "@mantine/core";
+import { useState } from "react";
 import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { useLibraryVerification } from "../../../hooks/use-library-verification";
 import type { ContentVerificationReport } from "../../../types/generated/ContentVerificationReport";
@@ -36,15 +37,19 @@ function ExampleList({ title, paths }: { title: string; paths: string[] }): JSX.
 // What a finished run means, in one sentence, before any of the detail below it.
 //
 // The cancelled case is called out first and deliberately. A partial run that found nothing must
-// never read as "your library is fine", which is the one way this check could do harm.
+// never read as "your library is fine", which is the one way this check could do harm. One that did
+// find damage before it was stopped says so in the same sentence, in red, since that part of the
+// result is as certain as a finished run's.
 function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element {
     if (report.cancelled) {
         return (
-            <Group gap={6} c="dimmed">
-                <AlertTriangle size={16} />
+            <Group gap={6} c={report.corrupt > 0 ? "red" : "dimmed"}>
+                {report.corrupt > 0 ? <XCircle size={16} /> : <AlertTriangle size={16} />}
                 <Text size="sm">
-                    Stopped early: {report.checked} file(s) checked, the rest were not. This is not
-                    a clean result.
+                    Stopped early: {report.checked} file(s) checked, the rest were not.
+                    {report.corrupt > 0
+                        ? ` ${report.corrupt} of them do not match the content they were saved with.`
+                        : " This is not a clean result."}
                 </Text>
             </Group>
         );
@@ -99,6 +104,9 @@ export function DiagnosticsContentVerification({
     libraryPath,
 }: DiagnosticsContentVerificationProps): JSX.Element {
     const { running, progress, result, verify, cancel } = useLibraryVerification();
+    // A stop lands once the file being read is done, which for a large video takes a moment. Until
+    // then the button says so instead of looking like the click did nothing.
+    const [stopRequested, setStopRequested] = useState(false);
 
     const percent =
         progress && progress.total > 0
@@ -119,7 +127,10 @@ export function DiagnosticsContentVerification({
                     <AppButton
                         type="button"
                         appVariant="secondary"
-                        onClick={() => void verify()}
+                        onClick={() => {
+                            setStopRequested(false);
+                            void verify();
+                        }}
                         loading={running}
                         disabled={!libraryPath}
                     >
@@ -127,8 +138,16 @@ export function DiagnosticsContentVerification({
                     </AppButton>
 
                     {running && (
-                        <AppButton type="button" appVariant="secondary" onClick={() => void cancel()}>
-                            Stop
+                        <AppButton
+                            type="button"
+                            appVariant="secondary"
+                            onClick={() => {
+                                setStopRequested(true);
+                                void cancel();
+                            }}
+                            disabled={stopRequested}
+                        >
+                            {stopRequested ? "Stopping..." : "Stop"}
                         </AppButton>
                     )}
                 </Group>
