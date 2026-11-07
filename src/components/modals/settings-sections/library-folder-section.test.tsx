@@ -202,6 +202,48 @@ describe("LibraryFolderSection", () => {
         expect(onCancelRunningLibraryMove).toHaveBeenCalledTimes(1);
     });
 
+    it("takes focus to the question, and back to Choose folder once it is answered", () => {
+        const move = {
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+            summary: SUMMARY,
+            currentFolderUnreachable: false,
+        };
+        const { rerender } = renderWithMantine(
+            <LibraryFolderSection {...baseProps({ pendingLibraryMove: move })} />
+        );
+
+        expect(screen.getByLabelText("Move the library to /new-library?")).toHaveFocus();
+
+        // Cancel takes the question away with focus inside it.
+        (document.activeElement as HTMLElement).blur();
+        rerender(<LibraryFolderSection {...baseProps({ pendingLibraryMove: null })} />);
+
+        expect(screen.getByRole("button", { name: /choose folder/i })).toHaveFocus();
+    });
+
+    it("hands focus to Cancel move once the copy starts", () => {
+        const move = {
+            currentLibraryPath: "/library",
+            destination: "/new-library",
+            summary: SUMMARY,
+            currentFolderUnreachable: false,
+        };
+        const { rerender } = renderWithMantine(
+            <LibraryFolderSection {...baseProps({ pendingLibraryMove: move })} />
+        );
+
+        // The Move library button the user pressed goes with the confirmation.
+        (document.activeElement as HTMLElement).blur();
+        rerender(
+            <LibraryFolderSection
+                {...baseProps({ pendingLibraryMove: move, isMigratingLibraryPath: true })}
+            />
+        );
+
+        expect(screen.getByRole("button", { name: /cancel move/i })).toHaveFocus();
+    });
+
     it("says nothing will move when the current folder cannot be reached", () => {
         const onConfirmLibraryMove = vi.fn();
 

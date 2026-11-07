@@ -13,6 +13,7 @@ import { ArrowRightLeft, FolderOpen, HardDrive, RefreshCcw, Search, Wrench } fro
 import type { SettingsController } from "../../../hooks/settings/use-settings-controller";
 import type { PendingLibraryMove } from "../../../use-cases/change-library-path";
 import type { LibraryMigrationProgress } from "../../../types/generated/LibraryMigrationProgress";
+import { useEffect, useRef } from "react";
 import { AppButton } from "../../ui/app-button";
 import { displayWindowsPath } from "../../../utils/paths";
 import { formatNumber } from "../../../utils/number-format";
@@ -39,6 +40,18 @@ type LibraryMoveProgressProps = {
 // While the copy runs. By bytes rather than by files, since one video outweighs thousands of
 // thumbnails and a file count would sit near the end for most of the time.
 function LibraryMoveProgress({ progress, onCancelRunning }: LibraryMoveProgressProps): JSX.Element {
+    // The progress replaces the Move library button the user just pressed, which took focus with
+    // it. It goes to the one control left, Cancel move, unless it already landed somewhere.
+    const cancelRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        const active = document.activeElement;
+
+        if (!active || active === document.body || !document.contains(active)) {
+            cancelRef.current?.focus();
+        }
+    }, []);
+
     const percent =
         progress && progress.totalBytes > 0
             ? Math.min(100, (progress.copiedBytes / progress.totalBytes) * 100)
@@ -53,7 +66,7 @@ function LibraryMoveProgress({ progress, onCancelRunning }: LibraryMoveProgressP
                     : "Preparing the move..."}
             </Text>
             <Group gap="sm">
-                <AppButton appVariant="danger" onClick={onCancelRunning}>
+                <AppButton ref={cancelRef} appVariant="danger" onClick={onCancelRunning}>
                     Cancel move
                 </AppButton>
             </Group>
@@ -81,9 +94,24 @@ function PendingLibraryMoveAlert({
     const destination = displayWindowsPath(move.destination);
     const size = describeMoveSize(move);
 
+    // The question appears below the button that asked for a folder, out of a keyboard or screen
+    // reader user's way. Focus goes to it, the way the database section does with its own
+    // confirmations.
+    const alertRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        alertRef.current?.focus();
+    }, []);
+
     if (move.currentFolderUnreachable) {
         return (
-            <Alert color="yellow" variant="light">
+            <Alert
+                ref={alertRef}
+                tabIndex={-1}
+                color="yellow"
+                variant="light"
+                aria-label="The current library folder cannot be reached"
+            >
                 <Stack gap="xs">
                     <Text size="sm" fw={600}>
                         The current library folder cannot be reached
@@ -117,7 +145,13 @@ function PendingLibraryMoveAlert({
     }
 
     return (
-        <Alert color="yellow" variant="light">
+        <Alert
+            ref={alertRef}
+            tabIndex={-1}
+            color="yellow"
+            variant="light"
+            aria-label={`Move the library to ${destination}?`}
+        >
             <Stack gap="xs">
                 <Text size="sm" fw={600}>
                     Move the library to {destination}?
@@ -193,6 +227,27 @@ export function LibraryFolderSection({
     libraryMoveProgress = null,
     onCancelRunningLibraryMove = () => undefined,
 }: LibraryFolderSectionProps): JSX.Element {
+    // The question goes away with focus inside it, on Cancel or once the move ends, and the button
+    // that asked it is disabled until then. Once it is back, focus returns to it, unless it
+    // already landed somewhere.
+    const chooseFolderRef = useRef<HTMLButtonElement>(null);
+    const hadPendingMove = useRef(pendingLibraryMove != null);
+
+    useEffect(() => {
+        const answered = hadPendingMove.current && pendingLibraryMove == null;
+        hadPendingMove.current = pendingLibraryMove != null;
+
+        if (!answered) {
+            return;
+        }
+
+        const active = document.activeElement;
+
+        if (!active || active === document.body || !document.contains(active)) {
+            chooseFolderRef.current?.focus();
+        }
+    }, [pendingLibraryMove]);
+
     return (
         <Stack gap="xs">
             <Group gap="sm">
@@ -329,6 +384,7 @@ export function LibraryFolderSection({
                     filled button in the modal it read as the thing Settings is for,
                     which it is not. Most people set the folder once. */}
                 <AppButton
+                    ref={chooseFolderRef}
                     appVariant="secondary"
                     leftSection={<Search size={16} />}
                     onClick={onChooseLibraryPath}
