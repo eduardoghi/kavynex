@@ -100,7 +100,8 @@ pub async fn log_frontend_error(scope: String, message: String) {
                 logger::warn(
                     "frontend",
                     format!(
-                        "frontend error reports are coming too fast; dropping the rest for up to                          {} seconds",
+                        "frontend error reports are coming too fast; dropping the rest for up to \
+                         {} seconds",
                         REPORT_WINDOW.as_secs()
                     ),
                 );
