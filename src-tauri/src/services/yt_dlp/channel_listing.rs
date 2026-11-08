@@ -28,7 +28,9 @@ const CHANNEL_LISTING_TIMEOUT_SECS: u64 = 180;
 const LISTED_TABS: [ChannelTabKind; 2] = [ChannelTabKind::Video, ChannelTabKind::Live];
 
 /// The channel's page without a tab, query or trailing slash, so a stored handle that is a pasted
-/// link to one of its tabs still gets the tab asked for.
+/// link to one of its tabs still gets the tab asked for. A suffix is taken off only when what is left
+/// still names a channel, so a legacy channel whose name is a tab's (`/c/videos`, `/user/live`)
+/// keeps it.
 fn channel_root(channel_url: &str) -> &str {
     let without_query = channel_url.split(['?', '#']).next().unwrap_or_default();
     let trimmed = without_query.trim_end_matches('/');
@@ -42,7 +44,16 @@ fn channel_root(channel_url: &str) -> &str {
         "/playlists",
     ]
     .iter()
-    .find_map(|tab| trimmed.strip_suffix(tab))
+    .find_map(|tab| {
+        let root = trimmed.strip_suffix(tab)?;
+        let last_segment = root.rsplit('/').next().unwrap_or_default();
+        // Left a bare `/c`, `/user` or `/channel`, or only the host, the suffix was the name.
+        let names_a_channel = !last_segment.is_empty()
+            && !last_segment.contains('.')
+            && !matches!(last_segment, "c" | "user" | "channel");
+
+        names_a_channel.then_some(root)
+    })
     .unwrap_or(trimmed)
 }
 
@@ -308,6 +319,26 @@ mod tests {
                 ChannelTabKind::Video
             ),
             "https://www.youtube.com/channel/UCx/videos"
+        );
+    }
+
+    #[test]
+    fn a_legacy_channel_named_like_a_tab_keeps_its_name() {
+        assert_eq!(
+            tab_url("https://www.youtube.com/c/videos", ChannelTabKind::Live),
+            "https://www.youtube.com/c/videos/streams"
+        );
+        assert_eq!(
+            tab_url("https://www.youtube.com/user/live/", ChannelTabKind::Video),
+            "https://www.youtube.com/user/live/videos"
+        );
+        // The same name followed by a tab still loses only the tab.
+        assert_eq!(
+            tab_url(
+                "https://www.youtube.com/c/videos/videos",
+                ChannelTabKind::Live
+            ),
+            "https://www.youtube.com/c/videos/streams"
         );
     }
 
