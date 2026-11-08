@@ -729,7 +729,7 @@ impl<R: Runtime> DownloadRun<'_, R> {
         let expected_ext = selected_format
             .as_ref()
             .and_then(|format| format.ext.as_ref())
-            .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+            .map(|value| crate::utils::format::normalize_extension(value))
             .filter(|value| !value.is_empty());
 
         Ok(DownloadPlan {

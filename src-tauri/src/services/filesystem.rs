@@ -1294,7 +1294,7 @@ pub fn find_best_matching_file(
     }
 
     let normalized_preferred_ext = preferred_ext
-        .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+        .map(crate::utils::format::normalize_extension)
         .filter(|value| !value.is_empty());
 
     let mut matches: Vec<PathBuf> = fs::read_dir(dir)
@@ -1328,12 +1328,12 @@ pub fn find_best_matching_file(
         let left_ext = left
             .extension()
             .and_then(|value| value.to_str())
-            .map(|value| value.trim().trim_start_matches('.').to_lowercase());
+            .map(crate::utils::format::normalize_extension);
 
         let right_ext = right
             .extension()
             .and_then(|value| value.to_str())
-            .map(|value| value.trim().trim_start_matches('.').to_lowercase());
+            .map(crate::utils::format::normalize_extension);
 
         let left_pref = normalized_preferred_ext
             .as_ref()

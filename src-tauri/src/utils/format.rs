@@ -1,4 +1,6 @@
-fn normalize_extension(value: &str) -> String {
+/// An extension as the app compares it, without a leading dot and in lowercase (`".MP4"` is
+/// `"mp4"`).
+pub(crate) fn normalize_extension(value: &str) -> String {
     value.trim().trim_start_matches('.').to_lowercase()
 }
 

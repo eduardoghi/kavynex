@@ -6,7 +6,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 pub fn extension_from_path(path: &Path) -> String {
     path.extension()
         .and_then(|value| value.to_str())
-        .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+        .map(crate::utils::format::normalize_extension)
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "bin".to_string())
 }

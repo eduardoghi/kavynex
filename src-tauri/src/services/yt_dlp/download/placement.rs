@@ -65,7 +65,7 @@ pub(super) fn pick_downloaded_media(
             .and_then(|value| value.to_str())
             .map(|value| value.to_ascii_lowercase())
     };
-    let expected_ext = expected_ext.map(|value| value.trim_start_matches('.').to_ascii_lowercase());
+    let expected_ext = expected_ext.map(crate::utils::format::normalize_extension);
 
     candidates
         .into_iter()
