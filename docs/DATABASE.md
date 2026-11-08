@@ -753,33 +753,14 @@ live connection pool is a singleton that cannot be reopened mid-session:
    of an older `.pre-import` therefore happens only in the branch that immediately replaces it,
    never unconditionally.
 
-   That guard alone is not enough, because it only asks whether a database file is *there*. A run
-   whose swap failed *and* whose rollback also failed leaves the data solely in `.pre-import`,
-   and the app keeps starting, so the pool creates an empty `kavynex.db` through
-   `create_if_missing`. On the next launch a database file exists again, and on disk that state is
-   indistinguishable from a perfectly normal *second* import (staged file + `.pre-import` + a
-   database), which does have to consume the old undo copy. Telling them apart needs a persistent
-   signal, so an `.import-applying` marker is written once the move-aside has succeeded and cleared
-   once the swap or its rollback has put a database back. A marker that outlived a restart, with a
-   `.pre-import` behind it, means that snapshot is the only real copy, and the move-aside is
-   skipped rather than overwriting it with the empty file. See `docs/DIRECTORIES.md` for the file
-   itself.
-
-   The file the recovery finds at `db_path` is moved to `kavynex.db.displaced-<suffix>` (with its
-   `-wal`) rather than deleted. The marker's claim that it is the pool's empty file is also what a
-   marker whose removal failed after a completed import makes, and there `db_path` is the imported
-   database with whatever was done in it since. The removal itself is retried before giving up.
-
-   The marker follows the move-aside rather than preceding it, and that order is the whole of its
-   meaning. Written first, it would also be on disk in the window before the rename ran, and there
-   `db_path` is still the user's real library, not the pool's empty file, so the next run would read
-   the marker, skip the move-aside, and let the swap overwrite the library with nothing behind it to
-   undo with. Writing it after the rename makes its presence a true claim, since `.pre-import` holds
-   the database. The marker write failing is handled by undoing the move-aside, so the failure leaves
-   the import merely pending. On top of that, a marker with no `.pre-import` behind it is ignored.
-   That combination cannot be reached through the ordering above, which is exactly why it is not
-   trusted when it does appear (a rollback that restored the database but failed to clear the marker
-   leaves it).
+   A swap whose rollback also failed leaves the data only in `.pre-import`, and on disk that looks
+   like a normal second import, so an `.import-applying` marker is written once the move-aside has
+   succeeded and cleared once a database is back in place. A marker that outlived a restart, with a
+   `.pre-import` behind it, keeps that snapshot as the only copy rather than overwriting it, and the
+   file then found at the database path is set aside as `kavynex.db.displaced-<suffix>` rather than
+   deleted. Why the marker comes after the move-aside, and when it is not trusted, is in the
+   comments of `apply_pending_database_import` (`services/db_backup/import.rs`).
+   `docs/DIRECTORIES.md` lists the files.
 3. About 30 seconds after an import was applied, `spawn_post_import_library_check` in `lib.rs` runs
    the same library check Diagnostics does (`library::integrity::count_missing_library_files`). The
    validation in step 1 proves the file is a healthy Kavynex database and says nothing about the

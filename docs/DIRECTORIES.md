@@ -100,8 +100,7 @@ only ever outlives a startup when the swap died in between. Finding it there, wi
 beside it, is what tells the next launch that snapshot holds the *only* copy of the database and
 must be kept rather than consumed, on disk that state is otherwise indistinguishable from a normal
 second import. If you ever see one sitting next to `kavynex.db` on a healthy install, an import
-failed midway and `.pre-import` is the database to go back to. See `docs/DATABASE.md` for why it is
-written after the move-aside rather than before it.
+failed midway and `.pre-import` is the database to go back to.
 
 A `kavynex.db.displaced-<suffix>` (and its `-wal`) is what such a recovery found at the database
 path and set aside instead of deleting. It is a complete SQLite database. If it holds work you
