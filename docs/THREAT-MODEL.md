@@ -684,11 +684,9 @@ delegating to yt-dlp, so it carries its own set of controls
 - A URL whose *path* ends in an image extension is fetched directly, and is restricted to the
   image CDNs YouTube actually serves thumbnails from (`ALLOWED_THUMBNAIL_IMAGE_HOSTS` holds
   `ytimg.com`, `ggpht.com`, `googleusercontent.com`, `youtube.com`, each suffix-matched on a
-  leading `.` so a look-alike like `ytimg.com.evil.example` is refused). That list is a copy of the
-  CSP's `img-src` hosts and is pinned against it by a test, on the principle that the backend
-  should only fetch an image the webview would be permitted to render. Note this is deliberately
-  *not* the yt-dlp allow-list below, since real thumbnails live on ytimg/ggpht/googleusercontent, none of
-  which is a `youtube.com` host, so reusing that list would reject every legitimate thumbnail.
+  leading `.` so a look-alike like `ytimg.com.evil.example` is refused). The list mirrors the CSP's
+  `img-src` hosts, pinned by a test, and is deliberately not the yt-dlp allow-list below (see
+  `services/thumbnail/url.rs`).
 - Any other URL falls through to yt-dlp's generic extractor, which is restricted to YouTube by
   `is_allowed_youtube_url`. The same allow-list, for the same reason, as every other yt-dlp
   invocation, because the extractor runs with access to the user's browser cookies.
@@ -700,49 +698,24 @@ same direct fetch (`fetch_cdn_image`), with every check above, and the file is n
 its bytes prove (`utils::format::sniffed_image_extension`) rather than after the URL.
 
 **The transport is https, and only https.** The connector is built with `https_only()`
-(`services/thumbnail/download/fetch.rs`), the caller refuses a cleartext URL before the fetch starts
-(`download_thumbnail_from_url_async`), and `redirect::next_hop` refuses a hop whose *resolved*
-destination is not https. Three places because they answer different questions. The caller names the
-reason for the URL it was given, `next_hop` names it for a hop (and reads the resolved URI, since a
-relative `Location` inherits the current scheme and only the resolved form carries the one the
-request would use), and the connector is the backstop a future caller inherits without knowing about
-either.
-
-This is stated as its own paragraph because the list that follows describes controls on the
-*destination* and on the *response*, and for a while that read as a complete accounting when it was
-not. The connector was `https_or_http()`, so a `302` out of an allowed CDN to `http://<same cdn>/...`
-was followed in the clear. The host gate does not see that (the host is still allowed), the SSRF
-guard does not either (the address is still public), and every remaining constraint applies after the
-request has already gone out. An on-path attacker could substitute any payload under the size cap
-that passes the magic-byte sniff, and the result is written into the library under a
-content-addressed name, so the substitution is persisted rather than merely displayed. Closing it
-cost nothing, since every thumbnail YouTube serves is https.
+(`services/thumbnail/download/fetch.rs`), the caller refuses a cleartext URL before the fetch
+starts, and `redirect::next_hop` refuses a hop whose resolved destination is not https. Every other
+control constrains the destination or the response, so a cleartext hop out of an allowed CDN would
+have passed all of them, and an on-path attacker could have had a substituted image saved into the
+library. Why each of the three places is there is on `redirect::next_hop`.
 
 The direct fetch is additionally constrained on the way back, with a hard 10 MiB cap, an allow-listed
 `Content-Type`, and a magic-byte sniff (the header is attacker-controlled, so it is only a first
-filter). It follows redirects **manually**, re-running *both* checks on every hop (the address
-check and the host allow-list) and dials
-through a DNS resolver that drops every private/loopback/reserved answer
-(`services::ssrf_guard`, `PublicOnlyResolver`), so the address that is validated is the address
-that is dialed, closing the rebinding window a pre-connection check alone leaves open. This is why
-the module uses a hand-rolled hyper client rather than the `reqwest` already in the tree, since automatic
-redirect following would bypass the per-hop revalidation.
-
-Worth stating plainly, because the two halves once differed. The host gate on the direct branch was
-added after the fallback already had one. Until then the SSRF guard kept that branch off internal
-addresses but nothing kept it off the open internet, which left a compromised frontend an outbound
-channel (a path ending in `.jpg` on a host of its choosing). It cost no functionality to close. The
-manual thumbnail control is a file picker, never a URL field, and the only remote values that reach
-the fetch are the thumbnail URLs in yt-dlp's own metadata (`thumbnail` and the declared `thumbnails`
-entries, ordered by `media_thumbnail_candidates`), filtered to ones the direct branch accepts before
-any request goes out, so a media's thumbnail never falls through to the yt-dlp branch.
-
-The gate applies per *hop*, not only per fetch. A `302` out of `i.ytimg.com` to
-`https://attacker.example/<data>.jpg` would pass the address guard (the destination is perfectly
-public), and the response constraints all apply after the request has been made. So
-`services::thumbnail::redirect::next_hop` decides the whole of each hop, host allow-list included,
-and is under the mutation gate. The caller still gates the initial URL, since that is a different
-question (may this fetch start at all) about a URI no redirect produced.
+filter). It follows redirects **manually**, re-running the address check and the host allow-list on
+every hop (`services::thumbnail::redirect::next_hop`, under the mutation gate), and dials through a
+DNS resolver that drops every private, loopback or reserved answer (`services::ssrf_guard`,
+`PublicOnlyResolver`), so the address that is validated is the address that is dialed. That is why
+the module uses a hand-rolled hyper client rather than the `reqwest` already in the tree, whose
+automatic redirects would skip the per-hop check. Why the direct branch gates the host at all, when
+the SSRF guard already keeps it off internal addresses, is on `ALLOWED_THUMBNAIL_IMAGE_HOSTS`
+(`services/thumbnail/url.rs`). The only remote values that reach the fetch are the thumbnail URLs
+in yt-dlp's own metadata, filtered to ones the direct branch accepts, so a media's thumbnail never
+falls through to the yt-dlp branch.
 
 A URL that is not a direct image goes to the yt-dlp fallback, which takes YouTube hosts only. That
 allow-list runs before the address guard, because the address guard resolves the name, and a lookup
