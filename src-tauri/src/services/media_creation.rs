@@ -993,15 +993,11 @@ async fn clear_marker_best_effort<R: Runtime>(app: &AppHandle<R>, marker: Option
 
 /// Registers prepared artifacts as a media row.
 ///
-/// This is the critical section, and the whole of it runs under
-/// [`library::cleanup::media_registration_guard`]. From before the marker is written until after the
-/// row lands (or its artifacts have been cleaned up). Holding it here is what keeps a concurrent
-/// reference-counted cleanup from observing these artifacts as unreferenced in the one window where
-/// they truly are. The window a second creation resolving to the same content-addressed path would
-/// otherwise be able to act in.
-///
-/// It is deliberately short. The download and the import happen before it, so nothing a user waits
-/// on is serialized by this lock. What is inside is a marker write, one query and one insert.
+/// The critical section, all of it under [`library::cleanup::media_registration_guard`], from
+/// before the marker is written until after the row lands (or its artifacts are cleaned up), so a
+/// concurrent cleanup cannot count these artifacts as unreferenced while they are. Only a marker
+/// write, one query and one insert, since the download and the import happen before it. See the
+/// "unreferenced-artifact cleanup" residual in `docs/THREAT-MODEL.md`.
 /// Generic over the runtime, and `pub(crate)` rather than private, because this is the half of a
 /// creation a test can actually drive. `AppHandle` alone is `AppHandle<Wry>`, and
 /// `tauri::test::mock_builder` produces a `MockRuntime` app, so naming the bare alias anywhere in

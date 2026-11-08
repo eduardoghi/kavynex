@@ -562,22 +562,11 @@ fn report_for_unavailable_library(plan: ArtifactCleanupPlan) -> ArtifactCleanupR
     }
 }
 
-/// Removes a committed plan's artifacts under [`MEDIA_REGISTRATION_LOCK`].
-///
-/// The lock is here, and not only around `cleanup_unreferenced_artifacts`, because the three
-/// callers below (a media delete, a channel delete, an avatar replace) unlink exactly the same
-/// content-addressed files a concurrent creation can be adopting, and for a while they held nothing
-/// but `drop_paths_referenced_again`. A recount is not exclusion. It answers "is this referenced
-/// *now*", and a creation that inserts a moment later makes that answer stale between the recount
-/// and the unlink. `docs/THREAT-MODEL.md` described the lock as closing this class while these three
-/// paths sat outside it, which is the asymmetry this closes.
-///
-/// What it does **not** close is the window before `register_prepared_media` takes the same lock,
-/// i.e. between the artifacts landing and the creation reaching its critical section. Covering that
-/// would mean holding this lock across a download, which is the one thing the lock's own
-/// documentation rules out. `insert_prepared_media` re-checks the media file's existence inside the
-/// critical section instead, so what that window can still cost is a refused creation rather than a
-/// row pointing at nothing. See the residual recorded in `docs/THREAT-MODEL.md`.
+/// Removes a committed plan's artifacts under [`MEDIA_REGISTRATION_LOCK`], since a delete or an
+/// image replace unlinks the same content-addressed files a concurrent creation can be adopting, and
+/// the recount in `drop_paths_referenced_again` is not exclusion on its own. Why the lock, and the
+/// window before a creation takes it that it does not cover, are in the "unreferenced-artifact
+/// cleanup" residual in `docs/THREAT-MODEL.md`.
 async fn execute_plan<R: Runtime>(
     app: &AppHandle<R>,
     plan: ArtifactCleanupPlan,
@@ -761,16 +750,10 @@ async fn plan_unreferenced_artifacts(
     Ok(plan)
 }
 
-/// Serializes a reference-counted artifact cleanup against a media registration.
-///
-/// Both sides of the race this closes are short and rare, so one lock is enough and a map keyed by
-/// artifact path would only add a way to get the keying wrong. What it must *not* cover is the
-/// expensive half of a creation. The download and the import run outside it, so holding this never
-/// blocks anything a user waits on. `media_creation` takes it only around the marker, the duplicate
-/// check and the insert, which are milliseconds.
-///
-/// A single static lock, like `db_backup`'s `BACKUP_IN_PROGRESS`. There is one library process-wide
-/// and the lock holds no state a test needs to inject.
+/// Serializes a reference-counted artifact cleanup against a media registration. One static lock
+/// rather than one per path, held only around milliseconds on either side, and with no state a test
+/// needs to inject, like `db_backup`'s `BACKUP_IN_PROGRESS`. See the "unreferenced-artifact cleanup"
+/// residual in `docs/THREAT-MODEL.md`.
 static MEDIA_REGISTRATION_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 /// Acquires [`MEDIA_REGISTRATION_LOCK`] for a media registration. Held by
@@ -790,26 +773,12 @@ pub async fn media_registration_guard() -> tokio::sync::MutexGuard<'static, ()> 
 /// (the same video added to several channels, a thumbnail reused as a channel avatar), so a
 /// freshly prepared artifact can already back a registered row. Such a path is kept.
 ///
-/// What the count and the unlink are serialized against. [`MEDIA_REGISTRATION_LOCK`]. A wrapping
-/// transaction cannot help (the unlink necessarily happens after any commit, since the filesystem
-/// cannot join a SQLite transaction), so the delete paths above are not a template to copy here.
-/// The lock is what closes it, and `services::media_creation` takes the same one around its own
-/// marker/duplicate-check/insert sequence, so a creation resolving to the same content-addressed
-/// path can never be counted as absent by a cleanup that is about to unlink the file it just wrote.
-///
-/// The exclusion does not rest on the add-media modal being locked for the duration of one
-/// creation, since that is frontend behavior, which the rest of this codebase refuses to depend
-/// on. The whole creation is a single backend call, so the exclusion is a lock here rather than a
-/// flag in the renderer.
-///
-/// The startup sweep (`services::pending_media`) keeps its own, separate guard on top, because the
-/// lock alone cannot answer its question. It refuses any marker registered as in flight by this
-/// process or newer than the process itself (`pending_media::marker_is_sweepable`), since a creation
-/// that has written its artifacts but not yet reached `insert_media` is indistinguishable *by
-/// reference count* from one that died there.
-///
-/// See the matching section in `docs/THREAT-MODEL.md` for the same split written for a reader auditing the
-/// trust boundary rather than this function.
+/// The count and the unlink run under [`MEDIA_REGISTRATION_LOCK`], which `services::media_creation`
+/// takes around its marker, duplicate check and insert, so a creation on the same path is never
+/// counted as absent by a cleanup about to unlink its file. A transaction cannot do that, since the
+/// unlink comes after any commit. The startup sweep keeps a guard of its own on top
+/// (`pending_media::marker_is_sweepable`). The whole argument is the "unreferenced-artifact cleanup"
+/// residual in `docs/THREAT-MODEL.md`.
 ///
 /// Generic over the runtime for the same reason the `_locked` variant below already is, and the
 /// same reason `media_creation::register_prepared_media` was widened. The bare `AppHandle` alias is
