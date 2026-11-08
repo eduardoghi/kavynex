@@ -58,8 +58,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     (`cleanup.rs`, `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
     `paths.rs`, `recovery.rs`, `summary.rs`, `trash.rs`, `verification.rs`), `thumbnail/` (`display.rs`, `download/`,
     `persist.rs`, `picked.rs`, `redirect.rs`, `temp.rs`, `url.rs`) and `yt_dlp/`
-    (`cookies.rs`, `events.rs`, `metadata.rs`, `registry.rs`, `url.rs`, plus the nested
-    `download/`). Each family's `mod.rs` declares its submodules and re-exports the entry
+    (`channel_listing.rs`, `cookies.rs`, `events.rs`, `metadata.rs`, `registry.rs`, `url.rs`, plus
+    the nested `download/`). Each family's `mod.rs` declares its submodules and re-exports the entry
     points the command layer imports, so a caller does not have to know which submodule
     holds each one.
 
@@ -428,6 +428,36 @@ library move during a creation. `CREATION_GATE` (`services/media_creation.rs`) r
 while a creation runs, and a creation reads the library folder from the settings only once it holds
 the gate.
 
+**What the channel has that the library does not.** The channel page's **Not in library** button
+opens `ChannelMissingMediaModal` (`src/components/modals/`), which `useChannelMissingMedia`
+(`src/hooks/channels/`) feeds from `list_channel_missing_media`. That command reads the channel's
+handle from the database (never from the renderer), and `services/yt_dlp/channel_listing.rs` lists
+its videos and past lives with one `--flat-playlist` run per tab, nothing downloaded, and compares
+them with the channel's media by YouTube video id. Shorts are left out, and so are a live still
+running and one only scheduled, which cannot be imported yet. A channel without one of the tabs
+reads as an empty tab. The list is searched by title the way the comment search is, without regard
+to case or accents. **Import** opens the add-media modal on the media's URL in the yt-dlp mode with
+its formats loading (`openAddMediaForUrl`, applied after the reset that opening the modal runs), so
+each one still goes through the format choice and the duplicate check above, one at a time.
+**Ignore** moves a media to a second tab and keeps it there across launches, in the
+`ignored_channel_media` table (`ignore_channel_media`, `unignore_channel_media`), and **Show again**
+brings it back. The move shows at once and is put back if it cannot be saved. **Import selected**
+adds several as a batch (`useBatchImport`, `src/hooks/`), which the add-media workflow owns so that
+it runs under the same `isAddingMedia` flag and shows its downloads in the same terminal. A batch
+therefore blocks what a single add blocks (a second add, deleting the channel, moving the library).
+The batch is set up the way the form sets up one media, for each of them. The sign-in comes first,
+with the cookie fields the form uses (`CookiesFields`) and the same refusals, since it decides which
+formats YouTube offers. Then `useBatchFormats` lists each media's formats one at a time,
+`FORMATS_PAUSE_MS` apart, and the user picks one per media from the form's own list. Each is
+pre-selected by a rule (`pickBatchFormatId`, which is the form's own pre-selection for "best", the
+tallest format with video and audio within a height cap, or the best audio-only one), and
+"Pre-select all" applies another rule to all of them at once. A media whose formats could not be
+listed is left out until a retry lists them. The batch then has `create_media` download and register
+each media in the format chosen for it, duplicate check included, one at a time with
+`BATCH_PAUSE_MS` (5 seconds) between two, so YouTube sees what a person adding them by hand would
+make rather than a burst. A media that fails is reported and the batch goes on, and a stop cancels
+the run in progress and starts nothing after it.
+
 ### Changing the library folder
 
 Entry point: Settings > Library folder. `useHomeController` overrides the settings hook's
@@ -574,6 +604,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Media CRUD | `commands/videos.rs`, `services/video_repository/` | `repositories/media-repository.ts`, `services/media-service.ts` |
 | Creating a media (download or import, thumbnail, crash marker, row) | `commands/media.rs`, `services/media_creation.rs`, `services/library/media.rs` | `services/media-input-service.ts`, `hooks/use-add-media-workflow.ts` |
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
+| Media the channel has that the library does not | `commands/yt_dlp.rs` (`list_channel_missing_media`), `services/yt_dlp/channel_listing.rs` | `hooks/channels/use-channel-missing-media.ts`, `hooks/use-batch-import.ts`, `hooks/use-batch-import-options.ts`, `hooks/use-batch-formats.ts`, `components/modals/channel-missing-media-modal.tsx`, `components/modals/channel-batch-import-panel.tsx`, `components/modals/batch-import-setup-panel.tsx` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download/` (`mod.rs`, `fetch.rs`, `process.rs`), `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
 | Database schema/migrations | `services/db_schema/` | (none) |

@@ -179,7 +179,7 @@ function controller(overrides: {
                 loadMoreMedia: vi.fn(),
                 reloadMedia: vi.fn(),
             },
-            adding: { setAddMediaOpen: vi.fn() },
+            adding: { setAddMediaOpen: vi.fn(), openAddMediaForUrl: vi.fn() },
             deletion: { requestDeleteMedia: vi.fn() },
         },
         settings: {

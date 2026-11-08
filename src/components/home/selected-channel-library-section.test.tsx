@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectedChannelLibrarySection } from "./selected-channel-library-section";
 import { fileSrcFromStoredPath } from "../../utils/media-utils";
 import { renderWithMantine } from "../../test/test-utils";
+import { idleBatchImport } from "../../test/factories/media-library";
+import { createYtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 import type { MediaRow } from "../../types/media";
 import type { Channel } from "../../types/media";
 
@@ -84,6 +86,10 @@ function makeProps(
         shellBorder: "rgba(255,255,255,0.1)",
         shellSurface: "rgba(255,255,255,0.03)",
         onAddMedia: vi.fn(),
+        onImportFromYoutube: vi.fn(),
+        batchImport: idleBatchImport(),
+        ytDlpTerminalStore: createYtDlpTerminalStore(),
+        isYtDlpRunning: false,
         onBack: vi.fn(),
         cardActions: {
             onOpenMedia: vi.fn(),

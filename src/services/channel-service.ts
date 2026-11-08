@@ -3,10 +3,12 @@ import {
     deleteChannelWithArtifacts,
     findChannelByYoutubeHandle,
     getChannelById,
+    ignoreChannelMedia,
     insertChannel,
     listChannels,
     replaceChannelAvatar,
     replaceChannelBanner,
+    unignoreChannelMedia,
     updateChannelNameAndHandle,
 } from "../repositories/channel-repository";
 import {
@@ -149,6 +151,22 @@ export async function updateChannelImageWithCleanup(
     }
 
     return report.failed_paths.length;
+}
+
+// Stops offering one of the channel's media on YouTube for import in its "Not in library" list, or
+// offers it again. Kept in the database, so it holds across launches and goes with the channel.
+export async function setChannelMediaIgnored(
+    channelId: number,
+    youtubeVideoId: string,
+    ignored: boolean
+): Promise<void> {
+    validateChannelId(channelId);
+
+    if (ignored) {
+        await ignoreChannelMedia(channelId, youtubeVideoId);
+    } else {
+        await unignoreChannelMedia(channelId, youtubeVideoId);
+    }
 }
 
 // The backend deletes the channel row (media and comments cascade) and its

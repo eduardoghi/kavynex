@@ -5,6 +5,7 @@ import type { ImportMode } from "../../types/settings";
 import type { MediaQueryFilters } from "../../utils/media-library-filters";
 import type { YtDlpTerminalStore } from "../yt-dlp-terminal-store";
 import type { AddMediaFormController } from "../use-add-media-form";
+import type { BatchImportController } from "../use-batch-import";
 import { useAddMediaWorkflow } from "../use-add-media-workflow";
 import { useChannelMediaList } from "../channels/use-channel-media-list";
 import { useMediaActions } from "./use-media-actions";
@@ -39,6 +40,7 @@ export type MediaListSlice = {
 export type AddingMediaSlice = {
     addMediaOpen: boolean;
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
+    openAddMediaForUrl: (url: string) => void;
     closeAddMediaModal: () => Promise<void>;
     isAddingMedia: boolean;
     isCancellingYtDlp: boolean;
@@ -46,6 +48,7 @@ export type AddingMediaSlice = {
     ytDlpTerminalStore: YtDlpTerminalStore;
     isYtDlpRunning: boolean;
     addMediaForm: AddMediaFormController;
+    batchImport: BatchImportController;
     addMedia: () => Promise<void>;
     cancelYtDlpDownload: () => Promise<void>;
 };
@@ -264,6 +267,7 @@ export function useMediaLibrary({
     const adding = useMemoObject<AddingMediaSlice>({
         addMediaOpen: addMediaWorkflow.addMediaOpen,
         setAddMediaOpen: addMediaWorkflow.setAddMediaOpen,
+        openAddMediaForUrl: addMediaWorkflow.openAddMediaForUrl,
         closeAddMediaModal: addMediaWorkflow.closeAddMediaModal,
         isAddingMedia: addMediaWorkflow.isAddingMedia,
         isCancellingYtDlp: addMediaWorkflow.isCancellingYtDlp,
@@ -271,6 +275,7 @@ export function useMediaLibrary({
         ytDlpTerminalStore: addMediaWorkflow.ytDlpTerminalStore,
         isYtDlpRunning: addMediaWorkflow.isYtDlpRunning,
         addMediaForm: addMediaWorkflow.addMediaForm,
+        batchImport: addMediaWorkflow.batchImport,
         addMedia: addMediaWorkflow.addMedia,
         cancelYtDlpDownload: addMediaWorkflow.cancelYtDlpDownload,
     });

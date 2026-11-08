@@ -5,6 +5,7 @@ import {
     deleteChannelWithThumbnailCleanup,
     listAllChannels,
     updateChannelImageWithCleanup,
+    setChannelMediaIgnored,
     updateChannelNameHandle,
 } from "./channel-service";
 
@@ -16,6 +17,8 @@ vi.mock("../repositories/channel-repository", () => ({
     listChannels: vi.fn(),
     replaceChannelAvatar: vi.fn(),
     replaceChannelBanner: vi.fn(),
+    ignoreChannelMedia: vi.fn(),
+    unignoreChannelMedia: vi.fn(),
     updateChannelNameAndHandle: vi.fn(),
 }));
 
@@ -37,6 +40,8 @@ import {
     listChannels,
     replaceChannelAvatar,
     replaceChannelBanner,
+    ignoreChannelMedia,
+    unignoreChannelMedia,
 } from "../repositories/channel-repository";
 import {
     validateChannelId,
@@ -214,6 +219,15 @@ describe("channel-service", () => {
             null,
             { channelId: 10, failedPaths: ["thumbnails/old.png"] }
         );
+    });
+
+    it("ignores a channel media, or offers it again, through the matching command", async () => {
+        await setChannelMediaIgnored(10, "aaaaaaaaaaa", true);
+        expect(ignoreChannelMedia).toHaveBeenCalledWith(10, "aaaaaaaaaaa");
+        expect(unignoreChannelMedia).not.toHaveBeenCalled();
+
+        await setChannelMediaIgnored(10, "aaaaaaaaaaa", false);
+        expect(unignoreChannelMedia).toHaveBeenCalledWith(10, "aaaaaaaaaaa");
     });
 
     it("sets the banner through its own backend command", async () => {

@@ -5,6 +5,7 @@ import type {
     MediaLibraryController,
     MediaListSlice,
 } from "../../hooks/media/use-media-library";
+import type { BatchImportController } from "../../hooks/use-batch-import";
 
 export type FlatMediaLibraryController = MediaListSlice &
     AddingMediaSlice &
@@ -32,6 +33,7 @@ export function nestMediaLibrary(flat: FlatMediaLibraryController): MediaLibrary
         adding: {
             addMediaOpen: flat.addMediaOpen,
             setAddMediaOpen: flat.setAddMediaOpen,
+            openAddMediaForUrl: flat.openAddMediaForUrl,
             closeAddMediaModal: flat.closeAddMediaModal,
             isAddingMedia: flat.isAddingMedia,
             isCancellingYtDlp: flat.isCancellingYtDlp,
@@ -39,6 +41,7 @@ export function nestMediaLibrary(flat: FlatMediaLibraryController): MediaLibrary
             ytDlpTerminalStore: flat.ytDlpTerminalStore,
             isYtDlpRunning: flat.isYtDlpRunning,
             addMediaForm: flat.addMediaForm,
+            batchImport: flat.batchImport,
             addMedia: flat.addMedia,
             cancelYtDlpDownload: flat.cancelYtDlpDownload,
         },
@@ -65,5 +68,19 @@ export function nestMediaLibrary(flat: FlatMediaLibraryController): MediaLibrary
         },
         mediaPlayer: flat.mediaPlayer,
         clearMediaAndPlayer: flat.clearMediaAndPlayer,
+    };
+}
+
+// A batch import that has not run, for a fixture that does not exercise one.
+export function idleBatchImport(): BatchImportController {
+    return {
+        channelId: null,
+        items: [],
+        isRunning: false,
+        isStopping: false,
+        start: async () => {},
+        stop: () => {},
+        retryFailed: async () => {},
+        clear: () => {},
     };
 }

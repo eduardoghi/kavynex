@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pickFile, type FileDialogFilter, type FilePurpose } from "../services/file-dialog-service";
+import { COOKIES_FILE_FILTERS, isCookiesTextFile } from "../utils/cookies-file";
 import type { MediaSourceMode, MediaType, YtDlpFormatOption } from "../types/media";
 import {
     AUDIO_FILE_EXTENSIONS,
@@ -39,7 +40,6 @@ const MEDIA_FILE_FILTERS: FileDialogFilter[] = [
 const IMAGE_FILE_FILTERS: FileDialogFilter[] = [
     { name: "Images", extensions: [...IMAGE_FILE_EXTENSIONS] },
 ];
-const COOKIES_FILE_FILTERS: FileDialogFilter[] = [{ name: "Cookies file", extensions: ["txt"] }];
 
 type UseAddMediaFormOptions = {
     onError?: (message: string) => void;
@@ -74,6 +74,10 @@ export type AddMediaFormController = {
 
     setSourceMode: (value: MediaSourceMode) => Promise<void>;
     setMediaUrl: (value: string) => void;
+    // Puts the form in the yt-dlp mode on `url`, for a form just reset. Through the state setters
+    // rather than setSourceMode and setMediaUrl, whose closures still hold the mode from before the
+    // reset.
+    prefillYoutubeUrl: (url: string) => void;
     setTitle: (value: string) => void;
     setPublishedAt: (value: string) => void;
     setDownloadComments: (value: boolean) => void;
@@ -95,16 +99,6 @@ function normalizeCookiesBrowser(value: string): string {
     const normalized = value.trim().toLowerCase();
     if (normalized === "" || normalized === "manual") return normalized;
     return COOKIES_BROWSER_VALUES.has(normalized) ? normalized : "";
-}
-
-function isCookiesTextFile(path: string): boolean {
-    const normalized = path.trim().toLowerCase();
-
-    if (!normalized) {
-        return false;
-    }
-
-    return normalized.endsWith(".txt");
 }
 
 export function useAddMediaForm({
@@ -391,6 +385,15 @@ export function useAddMediaForm({
         ]
     );
 
+    const prefillYoutubeUrl = useCallback(
+        (url: string): void => {
+            setSourceModeState("yt-dlp");
+            setMediaUrlState(url);
+            titleAutoFilledRef.current = false;
+        },
+        [setSourceModeState, setMediaUrlState]
+    );
+
     const setTitle = useCallback(
         (value: string): void => {
             titleAutoFilledRef.current = false;
@@ -578,6 +581,7 @@ export function useAddMediaForm({
         clearCookiesPath,
         setSelectedYtDlpFormatId,
         loadYtDlpFormats,
+        prefillYoutubeUrl,
 
         pickMediaViaDialog,
         pickThumbViaDialog,

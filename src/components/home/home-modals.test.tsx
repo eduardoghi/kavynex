@@ -13,7 +13,7 @@ import type { DatabaseRecoveryController } from "../../hooks/use-app-bootstrap";
 import type { DiagnosticsController } from "../../hooks/use-diagnostics";
 import type { ErrorModalController } from "../../hooks/use-error-modal";
 import { createYtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
-import { nestMediaLibrary } from "../../test/factories/media-library";
+import { nestMediaLibrary, idleBatchImport } from "../../test/factories/media-library";
 
 function createAddMediaForm(): AddMediaFormController {
     return {
@@ -51,6 +51,7 @@ function createAddMediaForm(): AddMediaFormController {
         clearCookiesPath: vi.fn(),
         setSelectedYtDlpFormatId: vi.fn(),
         loadYtDlpFormats: vi.fn().mockResolvedValue(undefined),
+        prefillYoutubeUrl: vi.fn(),
         pickMediaViaDialog: vi.fn().mockResolvedValue(undefined),
         pickThumbViaDialog: vi.fn().mockResolvedValue(undefined),
         resetForm: vi.fn().mockResolvedValue(undefined),
@@ -132,6 +133,8 @@ function createMedia(): MediaLibraryController {
         mediaItems: [],
         addMediaOpen: true,
         setAddMediaOpen: vi.fn(),
+        openAddMediaForUrl: vi.fn(),
+        batchImport: idleBatchImport(),
         closeAddMediaModal: vi.fn().mockResolvedValue(undefined),
         confirmDeleteMediaOpen: true,
         mediaToDelete: null,

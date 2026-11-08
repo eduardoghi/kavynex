@@ -46,6 +46,7 @@ function createForm(overrides: Partial<AddMediaFormController> = {}): AddMediaFo
         clearCookiesPath: vi.fn(),
         setSelectedYtDlpFormatId: vi.fn(),
         loadYtDlpFormats: vi.fn(async () => {}),
+        prefillYoutubeUrl: vi.fn(),
         pickMediaViaDialog: vi.fn(async () => {}),
         pickThumbViaDialog: vi.fn(async () => {}),
         resetForm: vi.fn(async () => {}),

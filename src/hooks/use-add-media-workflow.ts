@@ -5,6 +5,7 @@ import { cancelMediaDownload } from "../services/media-download-service";
 import { useAddMediaForm } from "./use-add-media-form";
 import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents } from "./use-yt-dlp-events";
+import { useBatchImport, type BatchImportController } from "./use-batch-import";
 import type { YtDlpTerminalStore } from "./yt-dlp-terminal-store";
 import { resolveErrorMessage } from "../utils/error-message";
 import { parseAppError } from "../utils/app-error";
@@ -42,6 +43,9 @@ type UseAddMediaWorkflowOptions = {
 type UseAddMediaWorkflowReturn = {
     addMediaOpen: boolean;
     setAddMediaOpen: React.Dispatch<React.SetStateAction<boolean>>;
+    // Opens the modal on a YouTube URL in the yt-dlp mode and loads its formats, for a media picked
+    // from a list rather than pasted.
+    openAddMediaForUrl: (url: string) => void;
     isAddingMedia: boolean;
     isCancellingYtDlp: boolean;
     // The comment backup that runs after a download was registered. Cancelling it skips the
@@ -51,6 +55,9 @@ type UseAddMediaWorkflowReturn = {
     ytDlpTerminalStore: YtDlpTerminalStore;
     isYtDlpRunning: boolean;
     addMediaForm: ReturnType<typeof useAddMediaForm>;
+    // Adds several media from a channel's "Not in library" list, one after another. Runs under the
+    // same flag as a single add, so each blocks the other and both block what an add blocks.
+    batchImport: BatchImportController;
     addMedia: () => Promise<void>;
     cancelYtDlpDownload: () => Promise<void>;
     closeAddMediaModal: () => Promise<void>;
@@ -99,6 +106,12 @@ export function useAddMediaWorkflow({
     } = useAsyncFlag();
 
     const wasAddMediaOpenRef = useRef(false);
+    // The URL `openAddMediaForUrl` opens the modal on. Opening resets the form (the effect at the
+    // end of this hook), so it is applied after that reset rather than before it, where the reset
+    // wiped it.
+    const pendingUrlRef = useRef<string | null>(null);
+    // The URL whose formats load once the form shows it.
+    const [formatsToLoadFor, setFormatsToLoadFor] = useState<string | null>(null);
     const previousSelectedChannelIdRef = useRef<number | null>(selectedChannelId);
 
     // The run id of a local import currently in flight, or "" when none is. A yt-dlp run already
@@ -115,6 +128,15 @@ export function useAddMediaWorkflow({
 
     const ytDlpEvents = useYtDlpEvents();
     const { startManualSession } = ytDlpEvents;
+
+    const batchImport = useBatchImport({
+        importMode,
+        libraryPath,
+        runAddMedia,
+        startRun: ytDlpEvents.startRun,
+        appendManualLog: ytDlpEvents.appendManualLog,
+        onReloadMedia,
+    });
 
     // Memoized because the form hook depends on these callbacks. Built inline, the object was new on
     // every render (every log line during a download) and recreated the form's yt-dlp callbacks
@@ -465,9 +487,49 @@ export function useAddMediaWorkflow({
         ytDlpEvents.isYtDlpRunning,
     ]);
 
+    const { prefillYoutubeUrl, loadYtDlpFormats, sourceMode, mediaUrl } = addMediaForm;
+
+    const openAddMediaForUrl = useCallback(
+        (url: string): void => {
+            if (addMediaOpen) {
+                prefillYoutubeUrl(url);
+                setFormatsToLoadFor(url);
+                return;
+            }
+
+            pendingUrlRef.current = url;
+            setAddMediaOpen(true);
+        },
+        [addMediaOpen, prefillYoutubeUrl]
+    );
+
+    // Loaded once the form shows the URL, since the loader reads it from what the form last
+    // rendered.
+    useEffect(() => {
+        if (
+            formatsToLoadFor === null ||
+            !addMediaOpen ||
+            sourceMode !== "yt-dlp" ||
+            mediaUrl !== formatsToLoadFor
+        ) {
+            return;
+        }
+
+        setFormatsToLoadFor(null);
+        void loadYtDlpFormats();
+    }, [formatsToLoadFor, addMediaOpen, sourceMode, mediaUrl, loadYtDlpFormats]);
+
     useEffect(() => {
         if (addMediaOpen && !wasAddMediaOpenRef.current) {
-            void resetForm();
+            void resetForm().then(() => {
+                const url = pendingUrlRef.current;
+                pendingUrlRef.current = null;
+
+                if (url) {
+                    prefillYoutubeUrl(url);
+                    setFormatsToLoadFor(url);
+                }
+            });
         }
 
         if (!addMediaOpen && wasAddMediaOpenRef.current) {
@@ -476,17 +538,19 @@ export function useAddMediaWorkflow({
         }
 
         wasAddMediaOpenRef.current = addMediaOpen;
-    }, [resetForm, addMediaOpen, resetCancellingYtDlp, resetYtDlpState]);
+    }, [resetForm, addMediaOpen, resetCancellingYtDlp, resetYtDlpState, prefillYoutubeUrl]);
 
     return useMemoObject({
         addMediaOpen,
         setAddMediaOpen,
+        openAddMediaForUrl,
         isAddingMedia,
         isCancellingYtDlp,
         isFetchingComments,
         ytDlpTerminalStore,
         isYtDlpRunning,
         addMediaForm,
+        batchImport,
         addMedia,
         cancelYtDlpDownload,
         closeAddMediaModal,

@@ -65,6 +65,20 @@ export async function replaceChannelBanner(
     });
 }
 
+export async function ignoreChannelMedia(
+    channelId: number,
+    youtubeVideoId: string
+): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.IGNORE_CHANNEL_MEDIA, { channelId, youtubeVideoId });
+}
+
+export async function unignoreChannelMedia(
+    channelId: number,
+    youtubeVideoId: string
+): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.UNIGNORE_CHANNEL_MEDIA, { channelId, youtubeVideoId });
+}
+
 export async function deleteChannelWithArtifacts(
     channelId: number
 ): Promise<ArtifactCleanupReport> {

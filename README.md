@@ -16,6 +16,8 @@ It was built to preserve the channels I follow, and it is what I use for that.
 **Archiving**
 
 - Back up a channel's video and audio with `yt-dlp`
+- See which of a channel's videos and lives on YouTube are not in your library yet, import them
+  one by one or a chosen few in a row, or set aside the ones you do not want
 - Save the comment section, with the reply threads rebuilt as they were
 - Save a stream's live chat and replay it alongside the video, in sync through seeks
 - Save thumbnails with the media they belong to

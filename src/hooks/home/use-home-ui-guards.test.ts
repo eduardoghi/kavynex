@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useHomeUiGuards } from "./use-home-ui-guards";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
-import { nestMediaLibrary } from "../../test/factories/media-library";
+import { nestMediaLibrary, idleBatchImport } from "../../test/factories/media-library";
 
 describe("useHomeUiGuards", () => {
     function createSettingsState(overrides?: Partial<any>) {
@@ -49,6 +49,8 @@ describe("useHomeUiGuards", () => {
 
             addMediaOpen: true,
             setAddMediaOpen: vi.fn(),
+            openAddMediaForUrl: vi.fn(),
+            batchImport: idleBatchImport(),
             closeAddMediaModal: vi.fn().mockResolvedValue(undefined),
 
             confirmDeleteMediaOpen: false,
@@ -102,6 +104,7 @@ describe("useHomeUiGuards", () => {
                 clearCookiesPath: vi.fn(),
                 setSelectedYtDlpFormatId: vi.fn(),
                 loadYtDlpFormats: vi.fn(),
+                prefillYoutubeUrl: vi.fn(),
 
                 pickMediaViaDialog: vi.fn(),
                 pickThumbViaDialog: vi.fn(),

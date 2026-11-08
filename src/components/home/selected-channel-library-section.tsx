@@ -17,6 +17,7 @@ import {
     ArrowLeft,
     ArrowUpAZ,
     ArrowUpNarrowWide,
+    ListPlus,
     Search,
     Video,
     X,
@@ -32,6 +33,11 @@ import type { Channel, MediaRow } from "../../types/media";
 import { toUnionValue } from "../../utils/guards";
 import { useState } from "react";
 import { AppButton } from "../ui/app-button";
+import { ChannelMissingMediaModal } from "../modals/channel-missing-media-modal";
+import { useChannelMissingMedia } from "../../hooks/channels/use-channel-missing-media";
+import type { ChannelMediaOnYoutube } from "../../types/generated/ChannelMediaOnYoutube";
+import type { BatchImportController } from "../../hooks/use-batch-import";
+import type { YtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 
 
 // The per-card actions the grid exposes on each media row. Grouped into one object rather than
@@ -79,6 +85,13 @@ type SelectedChannelLibrarySectionProps = {
     shellBorder: string;
     shellSurface: string;
     onAddMedia: () => void;
+    // Opens the add-media form on a YouTube URL, for a media the channel has on YouTube and the
+    // library does not.
+    onImportFromYoutube: (url: string) => void;
+    // The batch import the "Not in library" list starts, and the terminal that shows its downloads.
+    batchImport: BatchImportController;
+    ytDlpTerminalStore: YtDlpTerminalStore;
+    isYtDlpRunning: boolean;
     onBack: () => void;
     cardActions: MediaCardActions;
 };
@@ -107,9 +120,23 @@ export function SelectedChannelLibrarySection({
     shellBorder,
     shellSurface,
     onAddMedia,
+    onImportFromYoutube,
+    batchImport,
+    ytDlpTerminalStore,
+    isYtDlpRunning,
     onBack,
     cardActions,
 }: SelectedChannelLibrarySectionProps): JSX.Element {
+    // Per channel page. The section is remounted for each channel, so a listing never carries over.
+    const missingMedia = useChannelMissingMedia(selectedChannel.id);
+    const [missingMediaOpen, setMissingMediaOpen] = useState(false);
+
+    const importFromYoutube = (media: ChannelMediaOnYoutube): void => {
+        missingMedia.markOpened(media.youtube_video_id);
+        setMissingMediaOpen(false);
+        onImportFromYoutube(`https://www.youtube.com/watch?v=${media.youtube_video_id}`);
+    };
+
     const avatarSrc = fileSrcFromStoredPath(selectedChannel.avatar_path, libraryPath);
     const bannerSrc = fileSrcFromStoredPath(selectedChannel.banner_path, libraryPath);
     // A banner whose file is gone from the library draws nothing rather than a broken image. The
@@ -203,6 +230,22 @@ export function SelectedChannelLibrarySection({
                             disabled={disableAddMedia}
                         >
                             {UI_TEXT.home.addMedia}
+                        </AppButton>
+
+                        <AppButton
+                            appVariant="secondary"
+                            leftSection={<ListPlus size={18} />}
+                            onClick={() => setMissingMediaOpen(true)}
+                        >
+                            {batchImport.isRunning && batchImport.channelId === selectedChannel.id
+                                ? `Importing ${formatNumber(
+                                      batchImport.items.filter(
+                                          (item) =>
+                                              item.status !== "waiting" &&
+                                              item.status !== "downloading"
+                                      ).length + 1
+                                  )} of ${formatNumber(batchImport.items.length)}`
+                                : "Not in library"}
                         </AppButton>
 
                         <AppButton
@@ -424,6 +467,23 @@ export function SelectedChannelLibrarySection({
                 onOpenFileLocation={cardActions.onOpenFileLocation}
                 onOpenSourceInYoutube={cardActions.onOpenSourceInYoutube}
                 onEditTitle={cardActions.onEditTitle}
+            />
+
+            <ChannelMissingMediaModal
+                opened={missingMediaOpen}
+                onClose={() => setMissingMediaOpen(false)}
+                channelId={selectedChannel.id}
+                channelName={selectedChannel.name}
+                missingMedia={missingMedia}
+                onImport={importFromYoutube}
+                importDisabledReason={
+                    disableAddMedia
+                        ? addMediaDisabledReason || "Adding media is not possible right now."
+                        : null
+                }
+                batchImport={batchImport}
+                terminal={ytDlpTerminalStore}
+                isYtDlpRunning={isYtDlpRunning}
             />
         </Stack>
     );

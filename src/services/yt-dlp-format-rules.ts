@@ -462,6 +462,35 @@ export function inferPreferredFormatId(formats: YtDlpFormat[]): string {
     return formats[0]?.format_id ?? "";
 }
 
+// The best format with video and audio no taller than `maxHeight`, in a list built by
+// buildMergedFormats (which ranks a merged selector above a native format, and the taller above the
+// shorter within each). A media with nothing that short gets its shortest one, the closest it has to
+// what was asked, and one whose formats carry no height at all gets what inferPreferredFormatId
+// picks.
+export function inferPreferredFormatIdUpTo(formats: YtDlpFormat[], maxHeight: number): string {
+    const withBoth = formats.filter((item) => item.has_video && item.has_audio);
+    const withinLimit = withBoth.find((item) => item.height != null && item.height <= maxHeight);
+
+    if (withinLimit) {
+        return withinLimit.format_id;
+    }
+
+    const shortest = withBoth
+        .filter((item) => item.height != null)
+        .reduce<YtDlpFormat | null>(
+            (best, item) => (best === null || item.height! < best.height! ? item : best),
+            null
+        );
+
+    return shortest?.format_id ?? inferPreferredFormatId(formats);
+}
+
+// The audio-only format a list built by buildMergedFormats ranks first (the preferred language and
+// track, then the best bitrate), or "" when it offers none. A batch asked for audio takes it.
+export function inferPreferredAudioFormatId(formats: YtDlpFormat[]): string {
+    return formats.find((item) => item.has_audio && !item.has_video)?.format_id ?? "";
+}
+
 export function inferSelectedMediaType(formats: YtDlpFormat[], selectedFormatId: string): MediaType {
     const selected = formats.find((item) => item.format_id === selectedFormatId);
 

@@ -16,6 +16,7 @@ import type {
     YtDlpFormatsResult,
 } from "../types/media";
 import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
+import type { MissingChannelMedia } from "../types/generated/MissingChannelMedia";
 import type { CreatedMedia } from "../types/generated/CreatedMedia";
 import type {
     ExternalToolsStatus,
@@ -96,6 +97,7 @@ export type TauriCommandReturns = {
     delete_temporary_thumbnail: void;
 
     list_yt_dlp_formats: YtDlpFormatsResult;
+    list_channel_missing_media: MissingChannelMedia;
     cancel_media_download: void;
     fetch_media_comments: MediaCommentsFetch;
 
@@ -127,6 +129,8 @@ export type TauriCommandReturns = {
     update_channel_name_and_handle: void;
     replace_channel_avatar: ArtifactCleanupReport;
     replace_channel_banner: ArtifactCleanupReport;
+    ignore_channel_media: void;
+    unignore_channel_media: void;
     delete_channel_with_artifacts: ArtifactCleanupReport;
 
     update_media_title: void;

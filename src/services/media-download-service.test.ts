@@ -6,11 +6,30 @@ vi.mock("../lib/tauri-client", () => ({
 }));
 
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
-import { cancelMediaDownload, listYtDlpFormats } from "./media-download-service";
+import {
+    cancelMediaDownload,
+    listChannelMissingMedia,
+    listYtDlpFormats,
+} from "./media-download-service";
 
 describe("media-download-service", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it("lists a channel's missing media by its id, under the run id given", async () => {
+        vi.mocked(invokeCommand).mockResolvedValueOnce({ missing: [], ignored: [], listed: 0 });
+
+        await expect(listChannelMissingMedia(7, " channel-listing-1 ")).resolves.toEqual({
+            missing: [],
+            ignored: [],
+            listed: 0,
+        });
+
+        expect(invokeCommand).toHaveBeenCalledWith("list_channel_missing_media", {
+            channelId: 7,
+            runId: "channel-listing-1",
+        });
     });
 
     it("returns empty formats result when url is empty", async () => {

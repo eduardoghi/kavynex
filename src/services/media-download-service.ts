@@ -2,6 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid } from "../lib/tauri-client";
 import type { YtDlpFormatsResult } from "../types/media";
 import type { MediaCommentsFetch } from "../types/generated/MediaCommentsFetch";
+import type { MissingChannelMedia } from "../types/generated/MissingChannelMedia";
 import {
     INVALID_RUN_ID_ERROR_CODE,
     INVALID_YOUTUBE_VIDEO_ID_ERROR_CODE,
@@ -50,6 +51,18 @@ export async function listYtDlpFormats(
         cookiesPath: normalizeCookiesPath(cookiesPath),
         // Optional. When set, the backend registers the run so cancelMediaDownload(runId) can abort
         // a slow format probe instead of it running to the yt-dlp timeout.
+        runId: normalizeRunId(runId),
+    });
+}
+
+// The videos and past lives the channel has on YouTube that the library does not. Lists only, and
+// downloads nothing. `runId` registers the listing so cancelMediaDownload(runId) can stop it.
+export async function listChannelMissingMedia(
+    channelId: number,
+    runId?: string | null
+): Promise<MissingChannelMedia> {
+    return invokeCommand(TAURI_COMMANDS.LIST_CHANNEL_MISSING_MEDIA, {
+        channelId,
         runId: normalizeRunId(runId),
     });
 }

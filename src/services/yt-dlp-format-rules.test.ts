@@ -5,6 +5,8 @@ import type { YtDlpFormat } from "../types/media";
 import {
     buildCompactLabel,
     buildMergedFormats,
+    inferPreferredAudioFormatId,
+    inferPreferredFormatIdUpTo,
     inferPreferredFormatId,
     inferSelectedMediaType,
     isValidYtDlpFormatId,
@@ -229,6 +231,45 @@ describe("inferPreferredFormatId", () => {
 
     it("returns an empty string with no formats", () => {
         expect(inferPreferredFormatId([])).toBe("");
+    });
+});
+
+describe("inferPreferredFormatIdUpTo", () => {
+    const formats = buildMergedFormats([
+        format({ format_id: "137", has_audio: false, height: 1080 }),
+        format({ format_id: "136", has_audio: false, height: 720 }),
+        format({ format_id: "135", has_audio: false, height: 480 }),
+        format({ format_id: "140", has_video: false, media_type: "audio", abr: 128 }),
+    ]);
+
+    it("takes the tallest format with video and audio within the limit", () => {
+        expect(inferPreferredFormatIdUpTo(formats, 1080)).toBe("137+140");
+        expect(inferPreferredFormatIdUpTo(formats, 720)).toBe("136+140");
+        expect(inferPreferredFormatIdUpTo(formats, 600)).toBe("135+140");
+    });
+
+    it("takes the shortest when nothing is within the limit", () => {
+        expect(inferPreferredFormatIdUpTo(formats, 360)).toBe("135+140");
+    });
+
+    it("falls back on the usual pick when no format says its height", () => {
+        expect(inferPreferredFormatIdUpTo([format({ format_id: "18" })], 720)).toBe("18");
+    });
+});
+
+describe("inferPreferredAudioFormatId", () => {
+    it("takes the audio-only format the merged list ranks first", () => {
+        const formats = buildMergedFormats([
+            format({ format_id: "137", has_audio: false, height: 1080 }),
+            format({ format_id: "139", has_video: false, media_type: "audio", abr: 48 }),
+            format({ format_id: "140", has_video: false, media_type: "audio", abr: 128 }),
+        ]);
+
+        expect(inferPreferredAudioFormatId(formats)).toBe("140");
+    });
+
+    it("returns an empty string when no audio-only format is offered", () => {
+        expect(inferPreferredAudioFormatId([format({ format_id: "18" })])).toBe("");
     });
 });
 

@@ -75,7 +75,7 @@ import { useHomeViewState } from "./use-home-view-state";
 import { useHomeLibraryPanel } from "./use-home-library-panel";
 import { checkAppUpdate } from "../../services/app-update-service";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
-import { nestMediaLibrary } from "../../test/factories/media-library";
+import { nestMediaLibrary, idleBatchImport } from "../../test/factories/media-library";
 
 const mockErrorState = {
     errorOpen: true,
@@ -201,6 +201,8 @@ const mockMediaLibrary = nestMediaLibrary({
 
     addMediaOpen: false,
     setAddMediaOpen: vi.fn(),
+    openAddMediaForUrl: vi.fn(),
+    batchImport: idleBatchImport(),
     closeAddMediaModal: vi.fn(),
 
     confirmDeleteMediaOpen: false,
@@ -252,6 +254,7 @@ const mockMediaLibrary = nestMediaLibrary({
         clearCookiesPath: vi.fn(),
         setSelectedYtDlpFormatId: vi.fn(),
         loadYtDlpFormats: vi.fn(),
+        prefillYoutubeUrl: vi.fn(),
 
         pickMediaViaDialog: vi.fn(),
         pickThumbViaDialog: vi.fn(),

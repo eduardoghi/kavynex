@@ -57,6 +57,7 @@ export const TAURI_COMMANDS = {
     DELETE_TEMP_THUMBNAIL: "delete_temporary_thumbnail",
 
     LIST_YT_DLP_FORMATS: "list_yt_dlp_formats",
+    LIST_CHANNEL_MISSING_MEDIA: "list_channel_missing_media",
     CANCEL_MEDIA_DOWNLOAD: "cancel_media_download",
     FETCH_MEDIA_COMMENTS: "fetch_media_comments",
 
@@ -88,6 +89,8 @@ export const TAURI_COMMANDS = {
     UPDATE_CHANNEL_NAME_AND_HANDLE: "update_channel_name_and_handle",
     REPLACE_CHANNEL_AVATAR: "replace_channel_avatar",
     REPLACE_CHANNEL_BANNER: "replace_channel_banner",
+    IGNORE_CHANNEL_MEDIA: "ignore_channel_media",
+    UNIGNORE_CHANNEL_MEDIA: "unignore_channel_media",
     DELETE_CHANNEL_WITH_ARTIFACTS: "delete_channel_with_artifacts",
 
     UPDATE_MEDIA_TITLE: "update_media_title",

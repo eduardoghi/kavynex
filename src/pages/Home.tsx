@@ -373,6 +373,14 @@ export default function Home(): JSX.Element {
                                         shellBorder={viewState.shellBorder}
                                         shellSurface={viewState.shellSurface}
                                         onAddMedia={() => media.adding.setAddMediaOpen(true)}
+                                        // A media the channel has on YouTube and the
+                                        // library does not. The form opens on its URL with
+                                        // the formats loading, and the user picks one as for
+                                        // any other.
+                                        onImportFromYoutube={media.adding.openAddMediaForUrl}
+                                        batchImport={media.adding.batchImport}
+                                        ytDlpTerminalStore={media.adding.ytDlpTerminalStore}
+                                        isYtDlpRunning={media.adding.isYtDlpRunning}
                                         onBack={() => channels.setSelectedChannelId(null)}
                                         cardActions={{
                                             onOpenMedia: media.mediaPlayer.openPlayer,

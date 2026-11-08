@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { useHomeMediaActions } from "./use-home-media-actions";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
-import { nestMediaLibrary } from "../../test/factories/media-library";
+import { nestMediaLibrary, idleBatchImport } from "../../test/factories/media-library";
 
 describe("useHomeMediaActions", () => {
     function createDiagnosticsState(overrides?: Partial<any>) {
@@ -30,6 +30,8 @@ describe("useHomeMediaActions", () => {
 
             addMediaOpen: false,
             setAddMediaOpen: vi.fn(),
+            openAddMediaForUrl: vi.fn(),
+            batchImport: idleBatchImport(),
             closeAddMediaModal: vi.fn(),
 
             confirmDeleteMediaOpen: false,
@@ -81,6 +83,7 @@ describe("useHomeMediaActions", () => {
                 clearCookiesPath: vi.fn(),
                 setSelectedYtDlpFormatId: vi.fn(),
                 loadYtDlpFormats: vi.fn(),
+                prefillYoutubeUrl: vi.fn(),
 
                 pickMediaViaDialog: vi.fn(),
                 pickThumbViaDialog: vi.fn(),

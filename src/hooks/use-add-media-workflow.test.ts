@@ -86,6 +86,7 @@ function createMockAddMediaForm(): MockAddMediaForm {
         clearCookiesPath: vi.fn(),
         setSelectedYtDlpFormatId: vi.fn(),
         loadYtDlpFormats: vi.fn(),
+        prefillYoutubeUrl: vi.fn(),
         pickMediaViaDialog: vi.fn(),
         pickThumbViaDialog: vi.fn(),
         resetForm: mockResetForm,
@@ -151,6 +152,43 @@ describe("useAddMediaWorkflow", () => {
 
     afterEach(() => {
         consoleErrorSpy.mockRestore();
+    });
+
+    it("opens on a URL after the reset, in the yt-dlp mode, and loads its formats", async () => {
+        // Set before opening, the URL was wiped by the reset that opening runs, and the form came
+        // up empty.
+        const url = "https://www.youtube.com/watch?v=aaaaaaaaaaa";
+        const order: string[] = [];
+        mockResetForm.mockImplementation(async () => {
+            order.push("reset");
+        });
+        mockAddMediaForm.prefillYoutubeUrl.mockImplementation((value: string) => {
+            order.push(`prefill ${value}`);
+            mockAddMediaForm.sourceMode = "yt-dlp";
+            mockAddMediaForm.mediaUrl = value;
+        });
+        mockAddMediaForm.loadYtDlpFormats.mockImplementation(() => {
+            order.push("load");
+        });
+
+        const { result } = renderHook(() =>
+            useAddMediaWorkflow({
+                selectedChannelId: 10,
+                importMode: "copy",
+                libraryPath: "/library",
+                onError,
+                onNotice,
+                onReloadMedia,
+            })
+        );
+
+        await act(async () => {
+            result.current.openAddMediaForUrl(url);
+        });
+        await act(async () => {});
+
+        expect(result.current.addMediaOpen).toBe(true);
+        expect(order).toEqual(["reset", `prefill ${url}`, "load"]);
     });
 
     it("adds local media and reloads list", async () => {

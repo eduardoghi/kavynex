@@ -65,6 +65,7 @@ import type { LibraryTrashSummary } from "../types/generated/LibraryTrashSummary
 import type { AppUpdateDownloadProgress } from "../types/generated/AppUpdateDownloadProgress";
 import type { MigrateLibraryDirectoryResult } from "../types/generated/MigrateLibraryDirectoryResult";
 import type { MediaPage } from "../types/generated/MediaPage";
+import type { MissingChannelMedia } from "../types/generated/MissingChannelMedia";
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
 import type { StartupNotices } from "../types/generated/StartupNotices";
@@ -150,6 +151,20 @@ const ytDlpFormatsResultSchema = z.object({
     youtube_video_id: z.string().nullable(),
     formats: z.array(ytDlpFormatSchema),
     terminal_logs: z.array(z.string()),
+});
+
+const channelMediaOnYoutubeSchema = z.object({
+    youtube_video_id: z.string(),
+    title: z.string(),
+    kind: z.enum(["video", "live"]),
+    duration_seconds: z.number().nullable(),
+    published_at: z.number().nullable(),
+});
+
+const missingChannelMediaSchema = z.object({
+    missing: z.array(channelMediaOnYoutubeSchema),
+    ignored: z.array(channelMediaOnYoutubeSchema),
+    listed: z.number(),
 });
 
 const externalToolStatusSchema = z.object({
@@ -428,6 +443,8 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         displayThumbnailSchema
     ) satisfies z.ZodType<DisplayThumbnail[]>,
     list_yt_dlp_formats: ytDlpFormatsResultSchema satisfies z.ZodType<YtDlpFormatsResult>,
+    list_channel_missing_media:
+        missingChannelMediaSchema satisfies z.ZodType<MissingChannelMedia>,
     fetch_media_comments: mediaCommentsFetchSchema satisfies z.ZodType<MediaCommentsFetch>,
     get_database_backup_status: databaseBackupStatusSchema satisfies z.ZodType<DatabaseBackupStatus>,
     check_database_integrity:
