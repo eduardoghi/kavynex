@@ -21,11 +21,10 @@ export type {
 } from "./live-chat-parsing";
 
 /**
- * Lists stored live chat files as library-relative paths (e.g. `live_chat/<file>`), for
- * diagnostics.
+ * How many live chat files the library stores, for diagnostics.
  */
-export async function listLiveChatFiles(): Promise<string[]> {
-    return invokeCommand(TAURI_COMMANDS.LIST_LIVE_CHAT_FILES);
+export async function countLiveChatFiles(): Promise<number> {
+    return invokeCommand(TAURI_COMMANDS.COUNT_LIVE_CHAT_FILES);
 }
 
 /**

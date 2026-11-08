@@ -693,7 +693,7 @@ pub fn run() {
             commands::media::create_media,
             commands::live_chat::stream_live_chat_file,
             commands::live_chat::cancel_live_chat_stream,
-            commands::live_chat::list_live_chat_files,
+            commands::live_chat::count_live_chat_files,
             commands::live_chat::migrate_live_chat_to_library,
             commands::thumbnail::generate_temporary_thumbnail,
             commands::thumbnail::persist_thumbnail_file,

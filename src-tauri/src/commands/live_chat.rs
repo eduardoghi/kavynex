@@ -8,8 +8,8 @@ use tauri::{AppHandle, Manager, Runtime};
 use crate::constants::LIBRARY_DIR_LIVE_CHAT;
 use crate::services::library::guard::configured_library_dir;
 use crate::services::live_chat_storage::{
-    acquire_read_permit, compress_existing_live_chat_files, list_live_chat_relative_paths,
-    migrate_live_chat_files, stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
+    acquire_read_permit, compress_existing_live_chat_files, migrate_live_chat_files,
+    stream_live_chat_lines, LIVE_CHAT_STREAM_BATCH_LINES,
 };
 use crate::utils::path::{
     absolute_path_from_relative, ensure_existing_path_inside_dir,
@@ -205,11 +205,12 @@ pub async fn stream_live_chat_file<R: Runtime>(
     .await
 }
 
-/// Lists stored live chat files as library-relative paths, for diagnostics.
+/// How many live chat files the library stores, for diagnostics, which shows only the number.
 #[tauri::command]
-pub async fn list_live_chat_files<R: Runtime>(app: AppHandle<R>) -> AppResult<Vec<String>> {
+pub async fn count_live_chat_files<R: Runtime>(app: AppHandle<R>) -> AppResult<u64> {
     let library_dir = configured_library_dir(&app).await?;
-    run_blocking(move || list_live_chat_relative_paths(&library_dir)).await
+    run_blocking(move || crate::services::live_chat_storage::count_live_chat_files(&library_dir))
+        .await
 }
 
 /// Moves any live chat files still in the old app-data location into the library and
@@ -443,7 +444,7 @@ mod tests {
                 })
                 .invoke_handler(tauri::generate_handler![
                     stream_live_chat_file,
-                    list_live_chat_files,
+                    count_live_chat_files,
                     migrate_live_chat_to_library
                 ]),
             Some(db),
@@ -618,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn list_live_chat_files_command_lists_files_present_in_the_library_over_ipc() {
+    fn count_live_chat_files_command_counts_the_files_in_the_library_over_ipc() {
         let library = unique_library_dir("ipc-list");
         fs::write(
             library.join("live_chat").join("a.live_chat.json.gz"),
@@ -633,28 +634,21 @@ mod tests {
 
         let (webview, _messages) = test_webview(memory_db_with_library(&library));
 
-        let mut files = invoke(&webview, "list_live_chat_files", serde_json::json!({}))
+        let count = invoke(&webview, "count_live_chat_files", serde_json::json!({}))
             .unwrap()
-            .deserialize::<Vec<String>>()
+            .deserialize::<u64>()
             .unwrap();
-        files.sort();
 
-        assert_eq!(
-            files,
-            vec![
-                "live_chat/a.live_chat.json.gz".to_string(),
-                "live_chat/b.live_chat.json.gz".to_string(),
-            ]
-        );
+        assert_eq!(count, 2);
 
         let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
-    fn list_live_chat_files_command_rejects_when_no_library_is_configured_over_ipc() {
+    fn count_live_chat_files_command_rejects_when_no_library_is_configured_over_ipc() {
         let (webview, _messages) = test_webview(memory_db());
 
-        let error = invoke(&webview, "list_live_chat_files", serde_json::json!({})).unwrap_err();
+        let error = invoke(&webview, "count_live_chat_files", serde_json::json!({})).unwrap_err();
 
         assert_eq!(error["code"], AppErrorCode::InvalidLibraryPath.as_str());
     }

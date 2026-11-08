@@ -81,7 +81,7 @@ export type TauriCommandReturns = {
     create_media: CreatedMedia;
     stream_live_chat_file: void;
     cancel_live_chat_stream: void;
-    list_live_chat_files: string[];
+    count_live_chat_files: number;
     migrate_live_chat_to_library: void;
 
     generate_temporary_thumbnail: string;

@@ -430,7 +430,7 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
         externalBackupStatusSchema satisfies z.ZodType<ExternalBackupStatus>,
     migrate_library_directory:
         migrateLibraryDirectoryResultSchema satisfies z.ZodType<MigrateLibraryDirectoryResult>,
-    list_live_chat_files: z.array(z.string()),
+    count_live_chat_files: z.number().int().nonnegative(),
     // The registered media. Worth validating rather than trusting even though it comes straight
     // back from a command this app wrote. The caller feeds `filePath`/`mediaType` to the duration
     // probe and `youtubeVideoId` to the comment backup, so a wrong shape here would surface two

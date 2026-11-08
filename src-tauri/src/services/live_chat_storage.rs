@@ -476,17 +476,16 @@ pub fn migrate_live_chat_files<G>(
     Ok(moved)
 }
 
-/// Lists stored live chat files as library-relative, forward-slash paths (e.g.
-/// `live_chat/<file>`), matching how they are recorded in the database. Live chat files are
-/// stored flat under `live_chat/`, so this does not recurse.
-pub fn list_live_chat_relative_paths(library_dir: &Path) -> AppResult<Vec<String>> {
+/// How many live chat files the library stores, for diagnostics. Live chat files are stored flat
+/// under `live_chat/`, so this does not recurse, and only files count.
+pub fn count_live_chat_files(library_dir: &Path) -> AppResult<u64> {
     let dir = library_dir.join("live_chat");
 
     if !dir.exists() {
-        return Ok(Vec::new());
+        return Ok(0);
     }
 
-    let mut paths = Vec::new();
+    let mut count = 0u64;
 
     let entries =
         fs::read_dir(&dir).map_err(|e| compress_error("failed to read live chat dir", e))?;
@@ -495,16 +494,12 @@ pub fn list_live_chat_relative_paths(library_dir: &Path) -> AppResult<Vec<String
         let entry = entry.map_err(|e| compress_error("failed to read live chat entry", e))?;
         let path = entry.path();
 
-        if !path.is_file() {
-            continue;
-        }
-
-        if let Some(name) = path.file_name().and_then(|value| value.to_str()) {
-            paths.push(format!("live_chat/{name}"));
+        if path.is_file() {
+            count += 1;
         }
     }
 
-    Ok(paths)
+    Ok(count)
 }
 
 /// Cheap check that reads only the first two bytes, so already-compressed files are skipped
@@ -1114,7 +1109,7 @@ mod tests {
     }
 
     #[test]
-    fn list_live_chat_relative_paths_returns_files_and_skips_directories() {
+    fn count_live_chat_files_counts_files_and_skips_directories() {
         // Two guards in one walk, and both were unpinned. The early return when `live_chat/` does
         // not exist, and the per-entry skip of anything that is not a file. Dropping the `!` from
         // either inverts it (the first makes an existing directory report nothing, the second
@@ -1125,21 +1120,19 @@ mod tests {
         fs::create_dir_all(live_chat.join("a-subdirectory")).unwrap();
         fs::write(live_chat.join("clip.live_chat.json.gz"), b"data").unwrap();
 
-        let paths = list_live_chat_relative_paths(&library).unwrap();
-
-        assert_eq!(paths, vec!["live_chat/clip.live_chat.json.gz".to_string()]);
+        assert_eq!(count_live_chat_files(&library).unwrap(), 1);
 
         let _ = fs::remove_dir_all(&library);
     }
 
     #[test]
-    fn list_live_chat_relative_paths_reports_nothing_when_the_directory_is_absent() {
+    fn count_live_chat_files_reports_none_when_the_directory_is_absent() {
         // The other side of the early return, so it is the *condition* that is pinned rather than
-        // just the populated path. A library with no live_chat/ yet is an empty list, not an error.
+        // just the populated path. A library with no live_chat/ yet holds none, which is not an error.
         let library = temp_dir("list-relative-missing");
         fs::create_dir_all(&library).unwrap();
 
-        assert!(list_live_chat_relative_paths(&library).unwrap().is_empty());
+        assert_eq!(count_live_chat_files(&library).unwrap(), 0);
 
         let _ = fs::remove_dir_all(&library);
     }
