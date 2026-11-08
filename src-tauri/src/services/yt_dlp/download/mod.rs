@@ -745,6 +745,106 @@ impl<R: Runtime> DownloadRun<'_, R> {
         })
     }
 
+    /// Runs yt-dlp until it ends, and turns a run that did not succeed (cut by the run-time cap,
+    /// stalled, cancelled or failed) into the error that ends the download.
+    async fn run_yt_dlp(&self, suggested_title: &str, file_prefix: &str) -> AppResult<()> {
+        let (app, run_id, temp_dir) = (self.app, self.run_id, self.temp_dir);
+
+        emit_download_log(
+            app,
+            run_id,
+            format!(
+                "Starting download: {} (format {})",
+                suggested_title, self.format_id
+            ),
+            "system",
+        )?;
+
+        let args = build_download_command_args(
+            self.ffmpeg_location,
+            self.format_id,
+            self.download_live_chat,
+            self.cookies_browser,
+            self.run_cookies_path,
+            temp_dir,
+            file_prefix,
+            self.url,
+        );
+
+        emit_download_log(
+            app,
+            run_id,
+            format!("yt-dlp args: {}", redacted_args_for_log(&args)),
+            "system",
+        )?;
+
+        let mut command = Command::new(self.yt_dlp);
+        crate::utils::process::configure_child_async(&mut command);
+        crate::services::binaries::expose_js_runtime_to_child(&mut command);
+        // Starts in the run's own temp directory rather than wherever the app was launched from
+        // (see utils::process::pin_working_dir_async).
+        crate::utils::process::pin_working_dir_async(&mut command, temp_dir);
+        command.args(&args);
+
+        // Both streams are redacted before anything sees a line (the terminal, the log, and the
+        // failure message built from stderr below). See redact_download_output_line.
+        let output_redaction = OutputRedaction {
+            run_dir: temp_dir.to_string_lossy().into_owned(),
+            ffmpeg_location: self.ffmpeg_location.to_string(),
+            url: self.url.to_string(),
+            cookies_path: self.cookies_path.map(str::to_string),
+            cookies_browser: self.cookies_browser.map(str::to_string),
+        };
+
+        let ChildOutcome {
+            success,
+            stalled,
+            cancel_requested,
+            timed_out,
+            captured_stderr,
+        } = supervise_download_child(
+            app,
+            run_id,
+            command,
+            temp_dir,
+            file_prefix,
+            output_redaction,
+            self.cancel_flag,
+            SupervisionLimits::PRODUCTION,
+        )
+        .await?;
+
+        // The absolute run-time cap is reported before the stall/cancel/exit classification. A run
+        // killed for exceeding it comes back with cancel_requested set and a non-success status, so
+        // classify_download_termination would otherwise report it as a plain cancel. It gets its own
+        // message so the cause is clear rather than looking like a user cancel.
+        if timed_out {
+            return Err(failed(
+                app,
+                run_id,
+                AppErrorCode::YtDlpDownloadTimeout,
+                "yt-dlp download exceeded the maximum allowed run time and was stopped",
+            ));
+        }
+
+        match classify_download_termination(stalled, cancel_requested, success, &captured_stderr) {
+            DownloadTermination::Stalled => Err(failed(
+                app,
+                run_id,
+                AppErrorCode::YtDlpDownloadTimeout,
+                "yt-dlp download stalled with no progress and was stopped",
+            )),
+            DownloadTermination::Cancelled => Err(cancelled(app, run_id)),
+            DownloadTermination::Failed(message) => Err(failed(
+                app,
+                run_id,
+                AppErrorCode::YtDlpDownloadFailed,
+                message,
+            )),
+            DownloadTermination::Succeeded => Ok(()),
+        }
+    }
+
     /// The run itself, from the first line in the terminal to the file in the library. Sets
     /// `download_left_in_run_dir` when a finished download could be neither placed nor kept
     /// elsewhere, so the caller leaves its run folder for the user.
@@ -756,20 +856,14 @@ impl<R: Runtime> DownloadRun<'_, R> {
         let DownloadRun {
             app,
             run_id: normalized_run_id,
-            url: normalized_url,
-            format_id: normalized_format_id,
             library_path,
             library_dir,
             temp_dir,
             library_pass,
-            yt_dlp,
-            ffmpeg_location,
-            cookies_browser: normalized_cookies_browser,
-            cookies_path: normalized_cookies_path,
-            run_cookies_path,
             cancel_flag,
             download_live_chat,
             skip_auto_thumbnail_download,
+            ..
         } = *self;
 
         self.announce()?;
@@ -787,105 +881,7 @@ impl<R: Runtime> DownloadRun<'_, R> {
         } = self.plan(&metadata)?;
         let file_name_prefix = format!("{file_prefix}.");
 
-        emit_download_log(
-            app,
-            normalized_run_id,
-            format!(
-                "Starting download: {} (format {})",
-                suggested_title, normalized_format_id
-            ),
-            "system",
-        )?;
-
-        let args = build_download_command_args(
-            ffmpeg_location,
-            normalized_format_id,
-            download_live_chat,
-            normalized_cookies_browser,
-            run_cookies_path,
-            temp_dir,
-            &file_prefix,
-            normalized_url,
-        );
-
-        emit_download_log(
-            app,
-            normalized_run_id,
-            format!("yt-dlp args: {}", redacted_args_for_log(&args)),
-            "system",
-        )?;
-
-        let mut command = Command::new(yt_dlp);
-        crate::utils::process::configure_child_async(&mut command);
-        crate::services::binaries::expose_js_runtime_to_child(&mut command);
-        // Starts in the run's own temp directory rather than wherever the app was launched from
-        // (see utils::process::pin_working_dir_async).
-        crate::utils::process::pin_working_dir_async(&mut command, temp_dir);
-        command.args(&args);
-
-        // Both streams are redacted before anything sees a line (the terminal, the log, and the
-        // failure message built from stderr below). See redact_download_output_line.
-        let output_redaction = OutputRedaction {
-            run_dir: temp_dir.to_string_lossy().into_owned(),
-            ffmpeg_location: ffmpeg_location.to_string(),
-            url: normalized_url.to_string(),
-            cookies_path: normalized_cookies_path.map(str::to_string),
-            cookies_browser: normalized_cookies_browser.map(str::to_string),
-        };
-
-        let ChildOutcome {
-            success,
-            stalled,
-            cancel_requested,
-            timed_out,
-            captured_stderr,
-        } = supervise_download_child(
-            app,
-            normalized_run_id,
-            command,
-            temp_dir,
-            &file_prefix,
-            output_redaction,
-            cancel_flag,
-            SupervisionLimits::PRODUCTION,
-        )
-        .await?;
-
-        // The absolute run-time cap is reported before the stall/cancel/exit classification. A run
-        // killed for exceeding it comes back with cancel_requested set and a non-success status, so
-        // classify_download_termination would otherwise report it as a plain cancel. It gets its own
-        // message so the cause is clear rather than looking like a user cancel.
-        if timed_out {
-            return Err(failed(
-                app,
-                normalized_run_id,
-                AppErrorCode::YtDlpDownloadTimeout,
-                "yt-dlp download exceeded the maximum allowed run time and was stopped",
-            ));
-        }
-
-        match classify_download_termination(stalled, cancel_requested, success, &captured_stderr) {
-            DownloadTermination::Stalled => {
-                return Err(failed(
-                    app,
-                    normalized_run_id,
-                    AppErrorCode::YtDlpDownloadTimeout,
-                    "yt-dlp download stalled with no progress and was stopped",
-                ));
-            }
-            DownloadTermination::Cancelled => {
-                return Err(cancelled(app, normalized_run_id));
-            }
-            DownloadTermination::Failed(message) => {
-                return Err(failed(
-                    app,
-                    normalized_run_id,
-                    AppErrorCode::YtDlpDownloadFailed,
-                    message,
-                ));
-            }
-            DownloadTermination::Succeeded => {}
-        }
+        self.run_yt_dlp(&suggested_title, &file_prefix).await?;
 
         // A cancel that arrived after yt-dlp exited is still honored before the file is placed, the
         // last point where stopping leaves nothing in the library. The Cancel button stays up for
