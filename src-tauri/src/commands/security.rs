@@ -571,7 +571,7 @@ mod tests {
     // `mock_context` provisions that state the same way a real app does.
     use crate::commands::test_ipc::{invoke, memory_db};
     use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
-    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::test::mock_builder;
     use tauri::Manager;
 
     fn memory_db_with_library(library_dir: &Path) -> Db {
@@ -596,16 +596,10 @@ mod tests {
     }
 
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![register_library_asset_scope])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![register_library_asset_scope]),
+            Some(db),
+        )
     }
 
     #[test]

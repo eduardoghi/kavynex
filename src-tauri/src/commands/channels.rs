@@ -221,15 +221,15 @@ mod tests {
     use super::*;
     use crate::commands::test_ipc::{invoke, memory_db};
     use crate::AppErrorCode;
-    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::test::mock_builder;
     use tauri::Manager;
 
     // Driven through a real IPC round trip under the mock runtime against an in-memory database.
     // `insert_channel` also takes an `AppHandle` for its avatar cleanup, which the mock runtime
     // provides. The two delete/replace commands are covered at the service layer.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![
                 list_channels,
                 find_channel_by_youtube_handle,
                 get_channel_by_id,
@@ -237,15 +237,9 @@ mod tests {
                 update_channel_name_and_handle,
                 ignore_channel_media,
                 unignore_channel_media
-            ])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+            ]),
+            Some(db),
+        )
     }
 
     fn insert(webview: &tauri::WebviewWindow<tauri::test::MockRuntime>, name: &str, handle: &str) {

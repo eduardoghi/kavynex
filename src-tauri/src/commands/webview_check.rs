@@ -622,20 +622,16 @@ mod tests {
     // suite, which is exactly the property that makes the guard load-bearing rather than incidental.
 
     use crate::commands::test_ipc::invoke;
-    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::test::mock_builder;
 
     fn test_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![
                 begin_webview_check,
                 report_webview_check
-            ])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+            ]),
+            None,
+        )
     }
 
     #[test]

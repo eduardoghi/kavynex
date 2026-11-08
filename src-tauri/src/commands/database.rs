@@ -356,20 +356,14 @@ mod tests {
     use tauri::Manager;
 
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![
                 ensure_database_ready,
                 check_database_integrity,
                 rebuild_database_indexes
-            ])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+            ]),
+            Some(db),
+        )
     }
 
     #[test]

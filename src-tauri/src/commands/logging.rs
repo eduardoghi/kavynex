@@ -166,17 +166,13 @@ pub async fn open_log_directory<R: Runtime>(app: AppHandle<R>) -> AppResult<()> 
 mod tests {
     use super::*;
     use crate::commands::test_ipc::invoke;
-    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::test::mock_builder;
 
     fn test_webview() -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![log_frontend_error])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![log_frontend_error]),
+            None,
+        )
     }
 
     #[test]

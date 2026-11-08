@@ -150,8 +150,7 @@ mod tests {
     use crate::AppErrorCode;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use tauri::test::{mock_builder, mock_context, noop_assets};
-    use tauri::Manager;
+    use tauri::test::mock_builder;
 
     fn unique_test_dir(prefix: &str) -> PathBuf {
         std::env::temp_dir().join(format!(
@@ -182,16 +181,10 @@ mod tests {
     }
 
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![persist_thumbnail_file])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![persist_thumbnail_file]),
+            Some(db),
+        )
     }
 
     #[test]

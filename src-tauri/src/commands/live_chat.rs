@@ -386,7 +386,7 @@ mod tests {
     use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
     use std::sync::{Arc, Mutex};
     use tauri::ipc::InvokeResponseBody;
-    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::test::mock_builder;
 
     /// A [`Db`] over an in-memory database whose `app_settings` row names `library_dir` as the
     /// configured library, matching the pattern every other command test file uses.
@@ -429,30 +429,25 @@ mod tests {
         let messages: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
         let captured = messages.clone();
 
-        let app = mock_builder()
-            .channel_interceptor(move |_webview, _callback, _index, body| {
-                if let InvokeResponseBody::Json(json) = body {
-                    if let Ok(value) = serde_json::from_str(json) {
-                        captured.lock().unwrap().push(value);
+        let webview = crate::commands::test_ipc::mock_webview(
+            mock_builder()
+                .channel_interceptor(move |_webview, _callback, _index, body| {
+                    if let InvokeResponseBody::Json(json) = body {
+                        if let Ok(value) = serde_json::from_str(json) {
+                            captured.lock().unwrap().push(value);
+                        }
                     }
-                }
 
-                // Consumed. Nothing here needs the JS side of the channel, only the payload.
-                true
-            })
-            .invoke_handler(tauri::generate_handler![
-                stream_live_chat_file,
-                list_live_chat_files,
-                migrate_live_chat_to_library
-            ])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap();
+                    // Consumed. Nothing here needs the JS side of the channel, only the payload.
+                    true
+                })
+                .invoke_handler(tauri::generate_handler![
+                    stream_live_chat_file,
+                    list_live_chat_files,
+                    migrate_live_chat_to_library
+                ]),
+            Some(db),
+        );
 
         (webview, messages)
     }

@@ -55,8 +55,7 @@ mod tests {
     use crate::AppErrorCode;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use tauri::test::{mock_builder, mock_context, noop_assets};
-    use tauri::Manager;
+    use tauri::test::mock_builder;
 
     /// A [`Db`] whose settings name `library_dir` as the configured library and which holds one
     /// channel, returned with that channel's id. The guard on `create_media` compares the request's
@@ -87,16 +86,10 @@ mod tests {
     }
 
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![create_media])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![create_media]),
+            Some(db),
+        )
     }
 
     /// The request as the renderer sends it (camelCase over IPC), for a local import with a picked

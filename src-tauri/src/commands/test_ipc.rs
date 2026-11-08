@@ -1,9 +1,30 @@
 //! Shared helpers for driving `#[tauri::command]`s through a real IPC round trip under the
-//! mock runtime. Used by the per-command `#[cfg(test)]` modules so the invoke boilerplate and
-//! the in-memory database setup are written once. Each test module keeps its own `test_webview`
-//! because `tauri::generate_handler!` needs the concrete list of commands under test.
+//! mock runtime. Used by the per-command `#[cfg(test)]` modules so the invoke boilerplate, the
+//! window and the in-memory database setup are written once. Each test module keeps its own
+//! `test_webview`, because `tauri::generate_handler!` needs the concrete list of commands under
+//! test, and hands the builder it made to [`mock_webview`].
+
+use tauri::test::{mock_context, noop_assets, MockRuntime};
+use tauri::Manager;
 
 use crate::services::database::Db;
+
+/// Builds the app `builder` describes and opens its `main` window, managing `db` first when one
+/// is given.
+pub fn mock_webview(
+    builder: tauri::Builder<MockRuntime>,
+    db: Option<Db>,
+) -> tauri::WebviewWindow<MockRuntime> {
+    let app = builder.build(mock_context(noop_assets())).unwrap();
+
+    if let Some(db) = db {
+        app.manage(db);
+    }
+
+    tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .unwrap()
+}
 
 /// Builds a [`Db`] over a fresh in-memory database with the schema applied, on Tauri's async
 /// runtime so the pool's background tasks share the runtime [`invoke`] drives commands on.

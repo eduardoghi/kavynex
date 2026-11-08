@@ -86,23 +86,16 @@ async fn ensure_video_belongs_to_media(
 mod tests {
     use super::*;
     use crate::commands::test_ipc::{invoke, memory_db};
-    use tauri::test::{mock_builder, mock_context, noop_assets};
-    use tauri::Manager;
+    use tauri::test::mock_builder;
 
     // Only the checks that run before yt-dlp is started are reachable here. A deterministic,
     // offline test must not spawn the real binary (see commands/yt_dlp.rs). The merge itself is
     // covered by `media_comments::store_fetched_comments`.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![fetch_media_comments])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![fetch_media_comments]),
+            Some(db),
+        )
     }
 
     #[tokio::test]

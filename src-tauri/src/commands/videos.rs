@@ -135,15 +135,15 @@ mod tests {
     use super::*;
     use crate::commands::test_ipc::{invoke, memory_db};
     use crate::AppErrorCode;
-    use tauri::test::{mock_builder, mock_context, noop_assets};
+    use tauri::test::mock_builder;
     use tauri::Manager;
 
     // The pool-only media commands take `State<Db>`, so they can be driven through a real IPC
     // round trip. insert_channel is registered too (from the channels module) to satisfy the
     // channel_id foreign key before media rows are inserted.
     fn test_webview(db: Db) -> tauri::WebviewWindow<tauri::test::MockRuntime> {
-        let app = mock_builder()
-            .invoke_handler(tauri::generate_handler![
+        crate::commands::test_ipc::mock_webview(
+            mock_builder().invoke_handler(tauri::generate_handler![
                 crate::commands::channels::insert_channel,
                 update_media_title,
                 list_media_page,
@@ -152,15 +152,9 @@ mod tests {
                 update_media_progress,
                 list_media_comments_by_media_id,
                 get_media_repository_stats
-            ])
-            .build(mock_context(noop_assets()))
-            .unwrap();
-
-        app.manage(db);
-
-        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
-            .build()
-            .unwrap()
+            ]),
+            Some(db),
+        )
     }
 
     /// The pool the mock app manages, for seeding rows the commands under test then read.
