@@ -344,9 +344,10 @@ fn cleanup_durable_write_leftovers(dir: &Path, max_age: Duration) -> CleanupSumm
 }
 
 /// True for a filename produced by the atomic-write helpers as scratch and left behind if the
-/// process died mid-operation, covering the copy temp (`.<name>.tmp-<suffix>`, `filesystem.rs`), the
-/// replace backup (`.<name>.backup-<suffix>`, `filesystem.rs`), the staging name an older version's
-/// directory migration wrote (`<stem>.migrated-<suffix>[.<ext>]`), and the live-chat gzip temp
+/// process died mid-operation, covering the copy temp (`.<name>.tmp-<suffix>`,
+/// `filesystem/verified_copy.rs`), the replace backup (`.<name>.backup-<suffix>`,
+/// `filesystem/replace.rs`), the staging name an older version's directory migration wrote
+/// (`<stem>.migrated-<suffix>[.<ext>]`), and the live-chat gzip temp
 /// (`<name>.gztmp`, `live_chat_storage.rs`).
 ///
 /// Each shape is matched whole, suffix included, rather than by its marker anywhere in the name. A
@@ -406,8 +407,8 @@ fn is_migration_staging_name(file_name: &str) -> bool {
     !stem.is_empty() && is_unique_temp_suffix(suffix)
 }
 
-/// True for a replace-backup leftover (`.<name>.backup-<suffix>`, `filesystem.rs::
-/// replace_file_safely`). Split out because a backup is the ONLY leftover kind that can hold the
+/// True for a replace-backup leftover (`.<name>.backup-<suffix>`,
+/// `filesystem::replace_file_safely`). Split out because a backup is the ONLY leftover kind that can hold the
 /// sole copy of a live file (see [`replace_backup_target_present`]). The `.tmp-`/`.migrated-`/
 /// `.gztmp` kinds are always redundant scratch and safe to reclaim once old.
 fn is_replace_backup_leftover(file_name: &str) -> bool {
@@ -493,7 +494,7 @@ fn cleanup_leftovers_in_dir(dir: &Path, max_age: Duration) -> AppResult<CleanupS
 
         // A replace-backup whose live destination is missing is not reclaimable scratch. It can
         // be the sole surviving copy of that file after a failed replace/restore (see
-        // filesystem.rs::replace_file_safely). Keep it so the file can still be recovered by
+        // filesystem::replace_file_safely). Keep it so the file can still be recovered by
         // hand, rather than turning a transient replace failure into permanent data loss a week
         // later. A backup whose live file is present is genuinely redundant and still reclaimed.
         let name_is_replace_backup = path

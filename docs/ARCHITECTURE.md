@@ -50,7 +50,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     core in `mod.rs` and the separable part split off, so `db_schema/` (`ddl.rs`,
     `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
     `archive.rs`, `restore.rs`, `integrity.rs`, `external.rs`, `import.rs`, `gates.rs`,
-    `compaction.rs`, `lineage.rs`), `video_repository/` (`media_page.rs`) and
+    `compaction.rs`, `lineage.rs`), `filesystem/` (`retry.rs`, `durable.rs`, `verified_copy.rs`,
+    `move_file.rs`, `replace.rs`, `scan.rs`), `video_repository/` (`media_page.rs`) and
     `yt_dlp/download/` (`command.rs`, `redaction.rs`, `placement.rs`, `post_download.rs`).
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
@@ -75,7 +76,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
 
   What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
   `kept_files.rs`, `startup_notices.rs`, `database.rs`, `binaries.rs`,
-  `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `filesystem.rs`, `live_chat_storage.rs`,
+  `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `live_chat_storage.rs`,
   `media_comments.rs`, `media_creation.rs`, `media_protocol.rs`, `pending_media.rs`,
   `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
 

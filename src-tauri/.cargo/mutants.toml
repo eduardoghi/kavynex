@@ -38,7 +38,7 @@ examine_globs = [
     "src/services/binaries.rs",
     "src/services/library/media.rs",
     "src/services/library/cleanup.rs",
-    "src/services/filesystem.rs",
+    "src/services/filesystem/*.rs",
     "src/services/db_backup/*.rs",
     "src/services/db_schema/*.rs",
     "src/services/yt_dlp/download/command.rs",

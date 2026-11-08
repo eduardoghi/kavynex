@@ -360,7 +360,7 @@ and the asset protocol serve it, or point an import at any `.db` file.
 #### Accepted residual: a move-import hashes the source once
 
 A media import in move mode hashes the source file up front and reuses that hash through the
-duplicate check (`services/filesystem.rs::stage_move_cancellable`), so when the destination already
+duplicate check (`services/filesystem/move_file.rs::stage_move_cancellable`), so when the destination already
 holds identical content the source is deleted, once the media row has landed, based on a hash
 computed earlier. A writer that changes the source to different same-size content inside that
 in-process window would see the changed file deleted as an "already-imported duplicate". No such concurrent writer exists in the app's
@@ -374,7 +374,7 @@ copy takes its name, as the library migration does. A fresh library file whose b
 hash its name was built from is compared with the source again, and when the source still matches,
 the copy is what went wrong. The import then fails and the copy is removed, so a damaged copy never
 stands in for an original that is about to be deleted
-(`services/filesystem.rs::verify_content_addressed_write`).
+(`services/filesystem/move_file.rs::verify_content_addressed_write`).
 
 ### Creating a media is one command, and that is a boundary decision
 
