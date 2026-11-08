@@ -705,12 +705,7 @@ mod tests {
         }
     }
 
-    fn unique_dir(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-binaries-{tag}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_dir;
 
     #[test]
     fn a_missing_tool_is_reported_unhealthy_rather_than_as_an_error() {

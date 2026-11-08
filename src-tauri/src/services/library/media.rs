@@ -451,12 +451,7 @@ mod tests {
         assert_eq!(source_to_compare(source, true), None);
     }
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-library-media-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     #[test]
     fn import_media_file_sync_rejects_unsupported_extension() {

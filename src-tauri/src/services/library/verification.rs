@@ -352,12 +352,7 @@ mod tests {
         hash
     }
 
-    fn unique_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-verify-{label}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_dir;
 
     /// A library holding one video whose name declares the hash of its own content.
     fn library_with_media(label: &str, content: &[u8]) -> (PathBuf, String) {

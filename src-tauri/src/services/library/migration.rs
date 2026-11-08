@@ -882,12 +882,7 @@ mod tests {
         TEST_LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-library-migration-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     #[test]
     fn migrate_library_contents_moves_managed_directories() {

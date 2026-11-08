@@ -686,12 +686,7 @@ mod tests {
     use super::*;
     use std::io::Write;
 
-    fn temp_dir(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex_lcs_{label}_{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as temp_dir;
 
     /// Buffer-based gzip, a test fixture rather than production code.
     ///

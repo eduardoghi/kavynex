@@ -572,7 +572,7 @@ mod tests {
     use crate::services::database::{set_app_settings_in_pool, StoredAppSettings};
     use crate::AppErrorCode;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use tauri::test::{mock_builder, mock_context, noop_assets};
 
     #[test]
@@ -605,12 +605,7 @@ mod tests {
         );
     }
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-integrity-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     /// A [`Db`] over an in-memory database whose `app_settings` row already names `library_dir` as
     /// the configured library. That row is what the guard on the three library-reading commands

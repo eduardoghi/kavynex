@@ -290,12 +290,7 @@ pub fn resolve_existing_directory_sync(path: &str) -> AppResult<String> {
 mod tests {
     use super::*;
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-library-paths-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     #[test]
     fn ensure_library_dir_creates_and_canonicalizes_directory() {

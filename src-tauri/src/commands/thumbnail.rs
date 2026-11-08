@@ -149,15 +149,10 @@ mod tests {
     use crate::services::database::{set_app_settings_in_pool, Db, StoredAppSettings};
     use crate::AppErrorCode;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
     use tauri::test::mock_builder;
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-thumbnail-command-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     fn memory_db_with_library(library_dir: &Path) -> Db {
         let db = memory_db();

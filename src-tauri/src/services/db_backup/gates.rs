@@ -280,12 +280,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn unique_dir(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-prepare-export-{tag}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_dir;
 
     #[test]
     fn validate_export_destination_accepts_database_extensions() {

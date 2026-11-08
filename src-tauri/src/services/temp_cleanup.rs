@@ -612,14 +612,8 @@ pub fn cleanup_library_leftovers_sync(library_dir: &Path) -> AppResult<CleanupSu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-cleanup-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     fn set_modified(path: &Path, time: SystemTime) {
         let file = fs::OpenOptions::new().write(true).open(path).unwrap();

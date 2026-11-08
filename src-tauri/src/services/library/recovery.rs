@@ -246,12 +246,7 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn unique_dir(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-library-recovery-{tag}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_dir;
 
     fn make_populated_library(dir: &Path) {
         let video_dir = dir.join("video");

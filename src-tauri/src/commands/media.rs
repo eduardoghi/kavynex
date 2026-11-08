@@ -264,12 +264,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn unique_test_dir(prefix: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "kavynex-media-command-test-{prefix}-{}",
-            crate::utils::naming::unique_temp_suffix()
-        ))
-    }
+    use crate::test_support::unique_temp_path as unique_test_dir;
 
     fn write_temp_file(dir: &PathBuf, name: &str, content: &[u8]) -> PathBuf {
         fs::create_dir_all(dir).unwrap();
