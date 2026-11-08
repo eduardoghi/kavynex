@@ -17,7 +17,7 @@ use crate::services::library::paths::resolve_existing_library_dir;
 use crate::services::logger;
 use crate::services::temp_paths::yt_dlp_temp_dir;
 use crate::services::yt_dlp::cookies::{
-    normalize_cookies_browser, normalize_cookies_path, redact_cookies_browser_selector,
+    normalize_cookies_browser, normalize_cookies_path, redact_cookies_browser_selector, RunCookies,
 };
 use crate::services::yt_dlp::events::{
     emit_download_cancelled, emit_download_error, emit_download_finished, emit_download_log,
@@ -556,6 +556,443 @@ fn failed<R: Runtime>(
     AppError::from_code(code, message)
 }
 
+/// What every stage of one download run reads, settled before the first of them starts.
+struct DownloadRun<'a, R: Runtime> {
+    app: &'a AppHandle<R>,
+    run_id: &'a str,
+    url: &'a str,
+    format_id: &'a str,
+    library_path: &'a str,
+    library_dir: &'a Path,
+    temp_dir: &'a Path,
+    library_pass: LibraryPass,
+    yt_dlp: &'a str,
+    ffmpeg_location: &'a str,
+    cookies_browser: Option<&'a str>,
+    /// The user's cookies file, for the terminal and the redaction. yt-dlp gets `run_cookies_path`.
+    cookies_path: Option<&'a str>,
+    run_cookies_path: Option<&'a str>,
+    cancel_flag: &'a Arc<AtomicBool>,
+    download_live_chat: bool,
+    skip_auto_thumbnail_download: bool,
+}
+
+impl<R: Runtime> DownloadRun<'_, R> {
+    /// The run itself, from the first line in the terminal to the file in the library. Sets
+    /// `download_left_in_run_dir` when a finished download could be neither placed nor kept
+    /// elsewhere, so the caller leaves its run folder for the user.
+    async fn run(
+        &self,
+        run_cookies: RunCookies,
+        download_left_in_run_dir: &mut bool,
+    ) -> AppResult<DownloadedMediaResult> {
+        let DownloadRun {
+            app,
+            run_id: normalized_run_id,
+            url: normalized_url,
+            format_id: normalized_format_id,
+            library_path,
+            library_dir,
+            temp_dir,
+            library_pass,
+            yt_dlp,
+            ffmpeg_location,
+            cookies_browser: normalized_cookies_browser,
+            cookies_path: normalized_cookies_path,
+            run_cookies_path,
+            cancel_flag,
+            download_live_chat,
+            skip_auto_thumbnail_download,
+        } = *self;
+
+        emit_download_log(
+            app,
+            normalized_run_id,
+            format!(
+                "Resolving metadata for: {}",
+                youtube_ref_for_log(normalized_url)
+            ),
+            "system",
+        )?;
+
+        if let Some(path) = normalized_cookies_path {
+            // Show only the file name, never the full path. This line is rendered in the UI
+            // terminal and may be pasted into a public bug report, and the directory reveals
+            // the local username/profile layout.
+            let file_name = Path::new(path)
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string())
+                .unwrap_or_else(|| "<set>".to_string());
+
+            emit_download_log(
+                app,
+                normalized_run_id,
+                format!("Cookies file: {}", file_name),
+                "system",
+            )?;
+        } else if let Some(browser) = normalized_cookies_browser {
+            // Same rule as the file log. The UI terminal may be pasted into a bug report, so the
+            // profile (often a path) is not shown, only that one was set.
+            emit_download_log(
+                app,
+                normalized_run_id,
+                format!(
+                    "Cookies from browser: {}",
+                    redact_cookies_browser_selector(browser)
+                ),
+                "system",
+            )?;
+        }
+
+        if download_live_chat {
+            emit_download_log(
+                app,
+                normalized_run_id,
+                "Live chat replay: enabled",
+                "system",
+            )?;
+        }
+
+        if skip_auto_thumbnail_download {
+            emit_download_log(
+                app,
+                normalized_run_id,
+                "Automatic thumbnail download: skipped (manual thumbnail provided)",
+                "system",
+            )?;
+        }
+
+        let metadata = match fetch_yt_dlp_metadata(
+            yt_dlp,
+            normalized_url,
+            normalized_cookies_browser,
+            run_cookies_path,
+            Some(Arc::clone(cancel_flag)),
+        )
+        .await
+        {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                // The metadata phase honors cancellation itself (killing the tree
+                // promptly). Surface that as a cancellation event rather than a generic error.
+                if cancel_flag.load(Ordering::SeqCst) {
+                    return Err(cancelled(app, normalized_run_id));
+                }
+
+                emit_download_error(app, normalized_run_id, error.message.clone());
+                return Err(error);
+            }
+        };
+
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Err(cancelled(app, normalized_run_id));
+        }
+
+        let selected_format = metadata
+            .formats
+            .iter()
+            .find(|item| {
+                item.format_id
+                    .as_deref()
+                    .map(|value| value.trim() == normalized_format_id)
+                    .unwrap_or(false)
+            })
+            .cloned();
+
+        let has_video = match resolve_format_has_video(normalized_format_id, &metadata.formats) {
+            Some(has_video) => has_video,
+            None => {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpSelectedFormatNotFound,
+                    "selected yt-dlp format was not found in metadata",
+                ));
+            }
+        };
+
+        let media_subdir = if has_video { "video" } else { "audio" };
+        // Neither folder is created here. The placement creates `video/` or `audio/` only inside a
+        // library folder that is still there once the download is done (ensure_path_parent_inside_dir),
+        // and storing the replay does the same for `live_chat/`. Creating them now, with
+        // create_dir_all, ran on the async runtime against a drive that may stall, and could put a
+        // new library folder at the path of one whose drive had just gone.
+        let media_dir = library_dir.join(media_subdir);
+
+        let run_live_chat_dir = download_live_chat.then(|| live_chat_dir_in(library_dir));
+
+        let (id, extractor, suggested_title, youtube_video_id, published_at) =
+            normalize_download_metadata(&metadata)?;
+
+        let is_live = infer_is_live(metadata.live_status.as_deref(), metadata.was_live);
+
+        let safe_extractor = sanitize_filename_component(&extractor);
+        // The id disambiguates collisions (two distinct ids that sanitize to the same string),
+        // so a download can never silently overwrite a different video's file. See
+        // sanitize_identifier_component.
+        let safe_id = sanitize_identifier_component(&id);
+        let safe_format_id = sanitize_filename_component(normalized_format_id);
+
+        let expected_ext = selected_format
+            .as_ref()
+            .and_then(|format| format.ext.as_ref())
+            .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+            .filter(|value| !value.is_empty());
+
+        let file_prefix = format!("{}_{}_{}", safe_extractor, safe_id, safe_format_id);
+        let file_name_prefix = format!("{file_prefix}.");
+
+        emit_download_log(
+            app,
+            normalized_run_id,
+            format!(
+                "Starting download: {} (format {})",
+                suggested_title, normalized_format_id
+            ),
+            "system",
+        )?;
+
+        let args = build_download_command_args(
+            ffmpeg_location,
+            normalized_format_id,
+            download_live_chat,
+            normalized_cookies_browser,
+            run_cookies_path,
+            temp_dir,
+            &file_prefix,
+            normalized_url,
+        );
+
+        emit_download_log(
+            app,
+            normalized_run_id,
+            format!("yt-dlp args: {}", redacted_args_for_log(&args)),
+            "system",
+        )?;
+
+        let mut command = Command::new(yt_dlp);
+        crate::utils::process::configure_child_async(&mut command);
+        crate::services::binaries::expose_js_runtime_to_child(&mut command);
+        // Starts in the run's own temp directory rather than wherever the app was launched from
+        // (see utils::process::pin_working_dir_async).
+        crate::utils::process::pin_working_dir_async(&mut command, temp_dir);
+        command.args(&args);
+
+        // Both streams are redacted before anything sees a line (the terminal, the log, and the
+        // failure message built from stderr below). See redact_download_output_line.
+        let output_redaction = OutputRedaction {
+            run_dir: temp_dir.to_string_lossy().into_owned(),
+            ffmpeg_location: ffmpeg_location.to_string(),
+            url: normalized_url.to_string(),
+            cookies_path: normalized_cookies_path.map(str::to_string),
+            cookies_browser: normalized_cookies_browser.map(str::to_string),
+        };
+
+        let ChildOutcome {
+            success,
+            stalled,
+            cancel_requested,
+            timed_out,
+            captured_stderr,
+        } = supervise_download_child(
+            app,
+            normalized_run_id,
+            command,
+            temp_dir,
+            &file_prefix,
+            output_redaction,
+            cancel_flag,
+            SupervisionLimits::PRODUCTION,
+        )
+        .await?;
+
+        // The absolute run-time cap is reported before the stall/cancel/exit classification. A run
+        // killed for exceeding it comes back with cancel_requested set and a non-success status, so
+        // classify_download_termination would otherwise report it as a plain cancel. It gets its own
+        // message so the cause is clear rather than looking like a user cancel.
+        if timed_out {
+            return Err(failed(
+                app,
+                normalized_run_id,
+                AppErrorCode::YtDlpDownloadTimeout,
+                "yt-dlp download exceeded the maximum allowed run time and was stopped",
+            ));
+        }
+
+        match classify_download_termination(stalled, cancel_requested, success, &captured_stderr) {
+            DownloadTermination::Stalled => {
+                return Err(failed(
+                    app,
+                    normalized_run_id,
+                    AppErrorCode::YtDlpDownloadTimeout,
+                    "yt-dlp download stalled with no progress and was stopped",
+                ));
+            }
+            DownloadTermination::Cancelled => {
+                return Err(cancelled(app, normalized_run_id));
+            }
+            DownloadTermination::Failed(message) => {
+                return Err(failed(
+                    app,
+                    normalized_run_id,
+                    AppErrorCode::YtDlpDownloadFailed,
+                    message,
+                ));
+            }
+            DownloadTermination::Succeeded => {}
+        }
+
+        // A cancel that arrived after yt-dlp exited is still honored before the file is placed, the
+        // last point where stopping leaves nothing in the library. The Cancel button stays up for
+        // the whole creation, not only while the process runs.
+        if cancel_flag.load(Ordering::SeqCst) {
+            return Err(cancelled(app, normalized_run_id));
+        }
+
+        let downloaded_temp =
+            find_downloaded_media_file(temp_dir, &file_name_prefix, expected_ext.as_deref())?;
+
+        let placement = place_downloaded_file_async(
+            downloaded_temp.clone(),
+            media_dir,
+            library_dir.to_path_buf(),
+            Some(library_pass),
+        )
+        .await;
+
+        let (final_destination, file_path, kept_existing) = match placement {
+            Ok(placed) => placed,
+            Err(error) => {
+                let (error, left_in_run_dir) =
+                    keep_unplaced_download(app, normalized_run_id, downloaded_temp, error).await;
+                *download_left_in_run_dir = left_in_run_dir;
+                return Err(error);
+            }
+        };
+
+        // Nothing past this point may fail the run. The file is in the library, and an error here
+        // would leave it there with no row while the user is told the download failed. That is why
+        // the placement already returned the library-relative path.
+
+        // Recorded now, before the live chat and the thumbnail, which can take minutes. A process
+        // that dies in that stretch leaves this marker, and the next launch's sweep moves the file
+        // to the library's trash instead of leaving it there with nothing pointing at it. The
+        // registration replaces it with a marker naming everything it writes.
+        let placement_marker = record_placement_marker(app, &file_path).await;
+
+        if kept_existing {
+            // The library already held these exact bytes (see place_downloaded_file), so the fresh
+            // copy was discarded. Said so the user is not left guessing why nothing new appeared.
+            emit_download_log_infallible(
+                app,
+                normalized_run_id,
+                "The library already held this exact file, so it was reused and the new download discarded.",
+                "system",
+            );
+        }
+
+        // yt-dlp merges into .mkv when the picked video and audio cannot share an mp4 or webm
+        // container (VP9 or AV1 video with m4a audio, which is what high resolutions usually are).
+        // The file is fine, but WebKit on macOS has no Matroska support, so the player there shows
+        // nothing. Said here because the format list cannot know the merged container up front.
+        let merged_into_mkv = final_destination
+            .extension()
+            .and_then(|value| value.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("mkv"));
+
+        if merged_into_mkv {
+            emit_download_log_infallible(
+                app,
+                normalized_run_id,
+                "Saved as .mkv because the chosen video and audio streams cannot share an mp4 container. The macOS version of Kavynex cannot play .mkv files, so choose an mp4 format there to avoid this.",
+                "system",
+            );
+        }
+
+        // Best effort, like the thumbnail below, because the media is already in the library by now.
+        let live_chat_file_path = if download_live_chat {
+            store_live_chat_best_effort(
+                app,
+                normalized_run_id,
+                temp_dir,
+                &file_prefix,
+                run_live_chat_dir.as_deref(),
+                Some(library_pass),
+            )
+            .await
+        } else {
+            None
+        };
+
+        // After the media rather than before it, and never fatal. The video is what the user asked
+        // to archive, so an image that will not download cannot cost them the backup, and fetching
+        // it last means a download that fails leaves no thumbnail behind with nothing pointing at
+        // it.
+        let thumbnail_path = if skip_auto_thumbnail_download {
+            None
+        } else {
+            download_thumbnail_best_effort(
+                app,
+                normalized_run_id,
+                library_path,
+                &metadata,
+                cancel_flag,
+            )
+            .await
+        };
+
+        // A cancel that arrived while the live chat or the thumbnail was being saved. The Cancel
+        // button stays up until the media is registered, so it has to mean the same thing here as
+        // before the placement. What this run put in the library goes to the trash (each file
+        // reference-counted, so one another row already uses is kept), and nothing is registered.
+        if cancel_flag.load(Ordering::SeqCst) {
+            discard_cancelled_placement(
+                app,
+                [
+                    Some(file_path.clone()),
+                    thumbnail_path.clone(),
+                    live_chat_file_path.clone(),
+                ],
+                placement_marker,
+            )
+            .await;
+
+            return Err(cancelled(app, normalized_run_id));
+        }
+
+        let result = DownloadedMediaResult {
+            file_path,
+            suggested_title: suggested_title.clone(),
+            youtube_video_id,
+            published_at,
+            media_type: media_subdir.to_string(),
+            thumbnail_path,
+            is_live,
+            live_chat_file_path,
+            placement_marker,
+        };
+
+        run_cookies.keep_refreshed_async().await;
+
+        emit_download_finished(
+            app,
+            normalized_run_id,
+            result.file_path.clone(),
+            result.suggested_title.clone(),
+        );
+
+        logger::info(
+            "yt_dlp",
+            format!(
+                "download run finished successfully: run_id='{}', file='{}', live_chat='{}'",
+                normalized_run_id,
+                result.file_path,
+                result.live_chat_file_path.clone().unwrap_or_default()
+            ),
+        );
+
+        Ok(result)
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -634,11 +1071,8 @@ pub async fn download_media_from_url_async<R: Runtime>(
     };
 
     // yt-dlp reads and rewrites a copy in the run's own folder (see RunCookies).
-    let run_cookies = crate::services::yt_dlp::cookies::RunCookies::prepare_async(
-        normalized_cookies_path.as_deref(),
-        temp_dir.clone(),
-    )
-    .await;
+    let run_cookies =
+        RunCookies::prepare_async(normalized_cookies_path.as_deref(), temp_dir.clone()).await;
     let run_cookies_path = run_cookies.path();
 
     logger::info(
@@ -672,399 +1106,25 @@ pub async fn download_media_from_url_async<R: Runtime>(
     // which still holds it, is left for the user instead of removed below.
     let mut download_left_in_run_dir = false;
 
-    let result = async {
-        emit_download_log(
-            app,
-            &normalized_run_id,
-            format!(
-                "Resolving metadata for: {}",
-                youtube_ref_for_log(&normalized_url)
-            ),
-            "system",
-        )?;
-
-        if let Some(path) = normalized_cookies_path.as_ref() {
-            // Show only the file name, never the full path. This line is rendered in the UI
-            // terminal and may be pasted into a public bug report, and the directory reveals
-            // the local username/profile layout.
-            let file_name = Path::new(path)
-                .file_name()
-                .map(|value| value.to_string_lossy().to_string())
-                .unwrap_or_else(|| "<set>".to_string());
-
-            emit_download_log(
-                app,
-                &normalized_run_id,
-                format!("Cookies file: {}", file_name),
-                "system",
-            )?;
-        } else if let Some(browser) = normalized_cookies_browser.as_ref() {
-            // Same rule as the file log. The UI terminal may be pasted into a bug report, so the
-            // profile (often a path) is not shown, only that one was set.
-            emit_download_log(
-                app,
-                &normalized_run_id,
-                format!(
-                    "Cookies from browser: {}",
-                    redact_cookies_browser_selector(browser)
-                ),
-                "system",
-            )?;
-        }
-
-        if download_live_chat {
-            emit_download_log(
-                app,
-                &normalized_run_id,
-                "Live chat replay: enabled",
-                "system",
-            )?;
-        }
-
-        if skip_auto_thumbnail_download {
-            emit_download_log(
-                app,
-                &normalized_run_id,
-                "Automatic thumbnail download: skipped (manual thumbnail provided)",
-                "system",
-            )?;
-        }
-
-        let metadata = match fetch_yt_dlp_metadata(
-            &yt_dlp,
-            &normalized_url,
-            normalized_cookies_browser.as_deref(),
-            run_cookies_path.as_deref(),
-            Some(Arc::clone(&cancel_flag)),
-        )
-        .await
-        {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                // The metadata phase honors cancellation itself (killing the tree
-                // promptly). Surface that as a cancellation event rather than a generic error.
-                if cancel_flag.load(Ordering::SeqCst) {
-                    return Err(cancelled(app, &normalized_run_id));
-                }
-
-                emit_download_error(app, &normalized_run_id, error.message.clone());
-                return Err(error);
-            }
-        };
-
-        if cancel_flag.load(Ordering::SeqCst) {
-            return Err(cancelled(app, &normalized_run_id));
-        }
-
-        let selected_format = metadata
-            .formats
-            .iter()
-            .find(|item| {
-                item.format_id
-                    .as_deref()
-                    .map(|value| value.trim() == normalized_format_id)
-                    .unwrap_or(false)
-            })
-            .cloned();
-
-        let has_video = match resolve_format_has_video(&normalized_format_id, &metadata.formats) {
-            Some(has_video) => has_video,
-            None => {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpSelectedFormatNotFound,
-                    "selected yt-dlp format was not found in metadata",
-                ));
-            }
-        };
-
-        let media_subdir = if has_video { "video" } else { "audio" };
-        // Neither folder is created here. The placement creates `video/` or `audio/` only inside a
-        // library folder that is still there once the download is done (ensure_path_parent_inside_dir),
-        // and storing the replay does the same for `live_chat/`. Creating them now, with
-        // create_dir_all, ran on the async runtime against a drive that may stall, and could put a
-        // new library folder at the path of one whose drive had just gone.
-        let media_dir = library_dir.join(media_subdir);
-
-        let run_live_chat_dir = download_live_chat.then(|| live_chat_dir_in(&library_dir));
-
-        let (id, extractor, suggested_title, youtube_video_id, published_at) =
-            normalize_download_metadata(&metadata)?;
-
-        let is_live = infer_is_live(metadata.live_status.as_deref(), metadata.was_live);
-
-        let safe_extractor = sanitize_filename_component(&extractor);
-        // The id disambiguates collisions (two distinct ids that sanitize to the same string),
-        // so a download can never silently overwrite a different video's file. See
-        // sanitize_identifier_component.
-        let safe_id = sanitize_identifier_component(&id);
-        let safe_format_id = sanitize_filename_component(&normalized_format_id);
-
-        let expected_ext = selected_format
-            .as_ref()
-            .and_then(|format| format.ext.as_ref())
-            .map(|value| value.trim().trim_start_matches('.').to_lowercase())
-            .filter(|value| !value.is_empty());
-
-        let file_prefix = format!("{}_{}_{}", safe_extractor, safe_id, safe_format_id);
-        let file_name_prefix = format!("{file_prefix}.");
-
-        emit_download_log(
-            app,
-            &normalized_run_id,
-            format!(
-                "Starting download: {} (format {})",
-                suggested_title, normalized_format_id
-            ),
-            "system",
-        )?;
-
-        let args = build_download_command_args(
-            &ffmpeg_location,
-            &normalized_format_id,
-            download_live_chat,
-            normalized_cookies_browser.as_deref(),
-            run_cookies_path.as_deref(),
-            &temp_dir,
-            &file_prefix,
-            &normalized_url,
-        );
-
-        emit_download_log(
-            app,
-            &normalized_run_id,
-            format!("yt-dlp args: {}", redacted_args_for_log(&args)),
-            "system",
-        )?;
-
-        let mut command = Command::new(&yt_dlp);
-        crate::utils::process::configure_child_async(&mut command);
-        crate::services::binaries::expose_js_runtime_to_child(&mut command);
-        // Starts in the run's own temp directory rather than wherever the app was launched from
-        // (see utils::process::pin_working_dir_async).
-        crate::utils::process::pin_working_dir_async(&mut command, &temp_dir);
-        command.args(&args);
-
-        // Both streams are redacted before anything sees a line (the terminal, the log, and the
-        // failure message built from stderr below). See redact_download_output_line.
-        let output_redaction = OutputRedaction {
-            run_dir: temp_dir.to_string_lossy().into_owned(),
-            ffmpeg_location: ffmpeg_location.clone(),
-            url: normalized_url.clone(),
-            cookies_path: normalized_cookies_path.clone(),
-            cookies_browser: normalized_cookies_browser.clone(),
-        };
-
-        let ChildOutcome {
-            success,
-            stalled,
-            cancel_requested,
-            timed_out,
-            captured_stderr,
-        } = supervise_download_child(
-            app,
-            &normalized_run_id,
-            command,
-            &temp_dir,
-            &file_prefix,
-            output_redaction,
-            &cancel_flag,
-            SupervisionLimits::PRODUCTION,
-        )
-        .await?;
-
-        // The absolute run-time cap is reported before the stall/cancel/exit classification. A run
-        // killed for exceeding it comes back with cancel_requested set and a non-success status, so
-        // classify_download_termination would otherwise report it as a plain cancel. It gets its own
-        // message so the cause is clear rather than looking like a user cancel.
-        if timed_out {
-            return Err(failed(
-                app,
-                &normalized_run_id,
-                AppErrorCode::YtDlpDownloadTimeout,
-                "yt-dlp download exceeded the maximum allowed run time and was stopped",
-            ));
-        }
-
-        match classify_download_termination(
-            stalled,
-            cancel_requested,
-            success,
-            &captured_stderr,
-        ) {
-            DownloadTermination::Stalled => {
-                return Err(failed(
-                    app,
-                    &normalized_run_id,
-                    AppErrorCode::YtDlpDownloadTimeout,
-                    "yt-dlp download stalled with no progress and was stopped",
-                ));
-            }
-            DownloadTermination::Cancelled => {
-                return Err(cancelled(app, &normalized_run_id));
-            }
-            DownloadTermination::Failed(message) => {
-                return Err(failed(
-                    app,
-                    &normalized_run_id,
-                    AppErrorCode::YtDlpDownloadFailed,
-                    message,
-                ));
-            }
-            DownloadTermination::Succeeded => {}
-        }
-
-        // A cancel that arrived after yt-dlp exited is still honored before the file is placed, the
-        // last point where stopping leaves nothing in the library. The Cancel button stays up for
-        // the whole creation, not only while the process runs.
-        if cancel_flag.load(Ordering::SeqCst) {
-            return Err(cancelled(app, &normalized_run_id));
-        }
-
-        let downloaded_temp =
-            find_downloaded_media_file(&temp_dir, &file_name_prefix, expected_ext.as_deref())?;
-
-        let placement = place_downloaded_file_async(
-            downloaded_temp.clone(),
-            media_dir,
-            library_dir.clone(),
-            Some(library_pass),
-        )
-        .await;
-
-        let (final_destination, file_path, kept_existing) = match placement {
-            Ok(placed) => placed,
-            Err(error) => {
-                let (error, left_in_run_dir) =
-                    keep_unplaced_download(app, &normalized_run_id, downloaded_temp, error).await;
-                download_left_in_run_dir = left_in_run_dir;
-                return Err(error);
-            }
-        };
-
-        // Nothing past this point may fail the run. The file is in the library, and an error here
-        // would leave it there with no row while the user is told the download failed. That is why
-        // the placement already returned the library-relative path.
-
-        // Recorded now, before the live chat and the thumbnail, which can take minutes. A process
-        // that dies in that stretch leaves this marker, and the next launch's sweep moves the file
-        // to the library's trash instead of leaving it there with nothing pointing at it. The
-        // registration replaces it with a marker naming everything it writes.
-        let placement_marker = record_placement_marker(app, &file_path).await;
-
-        if kept_existing {
-            // The library already held these exact bytes (see place_downloaded_file), so the fresh
-            // copy was discarded. Said so the user is not left guessing why nothing new appeared.
-            emit_download_log_infallible(
-                app,
-                &normalized_run_id,
-                "The library already held this exact file, so it was reused and the new download discarded.",
-                "system",
-            );
-        }
-
-        // yt-dlp merges into .mkv when the picked video and audio cannot share an mp4 or webm
-        // container (VP9 or AV1 video with m4a audio, which is what high resolutions usually are).
-        // The file is fine, but WebKit on macOS has no Matroska support, so the player there shows
-        // nothing. Said here because the format list cannot know the merged container up front.
-        let merged_into_mkv = final_destination
-            .extension()
-            .and_then(|value| value.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("mkv"));
-
-        if merged_into_mkv {
-            emit_download_log_infallible(
-                app,
-                &normalized_run_id,
-                "Saved as .mkv because the chosen video and audio streams cannot share an mp4 container. The macOS version of Kavynex cannot play .mkv files, so choose an mp4 format there to avoid this.",
-                "system",
-            );
-        }
-
-        // Best effort, like the thumbnail below, because the media is already in the library by now.
-        let live_chat_file_path = if download_live_chat {
-            store_live_chat_best_effort(
-                app,
-                &normalized_run_id,
-                &temp_dir,
-                &file_prefix,
-                run_live_chat_dir.as_deref(),
-                Some(library_pass),
-            )
-            .await
-        } else {
-            None
-        };
-
-        // After the media rather than before it, and never fatal. The video is what the user asked
-        // to archive, so an image that will not download cannot cost them the backup, and fetching
-        // it last means a download that fails leaves no thumbnail behind with nothing pointing at
-        // it.
-        let thumbnail_path = if skip_auto_thumbnail_download {
-            None
-        } else {
-            download_thumbnail_best_effort(
-                app,
-                &normalized_run_id,
-                library_path,
-                &metadata,
-                &cancel_flag,
-            )
-            .await
-        };
-
-        // A cancel that arrived while the live chat or the thumbnail was being saved. The Cancel
-        // button stays up until the media is registered, so it has to mean the same thing here as
-        // before the placement. What this run put in the library goes to the trash (each file
-        // reference-counted, so one another row already uses is kept), and nothing is registered.
-        if cancel_flag.load(Ordering::SeqCst) {
-            discard_cancelled_placement(
-                app,
-                [
-                    Some(file_path.clone()),
-                    thumbnail_path.clone(),
-                    live_chat_file_path.clone(),
-                ],
-                placement_marker,
-            )
-            .await;
-
-            return Err(cancelled(app, &normalized_run_id));
-        }
-
-        let result = DownloadedMediaResult {
-            file_path,
-            suggested_title: suggested_title.clone(),
-            youtube_video_id,
-            published_at,
-            media_type: media_subdir.to_string(),
-            thumbnail_path,
-            is_live,
-            live_chat_file_path,
-            placement_marker,
-        };
-
-        run_cookies.keep_refreshed_async().await;
-
-        emit_download_finished(
-            app,
-            &normalized_run_id,
-            result.file_path.clone(),
-            result.suggested_title.clone(),
-        );
-
-        logger::info(
-            "yt_dlp",
-            format!(
-                "download run finished successfully: run_id='{}', file='{}', live_chat='{}'",
-                normalized_run_id,
-                result.file_path,
-                result.live_chat_file_path.clone().unwrap_or_default()
-            ),
-        );
-
-        Ok(result)
-    }
-    .await;
+    let run = DownloadRun {
+        app,
+        run_id: &normalized_run_id,
+        url: &normalized_url,
+        format_id: &normalized_format_id,
+        library_path,
+        library_dir: &library_dir,
+        temp_dir: &temp_dir,
+        library_pass,
+        yt_dlp: &yt_dlp,
+        ffmpeg_location: &ffmpeg_location,
+        cookies_browser: normalized_cookies_browser.as_deref(),
+        cookies_path: normalized_cookies_path.as_deref(),
+        run_cookies_path: run_cookies_path.as_deref(),
+        cancel_flag: &cancel_flag,
+        download_live_chat,
+        skip_auto_thumbnail_download,
+    };
+    let result = run.run(run_cookies, &mut download_left_in_run_dir).await;
 
     // A download temp dir can hold multi-GB leftovers (a partial video, an ffmpeg merge output),
     // so this recursive removal is offloaded to the blocking pool rather than run directly on the
