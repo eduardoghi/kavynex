@@ -1,7 +1,6 @@
-import { Anchor, Group, Stack, Text } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 import { Check, Wrench } from "lucide-react";
-import { openAuthorYoutubeChannel } from "../../../services/author-navigation";
-import { activateOnEnterOrSpace } from "../../../utils/keyboard";
+import { AuthorName } from "../author-name";
 import { avatarInitials } from "../../../utils/avatar";
 import { SafeAvatar } from "../safe-avatar";
 import {
@@ -79,26 +78,9 @@ export function RegularChatMessage({
             <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
                 <Group gap={8} wrap="wrap" align="center">
                     <Group gap={5} wrap="nowrap" align="center">
-                        {authorChannelId ? (
-                            <Anchor
-                                fw={700}
-                                size="sm"
-                                role="button"
-                                tabIndex={0}
-                                title="Open channel on YouTube"
-                                style={{ cursor: "pointer", ...nameStyle }}
-                                onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
-                                onKeyDown={activateOnEnterOrSpace(() =>
-                                    void openAuthorYoutubeChannel(authorChannelId)
-                                )}
-                            >
-                                {nameContent}
-                            </Anchor>
-                        ) : (
-                            <Text component="span" fw={700} size="sm" style={nameStyle}>
-                                {nameContent}
-                            </Text>
-                        )}
+                        <AuthorName channelId={authorChannelId} fw={700} style={nameStyle}>
+                            {nameContent}
+                        </AuthorName>
 
                         {isVerified && !isOwner && (
                             <Check

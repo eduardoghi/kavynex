@@ -1,11 +1,10 @@
 import { type CSSProperties, type ReactNode } from "react";
-import { Anchor, Badge, Group, Stack, Text, VisuallyHidden } from "@mantine/core";
+import { Badge, Group, Stack, Text, VisuallyHidden } from "@mantine/core";
 import { ThumbsUp } from "lucide-react";
 import { MAX_COMMENT_TEXT_CHARS } from "../../constants/comment-text";
 import { UI_TEXT } from "../../constants/ui-text";
 import { avatarInitials, resolveAvatarSrc } from "../../utils/avatar";
-import { openAuthorYoutubeChannel } from "../../services/author-navigation";
-import { activateOnEnterOrSpace } from "../../utils/keyboard";
+import { AuthorName } from "./author-name";
 import { SafeAvatar } from "./safe-avatar";
 import { CommentOriginalText } from "./comment-original-text";
 import {
@@ -62,27 +61,14 @@ export function CommentContent({
 
             <Stack gap={6} style={{ minWidth: 0, flex: 1 }}>
                 <Group gap={8} wrap="wrap">
-                    {authorChannelId ? (
-                        <Anchor
-                            fw={800}
-                            size="sm"
-                            c="var(--kx-color-link)"
-                            role="button"
-                            tabIndex={0}
-                            title="Open channel on YouTube"
-                            style={{ cursor: "pointer" }}
-                            onClick={() => void openAuthorYoutubeChannel(authorChannelId)}
-                            onKeyDown={activateOnEnterOrSpace(() =>
-                                void openAuthorYoutubeChannel(authorChannelId)
-                            )}
-                        >
-                            {comment.author_handle?.trim() || comment.author_name}
-                        </Anchor>
-                    ) : (
-                        <Text fw={800} size="sm">
-                            {comment.author_handle?.trim() || comment.author_name}
-                        </Text>
-                    )}
+                    <AuthorName
+                        channelId={authorChannelId}
+                        fw={800}
+                        linkColor="var(--kx-color-link)"
+                        inline={false}
+                    >
+                        {comment.author_handle?.trim() || comment.author_name}
+                    </AuthorName>
 
                     {Boolean(comment.is_author_uploader) && (
                         <Badge size="xs" radius="sm" variant="filled" color="dark">
