@@ -7,31 +7,21 @@ vi.mock("../services/media-service", () => ({
 
 import { deleteMediaWithFileCleanup } from "../services/media-service";
 import { executeDeleteMedia } from "./delete-media";
+import { createMedia } from "../test/factories/media";
 
 const deleteMediaWithFileCleanupMock = vi.mocked(deleteMediaWithFileCleanup);
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
+    return createMedia({
         id: 5,
         channel_id: 1,
         title: "Video A",
         file_path: "media/video-a.mp4",
-        thumbnail_path: null,
-        media_type: "video",
-        youtube_video_id: null,
-        watched_at: null,
-        published_at: null,
         duration_seconds: 0,
-        progress_seconds: 0,
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         created_at: "2026-03-30T12:00:00Z",
         ...overrides,
-    };
+    });
 }
 
 describe("executeDeleteMedia", () => {

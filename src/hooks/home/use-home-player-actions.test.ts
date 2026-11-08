@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { MediaRow } from "../../types/media";
 import { openFileLocation } from "../../services/library-service";
 import { useHomePlayerActions } from "./use-home-player-actions";
+import { createMedia } from "../../test/factories/media";
 
 vi.mock("../../services/library-service", () => ({
     openFileLocation: vi.fn(),
@@ -12,28 +13,17 @@ vi.mock("../../utils/app-logger", () => ({
     logError: vi.fn(),
 }));
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
+    return createMedia({
         id: 55,
-        channel_id: 10,
         title: "Video A",
         file_path: "video/a.mp4",
-        thumbnail_path: null,
-        media_type: "video",
-        youtube_video_id: null,
-        watched_at: null,
-        published_at: null,
         duration_seconds: 125,
         progress_seconds: 42,
         created_at: "2026-03-31T10:00:00.000Z",
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         ...overrides,
-    };
+    });
 }
 
 type MockMediaPlayer = {

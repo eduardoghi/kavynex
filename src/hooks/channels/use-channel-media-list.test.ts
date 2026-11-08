@@ -26,6 +26,7 @@ vi.mock("../../utils/app-logger", () => ({
 
 import { listChannelMediaPage } from "../../services/media-service";
 import { logError } from "../../utils/app-logger";
+import { createMedia } from "../../test/factories/media";
 
 // The page size both sides are calibrated against. Resolved from the repo root (vitest's cwd), not
 // import.meta.url, matching the other shared-fixture readers. Vitest does not serve the test module
@@ -36,28 +37,13 @@ const SHARED_MEDIA_PAGE_SIZE = (
     ) as { mediaPageSize: number }
 ).mediaPageSize;
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
-        id: 1,
-        channel_id: 10,
+    return createMedia({
         title: "Item 1",
-        file_path: "media/item-1.mp4",
-        thumbnail_path: null,
-        media_type: "video",
-        youtube_video_id: null,
-        watched_at: null,
-        published_at: null,
         duration_seconds: 0,
-        progress_seconds: 0,
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
-        created_at: "2026-03-29T10:00:00.000Z",
         ...overrides,
-    };
+    });
 }
 
 function page(items: MediaRow[], total: number): MediaPage {

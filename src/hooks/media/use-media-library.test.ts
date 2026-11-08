@@ -7,6 +7,7 @@ import { saveMediaProgress as persistMediaProgress } from "../../services/media-
 import { listChannelMediaPage } from "../../services/media-service";
 import { DEFAULT_MEDIA_QUERY_FILTERS } from "../../utils/media-library-filters";
 import { createYtDlpTerminalStore } from "../yt-dlp-terminal-store";
+import { createMedia } from "../../test/factories/media";
 
 // useChannelMediaList and useMediaPlayer are exercised for real (not mocked) below, so the
 // dependency-array mutants in useMediaLibrary's own useCallback/useEffect blocks can be
@@ -67,28 +68,18 @@ vi.mock("../use-add-media-workflow", () => ({
 const listMediaPageMock = vi.mocked(listChannelMediaPage);
 const persistMediaProgressMock = vi.mocked(persistMediaProgress);
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
-        id: 1,
-        channel_id: 10,
+    return createMedia({
         title: "Video A",
         file_path: "video/a.mp4",
         thumbnail_path: "thumbnails/a.jpg",
-        media_type: "video",
         youtube_video_id: "abc123",
-        watched_at: null,
         published_at: "2026-03-31",
         duration_seconds: 125,
-        progress_seconds: 0,
         created_at: "2026-03-31T10:00:00.000Z",
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         ...overrides,
-    };
+    });
 }
 
 function page(items: MediaRow[], total = items.length): MediaPage {

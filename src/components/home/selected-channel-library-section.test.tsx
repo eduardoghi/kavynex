@@ -7,6 +7,7 @@ import { idleBatchImport } from "../../test/factories/media-library";
 import { createYtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 import type { MediaRow } from "../../types/media";
 import type { Channel } from "../../types/media";
+import { createMedia } from "../../test/factories/media";
 
 vi.mock("../../utils/media-utils", () => ({
     initials: vi.fn((value: string) => value.slice(0, 2).toUpperCase()),
@@ -32,28 +33,15 @@ vi.mock("../library/media-grid", () => ({
     ),
 }));
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
-        id: 1,
-        channel_id: 10,
+    return createMedia({
         title: "Item 1",
         file_path: "video/item-1.mp4",
-        thumbnail_path: null,
-        media_type: "video",
-        youtube_video_id: null,
-        watched_at: null,
-        published_at: null,
         duration_seconds: 0,
-        progress_seconds: 0,
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         created_at: "2026-03-31T10:00:00.000Z",
         ...overrides,
-    };
+    });
 }
 
 const CHANNEL_A: Channel = {

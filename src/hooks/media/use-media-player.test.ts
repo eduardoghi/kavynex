@@ -35,29 +35,19 @@ vi.mock("../../utils/app-logger", () => ({
 
 import { openYoutubeVideo } from "../../services/library-service";
 import { logError } from "../../utils/app-logger";
+import { createMedia } from "../../test/factories/media";
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
+    return createMedia({
         id: 10,
         channel_id: 1,
         title: "Video A",
         file_path: "video/a.mp4",
-        thumbnail_path: null,
-        media_type: "video",
-        youtube_video_id: null,
-        watched_at: null,
-        published_at: null,
         duration_seconds: 120,
-        progress_seconds: 0,
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         created_at: "2026-03-31T10:00:00.000Z",
         ...overrides,
-    };
+    });
 }
 
 describe("useMediaPlayer", () => {

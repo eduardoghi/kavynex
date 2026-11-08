@@ -2,29 +2,21 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { MediaRow } from "../../types/media";
 import { useHomePlayerPanel } from "./use-home-player-panel";
+import { createMedia } from "../../test/factories/media";
 
+// The shared factory, with the values these tests were written against.
 function createMediaRow(overrides: Partial<MediaRow> = {}): MediaRow {
-    return {
-        id: 1,
-        channel_id: 10,
+    return createMedia({
         title: "Video A",
         file_path: "video/a.mp4",
         thumbnail_path: "thumbnails/a.jpg",
-        media_type: "video",
         youtube_video_id: "abc123",
         watched_at: "2026-03-31T12:00:00.000Z",
         published_at: "2026-03-31",
         duration_seconds: 125,
-        progress_seconds: 0,
         created_at: "2026-03-31T10:00:00.000Z",
-        has_comments: 0,
-        comments_count: 0,
-        comments_state: "unknown",
-        is_live: 0,
-        has_live_chat: 0,
-        live_chat_file_path: null,
         ...overrides,
-    };
+    });
 }
 
 describe("useHomePlayerPanel", () => {
