@@ -188,11 +188,8 @@ export function useAddMediaForm({
         onTerminalStop: ytDlpTerminal?.markStopped,
     });
 
-    // Destructure the reference-stable actions off each sub-controller so the callbacks below can
-    // depend on them individually, per CONTRIBUTING.md's hook conventions, instead of on the whole
-    // sub-controller object, whose identity changes on any field change (see the note in
-    // use-add-media-form-state) and would otherwise recreate these callbacks (and every per-card
-    // handler derived from them) on every keystroke in an unrelated field.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
+    // Here that is every keystroke, since the form state changes on each one.
     const {
         setSourceModeState,
         setMediaUrlState,
@@ -532,8 +529,7 @@ export function useAddMediaForm({
         await resetThumbState();
     }, [resetFormState, resetThumbState, resetYtDlpSelectionState]);
 
-    // Destructure the sub-state fields the returned object exposes so the memo below can depend
-    // on them directly (honest dependency array, no eslint-disable).
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
     const { thumbPath, isGeneratingThumb } = thumbnailState;
     const {
         ytDlpFormats,

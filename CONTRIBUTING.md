@@ -250,9 +250,11 @@ permanently, because a directory would imply it serves one area when every area 
   on the whole controller.
 - **Depend on the specific stable fields, not the whole controller object.** When a hook receives
   another controller as input, destructure the individual fields it needs off it and list *those* in
-  the `useCallback`/`useEffect`/`useMemo` dependency arrays, never the per-render controller object
-  itself, whose identity changes every render and would recreate the callback (and, transitively,
-  every per-card handler derived from it) on any unrelated change. `home/use-home-media-actions.ts`
+  the `useCallback`/`useEffect`/`useMemo` dependency arrays, never the controller object itself.
+  Even a `useMemoObject` controller is a new object whenever *any* of its fields changes, so
+  depending on it recreates the callback (and, transitively, every per-card handler derived from
+  it) on a change to a field the callback never reads. Listing the fields also keeps the dependency
+  array exact, which is what `react-hooks/exhaustive-deps` checks. `home/use-home-media-actions.ts`
   and `home/use-home-player-actions.ts` are the reference examples.
 - **Do not reach for `eslint-disable react-hooks/exhaustive-deps`.** The destructure-stable-fields
   rule above is what lets the dependency arrays stay honest without it. The few genuine exceptions

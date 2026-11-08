@@ -69,10 +69,7 @@ export function useHomeUiGuards({
     mediaLibrary,
     channelsState,
 }: UseHomeUiGuardsOptions): HomeUiGuardsController {
-    // Destructure the stable fields off the per-render controller objects so the memos and
-    // callback below can depend on them directly, instead of passing the whole per-render
-    // objects into helper functions called from inside them. This keeps the dependency arrays
-    // honest (no eslint-disable) while the computed values stay identical.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
     const { isAddingMedia, isYtDlpRunning, isCancellingYtDlp, closeAddMediaModal } =
         mediaLibrary.adding;
     const { isGeneratingThumb, isLoadingYtDlpFormats } = mediaLibrary.adding.addMediaForm;

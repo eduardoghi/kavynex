@@ -158,11 +158,9 @@ export function useAddMediaWorkflow({
 
     const addMediaForm = useAddMediaForm({ onError, ytDlpTerminal });
 
-    // Destructure the stable fields off the addMediaForm/ytDlpEvents controller objects so the
-    // callbacks and effects below can depend on them directly. This keeps the dependency arrays
-    // honest (no eslint-disable) while still not depending on the whole objects, whose identity
-    // changes with any of their fields. isGeneratingThumb, isLoadingYtDlpFormats and
-    // isYtDlpRunning are deliberately NOT destructured here. closeAddMediaModal below must
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
+    // isGeneratingThumb, isLoadingYtDlpFormats and isYtDlpRunning are deliberately NOT
+    // destructured here. closeAddMediaModal below must
     // read them live off addMediaForm/ytDlpEvents at call time rather than from a snapshot
     // captured at the last render (see the "does not close the modal while ..." tests, which
     // flip these flags on the mocked controllers without triggering a re-render in between).

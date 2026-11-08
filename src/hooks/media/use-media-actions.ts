@@ -117,9 +117,8 @@ export function useMediaActions({
         activeMediaRef.current = mediaPlayer.activeMedia;
     }, [mediaPlayer.activeMedia]);
 
-    // activeMedia and closePlayer are plain/stable fields off useMediaPlayer, and setActiveMedia is
-    // stable there too (useCallback []). Pull them out so the callbacks below can depend on
-    // them directly instead of on the per-render mediaPlayer object.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
+    // setActiveMedia is stable there (useCallback []).
     const { activeMedia, setActiveMedia, closePlayer } = mediaPlayer;
 
     const requestDeleteMedia = useCallback((media: MediaRow): void => {

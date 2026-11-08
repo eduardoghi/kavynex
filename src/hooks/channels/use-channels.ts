@@ -135,10 +135,7 @@ export function useChannels({
         setConfirmDeleteChannelOpen,
     });
 
-    // Destructure the stable fields off the per-render channelActions controller object so the
-    // callbacks and effects below can depend on them directly. This keeps the dependency arrays
-    // honest (no eslint-disable) while still not depending on the whole object, whose identity
-    // changes every render.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
     const {
         createChannelAction,
         updateChannelIdentityAction,

@@ -121,11 +121,9 @@ export function useMediaLibrary({
         onError,
     });
 
-    // Destructure the stable fields off the mediaList/mediaPlayer controller objects so the
-    // callbacks and effects below can depend on them directly rather than on the whole objects
-    // (whose identity changes when their contents do). setMediaItems (useState) and
-    // setActiveMedia (useCallback []) are stable, so a callback depending only on them is
-    // itself stable.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
+    // setMediaItems (useState) and setActiveMedia (useCallback []) are stable, so a callback
+    // depending only on them is itself stable.
     const { clearMedia, setMediaItems } = mediaList;
     const { syncActiveMediaProgress } = mediaPlayer;
 

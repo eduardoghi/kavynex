@@ -66,10 +66,7 @@ export function useAppSettings({
         setSettings,
     });
 
-    // Destructure the stable field off the per-render settingsActions controller object so
-    // the effect below can depend on it directly. This keeps the dependency array honest (no
-    // eslint-disable) while still not depending on the whole object, whose identity changes
-    // every render.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
     const { prepareSettings, isLibraryUnreachable } = settingsActions;
 
     const openSettings = useCallback((): void => {

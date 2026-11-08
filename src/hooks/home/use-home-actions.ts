@@ -29,10 +29,8 @@ export function useHomeActions({
     mediaLibrary,
     uiGuards,
 }: UseHomeActionsOptions): UseHomeActionsReturn {
-    // Destructure the stable fields off the per-render controller objects so the callbacks
-    // below can depend on them directly. This keeps the dependency arrays honest (no
-    // eslint-disable) while still not depending on the whole objects, whose identity changes
-    // every render. Fields that collide with a name this hook exports get an "Action" suffix.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
+    // Fields that collide with a name this hook exports get an "Action" suffix.
     const { showError } = errorState;
     const { chooseLibraryPath: chooseLibraryPathAction } = settingsState;
     const {

@@ -28,10 +28,7 @@ export function useHomeMediaActions({
     mediaLibrary,
     confirmDeleteChannelFlow,
 }: UseHomeMediaActionsOptions): HomeMediaActionsController {
-    // Destructure the stable fields off the per-render controller objects so the callbacks
-    // below can depend on them directly. This keeps the dependency arrays honest (no
-    // eslint-disable) while still not depending on the whole object, whose identity changes
-    // every render.
+    // The fields used below, not the whole controller (see CONTRIBUTING.md's hook conventions).
     const { diagnosticsOpen, reloadDiagnostics } = diagnosticsState;
     const { addMedia: addMediaAction } = mediaLibrary.adding;
     const { confirmDeleteMedia: confirmDeleteMediaAction } = mediaLibrary.deletion;
