@@ -4,6 +4,7 @@ import { ChannelMissingMediaModal } from "./channel-missing-media-modal";
 import type { ChannelMissingMediaController } from "../../hooks/channels/use-channel-missing-media";
 import type { MissingChannelMedia } from "../../types/generated/MissingChannelMedia";
 import { renderWithMantine } from "../../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 import { idleBatchImport } from "../../test/factories/media-library";
 import { createYtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 import { FORMATS_PAUSE_MS } from "../../hooks/use-batch-formats";
@@ -390,5 +391,85 @@ describe("ChannelMissingMediaModal", () => {
         fireEvent.click(screen.getByRole("button", { name: "Try again" }));
 
         expect(missingMedia.check).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("ChannelMissingMediaModal accessibility", () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    // Scanned from document.body, not the render container. Mantine mounts the dialog in a portal
+    // beside the container, so a scan rooted there covers an empty wrapper (see src/test/axe.ts).
+    async function expectNoViolations() {
+        const violations = await findAccessibilityViolations(document.body);
+
+        expect(violations, describeViolations(violations)).toEqual([]);
+    }
+
+    it("has no detectable violations in the list, with a media picked", async () => {
+        renderModal(controller({ result: LISTING }));
+        fireEvent.click(screen.getByRole("checkbox", { name: "Select A video" }));
+
+        await expectNoViolations();
+    });
+
+    it("has no detectable violations in the ignored tab", async () => {
+        renderModal(controller({ result: LISTING }));
+        fireEvent.click(screen.getByText("Ignored (1)"));
+
+        await expectNoViolations();
+    });
+
+    it("has no detectable violations in the batch setup, with the formats loaded", async () => {
+        vi.useFakeTimers();
+        vi.mocked(listYtDlpFormats).mockImplementation(async (url: string) => ({
+            suggested_title: `Title ${url.slice(-11)}`,
+            youtube_video_id: url.slice(-11),
+            formats: [
+                format({ format_id: "137", has_audio: false, height: 1080 }),
+                format({ format_id: "140", has_video: false, media_type: "audio", abr: 128 }),
+            ],
+            terminal_logs: [],
+        }));
+        renderModal(controller({ result: LISTING }));
+
+        fireEvent.click(screen.getByRole("checkbox", { name: "Select A video" }));
+        fireEvent.click(screen.getByRole("button", { name: "Import selected (1)" }));
+        fireEvent.click(screen.getByRole("button", { name: "Load formats" }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(FORMATS_PAUSE_MS);
+        });
+        expect(screen.getAllByLabelText("Format for Title aaaaaaaaaaa").length).toBeGreaterThan(0);
+        vi.useRealTimers();
+
+        await expectNoViolations();
+    });
+
+    it("has no detectable violations while a batch runs", async () => {
+        const batchImport = {
+            ...idleBatchImport(),
+            channelId: 10,
+            isRunning: true,
+            items: [
+                {
+                    youtubeVideoId: "aaaaaaaaaaa",
+                    title: "A video",
+                    formatId: "18",
+                    status: "downloading" as const,
+                    message: null,
+                },
+                {
+                    youtubeVideoId: "bbbbbbbbbbb",
+                    title: "A live",
+                    formatId: "18",
+                    status: "failed" as const,
+                    message: "HTTP Error 429",
+                },
+            ],
+        };
+        renderModal(controller({ result: LISTING }), { batchImport });
+
+        await expectNoViolations();
     });
 });

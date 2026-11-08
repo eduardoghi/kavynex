@@ -4,6 +4,7 @@ import type { MediaRow } from "../types/media";
 import type { HomeController } from "../types/controllers";
 import { createMedia } from "../test/factories/media";
 import { renderWithMantine } from "../test/test-utils";
+import { describeViolations, findAccessibilityViolations } from "../test/axe";
 import { UI_TEXT } from "../constants/ui-text";
 
 // Home is presentation plus wiring. Every hook it composes and every section it renders has a
@@ -430,5 +431,34 @@ describe("Home", () => {
 
         fireEvent.click(screen.getByRole("button", { name: UI_TEXT.player.errorBoundaryClose }));
         expect(ctrl.playerActions.closePlayer).toHaveBeenCalled();
+    });
+});
+
+// The page's own markup only. The sidebar, the library, the player and the modals are stubs here,
+// and each has an accessibility check of its own.
+describe("Home accessibility", () => {
+    it.each([
+        ["the loading state", { showLoading: true, showLibrary: false }],
+        ["the first-run empty state", { showLibrarySetup: true, showEmpty: true, showLibrary: false }],
+        ["the channel load error", { showChannelsLoadError: true, showLibrary: false }],
+        ["the select-a-channel prompt", { showSelectChannelPrompt: true, showLibrary: false }],
+    ])("has no detectable violations in %s", async (_name, viewState) => {
+        vi.mocked(useHomeController).mockReturnValue(
+            controller({ viewState, selectedChannel: null })
+        );
+        const { container } = renderWithMantine(<Home />);
+
+        const violations = await findAccessibilityViolations(container);
+
+        expect(violations, describeViolations(violations)).toEqual([]);
+    });
+
+    it("has no detectable violations with a channel open", async () => {
+        vi.mocked(useHomeController).mockReturnValue(controller({}));
+        const { container } = renderWithMantine(<Home />);
+
+        const violations = await findAccessibilityViolations(container);
+
+        expect(violations, describeViolations(violations)).toEqual([]);
     });
 });
