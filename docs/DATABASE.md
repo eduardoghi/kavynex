@@ -399,11 +399,12 @@ Every pooled connection (`database.rs::build_pool_at`) is configured identically
 `SqliteConnectOptions`:
 
 - `journal_mode(Wal)`: write-ahead logging, so readers are never blocked by a writer.
-- `synchronous(Normal)`: durable across an app crash; only the last few transactions are
-  at risk on an OS crash or power loss. This is the standard desktop-app tradeoff against
-  the slower default `FULL` (fsync on every commit). The database comes back intact, a few
-  seconds behind. What can matter is which seconds. A comment fetch committed just before the
-  power went is lost with them, and cannot be fetched again for a video YouTube has since removed.
+- `synchronous(Full)`: each commit is flushed to disk before it returns, so an OS crash or a
+  power loss keeps it. The common desktop choice is `NORMAL`, which only risks the last few
+  transactions, but which ones can matter here. A comment fetch committed just before the power
+  went would be lost with them, and cannot be fetched again for a video YouTube has since removed.
+  The app commits rarely (playback progress every few seconds, a comment fetch as one
+  transaction), so the fsync per commit costs nothing noticeable.
 - `busy_timeout(30_000ms)`: a connection waits up to 30 seconds for a lock instead of
   failing immediately with `SQLITE_BUSY` when another connection (or the backup/export
   path, which opens its own short-lived pool against the same file) holds it. Note the one

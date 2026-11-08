@@ -506,10 +506,11 @@ async fn build_pool_at(path: &Path, allow_create: bool) -> AppResult<SqlitePool>
         .filename(path)
         .create_if_missing(true)
         .journal_mode(SqliteJournalMode::Wal)
-        // WAL + NORMAL is durable across app crashes and only risks the last few
-        // transactions on an OS crash/power loss. The standard, faster tradeoff for a
-        // desktop app versus the default FULL fsync on every commit.
-        .synchronous(SqliteSynchronous::Normal)
+        // FULL, so a commit is on the disk before it returns and a power loss keeps it. Some of
+        // what is written cannot be fetched again (the comments of a video since removed), and the
+        // app commits rarely enough that the fsync per commit costs nothing a user would notice.
+        // See docs/DATABASE.md ("Connection settings").
+        .synchronous(SqliteSynchronous::Full)
         .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
         .foreign_keys(true);
     let options = harden_against_foreign_schema(options);
@@ -609,7 +610,7 @@ pub fn is_pool_initialized<R: Runtime>(app: &AppHandle<R>) -> bool {
 
 /// Folds the write-ahead log back into the main database file and truncates it.
 ///
-/// Not a durability step: WAL with `synchronous=NORMAL` is already crash-safe, and SQLite
+/// Not a durability step, since WAL with `synchronous=FULL` is already crash-safe and SQLite
 /// checkpoints on its own every ~1000 pages. What this buys is a small `-wal` sidecar between
 /// sessions. A session of light, sporadic writes never crosses the automatic threshold, so without
 /// an explicit checkpoint the sidecar can sit at a few MB indefinitely, which the size reported in
