@@ -59,20 +59,19 @@ pub(crate) fn tab_url(channel_url: &str, kind: ChannelTabKind) -> String {
 /// The yt-dlp arguments that print one tab as a flat list. `approximate_date` gives each entry the
 /// date the tab shows ("3 weeks ago"), which a flat list otherwise leaves out.
 fn listing_args(url: &str) -> Vec<String> {
-    [
-        "-v",
-        "--ignore-config",
-        "--flat-playlist",
-        "--dump-single-json",
-        "--no-warnings",
-        "--extractor-args",
-        "youtubetab:approximate_date",
-        "--",
-        url,
-    ]
-    .iter()
-    .map(|arg| (*arg).to_string())
-    .collect()
+    let mut args = super::metadata::base_json_args();
+    args.extend(
+        [
+            "-v",
+            "--flat-playlist",
+            "--extractor-args",
+            "youtubetab:approximate_date",
+            "--",
+            url,
+        ]
+        .map(String::from),
+    );
+    args
 }
 
 /// Whether a failed listing was the channel not having that tab at all, which yt-dlp reports as an

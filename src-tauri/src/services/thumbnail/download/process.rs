@@ -174,19 +174,9 @@ pub(super) enum ThumbnailTarget {
 /// below the avatar, so `--write-thumbnail` (the avatar's flow) never writes it. The URL is last and
 /// preceded by `--`, as in [`build_thumbnail_command_args`].
 pub(super) fn build_channel_images_command_args(url: &str) -> Vec<String> {
-    [
-        "--ignore-config",
-        "--playlist-items",
-        "0",
-        "--skip-download",
-        "--dump-single-json",
-        "--no-warnings",
-        "--",
-        url,
-    ]
-    .iter()
-    .map(|arg| arg.to_string())
-    .collect()
+    let mut args = crate::services::yt_dlp::metadata::base_json_args();
+    args.extend(["--playlist-items", "0", "--skip-download", "--", url].map(String::from));
+    args
 }
 
 /// Builds the yt-dlp argument vector for writing a thumbnail (converted to
@@ -251,11 +241,11 @@ mod tests {
             args,
             [
                 "--ignore-config",
+                "--dump-single-json",
+                "--no-warnings",
                 "--playlist-items",
                 "0",
                 "--skip-download",
-                "--dump-single-json",
-                "--no-warnings",
                 "--",
                 "https://www.youtube.com/@chan",
             ]

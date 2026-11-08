@@ -208,6 +208,17 @@ fn short_identifier_hash(value: &str) -> String {
     crate::utils::hash::hex_encode(&Sha256::digest(value.as_bytes())[..5])
 }
 
+/// What every yt-dlp run whose output is one JSON document starts with. `--ignore-config` keeps a
+/// configuration file the user has for their own yt-dlp from changing what is asked, and
+/// `--no-warnings` keeps the output to what is parsed (the download, whose output is read, keeps
+/// its warnings, see `yt_dlp::download::command`). Each caller adds its own flags, then `--` and
+/// the URL last.
+pub(crate) fn base_json_args() -> Vec<String> {
+    ["--ignore-config", "--dump-single-json", "--no-warnings"]
+        .map(String::from)
+        .to_vec()
+}
+
 fn is_json_payload_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     trimmed.starts_with('{') || trimmed.starts_with('[')
@@ -748,13 +759,8 @@ pub async fn fetch_yt_dlp_metadata(
     cookies_path: Option<&str>,
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<YtDlpMetadata> {
-    let mut args = vec![
-        "-v".to_string(),
-        "--ignore-config".to_string(),
-        "--no-playlist".to_string(),
-        "--dump-single-json".to_string(),
-        "--no-warnings".to_string(),
-    ];
+    let mut args = base_json_args();
+    args.extend(["-v".to_string(), "--no-playlist".to_string()]);
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
     args.push("--".to_string());
@@ -802,17 +808,15 @@ async fn fetch_yt_dlp_metadata_with_comments(
     cookies_path: Option<&str>,
     cancel: Option<Arc<AtomicBool>>,
 ) -> AppResult<YtDlpMetadata> {
-    let mut args = vec![
+    let mut args = base_json_args();
+    args.extend([
         "-v".to_string(),
-        "--ignore-config".to_string(),
         "--no-playlist".to_string(),
         "--skip-download".to_string(),
-        "--dump-single-json".to_string(),
         "--write-comments".to_string(),
-        "--no-warnings".to_string(),
         "--extractor-args".to_string(),
         comments_extractor_args(),
-    ];
+    ]);
 
     append_auth_args(&mut args, cookies_browser, cookies_path);
     args.push("--".to_string());
@@ -1022,13 +1026,8 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
 
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
 
-    let mut args = vec![
-        "-v".to_string(),
-        "--ignore-config".to_string(),
-        "--no-playlist".to_string(),
-        "--dump-single-json".to_string(),
-        "--no-warnings".to_string(),
-    ];
+    let mut args = base_json_args();
+    args.extend(["-v".to_string(), "--no-playlist".to_string()]);
 
     // yt-dlp reads and rewrites a copy (see RunCookies).
     let run_cookies = super::cookies::RunCookies::prepare_async(
