@@ -274,31 +274,6 @@ describe("useHomeActions", () => {
         expect(errorState.showError).toHaveBeenCalledWith("Blocked right now");
     });
 
-    it("shows the default reason when library path change is disabled without a specific reason", async () => {
-        const errorState = createErrorState();
-
-        const { result } = renderHook(() =>
-            useHomeActions({
-                errorState,
-                settingsState: createSettingsState(),
-                channelsState: createChannelsState(),
-                mediaLibrary: createMediaLibrary(),
-                uiGuards: createUiGuards({
-                    disableLibraryPathChange: true,
-                    libraryPathChangeDisabledReason: "",
-                }),
-            })
-        );
-
-        await act(async () => {
-            await result.current.chooseLibraryPath();
-        });
-
-        expect(errorState.showError).toHaveBeenCalledWith(
-            "You cannot change the library folder right now."
-        );
-    });
-
     it("logs and shows a message when choosing the library path fails", async () => {
         const error = new Error("choose failed");
         const settingsState = createSettingsState({
@@ -534,31 +509,6 @@ describe("useHomeActions", () => {
         expect(executeDeleteSelectedChannel).not.toHaveBeenCalled();
         expect(errorState.showError).toHaveBeenCalledWith(
             "Wait for the media import or download to finish before deleting a channel."
-        );
-    });
-
-    it("shows the default reason when channel deletion is disabled without a specific reason", async () => {
-        const errorState = createErrorState();
-
-        const { result } = renderHook(() =>
-            useHomeActions({
-                errorState,
-                settingsState: createSettingsState(),
-                channelsState: createChannelsState(),
-                mediaLibrary: createMediaLibrary(),
-                uiGuards: createUiGuards({
-                    disableChannelDeletion: true,
-                    channelDeletionDisabledReason: "",
-                }),
-            })
-        );
-
-        await act(async () => {
-            await result.current.confirmDeleteChannel();
-        });
-
-        expect(errorState.showError).toHaveBeenCalledWith(
-            "You cannot delete a channel right now."
         );
     });
 

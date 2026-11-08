@@ -69,7 +69,7 @@ export function useHomeActions({
 
     const confirmDeleteChannel = useCallback(async (): Promise<void> => {
         if (disableChannelDeletion) {
-            showError(channelDeletionDisabledReason || "You cannot delete a channel right now.");
+            showError(channelDeletionDisabledReason);
             return;
         }
 
@@ -101,10 +101,7 @@ export function useHomeActions({
 
     const chooseLibraryPath = useCallback(async (): Promise<void> => {
         if (disableLibraryPathChange) {
-            showError(
-                libraryPathChangeDisabledReason ||
-                    "You cannot change the library folder right now."
-            );
+            showError(libraryPathChangeDisabledReason);
             return;
         }
 

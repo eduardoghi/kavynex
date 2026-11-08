@@ -102,9 +102,8 @@ export function useHomeUiGuards({
         return "";
     }, [mediaPreparationState]);
 
-    const disableChannelDeletion = useMemo(() => {
-        return !!channelDeletionDisabledReason;
-    }, [channelDeletionDisabledReason]);
+    // Blocked exactly when there is a reason to give, so a block always comes with its reason.
+    const disableChannelDeletion = channelDeletionDisabledReason !== "";
 
     const libraryPathChangeDisabledReason = useMemo(() => {
         return resolveLibraryPathChangeDisabledReason({
@@ -122,9 +121,7 @@ export function useHomeUiGuards({
         playerViewMode,
     ]);
 
-    const disableLibraryPathChange = useMemo(() => {
-        return !!libraryPathChangeDisabledReason;
-    }, [libraryPathChangeDisabledReason]);
+    const disableLibraryPathChange = libraryPathChangeDisabledReason !== "";
 
     const closeAddMediaModalSafely = useCallback(async (): Promise<void> => {
         if (isMediaOperationBusy(mediaPreparationState)) {
