@@ -200,6 +200,12 @@ pub(super) fn build_download_command_args(
         // failure evidence instead (see `line_is_warning` and the stderr reader in the parent
         // module), so surfacing them costs the error message nothing. The metadata calls keep the
         // flag. Their output is parsed, not read.
+        // The title, channel, upload date, description and link go inside the file, so a library
+        // whose database is lost still says what each `media_<hash>` file is in any player. Not the
+        // info JSON yt-dlp attaches to an mkv along with them, which carries the run's request
+        // details and, with cookies, a signed-in session.
+        "--embed-metadata".to_string(),
+        "--no-embed-info-json".to_string(),
         "--ffmpeg-location".to_string(),
         ffmpeg_location.to_string(),
         "-f".to_string(),

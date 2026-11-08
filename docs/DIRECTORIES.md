@@ -352,6 +352,11 @@ hash to it is the same content (the same video saved for another channel), so it
 fresh download discarded. One whose bytes do not is a damaged copy, and the fresh download
 replaces it.
 
+A download also carries its own title, channel, upload date, description and link inside the file
+(yt-dlp's `--embed-metadata`, in `services/yt_dlp/download/command.rs`), so a player shows what a
+`media_<sha256>` file is even without the database. Downloads made before this, and local imports,
+carry whatever the file already had.
+
 Downloads saved by Kavynex 1.7.0 and earlier kept yt-dlp's name, `youtube_<id>_<format_id>.<ext>`.
 They still work, and the deep check reports them as unverifiable because their name declares no
 hash.

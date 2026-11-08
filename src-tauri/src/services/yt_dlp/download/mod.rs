@@ -1386,6 +1386,10 @@ mod tests {
         // Dated by when it was written, whatever the installed yt-dlp defaults to.
         assert!(args.iter().any(|arg| arg == "--no-mtime"));
 
+        // The file says what it is without the database, and an mkv does not carry the info JSON.
+        assert!(args.iter().any(|arg| arg == "--embed-metadata"));
+        assert!(args.iter().any(|arg| arg == "--no-embed-info-json"));
+
         // The chosen format follows `-f` verbatim.
         let format_index = args.iter().position(|arg| arg == "-f").unwrap();
         assert_eq!(args[format_index + 1], "137+140");
