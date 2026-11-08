@@ -57,7 +57,7 @@ pub async fn check_external_tools<R: Runtime>(app: AppHandle<R>) -> AppResult<Ex
 // What keeps them out of an IPC test is what they do, not their signature. Each resolves and spawns the
 // real yt-dlp (and ffmpeg) binary, which a deterministic, offline test must not depend on. The
 // URL/video-id validation they perform before ever spawning (host allow-list, empty or malformed id)
-// is covered directly at the service layer in `services/yt_dlp/url.rs` and `metadata.rs`.
+// is covered directly at the service layer in `services/yt_dlp/url.rs` and `metadata/`.
 // `cancel_media_download(run_id: String)` touches no binary and is exercised over IPC below.
 #[cfg(test)]
 mod tests {

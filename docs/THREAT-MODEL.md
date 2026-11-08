@@ -568,7 +568,7 @@ from what this function returns, so the listing passes the same gate. It runs wi
 like every other run it puts `--` before the URL.
 
 Every yt-dlp invocation also places a literal `--` separator before the URL argument
-(the argv builder in `services/yt_dlp/download/command.rs`, `services/yt_dlp/metadata.rs`
+(the argv builder in `services/yt_dlp/download/command.rs`, `services/yt_dlp/metadata/mod.rs`
 for the metadata calls, and `services/yt_dlp/channel_listing.rs` for the channel listing), so the URL can never be reinterpreted as a
 command-line flag by yt-dlp itself. Defense-in-depth on top of the scheme/host check,
 not a substitute for it. Binaries are always invoked via `std::process::Command`/

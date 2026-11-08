@@ -61,8 +61,9 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     `channel_image.rs`, then `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
     `paths.rs`, `recovery.rs`, `summary.rs`, `trash.rs`, `verification.rs`), `thumbnail/` (`display.rs`, `download/`,
     `persist.rs`, `picked.rs`, `redirect.rs`, `temp.rs`, `url.rs`) and `yt_dlp/`
-    (`channel_listing.rs`, `cookies.rs`, `events.rs`, `metadata.rs`, `registry.rs`, `url.rs`, plus
-    the nested `download/`). Each family's `mod.rs` declares its submodules and re-exports the entry
+    (`channel_listing.rs`, `cookies.rs`, `events.rs`, `registry.rs`, `url.rs`, plus the nested
+    `download/` and `metadata/`, split into `json_run.rs`, `sanitize.rs`, `terminal.rs` and
+    `redaction.rs`). Each family's `mod.rs` declares its submodules and re-exports the entry
     points the command layer imports, so a caller does not have to know which submodule
     holds each one.
 
@@ -575,7 +576,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
 | Media CRUD | `commands/videos.rs`, `services/video_repository/` | `repositories/media-repository.ts`, `services/media-service.ts` |
 | Creating a media (download or import, thumbnail, crash marker, row) | `commands/media.rs`, `services/media_creation/`, `services/library/media.rs` | `services/media-input-service.ts`, `hooks/use-add-media-workflow.ts` |
-| yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
+| yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata/`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
 | Media the channel has that the library does not | `commands/yt_dlp.rs` (`list_channel_missing_media`), `services/yt_dlp/channel_listing.rs` | `hooks/channels/use-channel-missing-media.ts`, `hooks/use-batch-import.ts`, `hooks/use-batch-import-options.ts`, `hooks/use-batch-formats.ts`, `components/modals/channel-missing-media-modal.tsx`, `components/modals/channel-batch-import-panel.tsx`, `components/modals/batch-import-setup-panel.tsx` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download/` (`mod.rs`, `fetch.rs`, `process.rs`), `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |

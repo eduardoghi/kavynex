@@ -451,7 +451,7 @@ jobs:
             # rewriting a checked-in file), and the other fetches live yt-dlp metadata to check the captured fixture has
             # not drifted, which needs the network and a real yt-dlp. Neither belongs on the path
             # that builds a published binary. Run the second deliberately when yt-dlp is bumped.
-            # See its doc comment in services/yt_dlp/metadata.rs.
+            # See its doc comment in services/yt_dlp/metadata/tests.rs.
             - name: Run Rust tests
               run: cargo test --manifest-path src-tauri/Cargo.toml --locked
 

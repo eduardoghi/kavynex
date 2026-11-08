@@ -123,7 +123,7 @@ the whole crate?" has a measured answer instead of an opinion.
 
 | Where the 265 sat | Count | What they are |
 |---|---|---|
-| `yt_dlp/metadata.rs`, `yt_dlp/download/mod.rs` | 90 | Async orchestration around a spawned process. The decisions were already extracted into `command.rs` and `redaction.rs`, which are in scope and clean. Since this measurement the download child's supervision (`supervise_download_child`: stall, growing file, cancel, run-time cap, stderr capture) is driven by stand-in children in `download/mod.rs`'s tests, so those survivors are worth re-measuring before the file joins `examine_globs`. Not done yet, because one pass over the file takes hours. |
+| `yt_dlp/metadata/` (one `metadata.rs` then), `yt_dlp/download/mod.rs` | 90 | Async orchestration around a spawned process. The decisions were already extracted into `command.rs` and `redaction.rs`, which are in scope and clean. Since this measurement the download child's supervision (`supervise_download_child`: stall, growing file, cancel, run-time cap, stderr capture) is driven by stand-in children in `download/mod.rs`'s tests, so those survivors are worth re-measuring before the file joins `examine_globs`. Not done yet, because one pass over the file takes hours. |
 | `lib.rs` | 30 | `setup()` and the `spawn_*` tasks, which need a live `AppHandle`, a pool and a window. |
 | `temp_cleanup.rs`, `utils/process.rs` | 37 | Cache sweeps and process spawning/killing. |
 | `thumbnail/temp.rs`, `thumbnail/download/mod.rs`, `download/fetch.rs` | 35 | FFmpeg spawn and outbound HTTP, both already documented as unreachable offline. |
