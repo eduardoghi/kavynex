@@ -579,30 +579,16 @@ browser cookies; without the host check, a compromised frontend could point yt-d
 those cookies) at an arbitrary site. The app only ever needs YouTube, so this closes the
 gap without losing functionality.
 
-**"Every URL" includes the ones the backend builds itself**, which is a distinction
-`normalize_channel_handle_to_url` (`services/thumbnail/download/mod.rs`) did not make. It has five
-exits, one for a pasted URL, which was checked, and four that concatenate a handle onto a literal
-`https://www.youtube.com/` prefix, which were not. The reasoning was sound as far as it went, since
-the literal prefix fixes the authority and no handle can steer it into a different host. But that is
-a property of string formatting rather than a check, nothing asserted it, and the argument has to be
-re-derived by every reader. The gate is now a single exit every branch passes through, and a test
-pins it over all four constructed shapes plus the ways a caller might try to move the authority (a
-leading slash, a userinfo `@`, a protocol-relative prefix, a query or fragment carrying another URL).
-
-It matters more on this path than on the others because the handle does not have to be a validated
-one. `download_channel_avatar_from_handle` (`commands/thumbnail.rs`) takes it straight from IPC and
-never calls `utils::validation::ensure_valid_youtube_handle`, so this function is the only gate that
-value meets before it becomes a yt-dlp argument.
+**"Every URL" includes the ones the backend builds itself.** `normalize_channel_handle_to_url`
+(`services/thumbnail/download/mod.rs`) sends every branch through the allow-list, the ones that
+concatenate a handle onto a literal `https://www.youtube.com/` prefix included, and it is the only
+gate on the avatar-from-handle path, which takes the handle straight from IPC. Why, and what it
+refuses, is on the function.
 
 `list_channel_missing_media` (`commands/yt_dlp.rs`) takes a channel id rather than a handle, and
 `services/yt_dlp/channel_listing.rs` reads the handle from the database and builds each tab's URL
 from what this function returns, so the listing passes the same gate. It runs without cookies, and
 like every other run it puts `--` before the URL.
-
-One behavior follows and is worth naming rather than discovering. A handle carrying a character no
-URI may hold (a space, a control character) does not parse, so it is refused here instead of being
-handed to yt-dlp to fail on. No real `@name`, `c/` or `user/` form contains one, and a refusal up
-front is the clearer of the two failures.
 
 Every yt-dlp invocation also places a literal `--` separator before the URL argument
 (the argv builder in `services/yt_dlp/download/command.rs`, `services/yt_dlp/metadata.rs`
