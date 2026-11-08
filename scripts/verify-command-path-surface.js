@@ -2,19 +2,8 @@
 // accept a path from the caller, and the set of functions that refuse a network location before
 // touching one. Either changing without its declared inventory below being updated fails the run.
 //
-// The second half was added after the first proved to cover less than it read as covering. The
-// command inventory answers "which commands take a path". `docs/THREAT-MODEL.md` also enumerates
-// *which functions apply the refusal*, and that second list is what a review of a new command is
-// checked against. Nothing held it. An audit found one enforcement site missing from the document
-// and another command stat-ing a caller-supplied path with no refusal at all, while this gate
-// passed, because both were, correctly, in the command inventory.
-//
-// docs/THREAT-MODEL.md states a cross-cutting rule. Every command that accepts a path from the caller
-// refuses a UNC / network location before any filesystem call touches it, and the library-relative
-// and library-root paths go through `utils::path` / `services::library::guard` rather than being
-// trusted. The document then names the commands that satisfy it. Prose cannot hold that list in sync with
-// the code, and it did not. An audit found the documented list had drifted from the call sites, and
-// three commands were trusting a caller-supplied `library_path` on a premise no caller relied on.
+// The rule itself, and why each half exists, is "The UNC / network-path refusal" in
+// `docs/THREAT-MODEL.md`. This holds the two lists that section names against the code.
 //
 // What this check does and does not prove is worth being exact about, because a gate that overstates
 // itself is worse than none. It does NOT verify that a command applies the right guard. That needs
@@ -25,15 +14,11 @@
 // decide which of the threat model's cases the new path falls into.
 //
 // That last sentence holds because the inventory carries a `guard` class per path (see
-// DECLARED_PATH_SURFACE). An inventory entry that was only a name took no opinion at all, and two
-// commands reached production with a library-relative path confined to the library root rather
-// than to a managed subdirectory while sitting in this list the whole time. The class is not
-// verified against the code, for the reason above, but what it does is make "which rule does this
-// answer to" a question the diff cannot avoid.
+// DECLARED_PATH_SURFACE). The class is not verified against the code, for the reason above, but it
+// makes "which rule does this answer to" a question the diff cannot avoid.
 //
 // The failure is deliberately two-directional. A removed or renamed command fails too, so the
-// inventory cannot rot into a list of names that no longer exist, which is how the prose version
-// died.
+// inventory cannot rot into a list of names that no longer exist.
 //
 // Usage:
 //     node scripts/verify-command-path-surface.js            # verify (CI)

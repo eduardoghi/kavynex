@@ -124,21 +124,14 @@ A library or a cookies file the user deliberately keeps on a share is not blocke
 only from being reached through a path the renderer supplies; copy it locally and the flow works.
 When a new command takes a caller-supplied path, this is the list it joins.
 
-**And joining it is enforced rather than remembered.** This table is what a review of a new command
-is checked against, and keeping it in step with the code was left to discipline while the *command*
-inventory next door already had a CI gate. That asymmetry was a real gap, not a tidy one. Two sites
-were wrong when an audit last looked. `thumbnail::picked::validate_picked_thumbnail_path` applied
-the rule without appearing here at all, and `thumbnail::temp::validate_temporary_thumbnail_delete_path`
-did not apply it. It called `exists()` straight on a path the renderer supplied, so the containment
-check that follows refused the *delete* only after the SMB handshake had already been paid for.
-Neither was visible to `scripts/verify-command-path-surface.js`, because both commands were, quite
-correctly, in the inventory it did hold.
-
-That script now holds both halves of the rule. Every `is_network_path` call in the backend has to
-appear in this table, and every row here has to still exist in the code, so a guard added, removed
-or renamed fails CI until the two agree. It is still not a claim that each site applies the *right*
-guard (that needs the call chain, which the script deliberately does not try to follow), only that
-the surface and its enforcement cannot drift apart silently again.
+**And joining it is enforced rather than remembered.** `scripts/verify-command-path-surface.js`
+holds both halves of the rule. The commands taking a path are declared there, every
+`is_network_path` call in the backend has to appear in this table, and every row here has to still
+exist in the code, so a command or a guard added, removed or renamed fails CI until the two agree.
+It is not a claim that each site applies the *right* guard (that needs the call chain), which is
+why a new path-taking command also comes with a test that sends a UNC spelling through it
+(`CONTRIBUTING.md`). The half covering this table was added after an audit found one site missing
+from it and another command with no refusal at all while the command inventory passed.
 
 The export is the one entry where the refusal stops more than the NTLM leak. Everything else on
 that list only *reads* through the supplied path; the export *writes the whole database* to it (every channel, title, comment and stored local path), so a share there is an exfiltration primitive

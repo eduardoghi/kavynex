@@ -92,12 +92,9 @@ Repository consistency (plain Node, no install needed. CI runs all nine on every
 - `node scripts/verify-command-path-surface.js`: fails when either half of the cross-cutting path
   rule no longer matches its declared inventory, which is the set of `#[tauri::command]`s taking a
   path from the caller and the set of functions calling `is_network_path` to refuse a network
-  location.
-  Adding such a command (or a path parameter to an existing one) is meant to stop here, so the new
-  path gets classified under `docs/THREAT-MODEL.md`'s cross-cutting path rule rather than slipping
-  in unexamined; adding or removing a guard stops here too, so that document's table of enforcement
-  sites cannot drift from the code the way it once did. Run it with `--print` to regenerate both
-  inventories once the document is right.
+  location. Adding such a command, a path parameter or a guard stops here until the new path is
+  classified under `docs/THREAT-MODEL.md`'s cross-cutting path rule and its table agrees. Run it
+  with `--print` to regenerate both inventories once the document is right.
 
   What it does not check is that the class a path is declared under is the one the code applies to
   it, which needs the call chain. So the inventory comes with a rule. **A command that
