@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Runtime};
 use tokio::{io::BufReader, process::Command, sync::Mutex, time::timeout};
 
-use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata};
+use crate::models::yt_dlp::{DownloadedMediaResult, YtDlpFormatMetadata, YtDlpMetadata};
 use crate::services::binaries::{
     ffmpeg_location_argument, resolve_ffmpeg_binary_async, resolve_yt_dlp_binary_async,
 };
@@ -577,7 +577,174 @@ struct DownloadRun<'a, R: Runtime> {
     skip_auto_thumbnail_download: bool,
 }
 
+/// What the metadata settled about the file a run downloads and where it goes.
+struct DownloadPlan {
+    media_subdir: &'static str,
+    media_dir: PathBuf,
+    live_chat_dir: Option<PathBuf>,
+    suggested_title: String,
+    youtube_video_id: Option<String>,
+    published_at: Option<String>,
+    is_live: bool,
+    file_prefix: String,
+    expected_ext: Option<String>,
+}
+
 impl<R: Runtime> DownloadRun<'_, R> {
+    /// Writes what this run was asked for to the terminal.
+    fn announce(&self) -> AppResult<()> {
+        let (app, run_id) = (self.app, self.run_id);
+
+        emit_download_log(
+            app,
+            run_id,
+            format!("Resolving metadata for: {}", youtube_ref_for_log(self.url)),
+            "system",
+        )?;
+
+        if let Some(path) = self.cookies_path {
+            // Show only the file name, never the full path. This line is rendered in the UI
+            // terminal and may be pasted into a public bug report, and the directory reveals
+            // the local username/profile layout.
+            let file_name = Path::new(path)
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string())
+                .unwrap_or_else(|| "<set>".to_string());
+
+            emit_download_log(
+                app,
+                run_id,
+                format!("Cookies file: {}", file_name),
+                "system",
+            )?;
+        } else if let Some(browser) = self.cookies_browser {
+            // Same rule as the file log. The UI terminal may be pasted into a bug report, so the
+            // profile (often a path) is not shown, only that one was set.
+            emit_download_log(
+                app,
+                run_id,
+                format!(
+                    "Cookies from browser: {}",
+                    redact_cookies_browser_selector(browser)
+                ),
+                "system",
+            )?;
+        }
+
+        if self.download_live_chat {
+            emit_download_log(app, run_id, "Live chat replay: enabled", "system")?;
+        }
+
+        if self.skip_auto_thumbnail_download {
+            emit_download_log(
+                app,
+                run_id,
+                "Automatic thumbnail download: skipped (manual thumbnail provided)",
+                "system",
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Reads the video's metadata, ending the run as cancelled when the user stopped it meanwhile.
+    async fn fetch_metadata(&self) -> AppResult<YtDlpMetadata> {
+        let metadata = match fetch_yt_dlp_metadata(
+            self.yt_dlp,
+            self.url,
+            self.cookies_browser,
+            self.run_cookies_path,
+            Some(Arc::clone(self.cancel_flag)),
+        )
+        .await
+        {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                // The metadata phase honors cancellation itself (killing the tree
+                // promptly). Surface that as a cancellation event rather than a generic error.
+                if self.cancel_flag.load(Ordering::SeqCst) {
+                    return Err(cancelled(self.app, self.run_id));
+                }
+
+                emit_download_error(self.app, self.run_id, error.message.clone());
+                return Err(error);
+            }
+        };
+
+        if self.cancel_flag.load(Ordering::SeqCst) {
+            return Err(cancelled(self.app, self.run_id));
+        }
+
+        Ok(metadata)
+    }
+
+    /// Settles, from the metadata, what the download is and where its file goes.
+    fn plan(&self, metadata: &YtDlpMetadata) -> AppResult<DownloadPlan> {
+        let format_id = self.format_id;
+        let selected_format = metadata
+            .formats
+            .iter()
+            .find(|item| {
+                item.format_id
+                    .as_deref()
+                    .map(|value| value.trim() == format_id)
+                    .unwrap_or(false)
+            })
+            .cloned();
+
+        let has_video = match resolve_format_has_video(format_id, &metadata.formats) {
+            Some(has_video) => has_video,
+            None => {
+                return Err(AppError::from_code(
+                    AppErrorCode::YtDlpSelectedFormatNotFound,
+                    "selected yt-dlp format was not found in metadata",
+                ));
+            }
+        };
+
+        let media_subdir = if has_video { "video" } else { "audio" };
+        // Neither folder is created here. The placement creates `video/` or `audio/` only inside a
+        // library folder that is still there once the download is done (ensure_path_parent_inside_dir),
+        // and storing the replay does the same for `live_chat/`. Creating them now, with
+        // create_dir_all, ran on the async runtime against a drive that may stall, and could put a
+        // new library folder at the path of one whose drive had just gone.
+        let media_dir = self.library_dir.join(media_subdir);
+
+        let live_chat_dir = self
+            .download_live_chat
+            .then(|| live_chat_dir_in(self.library_dir));
+
+        let (id, extractor, suggested_title, youtube_video_id, published_at) =
+            normalize_download_metadata(metadata)?;
+
+        let is_live = infer_is_live(metadata.live_status.as_deref(), metadata.was_live);
+
+        let safe_extractor = sanitize_filename_component(&extractor);
+        // The id disambiguates collisions (two distinct ids that sanitize to the same string),
+        // so a download can never silently overwrite a different video's file. See
+        // sanitize_identifier_component.
+        let safe_id = sanitize_identifier_component(&id);
+        let safe_format_id = sanitize_filename_component(format_id);
+
+        let expected_ext = selected_format
+            .as_ref()
+            .and_then(|format| format.ext.as_ref())
+            .map(|value| value.trim().trim_start_matches('.').to_lowercase())
+            .filter(|value| !value.is_empty());
+
+        Ok(DownloadPlan {
+            media_subdir,
+            media_dir,
+            live_chat_dir,
+            suggested_title,
+            youtube_video_id,
+            published_at,
+            is_live,
+            file_prefix: format!("{}_{}_{}", safe_extractor, safe_id, safe_format_id),
+            expected_ext,
+        })
+    }
+
     /// The run itself, from the first line in the terminal to the file in the library. Sets
     /// `download_left_in_run_dir` when a finished download could be neither placed nor kept
     /// elsewhere, so the caller leaves its run folder for the user.
@@ -605,139 +772,19 @@ impl<R: Runtime> DownloadRun<'_, R> {
             skip_auto_thumbnail_download,
         } = *self;
 
-        emit_download_log(
-            app,
-            normalized_run_id,
-            format!(
-                "Resolving metadata for: {}",
-                youtube_ref_for_log(normalized_url)
-            ),
-            "system",
-        )?;
-
-        if let Some(path) = normalized_cookies_path {
-            // Show only the file name, never the full path. This line is rendered in the UI
-            // terminal and may be pasted into a public bug report, and the directory reveals
-            // the local username/profile layout.
-            let file_name = Path::new(path)
-                .file_name()
-                .map(|value| value.to_string_lossy().to_string())
-                .unwrap_or_else(|| "<set>".to_string());
-
-            emit_download_log(
-                app,
-                normalized_run_id,
-                format!("Cookies file: {}", file_name),
-                "system",
-            )?;
-        } else if let Some(browser) = normalized_cookies_browser {
-            // Same rule as the file log. The UI terminal may be pasted into a bug report, so the
-            // profile (often a path) is not shown, only that one was set.
-            emit_download_log(
-                app,
-                normalized_run_id,
-                format!(
-                    "Cookies from browser: {}",
-                    redact_cookies_browser_selector(browser)
-                ),
-                "system",
-            )?;
-        }
-
-        if download_live_chat {
-            emit_download_log(
-                app,
-                normalized_run_id,
-                "Live chat replay: enabled",
-                "system",
-            )?;
-        }
-
-        if skip_auto_thumbnail_download {
-            emit_download_log(
-                app,
-                normalized_run_id,
-                "Automatic thumbnail download: skipped (manual thumbnail provided)",
-                "system",
-            )?;
-        }
-
-        let metadata = match fetch_yt_dlp_metadata(
-            yt_dlp,
-            normalized_url,
-            normalized_cookies_browser,
-            run_cookies_path,
-            Some(Arc::clone(cancel_flag)),
-        )
-        .await
-        {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                // The metadata phase honors cancellation itself (killing the tree
-                // promptly). Surface that as a cancellation event rather than a generic error.
-                if cancel_flag.load(Ordering::SeqCst) {
-                    return Err(cancelled(app, normalized_run_id));
-                }
-
-                emit_download_error(app, normalized_run_id, error.message.clone());
-                return Err(error);
-            }
-        };
-
-        if cancel_flag.load(Ordering::SeqCst) {
-            return Err(cancelled(app, normalized_run_id));
-        }
-
-        let selected_format = metadata
-            .formats
-            .iter()
-            .find(|item| {
-                item.format_id
-                    .as_deref()
-                    .map(|value| value.trim() == normalized_format_id)
-                    .unwrap_or(false)
-            })
-            .cloned();
-
-        let has_video = match resolve_format_has_video(normalized_format_id, &metadata.formats) {
-            Some(has_video) => has_video,
-            None => {
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpSelectedFormatNotFound,
-                    "selected yt-dlp format was not found in metadata",
-                ));
-            }
-        };
-
-        let media_subdir = if has_video { "video" } else { "audio" };
-        // Neither folder is created here. The placement creates `video/` or `audio/` only inside a
-        // library folder that is still there once the download is done (ensure_path_parent_inside_dir),
-        // and storing the replay does the same for `live_chat/`. Creating them now, with
-        // create_dir_all, ran on the async runtime against a drive that may stall, and could put a
-        // new library folder at the path of one whose drive had just gone.
-        let media_dir = library_dir.join(media_subdir);
-
-        let run_live_chat_dir = download_live_chat.then(|| live_chat_dir_in(library_dir));
-
-        let (id, extractor, suggested_title, youtube_video_id, published_at) =
-            normalize_download_metadata(&metadata)?;
-
-        let is_live = infer_is_live(metadata.live_status.as_deref(), metadata.was_live);
-
-        let safe_extractor = sanitize_filename_component(&extractor);
-        // The id disambiguates collisions (two distinct ids that sanitize to the same string),
-        // so a download can never silently overwrite a different video's file. See
-        // sanitize_identifier_component.
-        let safe_id = sanitize_identifier_component(&id);
-        let safe_format_id = sanitize_filename_component(normalized_format_id);
-
-        let expected_ext = selected_format
-            .as_ref()
-            .and_then(|format| format.ext.as_ref())
-            .map(|value| value.trim().trim_start_matches('.').to_lowercase())
-            .filter(|value| !value.is_empty());
-
-        let file_prefix = format!("{}_{}_{}", safe_extractor, safe_id, safe_format_id);
+        self.announce()?;
+        let metadata = self.fetch_metadata().await?;
+        let DownloadPlan {
+            media_subdir,
+            media_dir,
+            live_chat_dir: run_live_chat_dir,
+            suggested_title,
+            youtube_video_id,
+            published_at,
+            is_live,
+            file_prefix,
+            expected_ext,
+        } = self.plan(&metadata)?;
         let file_name_prefix = format!("{file_prefix}.");
 
         emit_download_log(
