@@ -68,12 +68,9 @@ pub const RECOVERED_DOWNLOADS_DIR: &str = "recovered-downloads";
 /// `yt-dlp-thumb-temp/` are scratch whose output is moved into the library before any path reaches
 /// the frontend, and `pending-media/` is read by the startup sweep alone.
 ///
-/// The point of naming them is that the cache *root* is never granted. On Windows
-/// `app_cache_dir()` resolves to `%LOCALAPPDATA%\<identifier>`, which is also the parent of the log
-/// directory (`app_log_dir()`) and of the WebView2 profile (`EBWebView/`), so a recursive grant of
-/// the root hands the renderer a tree it has no reason to reach. That is the same mistake
-/// [`MANAGED_LIBRARY_DIRS`] exists to avoid for the user's library, and it is avoided here the same
-/// way. Name the subdirectories, never the parent.
+/// Naming them keeps the cache *root* ungranted, the same rule [`MANAGED_LIBRARY_DIRS`] applies to
+/// the library. Why the root matters is in "The cache root is deliberately not granted" in
+/// `docs/THREAT-MODEL.md`.
 pub const WEBVIEW_READABLE_CACHE_DIRS: [&str; 2] = [TEMP_DIR_THUMBS, TEMP_DIR_THUMB_DISPLAY];
 
 /// The library subdirectories whose files the webview loads by URL, and therefore the only ones the

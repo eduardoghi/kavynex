@@ -61,10 +61,7 @@ pub(crate) fn managed_asset_scope_dirs(library_root: &Path) -> Vec<PathBuf> {
 /// The subdirectories of the app cache directory whose files the asset protocol may serve. The
 /// preview written before a thumbnail is committed (`thumbs-temp/`) and the display-sized
 /// derivatives the grid draws (`thumb-display/`). See
-/// [`crate::constants::WEBVIEW_READABLE_CACHE_DIRS`] for why the other three are excluded.
-///
-/// The sibling of [`managed_asset_scope_dirs`], for the same reason. The cache root is never granted,
-/// since on Windows it is the parent of the log directory and of the WebView2 profile.
+/// [`crate::constants::WEBVIEW_READABLE_CACHE_DIRS`] for why the others, and the root, are excluded.
 pub(crate) fn managed_cache_scope_dirs(cache_root: &Path) -> Vec<PathBuf> {
     crate::constants::WEBVIEW_READABLE_CACHE_DIRS
         .iter()
