@@ -415,7 +415,8 @@ handle from the database (never from the renderer), and `services/yt_dlp/channel
 its videos and past lives with one `--flat-playlist` run per tab, nothing downloaded, and compares
 them with the channel's media by YouTube video id. Shorts are left out, and so are a live still
 running and one only scheduled, which cannot be imported yet. A channel without one of the tabs
-reads as an empty tab. The list is searched by title the way the comment search is, without regard
+reads as an empty tab, and a tab that fails otherwise is left out with a warning in the log, so the
+list fails only when no tab could be listed (`combine_tab_listings`). The list is searched by title the way the comment search is, without regard
 to case or accents. **Import** opens the add-media modal on the media's URL in the yt-dlp mode with
 its formats loading (`openAddMediaForUrl`, applied after the reset that opening the modal runs), so
 each one still goes through the format choice and the duplicate check above, one at a time.

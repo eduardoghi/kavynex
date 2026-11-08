@@ -83,6 +83,43 @@ fn is_missing_tab(error: &AppError) -> bool {
         .is_some_and(|details| details.contains("does not have a") && details.contains(" tab"))
 }
 
+/// The media of every tab that could be listed. A tab the channel does not have is empty. A tab that
+/// failed otherwise is left out with a warning in the log, so one tab yt-dlp could not read (a
+/// changed error message, a timeout) does not take the whole list with it. The listing fails only
+/// when no tab could be listed, or when it was cancelled.
+pub(crate) fn combine_tab_listings(
+    results: Vec<(ChannelTabKind, AppResult<Vec<ChannelMediaOnYoutube>>)>,
+) -> AppResult<Vec<ChannelMediaOnYoutube>> {
+    let mut listed = Vec::new();
+    let mut any_listed = false;
+    let mut first_error = None;
+
+    for (kind, result) in results {
+        match result {
+            Ok(media) => {
+                any_listed = true;
+                listed.extend(media);
+            }
+            Err(error) if is_missing_tab(&error) => any_listed = true,
+            Err(error) if error.code == AppErrorCode::YtDlpDownloadCancelled.as_str() => {
+                return Err(error);
+            }
+            Err(error) => {
+                crate::services::logger::warn(
+                    "yt_dlp",
+                    format!("channel listing: the {kind:?} tab could not be listed: {error}"),
+                );
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+
+    match first_error {
+        Some(error) if !any_listed => Err(error),
+        _ => Ok(listed),
+    }
+}
+
 /// The media of one tab's JSON. An entry without a valid video id, or one that cannot be imported
 /// yet (a live still running, one only scheduled), is left out, as is one whose shape is off.
 pub(crate) fn parse_channel_tab(
@@ -195,7 +232,7 @@ pub async fn list_channel_missing_media_async<R: Runtime>(
     )?;
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
 
-    let mut listed = Vec::new();
+    let mut results = Vec::new();
 
     for kind in LISTED_TABS {
         let args = listing_args(&tab_url(&channel_url, kind));
@@ -213,14 +250,21 @@ pub async fn list_channel_missing_media_async<R: Runtime>(
         )
         .await;
 
-        match run {
-            Ok((json, _stdout_logs, _stderr_logs)) => {
-                listed.extend(parse_channel_tab(&json, kind)?)
-            }
-            Err(error) if is_missing_tab(&error) => {}
-            Err(error) => return Err(error),
+        let cancelled = run
+            .as_ref()
+            .is_err_and(|error| error.code == AppErrorCode::YtDlpDownloadCancelled.as_str());
+        results.push((
+            kind,
+            run.and_then(|(json, _stdout_logs, _stderr_logs)| parse_channel_tab(&json, kind)),
+        ));
+
+        // A cancel stops the listing here rather than starting the next tab.
+        if cancelled {
+            break;
         }
     }
+
+    let listed = combine_tab_listings(results)?;
 
     let in_library =
         crate::services::video_repository::list_channel_youtube_video_ids(pool, channel_id).await?;
@@ -370,5 +414,73 @@ mod tests {
 
         assert!(is_missing_tab(&missing));
         assert!(!is_missing_tab(&other));
+    }
+
+    fn tab_error(details: &str) -> AppError {
+        AppError::from_code_with_details(
+            AppErrorCode::YtDlpMetadataFailed,
+            "yt-dlp could not list this channel's media.",
+            details,
+        )
+    }
+
+    #[test]
+    fn a_tab_that_fails_is_left_out_when_another_was_listed() {
+        // An error the missing-tab check does not recognize (a reworded message, a timeout) on
+        // the lives tab keeps the videos instead of failing the whole list.
+        let listed = combine_tab_listings(vec![
+            (ChannelTabKind::Video, Ok(vec![media("aaaaaaaaaaa", None)])),
+            (ChannelTabKind::Live, Err(tab_error("ERROR: something new"))),
+        ])
+        .unwrap();
+
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].youtube_video_id, "aaaaaaaaaaa");
+    }
+
+    #[test]
+    fn the_listing_fails_only_when_no_tab_was_listed() {
+        let error = combine_tab_listings(vec![
+            (
+                ChannelTabKind::Video,
+                Err(tab_error("ERROR: HTTP Error 429")),
+            ),
+            (
+                ChannelTabKind::Live,
+                Err(tab_error("ERROR: HTTP Error 429")),
+            ),
+        ])
+        .unwrap_err();
+        assert_eq!(error.code, AppErrorCode::YtDlpMetadataFailed.as_str());
+
+        // A tab the channel does not have counts as listed, so the other one failing is not all.
+        let listed = combine_tab_listings(vec![
+            (
+                ChannelTabKind::Video,
+                Err(tab_error("ERROR: HTTP Error 429")),
+            ),
+            (
+                ChannelTabKind::Live,
+                Err(tab_error("ERROR: This channel does not have a streams tab")),
+            ),
+        ])
+        .unwrap();
+        assert!(listed.is_empty());
+    }
+
+    #[test]
+    fn a_cancelled_listing_stays_cancelled() {
+        let cancelled = AppError::from_code(
+            AppErrorCode::YtDlpDownloadCancelled,
+            "yt-dlp download cancelled",
+        );
+
+        let error = combine_tab_listings(vec![
+            (ChannelTabKind::Video, Ok(vec![media("aaaaaaaaaaa", None)])),
+            (ChannelTabKind::Live, Err(cancelled)),
+        ])
+        .unwrap_err();
+
+        assert_eq!(error.code, AppErrorCode::YtDlpDownloadCancelled.as_str());
     }
 }
