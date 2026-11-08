@@ -242,10 +242,9 @@ pub fn cleanup_stale_temp_files_sync<R: Runtime>(app: &AppHandle<R>) -> AppResul
 
 /// Removes the cookies copies an earlier process left in `yt_dlp_temp_dir`, whatever their age.
 ///
-/// Each yt-dlp run gets its own copy of the user's cookies file in a `cookies-<suffix>` folder,
-/// either directly here (a format probe, a comment fetch) or inside its run folder (a download), and
-/// removes it when the run ends. A run killed with the app leaves it behind, and a cookies file is
-/// a signed-in session, so it is not kept for the week the age sweep gives everything else. Only
+/// The copies are the `cookies-<suffix>` folders `yt_dlp::cookies::RunCookies` makes, directly here
+/// or inside a download's run folder. A run killed with the app leaves one behind, and a cookies file
+/// is a signed-in session, so it is not kept for the week the age sweep gives everything else. Only
 /// the copies are taken. A run folder can still hold a download that could not be kept elsewhere.
 /// A copy written since this process started belongs to a run of this session and is left alone.
 fn remove_leftover_cookie_copies(
