@@ -88,7 +88,7 @@ const INTERNAL_BACKEND_CODES = new Set([
     "CANONICALIZE_TARGET_PARENT_FAILED",
     "RELATIVE_PATH_RESOLVE_FAILED",
 
-    // services/filesystem.rs. The atomic copy/replace primitives and the post-download file
+    // services/filesystem/. The atomic copy/replace primitives and the post-download file
     // matching. Every one is an I/O failure mid-operation, where the detail line (the OS error) is
     // the diagnostic and a rephrasing would add nothing.
     "INVALID_SOURCE_FILE",
