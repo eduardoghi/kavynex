@@ -4,6 +4,76 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+### Added
+
+- The channel page has a Not in library list with the videos and lives the channel has on YouTube
+  that the library does not. A media can be ignored so it stops being offered, and several can be
+  imported at once in the formats you choose.
+- A channel can have a banner, loaded from YouTube or picked from a file, shown on its page.
+- Deleted media go to a `.trash` folder inside the library instead of being removed at once.
+  Settings > Trash can turn this off ("Delete files right away") and empty the trash.
+- Each download carries its title, channel, date, description and link inside the file, where other
+  players and file managers can read them.
+- The library folder keeps a readable list of its channels and files
+  (`kavynex-library-index.json`), updated in the background, so the files can still be told apart
+  without the database.
+- Closing the window while a download, an import, a library check or a library move is running asks
+  first.
+- Older daily backups are kept compressed and named by their date.
+
+### Changed
+
+- A video download is joined to the original audio track rather than a dubbed one, and YouTube's
+  dynamic range compressed audio copy is skipped by default.
+- The comments search ignores accents on Latin letters. Other scripts keep their letters.
+- Counts and backup times are written in English like the rest of the interface, and file sizes can
+  show terabytes.
+- The delete confirmations say the files go to the trash unless it is turned off.
+- The import form warns that `.ts`, `.m2ts` and `.3gp` files may not play in the built-in player.
+- A new update is announced once, and a found update is still offered when a later check fails.
+- The database waits for the disk on every save, so a power cut no longer loses the last few
+  seconds of changes, such as a comment fetch for a video YouTube has since removed.
+- The database moves to schema version 20 and drops eight indexes no query used. Once opened by this
+  version, it is refused by 1.8.x, so going back to an older version means restoring a backup made
+  before the update.
+
+### Fixed
+
+- A library move no longer leaves behind the files of a media being added at the same time, and a
+  move to another drive checks the copy before removing the original.
+- A file a move import took is put back in the library when the app closes before it is registered.
+- Import database only reads the file you pick and never writes to it.
+- A restore stops at a backup it cannot read and keeps one it cannot unpack.
+- Large scratch copies left by an interrupted restore or check are removed when the app starts.
+- Restarting the app stops running downloads first and leaves the database fully written.
+- Removing a media's thumbnail deletes only a thumbnail the app wrote.
+- An old live chat replay is moved only after its bytes are checked, and is kept beside a different
+  file of the same name.
+- The live chat replay shows a long replay while the rest is still read, keeps loading until it
+  reaches the playhead, shows a membership milestone's duration and level, and draws standard and
+  channel emojis as themselves.
+- The saved comments stay visible while a comment refresh runs, and a refetch without a relative
+  time keeps the one already stored.
+- A GIF can be picked as a thumbnail.
+- One unusual value in yt-dlp's output no longer fails reading a whole video's details, and one
+  invalid media no longer fails a whole channel page.
+- A burst of interface errors no longer freezes the window while they are logged.
+- Diagnostics counts channel avatars and banners apart from media thumbnails, lists the live chat
+  replays in the file checks, and names the damage a stopped content check found.
+- Focus returns to the URL field once the formats load, and follows the library move from its
+  question to its progress and back. Screen readers name a chat author's verified badge.
+- An avatar's initials keep an emoji whole.
+
+### Security
+
+- Checking for and installing updates goes through the app's backend, so the window holds no
+  updater permission.
+- The main database is opened with the same guards against a schema brought in from outside that
+  the import and backup checks already used.
+- A library trash folder that is a link or a junction is refused.
+- Errors from thumbnail, avatar and banner downloads no longer show local folder paths.
+- The updater drops the zip support it never used.
+
 ## [1.8.1] (2026-10-27)
 
 ### Fixed
