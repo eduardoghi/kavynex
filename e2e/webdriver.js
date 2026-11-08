@@ -74,6 +74,30 @@ class Session {
         return found.map(elementId);
     }
 
+    // Every element whose accessible name is `label`, whatever its tag. A media card is a button
+    // to the user and a div with role="button" to the page.
+    async findByLabel(label) {
+        const literal = JSON.stringify(label);
+        const found = await this.call("POST", "/elements", {
+            using: "xpath",
+            value: `//*[@aria-label=${literal}]`,
+        });
+
+        return found.map(elementId);
+    }
+
+    // The text input a label names, by the label's `for`. Mantine marks a required field with an
+    // asterisk inside the label, so the label is matched by how it starts.
+    async findInput(label) {
+        const literal = JSON.stringify(label);
+        const found = await this.call("POST", "/elements", {
+            using: "xpath",
+            value: `//input[@id = //label[starts-with(normalize-space(.), ${literal})]/@for]`,
+        });
+
+        return found.map(elementId);
+    }
+
     async findButton(label) {
         const literal = JSON.stringify(label);
         const found = await this.call("POST", "/elements", {
@@ -93,6 +117,16 @@ class Session {
         });
 
         return this.call("POST", `/element/${element}/click`, {});
+    }
+
+    // What a form field holds right now.
+    value(element) {
+        return this.call("GET", `/element/${element}/property/value`);
+    }
+
+    // Types `text` into the element, after what it already holds.
+    type(element, text) {
+        return this.call("POST", `/element/${element}/value`, { text });
     }
 
     title() {

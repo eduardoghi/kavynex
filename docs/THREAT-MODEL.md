@@ -803,6 +803,12 @@ would become readable through `asset:`. The pickers are backend commands instead
 where nothing touches the scope. They return the path and grant nothing, so the renderer holds no
 `dialog:` permission at all.
 
+A debug build answers them from the environment when asked to (`KAVYNEX_E2E_PICK_FOLDER`,
+`KAVYNEX_E2E_PICK_FILE`, `KAVYNEX_E2E_SAVE_FILE`), for the end-to-end flows, which cannot reach a
+native dialog. The answer is recorded as picked like any other, so it meets the same per-purpose
+checks afterwards. A release build does not compile that lookup (`cfg(debug_assertions)`), so no
+environment variable stands in for the user in what is shipped.
+
 The system opener is a backend command for a similar reason. On Windows the opener plugin hands
 its URL to the shell, so with `opener:allow-open-url` the scope's glob would be all that stands
 between a URL the renderer built and the shell's own parsing of it. The app only ever opens a video's

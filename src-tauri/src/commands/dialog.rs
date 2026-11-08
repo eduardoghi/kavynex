@@ -76,6 +76,25 @@ fn picked_path(picked: Option<FilePath>) -> AppResult<Option<String>> {
         .transpose()
 }
 
+/// What a dialog answers in an end-to-end run, instead of opening.
+///
+/// The flows in `e2e/run.js` drive the app's window through WebDriver, which cannot reach a native
+/// dialog, so they could not choose a library folder, import a file or export the database. In a
+/// debug build, the one those flows run, `variable` names the path the dialog returns, and it is
+/// recorded as picked like any other answer. A release build does not compile the lookup at all, so
+/// no environment can stand in for the user there.
+#[cfg(debug_assertions)]
+fn e2e_answer(variable: &str) -> Option<String> {
+    std::env::var(variable)
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+}
+
+#[cfg(not(debug_assertions))]
+fn e2e_answer(_variable: &str) -> Option<String> {
+    None
+}
+
 /// Opens a folder picker for `purpose`. Resolves to the chosen folder, or `None` when cancelled.
 ///
 /// The title comes from the purpose rather than from the renderer, so the dialog always says what
@@ -85,15 +104,21 @@ pub async fn open_folder_dialog<R: Runtime>(
     window: Window<R>,
     purpose: FolderPurpose,
 ) -> AppResult<Option<String>> {
-    let title = Some(purpose.dialog_title().to_string());
+    let picked = match e2e_answer("KAVYNEX_E2E_PICK_FOLDER") {
+        Some(path) => Some(path),
+        None => {
+            let title = Some(purpose.dialog_title().to_string());
 
-    // The blocking pick waits on the user for as long as the dialog is open, so it runs on the
-    // blocking pool rather than holding an async worker.
-    let picked =
-        run_blocking(move || Ok(file_dialog(&window, title, Vec::new()).blocking_pick_folder()))
+            // The blocking pick waits on the user for as long as the dialog is open, so it runs on
+            // the blocking pool rather than holding an async worker.
+            let picked = run_blocking(move || {
+                Ok(file_dialog(&window, title, Vec::new()).blocking_pick_folder())
+            })
             .await?;
 
-    let picked = picked_path(picked)?;
+            picked_path(picked)?
+        }
+    };
 
     // The commands that persist or create a folder accept only what the user picked here (or what
     // is already stored). See services::chosen_folders.
@@ -113,10 +138,16 @@ pub async fn open_file_dialog<R: Runtime>(
     title: Option<String>,
     filters: Vec<FileDialogFilter>,
 ) -> AppResult<Option<String>> {
-    let picked =
-        run_blocking(move || Ok(file_dialog(&window, title, filters).blocking_pick_file())).await?;
+    let picked = match e2e_answer("KAVYNEX_E2E_PICK_FILE") {
+        Some(path) => Some(path),
+        None => {
+            let picked =
+                run_blocking(move || Ok(file_dialog(&window, title, filters).blocking_pick_file()))
+                    .await?;
 
-    let picked = picked_path(picked)?;
+            picked_path(picked)?
+        }
+    };
 
     // The commands that read a user's file accept only one picked here for their own use, or a
     // preview the backend wrote. See services::chosen_files.
@@ -137,18 +168,23 @@ pub async fn save_file_dialog<R: Runtime>(
     default_file_name: Option<String>,
     filters: Vec<FileDialogFilter>,
 ) -> AppResult<Option<String>> {
-    let picked = run_blocking(move || {
-        let mut builder = file_dialog(&window, title, filters);
+    let picked = match e2e_answer("KAVYNEX_E2E_SAVE_FILE") {
+        Some(path) => Some(path),
+        None => {
+            let picked = run_blocking(move || {
+                let mut builder = file_dialog(&window, title, filters);
 
-        if let Some(file_name) = default_file_name {
-            builder = builder.set_file_name(file_name);
+                if let Some(file_name) = default_file_name {
+                    builder = builder.set_file_name(file_name);
+                }
+
+                Ok(builder.blocking_save_file())
+            })
+            .await?;
+
+            picked_path(picked)?
         }
-
-        Ok(builder.blocking_save_file())
-    })
-    .await?;
-
-    let picked = picked_path(picked)?;
+    };
 
     // The database export is the one caller of the save dialog.
     if let Some(path) = picked.as_deref() {
@@ -161,6 +197,26 @@ pub async fn save_file_dialog<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_debug_build_answers_a_dialog_from_the_environment_when_asked_to() {
+        // A variable of this test's own, since the environment is the process's.
+        let variable = "KAVYNEX_E2E_DIALOG_TEST_ANSWER";
+
+        std::env::remove_var(variable);
+        assert_eq!(e2e_answer(variable), None, "no answer without the variable");
+
+        std::env::set_var(variable, "   ");
+        assert_eq!(e2e_answer(variable), None, "nor with a blank one");
+
+        std::env::set_var(variable, "/tmp/kavynex-e2e/clip.webm");
+        assert_eq!(
+            e2e_answer(variable).as_deref(),
+            Some("/tmp/kavynex-e2e/clip.webm")
+        );
+
+        std::env::remove_var(variable);
+    }
 
     #[test]
     fn a_cancelled_dialog_resolves_to_none() {

@@ -358,8 +358,14 @@ frontend and cargo-mutants over the Rust modules in `src-tauri/.cargo/mutants.to
 `examine_globs`, sharded so no leg runs toward its timeout.
 
 Neither are the end-to-end flows. `e2e.yml` runs weekly and on demand on Linux. It builds the app,
-launches it with empty data directories through `tauri-driver`, and drives it with `e2e/run.js`
-(a first launch, Settings, and the full integrity check in Diagnostics). The runner talks plain
+launches it with empty data directories through `tauri-driver`, and drives it with `e2e/run.js`.
+The flows are a first launch, Settings and the full integrity check in Diagnostics, then choosing a
+library folder, creating a channel, importing a one-second WebM made with FFmpeg in the job, opening
+it in the player until the video has loaded, deleting it and finding its files in the trash, and
+exporting the database. A native dialog is out of WebDriver's reach, so the job names what each one
+answers through `KAVYNEX_E2E_PICK_FOLDER`, `KAVYNEX_E2E_PICK_FILE` and `KAVYNEX_E2E_SAVE_FILE`,
+which only a debug build reads (`commands/dialog.rs`). Without them, the flows that need a dialog
+are skipped. The runner talks plain
 WebDriver over `fetch` (`e2e/webdriver.js`), so it adds no dependency. A flow finds things by the
 text and accessible names the user reads, so renaming a label in `ui-text.ts` means updating the
 flow that looks for it.

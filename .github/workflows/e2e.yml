@@ -45,12 +45,14 @@ jobs:
                   toolchain: 1.99.1
 
             # The build dependencies release.yml installs, plus the WebKit WebDriver tauri-driver
-            # talks to and a display for the window.
+            # talks to and a display for the window. FFmpeg makes the video the import flow adds and
+            # its thumbnail, and the GStreamer plugins are what WebKitGTK plays a WebM with.
             - name: Install Linux dependencies
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-                      librsvg2-dev patchelf xdg-utils webkitgtk-webdriver xvfb
+                      librsvg2-dev patchelf xdg-utils webkitgtk-webdriver xvfb ffmpeg \
+                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
             - name: Cache Rust build
               uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -73,6 +75,11 @@ jobs:
             # Empty config, data and cache directories, so every run is a first launch with no
             # library and no database. The same WebKit switches as the release webview check, which
             # otherwise fails to paint under Xvfb.
+            #
+            # A native dialog is out of WebDriver's reach, so the KAVYNEX_E2E_* variables name what
+            # each one answers, which a debug build reads instead of opening it (commands/dialog.rs).
+            # The app inherits them through tauri-driver. The video is one second of a test pattern,
+            # made here rather than kept in the repository.
             - name: Run the end-to-end flows
               env:
                   WEBKIT_DISABLE_COMPOSITING_MODE: "1"
@@ -84,6 +91,13 @@ jobs:
                   export XDG_CACHE_HOME="$profile/cache"
 
                   binary="$PWD/src-tauri/target/debug/kavynex"
+
+                  mkdir -p "$profile/library" "$profile/files"
+                  ffmpeg -loglevel error -f lavfi -i testsrc=duration=1:size=160x120:rate=10 \
+                      -c:v libvpx -pix_fmt yuv420p "$profile/files/e2e-clip.webm"
+                  export KAVYNEX_E2E_PICK_FOLDER="$profile/library"
+                  export KAVYNEX_E2E_PICK_FILE="$profile/files/e2e-clip.webm"
+                  export KAVYNEX_E2E_SAVE_FILE="$profile/files/exported.db"
 
                   if [ ! -x "$binary" ]; then
                       echo "::error::no built kavynex binary was found at $binary" >&2
