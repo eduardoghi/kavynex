@@ -669,14 +669,11 @@ first. A Deno found outside the child's `PATH` is added at its end rather than i
 `YTDLP_NO_PLUGINS=1`, because `--ignore-config` drops yt-dlp's configuration files but not its plugin
 folders, and a plugin is Python running in the process that holds the browser cookies.
 
-On Windows the `PATHEXT` expansion additionally **skips `.bat`/`.cmd` shims**, because launching a
-batch file routes through `cmd.exe`, which re-parses the command line and historically reopened
-argument injection (CVE-2024-24576, "BatBadBut") even when the process is spawned as an argv array.
-The pinned Rust toolchain (`rust-toolchain.toml`) already carries the compiler-side fix, but yt-dlp
-and ffmpeg both ship as real executables, so a batch shim on `PATH` is refused outright rather than
-resting the guarantee on the compiler version holding across every build. A real `.exe`/`.com`
-alongside the shim still resolves; a lone shim resolves to nothing and surfaces the normal
-"not found" guidance.
+On Windows the `PATHEXT` expansion additionally **skips `.bat`/`.cmd` shims**, since a batch file
+runs through `cmd.exe` and its re-parsing of the command line (CVE-2024-24576, "BatBadBut"), and
+yt-dlp and ffmpeg both ship as real executables (`is_batch_shim_extension` in
+`services/binaries.rs`). A real `.exe`/`.com` alongside the shim still resolves, and a lone shim
+surfaces the normal "not found" guidance.
 
 ## Capabilities: what the renderer is allowed to call at all
 
