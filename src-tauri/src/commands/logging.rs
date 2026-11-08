@@ -151,14 +151,9 @@ fn write_frontend_report(scope: &str, message: &str) {
 /// Opens the app's log directory in the OS file manager, so the README's "attach the relevant lines
 /// when reporting a bug" does not begin with the user finding a per-OS path by hand.
 ///
-/// **It takes no arguments, and that is the security property rather than an omission.** Every other
-/// path-revealing command in this app receives a path over IPC and has to defend it. The library
-/// one confines it to the configured library, behind the settings cross-check in `library::guard`.
-/// This one asks Tauri where the log directory is, so a compromised renderer has nothing to
-/// redirect. Reusing `open_path_in_system` instead was the tempting shortcut and is the wrong one.
-/// Its containment check compares `path` against `library_path`, so passing the log directory as
-/// both would satisfy it trivially. The self-referential shape `docs/THREAT-MODEL.md` records as a
-/// defect that guard exists to close, not a pattern to reuse.
+/// **It takes no arguments, and that is the security property rather than an omission.** See
+/// `services/file_manager.rs` for why the log folder has its own entry point instead of reusing
+/// `open_path_in_system`.
 ///
 /// The spawn and the directory resolution are blocking filesystem work, so they run off the async
 /// runtime's worker threads like every other filesystem command.

@@ -84,14 +84,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   the file, so long recordings would not play on macOS or Linux. Thumbnails and avatars still go
   through `asset:`.
 
-  `file_manager.rs` is the one of those that arrived by moving rather than by being written, and the
-  move is the rule above read backwards. It lived inside `library/` while the "reveal a media file"
-  flow was its only caller, which made it look like a library concern. Resolving
-  `explorer.exe`/`open`/`xdg-open` and spawning it is not one. A second caller (the Diagnostics
-  "Open log folder" button, `commands/logging.rs`) made the mis-homing cost something real. Leaving
-  it there meant either a cross-family import or a second copy of the three per-platform spawn
-  branches. What stayed behind in `library/` is the part that *is* a library concern, the
-  containment check. See `docs/THREAT-MODEL.md` for why that split is the security-relevant half.
+  `file_manager.rs` moved out of `library/` once the log folder became a second caller, leaving the
+  containment check behind (its module docs say why that split matters).
 - **Utils** (`src-tauri/src/utils/`) are small, pure, dependency-free helpers reused
   across services:
   - `path.rs`: the path-safety primitives (sanitizing a relative path, canonicalizing and
