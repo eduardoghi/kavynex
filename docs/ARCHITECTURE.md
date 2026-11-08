@@ -188,7 +188,10 @@ Values cross the same way when the frontend needs them. ts-rs exports types only
 `src/types/generated/fileExtensions.ts` with the audio, video and image extensions the backend
 accepts. The name puts it under the same `export_bindings` filter, so the command above regenerates
 it and the diff catches a list changed in Rust alone. `utils/media-utils.ts` re-exports those lists,
-and the file pickers and the frontend's own checks are built from them.
+and the file pickers and the frontend's own checks are built from them. The event names cross the
+same way, from `constants.rs`'s `export_bindings_events` test to `src/types/generated/events.ts`,
+which `constants/events.ts` re-exports, so the frontend never listens for a name the backend no
+longer emits.
 
 ## Frontend layering
 
