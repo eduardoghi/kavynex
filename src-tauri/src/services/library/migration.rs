@@ -581,6 +581,11 @@ fn remove_old_library_contents(old_library_dir: &Path) -> bool {
         }
     }
 
+    // The library index is the app's own and is rewritten in the new folder, so a stale copy is not
+    // left to keep the old folder from being removed.
+    let _ =
+        fs::remove_file(old_library_dir.join(crate::services::library::index::LIBRARY_INDEX_FILE));
+
     let leftovers = list_leftover_entries(old_library_dir);
 
     if !leftovers.is_empty() {

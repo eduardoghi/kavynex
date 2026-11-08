@@ -320,7 +320,8 @@ pub(crate) fn spawn_post_import_library_check<R: tauri::Runtime>(app_handle: App
 /// so an app left running for several days never gets a fresh daily snapshot mid-session.
 /// This periodically re-invokes the (internally throttled) `backup_database` so a long
 /// session still gets its daily snapshot without waiting for the next restart, and runs the
-/// external mirror after it. Failures are logged and never stop the loop or the app.
+/// external mirror and the library index after it. Failures are logged and never stop the loop or
+/// the app.
 fn spawn_periodic_backup(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let mut delay = Duration::from_secs(INITIAL_BACKUP_DELAY_SECS);
@@ -349,8 +350,38 @@ fn spawn_periodic_backup(app_handle: AppHandle) {
             }
 
             run_external_database_backup(&app_handle, &db_path).await;
+            refresh_library_index(&app_handle).await;
         }
     });
+}
+
+/// Rewrites the library index (`services::library::index`) from the database. Best effort, and
+/// silent when no library is configured or its folder is not reachable (a drive not plugged in).
+async fn refresh_library_index(app_handle: &AppHandle) {
+    let Ok(library_dir) = services::library::cleanup::reachable_library_dir(app_handle).await
+    else {
+        return;
+    };
+
+    let pool = match services::database::shared_pool(app_handle).await {
+        Ok(pool) => pool,
+        Err(error) => {
+            services::logger::warn(
+                "library",
+                format!("library index: failed to open the database pool: {error}"),
+            );
+            return;
+        }
+    };
+
+    match services::library::index::refresh_library_index(&pool, &library_dir).await {
+        Ok(true) => services::logger::info("library", "library index written"),
+        Ok(false) => {}
+        Err(error) => services::logger::warn(
+            "library",
+            format!("library index: failed to write: {error}"),
+        ),
+    }
 }
 
 /// The flag that turns a launch into a startup self-check. Run the whole of `setup()` and exit 0

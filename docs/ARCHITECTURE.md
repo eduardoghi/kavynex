@@ -58,7 +58,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
     common prefix was already naming a directory, so they are now `library/`
     (`cleanup/`, split into `plan.rs`, `execute.rs`, `sweep.rs`, `orphans.rs` and
-    `channel_image.rs`, then `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
+    `channel_image.rs`, then `guard.rs`, `index.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
     `paths.rs`, `recovery.rs`, `summary.rs`, `trash.rs`, `verification.rs`), `thumbnail/` (`display.rs`, `download/`,
     `persist.rs`, `picked.rs`, `redirect.rs`, `temp.rs`, `url.rs`) and `yt_dlp/`
     (`channel_listing.rs`, `cookies.rs`, `events.rs`, `registry.rs`, `url.rs`, plus the nested

@@ -324,6 +324,13 @@ Inside the library directory, media services create these subfolders on demand:
   older database, or another library's, looks like, and moving its files aside would leave the
   import's undo pointing at nothing.
 
+Beside those folders sits `kavynex-library-index.json`, a readable list of every channel and the
+files of each of its media (title, file, thumbnail, live chat replay, YouTube id, publication date).
+The files above are named after their content, so without the database nothing else says which one
+is which video. The periodic backup loop rewrites it from the database shortly after launch and
+every few hours, only when what it lists changed, and a library move removes the old folder's copy.
+Nothing reads it back (`services/library/index.rs`).
+
 ### Filenames
 
 Two different naming schemes are used, depending on how a file enters the library.

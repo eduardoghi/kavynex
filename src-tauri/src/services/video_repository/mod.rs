@@ -264,7 +264,8 @@ pub async fn list_channel_youtube_video_ids(
     channel_id: i64,
 ) -> AppResult<std::collections::HashSet<String>> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT youtube_video_id FROM videos          WHERE channel_id = ? AND youtube_video_id IS NOT NULL",
+        "SELECT youtube_video_id FROM videos \
+         WHERE channel_id = ? AND youtube_video_id IS NOT NULL",
     )
     .bind(channel_id)
     .fetch_all(pool)
@@ -276,6 +277,33 @@ pub async fn list_channel_youtube_video_ids(
         .map(|(id,)| id.trim().to_string())
         .filter(|id| !id.is_empty())
         .collect())
+}
+
+/// One media as the library index lists it (`library::index`).
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LibraryIndexMediaRow {
+    pub channel_id: i64,
+    pub title: String,
+    pub file_path: String,
+    pub thumbnail_path: Option<String>,
+    pub live_chat_file_path: Option<String>,
+    pub media_type: String,
+    pub youtube_video_id: Option<String>,
+    pub published_at: Option<String>,
+}
+
+/// Every media, in the order the library index lists them within a channel, newest first.
+pub async fn list_media_for_library_index(
+    pool: &SqlitePool,
+) -> AppResult<Vec<LibraryIndexMediaRow>> {
+    sqlx::query_as(
+        "SELECT channel_id, title, file_path, thumbnail_path, live_chat_file_path, media_type, \
+         youtube_video_id, published_at FROM videos \
+         ORDER BY published_at IS NULL, published_at DESC, title, id",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|error| db_error("failed to list the media for the library index", error))
 }
 
 /// Cheap pre-check for the yt-dlp (URL) add flow. Whether `channel_id` already has a media row

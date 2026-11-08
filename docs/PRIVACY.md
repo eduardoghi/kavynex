@@ -65,7 +65,10 @@ in-app flows:
 
 - **Your media, thumbnails and live chat replays** live in the library folder you chose (Settings >
   Library folder shows the current path). They are ordinary files. Copy the folder anywhere and it
-  is a complete backup of the media itself.
+  is a complete backup of the media itself. The folder also holds `kavynex-library-index.json`, a
+  readable list of each channel's titles and the files they are stored in, so a copy of the folder
+  says what each file is even without the database. Downloads also carry their title, channel, date
+  and description inside the file.
 - **The database** (channels, titles, watched state, comments) is a single SQLite file. Settings >
   Database > Export writes a snapshot of it wherever you choose, which is the portable copy to keep.
   It is the whole database, settings included, so it carries the full paths of your library folder

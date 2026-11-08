@@ -8,6 +8,7 @@
 
 pub mod cleanup;
 pub mod guard;
+pub mod index;
 pub mod integrity;
 pub mod lock;
 pub mod media;
