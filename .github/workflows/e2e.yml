@@ -46,13 +46,14 @@ jobs:
 
             # The build dependencies release.yml installs, plus the WebKit WebDriver tauri-driver
             # talks to and a display for the window. FFmpeg makes the video the import flow adds and
-            # its thumbnail, and the GStreamer plugins are what WebKitGTK plays a WebM with.
+            # its thumbnail, and the GStreamer plugins are what WebKitGTK plays a WebM with. The tools
+            # give the plugin list the flow step prints.
             - name: Install Linux dependencies
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
                       librsvg2-dev patchelf xdg-utils webkitgtk-webdriver xvfb ffmpeg \
-                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-tools
 
             - name: Cache Rust build
               uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -80,11 +81,18 @@ jobs:
             # each one answers, which a debug build reads instead of opening it (commands/dialog.rs).
             # The app inherits them through tauri-driver. The video is one second of a test pattern,
             # made here rather than kept in the repository.
+            #
+            # GST_DEBUG=2 puts GStreamer's warnings and errors in the log, since a video the player
+            # cannot play otherwise reaches the flow as a bare media error. The plugin list before
+            # the flows says which demuxers, decoders and sinks the runner has.
             - name: Run the end-to-end flows
               env:
                   WEBKIT_DISABLE_COMPOSITING_MODE: "1"
                   WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+                  GST_DEBUG: "2"
               run: |
+                  gst-inspect-1.0 2>/dev/null | grep -i -E "matroska|vp8|vpx|appsink|videoconvert|gl" || true
+
                   profile=$(mktemp -d)
                   export XDG_CONFIG_HOME="$profile/config"
                   export XDG_DATA_HOME="$profile/data"
