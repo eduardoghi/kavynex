@@ -8,9 +8,15 @@ import {
 import { renderWithMantine } from "../../test/test-utils";
 import { describeViolations, findAccessibilityViolations } from "../../test/axe";
 
-vi.mock("../../services/library-service", () => ({
-    getLibrarySummary: vi.fn(),
-}));
+// The empty summary stays real, since the settings controller starts from it.
+vi.mock("../../services/library-service", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../services/library-service")>();
+
+    return {
+        createEmptyLibrarySummary: actual.createEmptyLibrarySummary,
+        getLibrarySummary: vi.fn(),
+    };
+});
 
 import {
     getLibrarySummary,
