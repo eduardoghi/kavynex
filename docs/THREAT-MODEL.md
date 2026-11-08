@@ -463,7 +463,7 @@ staying exposed. The commands that rule removed, and how each was found, are in
 #### Accepted residual: unreferenced-artifact cleanup is not atomic against a concurrent creation
 
 `library::cleanup::cleanup_unreferenced_artifacts` reference-counts each artifact path against the
-database and then unlinks the files nothing points at (`services/library/cleanup.rs`). It runs on a
+database and then unlinks the files nothing points at (`services/library/cleanup/`). It runs on a
 failed creation and on the pending-media startup sweep. The count and the unlink run in one backend
 call, but they are not atomic against a *concurrent* media creation that resolves to the same
 content-addressed path. A wrapping transaction cannot help. The unlink necessarily happens

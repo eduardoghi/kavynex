@@ -189,7 +189,7 @@ export async function openFileLocation(path: string): Promise<void> {
 
 // Deletes the orphan files Diagnostics reports, the ones named the way Kavynex names what it writes.
 // A file the user put in the library folder by hand is kept. See
-// src-tauri/src/services/library/cleanup.rs (remove_orphan_artifacts).
+// src-tauri/src/services/library/cleanup/orphans.rs (remove_orphan_artifacts).
 export async function removeOrphanLibraryFiles(): Promise<ArtifactCleanupReport> {
     return invokeCommand(TAURI_COMMANDS.REMOVE_ORPHAN_LIBRARY_FILES);
 }

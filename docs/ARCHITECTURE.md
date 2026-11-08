@@ -56,7 +56,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
     common prefix was already naming a directory, so they are now `library/`
-    (`cleanup.rs`, `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
+    (`cleanup/`, split into `plan.rs`, `execute.rs`, `sweep.rs`, `orphans.rs` and
+    `channel_image.rs`, then `guard.rs`, `integrity.rs`, `lock.rs`, `media.rs`, `migration.rs`,
     `paths.rs`, `recovery.rs`, `summary.rs`, `trash.rs`, `verification.rs`), `thumbnail/` (`display.rs`, `download/`,
     `persist.rs`, `picked.rs`, `redirect.rs`, `temp.rs`, `url.rs`) and `yt_dlp/`
     (`channel_listing.rs`, `cookies.rs`, `events.rs`, `metadata.rs`, `registry.rs`, `url.rs`, plus
@@ -581,7 +582,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the compressed daily archives in `archive.rs`, the export and import gates in `gates.rs`, compaction in `compaction.rs`, the mirror's lineage ids in `lineage.rs`) | `services/database-service.ts` |
 | Media playback | `services/media_protocol.rs` | `utils/media-utils.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
-| Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup.rs` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
+| Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup/` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | Deep library check | `commands/library.rs` (`verify_library_content`), `services/library/verification.rs` | `hooks/use-library-verification.ts`, `components/modals/diagnostics-sections/diagnostics-content-verification.tsx` |
 | App settings | `commands/settings.rs`, `services/database.rs` | `services/app-settings-command-service.ts`, `hooks/settings/` |
 | Crash recovery (leftovers from a run that did not finish) | `services/pending_media.rs`, `services/library/recovery.rs`, `services/temp_cleanup.rs` | (none) |
