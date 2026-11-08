@@ -361,9 +361,10 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   guarded `ALTER TABLE ADD COLUMN` and the stamp in one transaction. An import stamped at v17 or
   later is refused when the column is missing (see "Import" below).
 - **v18** adds `channels.banner_path` and its index `idx_channels_banner_path`, which the thumbnail
-  reference count reads. Additive, with the stamp in the same transaction.
+  reference count reads. Additive, with the stamp in the same transaction. An import stamped at v18
+  or later is refused when the column is missing.
 - **v19** creates `ignored_channel_media` (see above). Additive, with the stamp in the same
-  transaction. The table is created by this migration rather than by the baseline, which every
+  transaction. An import stamped at v19 or later is refused when the table is missing. The table is created by this migration rather than by the baseline, which every
   database passes through first, so a new database and an upgraded one get it the same way.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive, so guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
@@ -702,9 +703,10 @@ live connection pool is a singleton that cannot be reopened mid-session:
    and importing an older library has to keep working, which it does because the swap is followed
    by v11's backfill.
 
-   The same goes for a database stamped at v17 or later without `video_comments.original_text`. The
-   stamp says the migration that adds it already ran, so the column would never appear and every
-   comment read would fail.
+   The same goes for a database stamped at v17 or later without `video_comments.original_text`, at
+   v18 or later without `channels.banner_path`, and at v19 or later without
+   `ignored_channel_media`. The stamp says the migration that adds each one already ran, so it would
+   never appear, and the comment list, the channel list or the not-in-library list would fail.
 
    The rows are checked as well. `PRAGMA foreign_key_check` must come back empty, and every stored
    file path (`file_path`, `thumbnail_path`, `live_chat_file_path`, `avatar_path`, `banner_path`, each where the

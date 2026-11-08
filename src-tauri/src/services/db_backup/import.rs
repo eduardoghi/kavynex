@@ -235,6 +235,28 @@ async fn validate_import_source(pool: &SqlitePool) -> AppResult<()> {
         ));
     }
 
+    // v18 and v19 make the same kind of claim. v18 adds `channels.banner_path`, which the channel
+    // list selects, and v19 the `ignored_channel_media` table the not-in-library list reads.
+    let missing_banner = user_version >= 18
+        && !crate::services::db_schema::table_has_column(pool, "channels", "banner_path")
+            .await
+            .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+    let missing_ignored_media = user_version >= 19
+        && !crate::services::db_schema::table_has_column(
+            pool,
+            "ignored_channel_media",
+            "youtube_video_id",
+        )
+        .await
+        .map_err(|error| backup_error("failed to inspect the selected database", error))?;
+
+    if missing_banner || missing_ignored_media {
+        return Err(AppError::from_code(
+            AppErrorCode::DatabaseImportInvalid,
+            "the selected file is not a kavynex database",
+        ));
+    }
+
     // The same reasoning applies to v13's live-chat row invariant (`has_live_chat` set implies a
     // stored `live_chat_file_path`). It is a CHECK on a fresh table and a pair of triggers on an
     // upgraded one, but an import replaces the whole file, so no write ever fires and neither

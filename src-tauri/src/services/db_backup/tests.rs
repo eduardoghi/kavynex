@@ -1691,6 +1691,56 @@ async fn import_rejects_a_current_database_without_the_original_comment_text() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+#[tokio::test]
+async fn import_rejects_a_current_database_without_the_banner_or_the_ignored_media() {
+    // Stamped at the current version, so ensure_schema skips the migrations that add them, and the
+    // channel list or the not-in-library list would fail after the swap.
+    for (label, missing) in [
+        (
+            "banner",
+            "CREATE TABLE ignored_channel_media (channel_id INTEGER, youtube_video_id TEXT)",
+        ),
+        (
+            "ignored",
+            "ALTER TABLE channels ADD COLUMN banner_path TEXT",
+        ),
+    ] {
+        let dir = temp_dir(&format!("import-no-{label}"));
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "current").await;
+
+        let source = dir.join("source.db");
+        seed_kavynex_db(&source, "incoming").await;
+        let pool = open(&source).await.unwrap();
+        for statement in [
+            "ALTER TABLE videos ADD COLUMN title_normalized TEXT".to_string(),
+            "UPDATE videos SET title_normalized = lower(title)".to_string(),
+            // Only one of the two is added, so each run lacks the other.
+            missing.to_string(),
+            format!(
+                "PRAGMA user_version = {}",
+                crate::services::db_schema::SCHEMA_VERSION
+            ),
+        ] {
+            sqlx::query(sqlx::AssertSqlSafe(statement))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        pool.close().await;
+
+        let error = stage_database_import(&db, &source, None).await.unwrap_err();
+        assert_eq!(
+            error.code,
+            AppErrorCode::DatabaseImportInvalid.as_str(),
+            "{label}"
+        );
+        assert!(!import_staged_path(&db).exists(), "{label}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 #[test]
 fn a_marker_that_cannot_be_removed_is_reported_as_still_there() {
     // A directory under the marker's name is something remove_file refuses with an error other
@@ -2171,7 +2221,9 @@ async fn import_accepts_a_normalized_current_schema_database() {
         .await
         .unwrap();
     for ddl in [
-        "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+        "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT, \
+         banner_path TEXT)",
+        "CREATE TABLE ignored_channel_media (channel_id INTEGER, youtube_video_id TEXT)",
         "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
          title_normalized TEXT, file_path TEXT, media_type TEXT, \
          FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE, \
@@ -2280,7 +2332,9 @@ async fn import_accepts_a_live_chat_flag_with_a_stored_path() {
         .await
         .unwrap();
     for ddl in [
-        "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+        "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT, \
+         banner_path TEXT)",
+        "CREATE TABLE ignored_channel_media (channel_id INTEGER, youtube_video_id TEXT)",
         "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
          title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
          live_chat_file_path TEXT, \
@@ -2337,7 +2391,9 @@ async fn import_accepts_a_v13_database_that_lacks_the_live_chat_path_column() {
         .await
         .unwrap();
     for ddl in [
-        "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT)",
+        "CREATE TABLE channels (id INTEGER PRIMARY KEY, name TEXT, youtube_handle TEXT, \
+         banner_path TEXT)",
+        "CREATE TABLE ignored_channel_media (channel_id INTEGER, youtube_video_id TEXT)",
         // has_live_chat is present, live_chat_file_path deliberately is not.
         "CREATE TABLE videos (id INTEGER PRIMARY KEY, channel_id INTEGER, title TEXT, \
          title_normalized TEXT, file_path TEXT, media_type TEXT, has_live_chat INTEGER, \
