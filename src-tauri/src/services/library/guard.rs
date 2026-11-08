@@ -89,15 +89,12 @@ pub fn paths_refer_to_same_location(requested: &str, configured: &str) -> bool {
         return false;
     }
 
-    // A network (UNC) `requested` path forces an SMB/NTLM handshake the moment it is canonicalized
-    // on Windows (see utils::path::is_network_path). Refuse it *before* the canonicalize below
-    // unless it names the very share the configured library lives on. A caller-supplied UNC aimed
-    // at a local library is the NTLM-leak vector, and the guard's whole job is to hold against a
-    // hostile IPC path. When the library itself is on a share (a supported configuration), the
-    // same hostile caller could name another host, and refusing only "network against local"
-    // would let that reach canonicalize and authenticate to it before the canonical compare said
-    // no. So the host and share are compared textually first. The user's own share keeps working,
-    // and a different one is refused without any filesystem call.
+    // A network `requested` path is refused *before* the canonicalize below (see
+    // utils::path::is_network_path) unless it names the very share the configured library lives
+    // on. When the library itself is on a share (a supported configuration), refusing only
+    // "network against local" would let another host reach canonicalize, so the host and share are
+    // compared textually first. The user's own share keeps working, and a different one is refused
+    // without any filesystem call.
     if is_network_path(requested) {
         if !is_network_path(configured) {
             return false;

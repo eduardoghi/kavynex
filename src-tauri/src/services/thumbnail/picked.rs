@@ -27,12 +27,8 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Validates an image the user picked from the file dialog, before anything stats or reads it.
 ///
-/// The network refusal comes first and is the reason this is its own validator rather than a reuse
-/// of `temp.rs`'s `validate_source_media_path`. This path arrives raw over IPC, and on Windows merely
-/// `is_file()`-ing `\\host\share\x.png` authenticates to `host` over SMB and hands it the user's NTLM
-/// hash. Every sibling that takes a caller-supplied path already refuses one
-/// (`library::resolve_path_inside_library`, `validate_source_media_path`, `db_backup`'s import and
-/// export gates, `yt_dlp::cookies::normalize_cookies_path`).
+/// The network refusal comes first, before the `is_file()` (see `utils::path::is_network_path`),
+/// since this path arrives raw over IPC.
 ///
 /// The extension gate is the same one the preview needs anyway. Only an image is worth staging, and
 /// refusing anything else here means the copy that follows can never be pointed at an arbitrary file.

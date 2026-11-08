@@ -39,13 +39,10 @@ fn persist_thumbnail_guarded(
     library_dir: &Path,
     pass: Option<LibraryPass>,
 ) -> AppResult<String> {
-    // Refuse a UNC / network source before the `exists()` below touches it. Two of this
-    // function's callers hand it a path that arrived raw over IPC (the `persist_thumbnail_file`
-    // command and the local branch of `create_media`'s thumbnail source), and on Windows merely
-    // stat'ing `\\host\share\x.jpg` authenticates to `host` over SMB and leaks the user's NTLM
-    // hash. The same cross-cutting rule as `thumbnail::picked::validate_picked_thumbnail_path`,
-    // which only the staged-preview path runs. This closes the one persist entry point that
-    // lacked it. The third caller (the download) passes a file it just wrote into the app cache,
+    // Refuse a network source before the `exists()` below touches it (see
+    // utils::path::is_network_path). Two of this function's callers hand it a path that arrived
+    // over IPC (the `persist_thumbnail_file` command and the local branch of `create_media`'s
+    // thumbnail source). The third (the download) passes a file it just wrote into the app cache,
     // so the check is free there.
     if is_network_path(&source.to_string_lossy()) {
         return Err(AppError::from_code(

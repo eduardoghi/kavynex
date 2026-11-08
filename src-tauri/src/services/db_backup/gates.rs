@@ -85,11 +85,10 @@ pub(crate) fn prepare_export_destination(
 
     validate_export_destination(trimmed)?;
 
-    // Refuse a network destination before anything touches it. Two things follow from a UNC path
-    // here, and the write is the worse one. `destination_is_inside_dir` below canonicalizes the
-    // destination's parent, and on Windows that alone authenticates to the host over SMB and hands
-    // it the user's NTLM hash, and then the export writes the whole database (every channel,
-    // title, comment and stored local path) to a host the caller chose. The mirror in
+    // Refuse a network destination before anything touches it. The canonicalize in
+    // `destination_is_inside_dir` below would already reach the host (see
+    // `utils::path::is_network_path`), and the export would then write the whole database (every
+    // channel, title, comment and stored local path) to a host the caller chose. The mirror in
     // `db_backup::external.rs` calls the `export_database` *service* function rather than this
     // command, so an external backup folder on a share keeps working. Only the manual export has
     // to be written locally and copied from there, exactly as `prepare_import_source` requires on
@@ -120,13 +119,9 @@ pub(crate) fn prepare_export_destination(
 ///
 /// Two things are enforced, each closing a gap the export side never had:
 ///
-/// - **No network location.** `stage_database_import` stats and then opens this path, and on
-///   Windows merely stat'ing a UNC share authenticates to that host over SMB, leaking the user's
-///   NTLM hash. This value arrives raw over IPC, so the refusal belongs here rather than resting on
-///   the file picker. The same guard, for the same reason, as
-///   `library::resolve_path_inside_library` and `yt_dlp::cookies::normalize_cookies_path`. Importing
-///   a database off a share still works, but it just has to be copied locally first, which the
-///   staging copy does anyway.
+/// - **No network location** (see `utils::path::is_network_path`), since `stage_database_import`
+///   stats and then opens this path. Importing a database off a share still works, but it has to be
+///   copied locally first, which the staging copy does anyway.
 /// - **A database file extension.** Not a security boundary on its own (the source is only read,
 ///   and `validate_import_source` still has to recognize it as a kavynex database), but it turns a
 ///   mistyped or hostile path into a clear refusal instead of an "is this a valid SQLite file?"

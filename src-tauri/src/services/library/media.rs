@@ -150,14 +150,9 @@ pub fn stage_media_import_recorded_sync(
 ) -> AppResult<StagedMediaImport> {
     let trimmed = path.trim();
 
-    // Reject a UNC / network source before any filesystem call touches it. The source is
-    // caller-supplied (the user picks a file anywhere on disk), and in Move mode the original is
-    // removed, so a `\\host\share` source would both make Windows authenticate to `host` over SMB
-    // (leaking the NTLM hash) and let a delete land on a network file. The picker never yields such a
-    // path for a normal selection. This closes the value a compromised frontend could inject. It does
-    // not make Move safe against an arbitrary *local* source a compromised renderer names (that is
-    // inherent to importing a user-picked file and is the subject of the separate path-authority
-    // hardening), but it removes the network/NTLM angle here, matching the thumbnail source guard.
+    // Reject a network source before any filesystem call touches it (see
+    // utils::path::is_network_path). In Move mode the original is removed, so a share here would
+    // also let a delete land on a network file.
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidSourceMedia,

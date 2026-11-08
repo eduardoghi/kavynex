@@ -71,13 +71,9 @@ pub fn normalize_cookies_path(value: Option<&str>) -> Option<String> {
         return None;
     }
 
-    // Refuse a UNC / network location before the `is_file()` below touches it. Merely stat'ing
-    // one on Windows makes the OS authenticate to `host` over SMB, leaking the user's NTLM hash
-    // to whoever controls it, and this value arrives raw over IPC, so the check has to happen
-    // here rather than resting on the picker. Same guard, for the same reason, as
-    // library::resolve_path_inside_library and thumbnail::temp::validate_source_media_path. No
-    // caller-supplied path goes without it. A cookies file kept on a share
-    // loses only the ability to be pointed at directly (copy it locally first).
+    // Refuse a network location before the `is_file()` below touches it (see
+    // utils::path::is_network_path). A cookies file kept on a share loses only the ability to be
+    // pointed at directly (copy it locally first).
     if is_network_path(normalized) {
         return None;
     }

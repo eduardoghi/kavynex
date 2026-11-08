@@ -70,10 +70,9 @@ pub fn resolve_path_inside_library(path: &str, library_path: Option<&str>) -> Ap
         PathBuf::from(base_library).join(candidate)
     };
 
-    // Refuse UNC / network locations before any filesystem call. `path` arrives over IPC, and the
-    // `canonicalize` calls below are what would trigger the SMB/NTLM handshake for a
-    // `\\host\share` spelling. The cost is that a library kept on a network share loses only the
-    // "reveal in file manager" convenience, and playback, import and download are unaffected.
+    // Refuse network locations before the `canonicalize` calls below (see
+    // utils::path::is_network_path). A library kept on a share loses only the "reveal in file
+    // manager" convenience, and playback, import and download are unaffected.
     if is_network_path(base_library) || is_network_path(&resolved_path.to_string_lossy()) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidMediaPath,

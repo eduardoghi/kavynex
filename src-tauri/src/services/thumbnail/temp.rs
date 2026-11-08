@@ -18,13 +18,10 @@ use crate::{AppError, AppErrorCode, AppResult};
 fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<PathBuf>> {
     let trimmed = path.trim();
 
-    // Refuse a UNC/network location before the `exists()` below, for the reason the whole
-    // cross-cutting rule exists. On Windows, merely stat-ing `\\host\share\...` makes the OS
-    // authenticate to `host` over SMB and hand it the user's NTLM hash. The caller's path reaches
-    // this function raw over IPC, and the containment check the delete itself runs
-    // (`ensure_existing_path_inside_dir` against `thumbs-temp/`) happens *after* the stat, so it
-    // refuses the delete while the handshake has already been paid for. Its sibling
-    // `validate_source_media_path` below does the same.
+    // Refuse a network location before the `exists()` below (see utils::path::is_network_path).
+    // The containment check the delete itself runs (`ensure_existing_path_inside_dir` against
+    // `thumbs-temp/`) happens *after* the stat, so it would refuse the delete only once the host
+    // had already been reached.
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidTempThumbnailPath,
@@ -51,11 +48,9 @@ fn validate_temporary_thumbnail_delete_path(path: &str) -> AppResult<Option<Path
 fn validate_source_media_path(path: &str) -> AppResult<PathBuf> {
     let trimmed = path.trim();
 
-    // Reject a UNC/network source before any filesystem call touches it. This command takes a
-    // caller-supplied path (the pre-import preview needs to reach a file the user picked anywhere on
-    // disk), so a compromised frontend could otherwise hand it `\\host\share\...` and make merely
-    // stat-ing it trigger an SMB/NTLM handshake that leaks the user's hash to `host`. Mirrors the
-    // same guard in services::library::resolve_path_inside_library / open_path_in_system.
+    // Reject a network source before any filesystem call touches it (see
+    // utils::path::is_network_path), since the pre-import preview takes a file the user picked
+    // anywhere on disk.
     if is_network_path(trimmed) {
         return Err(AppError::from_code(
             AppErrorCode::InvalidSourceMedia,
