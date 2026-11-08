@@ -1,15 +1,14 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { compactDatabase } from "../services/database-service";
-import { logError } from "../utils/app-logger";
-import { resolveErrorMessage } from "../utils/error-message";
+import { useAsyncFlag } from "./use-async-flag";
 import { useMemoObject } from "./use-memo-object";
+import { useRunReport, type RunError } from "./use-run-report";
 
 // "nothing" is its own outcome rather than "freed 0 B", so the UI can say there was no space to
 // give back instead of reporting a size of zero as if something happened.
-export type CompactionResult =
-    | { status: "freed"; formattedSize: string }
-    | { status: "nothing" }
-    | { status: "error"; message: string };
+type CompactionOutcome = { status: "freed"; formattedSize: string } | { status: "nothing" };
+
+export type CompactionResult = CompactionOutcome | RunError;
 
 type UseDatabaseCompactionReturn = {
     loading: boolean;
@@ -19,30 +18,26 @@ type UseDatabaseCompactionReturn = {
 
 // Owns the user-triggered VACUUM, the same split as useDatabaseIntegrityCheck.
 export function useDatabaseCompaction(): UseDatabaseCompactionReturn {
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<CompactionResult | null>(null);
+    const { isRunning: loading, runWithFlag } = useAsyncFlag();
+    const { result, run } = useRunReport<CompactionOutcome>();
 
     const runCompaction = useCallback(async (): Promise<void> => {
-        setLoading(true);
-        setResult(null);
+        await runWithFlag(() =>
+            run(
+                async () => {
+                    const compaction = await compactDatabase();
 
-        try {
-            const compaction = await compactDatabase();
-            setResult(
-                compaction.freedBytes > 0
-                    ? { status: "freed", formattedSize: compaction.formattedFreedSize }
-                    : { status: "nothing" }
-            );
-        } catch (error) {
-            logError("diagnostics", "Failed to compact the database.", error);
-            setResult({
-                status: "error",
-                message: resolveErrorMessage(error, "Failed to compact the database."),
-            });
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+                    return compaction.freedBytes > 0
+                        ? { status: "freed", formattedSize: compaction.formattedFreedSize }
+                        : { status: "nothing" };
+                },
+                {
+                    log: "Failed to compact the database.",
+                    message: "Failed to compact the database.",
+                }
+            )
+        );
+    }, [runWithFlag, run]);
 
     return useMemoObject({ loading, result, runCompaction });
 }

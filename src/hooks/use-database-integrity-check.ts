@@ -1,18 +1,19 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import type { DatabaseIntegrityReport } from "../types/generated/DatabaseIntegrityReport";
 import { checkDatabaseIntegrity, rebuildDatabaseIndexes } from "../services/database-service";
-import { logError } from "../utils/app-logger";
-import { resolveErrorMessage } from "../utils/error-message";
+import { useAsyncFlag } from "./use-async-flag";
 import { useMemoObject } from "./use-memo-object";
+import { useRunReport, type RunError } from "./use-run-report";
 
 // The outcome of a full integrity check as the UI needs it. A healthy result, a healthy result
 // right after the indexes were rebuilt, the problems SQLite listed (with whether the list was
 // capped and whether a rebuild already ran), or a failure to run the check at all.
-export type IntegrityResult =
+type IntegrityOutcome =
     | { status: "ok" }
     | { status: "repaired" }
-    | { status: "problem"; problems: string[]; truncated: boolean; rebuilt: boolean }
-    | { status: "error"; message: string };
+    | { status: "problem"; problems: string[]; truncated: boolean; rebuilt: boolean };
+
+export type IntegrityResult = IntegrityOutcome | RunError;
 
 type UseDatabaseIntegrityCheckReturn = {
     loading: boolean;
@@ -22,7 +23,7 @@ type UseDatabaseIntegrityCheckReturn = {
     rebuildIndexes: () => Promise<void>;
 };
 
-function toResult(report: DatabaseIntegrityReport, rebuilt: boolean): IntegrityResult {
+function toResult(report: DatabaseIntegrityReport, rebuilt: boolean): IntegrityOutcome {
     if (report.ok) {
         return rebuilt ? { status: "repaired" } : { status: "ok" };
     }
@@ -40,42 +41,32 @@ function toResult(report: DatabaseIntegrityReport, rebuilt: boolean): IntegrityR
 // logic is unit-testable on its own, mirroring how every other stateful data flow in the app lives
 // in a hook rather than inside a component.
 export function useDatabaseIntegrityCheck(): UseDatabaseIntegrityCheckReturn {
-    const [loading, setLoading] = useState(false);
-    const [rebuilding, setRebuilding] = useState(false);
-    const [result, setResult] = useState<IntegrityResult | null>(null);
+    const { isRunning: loading, runWithFlag: runCheckFlag } = useAsyncFlag();
+    const { isRunning: rebuilding, runWithFlag: runRebuildFlag } = useAsyncFlag();
+    const { result, run } = useRunReport<IntegrityOutcome>();
 
     const runCheck = useCallback(async (): Promise<void> => {
-        setLoading(true);
-        setResult(null);
+        await runCheckFlag(() =>
+            run(async () => toResult(await checkDatabaseIntegrity(), false), {
+                log: "Failed to run the database integrity check.",
+                message: "Failed to run the integrity check.",
+            })
+        );
+    }, [runCheckFlag, run]);
 
-        try {
-            setResult(toResult(await checkDatabaseIntegrity(), false));
-        } catch (error) {
-            logError("diagnostics", "Failed to run the database integrity check.", error);
-            setResult({
-                status: "error",
-                message: resolveErrorMessage(error, "Failed to run the integrity check."),
-            });
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
+    // The check's result stays on screen while the rebuild runs, since the rebuild is offered from it.
     const rebuildIndexes = useCallback(async (): Promise<void> => {
-        setRebuilding(true);
-
-        try {
-            setResult(toResult(await rebuildDatabaseIndexes(), true));
-        } catch (error) {
-            logError("diagnostics", "Failed to rebuild the database indexes.", error);
-            setResult({
-                status: "error",
-                message: resolveErrorMessage(error, "Failed to rebuild the indexes."),
-            });
-        } finally {
-            setRebuilding(false);
-        }
-    }, []);
+        await runRebuildFlag(() =>
+            run(
+                async () => toResult(await rebuildDatabaseIndexes(), true),
+                {
+                    log: "Failed to rebuild the database indexes.",
+                    message: "Failed to rebuild the indexes.",
+                },
+                true
+            )
+        );
+    }, [runRebuildFlag, run]);
 
     return useMemoObject({ loading, rebuilding, result, runCheck, rebuildIndexes });
 }
