@@ -40,22 +40,25 @@ describe("resolveAvatarSrc", () => {
 });
 
 describe("avatarInitials", () => {
-    it("builds two uppercase letters from the name", () => {
-        expect(avatarInitials("john")).toBe("JO");
+    it("takes one uppercase letter from each of the first two words", () => {
+        expect(avatarInitials("john doe")).toBe("JD");
+        expect(avatarInitials("ana beatriz carvalho")).toBe("AB");
+        expect(avatarInitials("madonna")).toBe("M");
     });
 
     it("strips every leading @ before building initials", () => {
-        expect(avatarInitials("@john")).toBe("JO");
-        expect(avatarInitials("@@john")).toBe("JO");
+        expect(avatarInitials("@john")).toBe("J");
+        expect(avatarInitials("@@john")).toBe("J");
     });
 
     it("only strips @ at the start of the name", () => {
-        expect(avatarInitials("j@ohn")).toBe("J@");
+        expect(avatarInitials("j@ohn")).toBe("J");
+        expect(avatarInitials("@john @doe")).toBe("J@");
     });
 
-    it("trims whitespace before slicing the initials", () => {
-        expect(avatarInitials("  jo  ")).toBe("JO");
-        expect(avatarInitials("@ jo")).toBe("JO");
+    it("ignores surrounding and repeated whitespace", () => {
+        expect(avatarInitials("  john    doe  ")).toBe("JD");
+        expect(avatarInitials("@ jo")).toBe("J");
     });
 
     it("falls back to ? when nothing remains", () => {

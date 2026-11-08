@@ -11,7 +11,8 @@ import {
 import { memo, type CSSProperties } from "react";
 import { StretchedButtonCard } from "../common/stretched-button-card";
 import type { Channel, ViewMode } from "../../types/media";
-import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
+import { avatarInitials } from "../../utils/avatar";
+import { fileSrcFromStoredPath } from "../../utils/media-utils";
 
 // Style objects that never depend on props or state, hoisted to module scope so they are
 // allocated once rather than rebuilt on every render. The row's own dynamic styles (the card
@@ -141,7 +142,7 @@ export const ChannelListItem = memo(function ChannelListItem({
                         },
                     }}
                 >
-                    {!avatarSrc ? initials(channel.name) : null}
+                    {!avatarSrc ? avatarInitials(channel.name) : null}
                 </Avatar>
 
                 <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>

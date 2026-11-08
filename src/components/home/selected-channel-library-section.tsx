@@ -24,7 +24,8 @@ import {
 } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import { MediaGrid } from "../library/media-grid";
-import { fileSrcFromStoredPath, initials } from "../../utils/media-utils";
+import { avatarInitials } from "../../utils/avatar";
+import { fileSrcFromStoredPath } from "../../utils/media-utils";
 import { formatCount } from "../../utils/pluralize";
 import { formatNumber } from "../../utils/number-format";
 import type { MediaQueryFilters } from "../../utils/media-library-filters";
@@ -205,7 +206,7 @@ export function SelectedChannelLibrarySection({
                             border: `1px solid ${shellBorder}`,
                         }}
                     >
-                        {!avatarSrc ? initials(selectedChannel.name) : null}
+                        {!avatarSrc ? avatarInitials(selectedChannel.name) : null}
                     </Avatar>
 
                     <Box>

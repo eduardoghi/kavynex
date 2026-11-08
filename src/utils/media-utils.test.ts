@@ -12,7 +12,6 @@ import {
     formatCreatedAt,
     formatDuration,
     formatPublishedDate,
-    initials,
     isMediaWatched,
     isThumbnailFile,
     joinNormalizedPath,
@@ -254,25 +253,6 @@ describe("media-utils", () => {
         });
     });
 
-    describe("initials", () => {
-        it("builds uppercase initials from the first two words", () => {
-            expect(initials("john doe")).toBe("JD");
-            expect(initials("ana beatriz carvalho")).toBe("AB");
-        });
-
-        it("uses a single initial for one-word values", () => {
-            expect(initials("madonna")).toBe("M");
-        });
-
-        it("collapses repeated whitespace between words", () => {
-            expect(initials("  john    doe  ")).toBe("JD");
-        });
-
-        it("falls back to a question mark for empty values", () => {
-            expect(initials("")).toBe("?");
-            expect(initials("   ")).toBe("?");
-        });
-    });
 
     describe("resolveStoredPath", () => {
         it("resolves relative stored path against library path", () => {

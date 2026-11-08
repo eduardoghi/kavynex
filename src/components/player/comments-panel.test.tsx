@@ -91,7 +91,7 @@ describe("CommentsPanel", () => {
         expect(
             container.querySelector('img[src="https://yt3.ggpht.com/avatar.jpg"]')
         ).toBeNull();
-        expect(screen.getByText("ZO")).toBeInTheDocument();
+        expect(screen.getByText("Z")).toBeInTheDocument();
     });
 
     it("loads the remote thumbnail when remote images are on", () => {

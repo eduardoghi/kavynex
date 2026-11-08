@@ -141,20 +141,6 @@ export function resumePositionFor(progressSeconds: number, duration: number): nu
     return progressSeconds;
 }
 
-export function initials(value: string): string {
-    const parts = value
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2);
-
-    if (parts.length === 0) {
-        return "?";
-    }
-
-    return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
-}
-
 export function resolveStoredPath(
     storedPath: string | null,
     libraryPath: string

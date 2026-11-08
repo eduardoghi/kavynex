@@ -1,4 +1,4 @@
-// Shared avatar helpers used by the comments and live chat panels.
+// Shared avatar helpers used by the channel list, the comments and the live chat panels.
 
 /**
  * Returns a usable avatar image source, or undefined when the value is empty or not a
@@ -19,14 +19,16 @@ export function resolveAvatarSrc(value: string | null): string | undefined {
 }
 
 /**
- * Builds up-to-two-letter initials from an author name (leading "@" stripped).
+ * The initials an avatar shows when its image is missing, one per word for the first two words
+ * ("Foo Bar" is "FB", "Madonna" is "M"), the same for a channel, a commenter and a chat author.
+ * A leading "@" is dropped first, so a handle shows its first letter rather than the "@".
  */
-export function avatarInitials(authorName: string): string {
-    const cleaned = authorName.replace(/^@+/, "").trim();
+export function avatarInitials(name: string): string {
+    const words = name.replace(/^@+/, "").trim().split(/\s+/).filter(Boolean).slice(0, 2);
 
-    if (!cleaned) {
+    if (words.length === 0) {
         return "?";
     }
 
-    return cleaned.slice(0, 2).toUpperCase();
+    return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
 }
