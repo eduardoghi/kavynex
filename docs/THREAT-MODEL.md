@@ -419,7 +419,7 @@ is the app's largest path surface.
 | `library_path` | Not sent. The command fills it from the settings (`configured_library_path`) before any file is written, and a value in the payload is ignored. |
 | `source_value` | An absolute path only in local-import mode; refused as a UNC/network location before any filesystem call (`services/library/media.rs::stage_media_import_recorded_sync`). In yt-dlp mode it is a URL and goes through the host allow-list instead. |
 | `thumbnail_source_path` | Classified first (`classify_thumbnail_source`), so a remote URL and a local path cannot be confused for each other. The local branch goes through `persist_thumbnail_file_sync`, which refuses a network location before its first `stat` (`services/thumbnail/persist.rs::persist_thumbnail_from_source`) and gates the extension; the remote branch goes through the image-CDN allow-list and the SSRF guard. `picked.rs` guards only the staged preview (`stage_manual_thumbnail`), not this branch. The script that holds this table against the code checks that a listed site exists, not that a given parameter flows through it, so a row naming the wrong site passes it. |
-| `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`). The header check is not cosmetic: yt-dlp rewrites the file it is given, so the extension alone left "an arbitrary text file is not destroyed" resting on yt-dlp's parser refusing it first. |
+| `cookies_path` | Refused as a network location, gated to `.txt`, and required to actually begin with a Netscape cookie-file header before it can reach a yt-dlp argv (`services/yt_dlp/cookies.rs::normalize_cookies_path`, see "The header check" below). |
 
 Every path the creation *produces* is re-checked as a managed library-relative path before it can
 reach a row (`ensure_managed_prepared_paths`), which is the last point at which a value that escaped
@@ -616,63 +616,31 @@ not a substitute for it. Binaries are always invoked via `std::process::Command`
 `tokio::process::Command` with an argument array, never a shell string, so there is no
 shell-interpolation step for injection to exploit in the first place.
 
-The optional cookies-file path (`--cookies <path>`) is similarly restricted, so only an
-existing, non-network `.txt` file **that actually starts with a Netscape cookie-file header** is
-accepted (`services/yt_dlp/cookies.rs::normalize_cookies_path`), and the resolved path is redacted
-before it is ever shown in the in-app terminal preview. The network-path refusal has to come *before* the
-`is_file()` check rather than after it, because stat'ing a UNC share is itself what makes Windows
-authenticate to that host over SMB and leak the user's NTLM hash, so a check that ran later
-would already have paid the cost it exists to avoid. This is the same guard, closing the same
-escalation, as `library::resolve_path_inside_library` and
-`thumbnail::temp::validate_source_media_path`; a cookies file kept on a share loses only the
-ability to be pointed at directly. An invalid value is dropped rather than raised as an error,
-matching how this function treats every other rejection. The run simply proceeds without
-cookies (or falls back to `--cookies-from-browser`).
+The optional cookies-file path (`--cookies <path>`) is similarly restricted, so only an existing,
+non-network `.txt` file **that actually starts with a Netscape cookie-file header** is accepted
+(`services/yt_dlp/cookies.rs::normalize_cookies_path`), and the resolved path is redacted before it
+is ever shown in the in-app terminal preview. The network-path refusal comes before the `is_file()`
+check, since stat'ing a UNC share is itself what leaks the NTLM hash (see "The UNC / network-path
+refusal" above). An invalid value is dropped rather than raised, and the run proceeds without
+cookies.
 
-**The header check is there because `--cookies` is a path yt-dlp writes *back* to**, which the
-extension gate alone did not account for. At the end of a run yt-dlp rewrites that file in full
-with the cookies it acquired (verified against yt-dlp 2026.07.04), so accepting any existing `.txt`
-made "a compromised renderer cannot destroy an arbitrary text file" rest on yt-dlp's own parser
-refusing to load it first. It does refuse, today. A `.txt` that is not a cookie jar produces
-`does not look like a Netscape format cookies file` and the file is left untouched. But that is a
-guarantee owned by an external tool whose version this app does not pin and whose output format it
-already treats as unstable elsewhere, and resting on it is exactly what the `.bat`/`.cmd` refusal in
-`services/binaries.rs` declines to do with the compiler's BatBadBut fix. Reading the header moves
-the decision back to this side of the boundary.
+**The header check is there because `--cookies` is a path yt-dlp writes *back* to.** yt-dlp
+rewrites that file in full at the end of a run, so accepting any `.txt` would have left "a
+compromised renderer cannot destroy an arbitrary text file" resting on yt-dlp's parser refusing it,
+a guarantee owned by a tool whose version this app does not pin. That is the same thing the
+`.bat`/`.cmd` refusal in `services/binaries.rs` declines to do with the compiler's BatBadBut fix.
+Which spellings are accepted, and why they follow yt-dlp rather than the spec, is on
+`COOKIE_FILE_HEADERS` in `cookies.rs`.
 
-The accepted spellings are taken from what yt-dlp accepts rather than from the spec, because the
-only failure that matters in the other direction is refusing a real cookies file, which would
-surface as the cookies option silently doing nothing. yt-dlp loads the file through Python's
-`http.cookiejar.MozillaCookieJar`, whose magic is `#( Netscape)? HTTP Cookie File` matched at the
-start of the first line, so both forms are accepted, with anything appended after them on the same
-line. `#Netscape` without the space, a lowercased spelling, a leading blank line and a header
-preceded by another comment are all refused here, and all four are refused by yt-dlp too.
-
-**The `--cookies-from-browser` value is a selector, not only a browser name**, and it is validated
-as one (`services/yt_dlp/cookies.rs::parse_cookies_browser_selector`). yt-dlp's grammar is
-`BROWSER[+KEYRING][:PROFILE][::CONTAINER]`, and each part is gated separately. The browser and the
-keyring must be on their allow-lists (`SUPPORTED_BROWSERS`, `SUPPORTED_KEYRINGS`), the profile and
-the container are free text (a profile is often a path) but may not be empty, start with `-`,
-carry a control character, or be a network path, and the whole value is capped at 512 characters.
-Whitespace around the separators is dropped and the browser and keyring are lowercased, as yt-dlp
-does. The profile and container are passed as typed, since profile names are case-sensitive on
-Linux. A profile that starts with `:`, or ends with one before a container, is refused, because
-once the whitespace around it is dropped it reads as a different selector. A value that fails
-any of this is dropped like an invalid cookies path, and the frontend validates the same grammar
-before the round trip (pinned from both sides by `shared/cookies-browser-selector-cases.json`) so a
-profile a user mistypes is refused on screen rather than silently downgrading the run to no cookies.
-
-The profile is also the reason this value joined the redaction rules rather than being echoed as
-before. A bare browser name reveals nothing, but a profile can be a path under the user's home
-directory, and it reaches three places a bug report is pasted from, the `yt-dlp args:` line in the
-in-app terminal (`download/redaction.rs`), the `Cookies from browser:` line and the file log
-(`download/mod.rs`), and yt-dlp's own `[debug] Command-line config` echo in `terminal_logs` and in
-a failure detail (`metadata.rs::redact_sensitive_from_line`). All of them show
-`browser[+keyring]:<redacted>` through `redact_cookies_browser_selector`; the browser and keyring
-stay because they name a tool, not the user. On Windows yt-dlp prints both the echo and its cookie errors as
-Python reprs, with every backslash doubled, so that spelling is matched too
-(`metadata.rs::redact_cookies_from_line`), along with a profile written as a path when an error
-names it on its own.
+**The `--cookies-from-browser` value is a selector, not only a browser name**
+(`BROWSER[+KEYRING][:PROFILE][::CONTAINER]`), and it is validated as one. The browser and keyring
+are checked against allow-lists, and the profile and container are free text that may not be empty,
+start with `-`, carry a control character or be a network path. A value that fails is dropped like
+an invalid cookies path, and the frontend checks the same grammar first (pinned from both sides by
+`shared/cookies-browser-selector-cases.json`). The rules are on `parse_cookies_browser_selector` in
+`cookies.rs`. A profile can be a path under the user's home directory, so it is redacted wherever
+the selector is shown, as `browser[+keyring]:<redacted>` (`redact_cookies_browser_selector`), in the
+terminal, the file log and yt-dlp's own echo of its arguments.
 
 ## Outbound image fetches (thumbnails, channel avatars and banners)
 
