@@ -439,11 +439,9 @@ download, the import, the thumbnail fetch, the duplicate check and both ends of 
 reachable from `services::media_creation` alone. The rule for a command added later is that the IPC
 surface exposes an operation, not its steps.
 
-Two of those mattered more than the rest, and are why the rule is stated as a security property
-rather than a tidiness one. A caller able to invoke the download or the import directly writes into
-the library and produces exactly the artifacts-with-no-row state above, with no marker behind it,
-because writing the marker was the renderer's job. A caller able to write a marker names library
-artifacts the startup sweep will act on. The eight commands this removed, and when, are in
+It is a security property rather than a tidiness one, since a caller able to run the download or
+the import directly produces the artifacts-with-no-row state above, and one able to write a marker
+names files the startup sweep will act on. The commands this removed, and why each mattered, are in
 [`decisions/2026-07-30-ipc-exposes-operations-not-steps.md`](decisions/2026-07-30-ipc-exposes-operations-not-steps.md).
 
 **The write validation lives at the write boundary**, in `video_repository::insert_media`, rather

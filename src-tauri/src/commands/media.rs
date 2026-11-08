@@ -26,16 +26,8 @@ pub async fn create_media<R: Runtime>(
 
 // The rule this file holds, for a command added later. The IPC surface exposes an operation, not
 // its steps. `services::pending_media`, `services::yt_dlp` and `services::library::media` hold the
-// steps of a media creation, and the backend is their only caller.
-//
-// The crash-marker pair shows why that matters most clearly. A marker names library artifacts and
-// the startup sweep acts on what it names, so a caller able to write one could name files it never
-// created and have the next launch reconcile them, while a caller able to clear one could drop the
-// record of a creation that really did die. The same argument, one step down, covers the download
-// and the import. Both write into the library, so reaching either directly produces the
-// artifacts-with-no-row state this module exists to bound, with no marker behind it.
-//
-// See `docs/decisions/2026-07-30-ipc-exposes-operations-not-steps.md`.
+// steps of a media creation, and the backend is their only caller. Why, step by step, is in
+// `docs/decisions/2026-07-30-ipc-exposes-operations-not-steps.md`.
 
 // `create_media` is driven through a real IPC round trip below, under the mock runtime, which
 // needs every function on its path to be generic over `R: Runtime`. The bare
