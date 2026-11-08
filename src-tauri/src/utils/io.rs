@@ -17,6 +17,40 @@ const MAX_LINE_BYTES: usize = 256 * 1024 * 1024; // 256 MiB
 /// not truncate.
 pub const MAX_PROGRESS_LINE_BYTES: usize = 64 * 1024; // 64 KiB
 
+/// The last `N` lines pushed, the oldest dropped once it is full. For the stderr tail a failure
+/// message is built from, which a chatty run (retries, throttling notices) would otherwise grow
+/// without bound.
+#[derive(Debug, Default)]
+pub struct RecentLines<const N: usize> {
+    lines: std::collections::VecDeque<String>,
+}
+
+impl<const N: usize> RecentLines<N> {
+    pub fn push(&mut self, line: String) {
+        if self.lines.len() >= N {
+            self.lines.pop_front();
+        }
+
+        self.lines.push_back(line);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+
+    pub fn join(&self, separator: &str) -> String {
+        self.lines
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(separator)
+    }
+
+    pub fn into_vec(self) -> Vec<String> {
+        self.lines.into()
+    }
+}
+
 /// Reads the next `\n`-terminated line from `reader`, decoding it lossily.
 ///
 /// Unlike `AsyncBufReadExt::lines()` (whose `next_line` yields `Err` the moment a line holds
@@ -134,6 +168,19 @@ pub(crate) fn read_drain_capped_into(
 mod tests {
     use super::*;
     use tokio::io::BufReader;
+
+    #[test]
+    fn recent_lines_keeps_the_last_ones_in_order() {
+        let mut lines = RecentLines::<2>::default();
+        assert!(lines.is_empty());
+
+        for line in ["one", "two", "three"] {
+            lines.push(line.to_string());
+        }
+
+        assert_eq!(lines.join("\n"), "two\nthree");
+        assert_eq!(lines.into_vec(), ["two", "three"]);
+    }
 
     #[tokio::test]
     async fn reads_sequential_lines_and_strips_crlf() {

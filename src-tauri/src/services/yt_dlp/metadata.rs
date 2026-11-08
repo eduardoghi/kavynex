@@ -50,10 +50,10 @@ static STANDALONE_RUN_SEMAPHORE: BoundedSemaphore = BoundedSemaphore::new(
 // Generous. Even very large comment sets fit well under this.
 const MAX_YT_DLP_JSON_BYTES: u64 = 128 * 1024 * 1024; // 128 MiB
 
-// Cap on the stderr log lines kept from a metadata/comments/format run and handed to the frontend
-// as `terminal_logs`. `-v` is always passed, so a chatty failure can emit thousands of lines;
-// keep only the most recent, matching yt_dlp::download's stderr ring buffer.
-const MAX_CAPTURED_STDERR_LINES: usize = 100;
+/// The stderr lines a yt-dlp run keeps, the most recent 100. A metadata, comment or format run
+/// hands them to the frontend as `terminal_logs`, and `-v` is always passed, so a chatty failure can
+/// emit thousands. The download builds its failure message from its own.
+pub(crate) type StderrTail = crate::utils::io::RecentLines<100>;
 
 /// Reads yt-dlp stdout, keeping the JSON payload line and the useful log lines, but never
 /// buffering more than `max_bytes`. Returns `(json_payload, log_lines, overflowed)`, where
@@ -557,10 +557,10 @@ fn select_best_error_detail(
 }
 
 /// Reads yt-dlp's stderr as log lines, keeping only the ones worth showing and only the most
-/// recent [`MAX_CAPTURED_STDERR_LINES`] of them.
+/// recent of them ([`StderrTail`]).
 async fn read_filtered_stderr_lines(
     stderr: tokio::process::ChildStderr,
-    log_lines: Arc<Mutex<Vec<String>>>,
+    log_lines: Arc<Mutex<StderrTail>>,
 ) {
     let mut reader = BufReader::new(stderr);
     let mut line_buf: Vec<u8> = Vec::new();
@@ -574,19 +574,10 @@ async fn read_filtered_stderr_lines(
         let line = line_value.trim_end().to_string();
 
         if should_keep_terminal_line(&line) {
-            let mut log_lines = log_lines
+            log_lines
                 .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-
-            // Bound memory (and the IPC payload these lines become in `terminal_logs`) on a
-            // chatty failure (retry storms, throttling notices), since `-v` is always passed
-            // here. Keep the most recent lines, the same ring-buffer cap the download flow's
-            // stderr uses (yt_dlp::download::MAX_CAPTURED_STDERR_LINES).
-            if log_lines.len() >= MAX_CAPTURED_STDERR_LINES {
-                log_lines.remove(0);
-            }
-
-            log_lines.push(line);
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(line);
         }
     }
 }
@@ -669,7 +660,7 @@ pub(super) async fn run_yt_dlp_and_capture_json(
         logs: stdout_logs,
         overflowed: stdout_overflowed,
     } = run.stdout;
-    let stderr_logs = run.stderr;
+    let stderr_logs = run.stderr.into_vec();
 
     // A grandchild that inherited the pipes can keep them open after yt-dlp exited. The JSON line
     // has usually arrived by then and is kept. A run cut short before it did fails here, since the

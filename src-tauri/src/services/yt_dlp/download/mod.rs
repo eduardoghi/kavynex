@@ -25,7 +25,7 @@ use crate::services::yt_dlp::events::{
 };
 use crate::services::yt_dlp::metadata::{
     fetch_yt_dlp_metadata, normalize_download_metadata, sanitize_filename_component,
-    sanitize_identifier_component,
+    sanitize_identifier_component, StderrTail,
 };
 use crate::services::yt_dlp::registry::{
     register_download_run, set_download_pid, DownloadPidGuard, DownloadRunReleaseGuard,
@@ -40,7 +40,6 @@ use crate::utils::task::run_blocking;
 use crate::{AppError, AppErrorCode, AppResult};
 
 const YT_DLP_WAIT_POLL_MILLIS: u64 = 250;
-const MAX_CAPTURED_STDERR_LINES: usize = 100;
 
 // A download that produces no output AND whose temp files stop growing for this long is
 // treated as hung (dead network, deadlocked ffmpeg) and killed. Output alone is not a
@@ -320,7 +319,7 @@ async fn supervise_download_child<R: Runtime>(
     let redaction_stdout = Arc::clone(&output_redaction);
     let redaction_stderr = Arc::clone(&output_redaction);
 
-    let stderr_buffer: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let stderr_buffer: Arc<Mutex<StderrTail>> = Arc::new(Mutex::new(StderrTail::default()));
     let stderr_buffer_reader = Arc::clone(&stderr_buffer);
 
     let stdout_task = tauri::async_runtime::spawn(async move {
@@ -362,13 +361,7 @@ async fn supervise_download_child<R: Runtime>(
             // as the cause. Keeping them out is what makes dropping `--no-warnings` from the
             // argv free. The terminal gains the diagnostic, the error message is unchanged.
             if !line_is_warning(&line) {
-                let mut guard = stderr_buffer_reader.lock().await;
-
-                if guard.len() >= MAX_CAPTURED_STDERR_LINES {
-                    guard.remove(0);
-                }
-
-                guard.push(line.clone());
+                stderr_buffer_reader.lock().await.push(line.clone());
             }
 
             emit_download_log_infallible(&app_stderr, &run_id_stderr, line, "stderr");
