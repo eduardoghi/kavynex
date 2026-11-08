@@ -46,6 +46,11 @@ describe("avatarInitials", () => {
         expect(avatarInitials("madonna")).toBe("M");
     });
 
+    it("keeps an emoji at the start of a word whole", () => {
+        expect(avatarInitials("😀 Foo")).toBe("😀F");
+        expect(avatarInitials("@🎮gamer")).toBe("🎮");
+    });
+
     it("strips every leading @ before building initials", () => {
         expect(avatarInitials("@john")).toBe("J");
         expect(avatarInitials("@@john")).toBe("J");

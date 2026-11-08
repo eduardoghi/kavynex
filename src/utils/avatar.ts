@@ -30,5 +30,7 @@ export function avatarInitials(name: string): string {
         return "?";
     }
 
-    return words.map((word) => word[0]?.toUpperCase() ?? "").join("");
+    // The first character, not the first UTF-16 unit, so a name that starts with an emoji shows the
+    // emoji rather than half of it.
+    return words.map((word) => Array.from(word)[0]?.toUpperCase() ?? "").join("");
 }
