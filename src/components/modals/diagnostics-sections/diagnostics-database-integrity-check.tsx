@@ -1,8 +1,8 @@
 import { Box, Code, Group, Stack, Text } from "@mantine/core";
 import { useEffect } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
 import { useDatabaseIntegrityCheck } from "../../../hooks/use-database-integrity-check";
 import { AppButton } from "../../ui/app-button";
+import { StatusLine } from "./status-line";
 
 // `onRebuildingChange` holds the modal open while the index rebuild writes, for the reason the
 // compaction section gives. Closed mid-rebuild, the modal would drop its result, and reopened it
@@ -39,31 +39,19 @@ export function DiagnosticsDatabaseIntegrityCheck({
                     when it lands, instead of only being a visual color/icon change. */}
                 <Box role="status" aria-live="polite">
                     {result?.status === "ok" && (
-                        <Group gap={6} c="green">
-                            <CheckCircle2 size={16} />
-                            <Text size="sm">No problems found</Text>
-                        </Group>
+                        <StatusLine tone="success">No problems found</StatusLine>
                     )}
 
                     {result?.status === "repaired" && (
-                        <Group gap={6} c="green">
-                            <CheckCircle2 size={16} />
-                            <Text size="sm">Indexes rebuilt. No problems found</Text>
-                        </Group>
+                        <StatusLine tone="success">Indexes rebuilt. No problems found</StatusLine>
                     )}
 
                     {result?.status === "problem" && (
-                        <Group gap={6} c="red">
-                            <XCircle size={16} />
-                            <Text size="sm">Integrity check reported a problem</Text>
-                        </Group>
+                        <StatusLine tone="error">Integrity check reported a problem</StatusLine>
                     )}
 
                     {result?.status === "error" && (
-                        <Group gap={6} c="red">
-                            <XCircle size={16} />
-                            <Text size="sm">{result.message}</Text>
-                        </Group>
+                        <StatusLine tone="error">{result.message}</StatusLine>
                     )}
                 </Box>
             </Group>

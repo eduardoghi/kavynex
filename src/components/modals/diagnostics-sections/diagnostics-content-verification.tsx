@@ -1,9 +1,9 @@
 import { Box, Code, Group, Progress, Stack, Text } from "@mantine/core";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, XCircle } from "lucide-react";
 import { useLibraryVerification } from "../../../hooks/use-library-verification";
 import type { ContentVerificationReport } from "../../../types/generated/ContentVerificationReport";
 import { AppButton } from "../../ui/app-button";
+import { StatusLine } from "./status-line";
 
 type DiagnosticsContentVerificationProps = {
     libraryPath: string;
@@ -43,26 +43,20 @@ function ExampleList({ title, paths }: { title: string; paths: string[] }): JSX.
 function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element {
     if (report.cancelled) {
         return (
-            <Group gap={6} c={report.corrupt > 0 ? "red" : "dimmed"}>
-                {report.corrupt > 0 ? <XCircle size={16} /> : <AlertTriangle size={16} />}
-                <Text size="sm">
+            <StatusLine tone={report.corrupt > 0 ? "error" : "warning"}>
                     Stopped early: {report.checked} file(s) checked, the rest were not.
                     {report.corrupt > 0
                         ? ` ${report.corrupt} of them do not match the content they were saved with.`
                         : " This is not a clean result."}
-                </Text>
-            </Group>
+            </StatusLine>
         );
     }
 
     if (report.corrupt > 0) {
         return (
-            <Group gap={6} c="red">
-                <XCircle size={16} />
-                <Text size="sm">
+            <StatusLine tone="error">
                     {report.corrupt} file(s) do not match the content they were saved with
-                </Text>
-            </Group>
+                </StatusLine>
         );
     }
 
@@ -71,24 +65,18 @@ function Outcome({ report }: { report: ContentVerificationReport }): JSX.Element
     // result either, whatever the verified count says.
     if (report.unreadable > 0 || report.unverifiable > 0) {
         return (
-            <Group gap={6} c="dimmed">
-                <AlertTriangle size={16} />
-                <Text size="sm">
+            <StatusLine tone="warning">
                     {report.verified} file(s) match the content they were saved with.{" "}
                     {report.unreadable + report.unverifiable} could not be checked, as explained
                     below. This is not a clean result.
-                </Text>
-            </Group>
+                </StatusLine>
         );
     }
 
     return (
-        <Group gap={6} c="green">
-            <CheckCircle2 size={16} />
-            <Text size="sm">
+        <StatusLine tone="success">
                 All {report.verified} checked file(s) match the content they were saved with
-            </Text>
-        </Group>
+            </StatusLine>
     );
 }
 
@@ -158,10 +146,7 @@ export function DiagnosticsContentVerification({
                     {result?.status === "done" && <Outcome report={result.report} />}
 
                     {result?.status === "error" && (
-                        <Group gap={6} c="red">
-                            <XCircle size={16} />
-                            <Text size="sm">{result.message}</Text>
-                        </Group>
+                        <StatusLine tone="error">{result.message}</StatusLine>
                     )}
                 </Box>
             </Group>

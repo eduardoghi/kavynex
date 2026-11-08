@@ -1,8 +1,8 @@
 import { Box, Group, Stack, Text } from "@mantine/core";
 import { useEffect } from "react";
-import { CheckCircle2, XCircle } from "lucide-react";
 import { useDatabaseCompaction } from "../../../hooks/use-database-compaction";
 import { AppButton } from "../../ui/app-button";
+import { StatusLine } from "./status-line";
 
 // `onBusyChange` lets the modal hold itself open while the rewrite runs, so its result is not lost
 // to a close and the window cannot be dismissed halfway through a long VACUUM.
@@ -34,24 +34,15 @@ export function DiagnosticsDatabaseCompaction({
 
                 <Box role="status" aria-live="polite">
                     {result?.status === "freed" && (
-                        <Group gap={6} c="green">
-                            <CheckCircle2 size={16} />
-                            <Text size="sm">Freed {result.formattedSize}</Text>
-                        </Group>
+                        <StatusLine tone="success">Freed {result.formattedSize}</StatusLine>
                     )}
 
                     {result?.status === "nothing" && (
-                        <Group gap={6} c="green">
-                            <CheckCircle2 size={16} />
-                            <Text size="sm">There was no unused space to free</Text>
-                        </Group>
+                        <StatusLine tone="success">There was no unused space to free</StatusLine>
                     )}
 
                     {result?.status === "error" && (
-                        <Group gap={6} c="red">
-                            <XCircle size={16} />
-                            <Text size="sm">{result.message}</Text>
-                        </Group>
+                        <StatusLine tone="error">{result.message}</StatusLine>
                     )}
                 </Box>
             </Group>
