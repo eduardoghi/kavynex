@@ -55,8 +55,8 @@ jobs:
             #
             # It also exits non-zero when it never got that far, and those two are not the same
             # finding. A dry-run timeout (see dryRunTimeoutMinutes in stryker.config.json, at 20
-            # because the 5-minute default runs out before any score at 6633 mutants) aborts the
-            # run, and so does an install or instrumentation error. Both arrive here as "the
+            # because the 5-minute default runs out before any score) aborts the run, and so does an
+            # install or instrumentation error. Both arrive here as "the
             # mutation job failed", which reads as a loss of test strength while actually meaning
             # the gate stopped answering.
             #
