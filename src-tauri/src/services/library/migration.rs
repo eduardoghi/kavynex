@@ -74,6 +74,15 @@ fn library_migration_lock() -> &'static Mutex<()> {
     LIBRARY_MIGRATION_LOCK.get_or_init(|| Mutex::new(()))
 }
 
+/// Whether a migration holds its lock now, for what closing the window would stop. A lock poisoned
+/// by a panicked migration is not one running.
+pub(crate) fn is_migration_running() -> bool {
+    matches!(
+        library_migration_lock().try_lock(),
+        Err(TryLockError::WouldBlock)
+    )
+}
+
 /// The name `ensure_distinct_directories` writes its probe file under, followed by a unique suffix.
 const MIGRATION_PROBE_PREFIX: &str = ".kavynex-migration-probe-";
 

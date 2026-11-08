@@ -47,6 +47,7 @@ export type TauriCommandReturns = {
     check_for_app_update: AppUpdateInfo | null;
     install_app_update: void;
     relaunch_app: void;
+    close_app_anyway: void;
     open_youtube_video: void;
     open_youtube_channel: void;
 

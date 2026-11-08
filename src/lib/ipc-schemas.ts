@@ -69,6 +69,7 @@ import type { MissingChannelMedia } from "../types/generated/MissingChannelMedia
 import type { StoredAppSettingsPayload } from "../types/generated/StoredAppSettingsPayload";
 import type { WebviewCheckPlan } from "../types/generated/WebviewCheckPlan";
 import type { StartupNotices } from "../types/generated/StartupNotices";
+import type { WorkInProgress } from "../types/generated/WorkInProgress";
 
 const mediaTypeSchema = z.enum(["video", "audio"]);
 
@@ -511,6 +512,14 @@ const databaseIntegrityFailedEventSchema = z.object({
 
 export type DatabaseIntegrityFailedEvent = z.infer<typeof databaseIntegrityFailedEventSchema>;
 
+// Payload of the close-requested-while-busy event. What a close would stop right now.
+const closeRequestedWhileBusyEventSchema = z.object({
+    downloading: z.boolean(),
+    addingMedia: z.boolean(),
+    verifyingLibrary: z.boolean(),
+    movingLibrary: z.boolean(),
+}) satisfies z.ZodType<WorkInProgress>;
+
 // Payload of the pending-media-abandoned event. How many crashed media creations the startup sweep
 // gave up on. Frontend-owned like the one above, and deliberately just a count. The paths are
 // library-relative names a banner cannot act on, and Diagnostics is what names them.
@@ -540,6 +549,7 @@ export const IPC_EVENT_SCHEMAS = {
     databaseIntegrityFailed: databaseIntegrityFailedEventSchema,
     pendingMediaAbandoned: pendingMediaAbandonedEventSchema,
     importedDatabaseMissingFiles: importedDatabaseMissingFilesEventSchema,
+    closeRequestedWhileBusy: closeRequestedWhileBusyEventSchema,
 } as const;
 
 // The streamed live chat protocol on the `Channel`. A run of `batch` events carrying raw JSON

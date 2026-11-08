@@ -7,6 +7,7 @@ import "@fontsource-variable/bricolage-grotesque";
 import Home from "./pages/Home";
 import { DISPLAY_FONT_FAMILY } from "./constants/fonts";
 import { MotionPreferenceProvider } from "./hooks/use-motion-preference";
+import { CloseWhileBusyPrompt } from "./components/layout/close-while-busy-prompt";
 
 const theme = createTheme({
     primaryColor: "violet",
@@ -117,6 +118,7 @@ export default function App(): JSX.Element {
                 order; it reads nothing from it. */}
             <MotionPreferenceProvider>
                 <Home />
+                <CloseWhileBusyPrompt />
             </MotionPreferenceProvider>
         </MantineProvider>
     );

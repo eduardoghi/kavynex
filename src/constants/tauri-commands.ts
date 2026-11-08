@@ -12,6 +12,9 @@ export const TAURI_COMMANDS = {
     CHECK_FOR_APP_UPDATE: "check_for_app_update",
     INSTALL_APP_UPDATE: "install_app_update",
     RELAUNCH_APP: "relaunch_app",
+    // The "close anyway" answer when the window was closed during a download or another run a close
+    // stops. See src-tauri/src/services/app_close.rs.
+    CLOSE_APP_ANYWAY: "close_app_anyway",
     // Take an id, not a URL. The backend builds the YouTube URL and refuses anything that is not an
     // id, so the renderer holds no opener permission. See src-tauri/src/commands/external.rs.
     OPEN_YOUTUBE_VIDEO: "open_youtube_video",

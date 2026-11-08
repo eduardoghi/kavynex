@@ -4,6 +4,7 @@
 // docs/ARCHITECTURE.md states for a file that outgrows itself (db_backup/, db_schema/,
 // video_repository/, yt_dlp/download/) to a *concept* that outgrows itself. Within a family,
 // siblings reach each other through `super::`, matching those existing directories.
+pub mod app_close;
 pub mod binaries;
 pub mod channel_repository;
 pub mod chosen_files;

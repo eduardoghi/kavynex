@@ -132,6 +132,11 @@ impl Drop for VerificationRunGuard {
 }
 
 /// Claims the single verification slot, or `None` when one is already running.
+/// Whether a verification is running now, for what closing the window would stop.
+pub(crate) fn is_verification_running() -> bool {
+    VERIFICATION_RUNNING.load(Ordering::SeqCst)
+}
+
 pub(crate) fn try_begin_verification() -> Option<VerificationRunGuard> {
     VERIFICATION_RUNNING
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)

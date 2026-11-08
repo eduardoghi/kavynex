@@ -35,6 +35,12 @@ fn active_downloads() -> &'static Mutex<HashMap<String, DownloadHandle>> {
     ACTIVE_DOWNLOADS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Whether any yt-dlp run is registered, a download or a cancellable lookup. What closing the window
+/// would stop (`services::app_close`).
+pub fn has_active_runs() -> bool {
+    !lock_registry().is_empty()
+}
+
 fn lock_registry() -> MutexGuard<'static, HashMap<String, DownloadHandle>> {
     // A panic while holding the lock would only happen in these tiny critical sections;
     // recover the guard rather than propagating poisoning as a hard failure.

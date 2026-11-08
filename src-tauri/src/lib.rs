@@ -557,6 +557,17 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        // Closing stops downloads, imports, the library verification and a library move, and none
+        // of them resumes, so a close while one runs is held and the renderer asks first. See
+        // services::app_close.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if let Some(work) = services::app_close::work_closing_would_stop() {
+                    api.prevent_close();
+                    let _ = window.emit(constants::EVENT_CLOSE_REQUESTED_WHILE_BUSY, work);
+                }
+            }
+        })
         // The player's media source. Registered alongside (not instead of) the asset protocol,
         // which still serves thumbnails. Those are small enough that its 1 MB range cap never
         // bites, and leaving them there keeps this handler to the one case that needed it. See
@@ -758,6 +769,7 @@ pub fn run() {
             commands::logging::log_frontend_error,
             commands::logging::open_log_directory,
             commands::startup::take_startup_notices,
+            commands::window::close_app_anyway,
             commands::updater::check_for_app_update,
             commands::updater::install_app_update,
             commands::updater::relaunch_app,

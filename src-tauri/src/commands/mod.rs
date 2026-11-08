@@ -14,6 +14,7 @@ pub mod thumbnail;
 pub mod updater;
 pub mod videos;
 pub mod webview_check;
+pub mod window;
 pub mod yt_dlp;
 
 #[cfg(test)]

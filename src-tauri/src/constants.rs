@@ -104,6 +104,11 @@ pub const EVENT_PENDING_MEDIA_ABANDONED: &str = "pending-media-abandoned";
 // shows a full library that fails one video at a time. See spawn_post_import_library_check in lib.rs.
 pub const EVENT_IMPORTED_DATABASE_MISSING_FILES: &str = "imported-database-missing-files";
 
+// Emitted when the user closes the window while work a close would stop is running, which holds
+// the close. Payload `services::app_close::WorkInProgress`. The renderer asks, and
+// `commands::window::close_app_anyway` closes.
+pub const EVENT_CLOSE_REQUESTED_WHILE_BUSY: &str = "close-requested-while-busy";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +135,7 @@ mod tests {
             EVENT_DATABASE_INTEGRITY_FAILED,
             EVENT_PENDING_MEDIA_ABANDONED,
             EVENT_IMPORTED_DATABASE_MISSING_FILES,
+            EVENT_CLOSE_REQUESTED_WHILE_BUSY,
         ]
         .iter()
         .map(|(name, value)| format!("export const {name} = \"{value}\";\n"))

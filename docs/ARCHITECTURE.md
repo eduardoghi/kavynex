@@ -24,7 +24,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   one module per feature area (`channels.rs`, `videos.rs`, `media.rs`, `thumbnail.rs`,
   `live_chat.rs`, `yt_dlp.rs`, `database.rs`, `security.rs`, `settings.rs`, `comments.rs`,
   `library.rs`, `logging.rs`, `dialog.rs`, `external.rs`, `startup.rs`, `updater.rs`,
-  `webview_check.rs`). A
+  `webview_check.rs`, `window.rs`). A
   command's job is to take the request from IPC, open the
   shared database pool or resolve an app path, and delegate to a service. It holds
   essentially no logic of its own. A command that only needs the database takes the managed `Db`
@@ -78,7 +78,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   user's media, whichever way it spells the path.
 
   What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
-  `kept_files.rs`, `startup_notices.rs`, `database.rs`, `binaries.rs`,
+  `kept_files.rs`, `startup_notices.rs`, `app_close.rs`, `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `live_chat_storage.rs`,
   `media_comments.rs`, `media_protocol.rs`, `pending_media.rs`,
   `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
@@ -218,10 +218,12 @@ src/lib/tauri-client.ts  ->  @tauri-apps/api  ->  IPC  ->  Rust commands
 either. See "The Tauri boundary" below.)
 
 - **Components** (`src/components/`) render Mantine/React UI. Most are presentation, receiving
-  data and callbacks as props. Three own a feature's state and call the hook that loads it, so they
+  data and callbacks as props. Four own a feature's state and call the hook that loads it, so they
   carry IPC behind them and are not reusable without it: `SettingsModal` (`useSettingsController`),
-  `AddMediaModal` (`useExternalToolsAvailability`) and `MediaPlayerView` (`useMediaComments`,
-  `useMediaLiveChat`, `useMediaProgressPersistence`). No component calls `invoke()` or imports
+  `AddMediaModal` (`useExternalToolsAvailability`), `MediaPlayerView` (`useMediaComments`,
+  `useMediaLiveChat`, `useMediaProgressPersistence`) and `CloseWhileBusyPrompt` (`useCloseGuard`),
+  which sits at the root of the app and asks before a close stops a download or another run
+  (`services/app_close.rs`). No component calls `invoke()` or imports
   `@tauri-apps`. One imports a service directly, `AppErrorBoundary`, for `relaunchApp`, since a render
   crash leaves no hook tree to go through.
 - **Hooks** (`src/hooks/`) hold UI state and orchestration. `useHomeController`

@@ -9,3 +9,4 @@ export const EVENT_YT_DLP_TERMINAL = "yt-dlp-terminal";
 export const EVENT_DATABASE_INTEGRITY_FAILED = "database-integrity-failed";
 export const EVENT_PENDING_MEDIA_ABANDONED = "pending-media-abandoned";
 export const EVENT_IMPORTED_DATABASE_MISSING_FILES = "imported-database-missing-files";
+export const EVENT_CLOSE_REQUESTED_WHILE_BUSY = "close-requested-while-busy";

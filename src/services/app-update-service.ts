@@ -74,3 +74,9 @@ export async function installAppUpdate(
 export async function relaunchApp(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.RELAUNCH_APP);
 }
+
+// Closes the window without asking again, after the user confirmed closing during a run a close
+// stops. The backend holds the close until then (src-tauri/src/services/app_close.rs).
+export async function closeAppAnyway(): Promise<void> {
+    await invokeVoid(TAURI_COMMANDS.CLOSE_APP_ANYWAY);
+}
