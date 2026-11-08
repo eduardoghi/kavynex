@@ -3,6 +3,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::constants::{LIBRARY_DIR_AUDIO, LIBRARY_DIR_THUMBNAILS, LIBRARY_DIR_VIDEO};
 use crate::services::filesystem::dir_entry_is_symlink;
 use crate::utils::format::format_bytes;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -29,7 +30,14 @@ pub struct LibrarySummaryInfo {
     pub channel_image_files: u64,
 }
 
-fn calculate_directory_size(path: &Path) -> AppResult<u64> {
+/// Calls `visit` with the path and size of every regular file under `path` (or `path` itself, when
+/// it is a file), in one walk.
+///
+/// Fallible where [`crate::services::filesystem::walk_regular_files`] is best effort, because a
+/// summary that silently skipped an unreadable folder would report a smaller library than there is.
+/// What is removed while the walk runs (a download's or an import's `.tmp` files, a download's run
+/// folder) is skipped rather than failing it.
+fn visit_regular_files(path: &Path, visit: &mut impl FnMut(&Path, u64)) -> AppResult<()> {
     let metadata = fs::metadata(path).map_err(|e| {
         AppError::fs_error(
             AppErrorCode::ReadDirEntryFailed,
@@ -40,10 +48,9 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
     })?;
 
     if metadata.is_file() {
-        return Ok(metadata.len());
+        visit(path, metadata.len());
+        return Ok(());
     }
-
-    let mut total_bytes = 0u64;
 
     for entry in fs::read_dir(path).map_err(|e| {
         AppError::fs_error(
@@ -62,9 +69,9 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
             )
         })?;
 
-        // Skip symlinks without following them. entry.metadata() below follows the link, so a
-        // symlinked directory pointing at an ancestor would recurse forever (a DoS reachable
-        // through get_library_summary). The library never creates symlinks of its own.
+        // Skip symlinks without following them. A symlinked directory pointing at an ancestor
+        // would recurse forever (a DoS reachable through get_library_summary). The library never
+        // creates symlinks of its own.
         if dir_entry_is_symlink(&entry) {
             continue;
         }
@@ -72,8 +79,7 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
         let entry_path = entry.path();
         let entry_metadata = match entry.metadata() {
             Ok(metadata) => metadata,
-            // Listed and then renamed or removed before it could be read, which is what a download
-            // or an import does to its `.tmp` files while this walks. Gone is not an error here.
+            // Listed and then renamed or removed before it could be read. Gone is not an error.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
                 return Err(AppError::fs_error(
@@ -86,91 +92,18 @@ fn calculate_directory_size(path: &Path) -> AppResult<u64> {
         };
 
         if entry_metadata.is_dir() {
-            match calculate_directory_size(&entry_path) {
-                Ok(bytes) => total_bytes = total_bytes.saturating_add(bytes),
-                // A folder removed after it was listed (a download's run folder). See above.
+            match visit_regular_files(&entry_path, visit) {
+                Ok(()) => {}
+                // A folder removed after it was listed. See above.
                 Err(_) if !entry_path.exists() => continue,
                 Err(error) => return Err(error),
             }
         } else if entry_metadata.is_file() {
-            total_bytes = total_bytes.saturating_add(entry_metadata.len());
+            visit(&entry_path, entry_metadata.len());
         }
     }
 
-    Ok(total_bytes)
-}
-
-fn count_files_in_directory(path: &Path) -> AppResult<u64> {
-    if !path.exists() {
-        return Ok(0);
-    }
-
-    let metadata = fs::metadata(path).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::ReadDirEntryFailed,
-            "failed to read directory metadata",
-            path,
-            &e,
-        )
-    })?;
-
-    if metadata.is_file() {
-        return Ok(1);
-    }
-
-    let mut total_files = 0u64;
-
-    for entry in fs::read_dir(path).map_err(|e| {
-        AppError::fs_error(
-            AppErrorCode::ReadDirEntryFailed,
-            "failed to read directory entries",
-            path,
-            &e,
-        )
-    })? {
-        let entry = entry.map_err(|e| {
-            AppError::fs_error(
-                AppErrorCode::ReadDirEntryFailed,
-                "failed to read directory entry",
-                path,
-                &e,
-            )
-        })?;
-
-        // Skip symlinks without following them (see calculate_directory_size). A symlinked
-        // directory cycle would otherwise loop forever here too.
-        if dir_entry_is_symlink(&entry) {
-            continue;
-        }
-
-        let entry_path = entry.path();
-        let entry_metadata = match entry.metadata() {
-            Ok(metadata) => metadata,
-            // Listed and then renamed or removed before it could be read, which is what a download
-            // or an import does to its `.tmp` files while this walks. Gone is not an error here.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => {
-                return Err(AppError::fs_error(
-                    AppErrorCode::ReadDirEntryFailed,
-                    "failed to read entry metadata",
-                    &entry_path,
-                    &e,
-                ))
-            }
-        };
-
-        if entry_metadata.is_dir() {
-            match count_files_in_directory(&entry_path) {
-                Ok(files) => total_files = total_files.saturating_add(files),
-                Err(_) if !entry_path.exists() => continue,
-                Err(error) => return Err(error),
-            }
-        } else if entry_metadata.is_file() {
-            total_files = total_files.saturating_add(1);
-        }
-    }
-
-    Ok(total_files)
+    Ok(())
 }
 
 /// `channel_only_images` is what the database names as a channel's avatar or banner and no media's
@@ -179,10 +112,26 @@ pub fn summarize_library(
     library_dir: &Path,
     channel_only_images: &[String],
 ) -> AppResult<LibrarySummaryInfo> {
-    let total_bytes = calculate_directory_size(library_dir)?;
-    let video_files = count_files_in_directory(&library_dir.join("video"))?;
-    let audio_files = count_files_in_directory(&library_dir.join("audio"))?;
-    let thumbnail_files = count_files_in_directory(&library_dir.join("thumbnails"))?;
+    // One walk for the size and the three counts, which used to be four walks over the same files.
+    let mut total_bytes = 0u64;
+    let (mut video_files, mut audio_files, mut thumbnail_files) = (0u64, 0u64, 0u64);
+
+    visit_regular_files(library_dir, &mut |file, bytes| {
+        total_bytes = total_bytes.saturating_add(bytes);
+
+        let top_folder = file
+            .strip_prefix(library_dir)
+            .ok()
+            .and_then(|relative| relative.components().next())
+            .and_then(|component| component.as_os_str().to_str());
+
+        match top_folder {
+            Some(LIBRARY_DIR_VIDEO) => video_files += 1,
+            Some(LIBRARY_DIR_AUDIO) => audio_files += 1,
+            Some(LIBRARY_DIR_THUMBNAILS) => thumbnail_files += 1,
+            _ => {}
+        }
+    })?;
     let channel_image_files = channel_only_images
         .iter()
         .filter(|relative| {
