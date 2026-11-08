@@ -2,6 +2,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, invokeVoid, streamLiveChatFile } from "../lib/tauri-client";
 import { logWarn } from "../utils/app-logger";
 import { parseLiveChatLine } from "./live-chat-parsing";
+import type { LiveChatStorageInfo } from "../types/diagnostics";
 import type {
     LiveChatAuthorBadge,
     LiveChatMessageItem,
@@ -21,10 +22,12 @@ export type {
 } from "./live-chat-parsing";
 
 /**
- * How many live chat files the library stores, for diagnostics.
+ * How many live chat files the library stores, in the shape Diagnostics shows it.
  */
-export async function countLiveChatFiles(): Promise<number> {
-    return invokeCommand(TAURI_COMMANDS.COUNT_LIVE_CHAT_FILES);
+export async function getLiveChatStorageSummary(): Promise<LiveChatStorageInfo> {
+    return {
+        live_chat_files: await invokeCommand(TAURI_COMMANDS.COUNT_LIVE_CHAT_FILES),
+    };
 }
 
 /**

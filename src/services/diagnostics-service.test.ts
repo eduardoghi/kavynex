@@ -12,9 +12,6 @@ vi.mock("./diagnostics-external-tools", () => ({
     getExternalToolsStatus: vi.fn(),
 }));
 
-vi.mock("./diagnostics-library-summary", () => ({
-    getLibrarySummary: vi.fn(),
-}));
 
 // The empty report stays real, since the service falls back to it when the check fails.
 vi.mock("./diagnostics-library-integrity", async (importOriginal) => {
@@ -26,7 +23,7 @@ vi.mock("./diagnostics-library-integrity", async (importOriginal) => {
     };
 });
 
-vi.mock("./diagnostics-live-chat-storage", () => ({
+vi.mock("./live-chat-service", () => ({
     getLiveChatStorageSummary: vi.fn(),
 }));
 
@@ -34,24 +31,31 @@ vi.mock("../repositories/media-repository", () => ({
     getMediaRepositoryStats: vi.fn(),
 }));
 
-// Resolves with nothing kept unless a test says otherwise, so the existing assertions on the issue
-// list are not joined by a check that cannot reach a backend here.
-vi.mock("./diagnostics-kept-files", () => ({
-    getKeptFilesSummary: vi.fn(() =>
-        Promise.resolve({
-            libraryTrash: null,
-            recoveredDownloads: { files: 0, bytes: 0 },
-            setAsideBackups: { files: 0, bytes: 0 },
-        })
-    ),
-}));
+// The kept files resolve with nothing kept unless a test says otherwise, so the existing assertions
+// on the issue list are not joined by a check that cannot reach a backend here. The empty summary
+// stays real, since the service falls back to it.
+vi.mock("./library-service", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./library-service")>();
+
+    return {
+        createEmptyLibrarySummary: actual.createEmptyLibrarySummary,
+        getLibrarySummary: vi.fn(),
+        getKeptFilesSummary: vi.fn(() =>
+            Promise.resolve({
+                libraryTrash: null,
+                recoveredDownloads: { files: 0, bytes: 0 },
+                setAsideBackups: { files: 0, bytes: 0 },
+            })
+        ),
+    };
+});
 
 import { getVersion } from "../lib/tauri-platform";
 import { getMediaRepositoryStats } from "../repositories/media-repository";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getLibraryIntegrity } from "./diagnostics-library-integrity";
-import { getLibrarySummary } from "./diagnostics-library-summary";
-import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
+import { getLibrarySummary } from "./library-service";
+import { getLiveChatStorageSummary } from "./live-chat-service";
 import { getRuntimeDiagnosticsInfo } from "./diagnostics-runtime";
 import { getDiagnosticsSummary } from "./diagnostics-service";
 

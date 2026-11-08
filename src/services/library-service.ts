@@ -1,5 +1,6 @@
 import { pickFolder } from "./file-dialog-service";
 import type { KeptFolder } from "../types/generated/KeptFolder";
+import type { KeptFilesSummary } from "../types/diagnostics";
 import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import {
     invokeCommand,
@@ -200,6 +201,12 @@ export async function removeOrphanLibraryFiles(): Promise<ArtifactCleanupReport>
 // reject, so this is a direct call rather than a validating wrapper.
 export async function openLogDirectory(): Promise<void> {
     await invokeVoid(TAURI_COMMANDS.OPEN_LOG_DIRECTORY);
+}
+
+// How many files the library trash and the recovered downloads folder hold. Diagnostics shows each
+// as an issue with a button to open the folder, since both are folders a user would not find.
+export async function getKeptFilesSummary(): Promise<KeptFilesSummary> {
+    return invokeCommand(TAURI_COMMANDS.GET_KEPT_FILES_SUMMARY);
 }
 
 // Opens the library trash or the recovered downloads folder. The backend derives the folder from

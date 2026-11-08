@@ -24,12 +24,10 @@ import {
     createEmptyLibraryIntegrityReport,
     getLibraryIntegrity,
 } from "./diagnostics-library-integrity";
-import { getLibrarySummary } from "./diagnostics-library-summary";
-import { createEmptyLibrarySummary } from "./library-service";
+import { createEmptyLibrarySummary, getKeptFilesSummary, getLibrarySummary } from "./library-service";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
 import { getRuntimeDiagnosticsInfo } from "./diagnostics-runtime";
-import { getLiveChatStorageSummary } from "./diagnostics-live-chat-storage";
-import { getKeptFilesSummary } from "./diagnostics-kept-files";
+import { getLiveChatStorageSummary } from "./live-chat-service";
 
 type GetDiagnosticsInput = {
     libraryPath: string;
