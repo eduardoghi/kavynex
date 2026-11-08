@@ -24,7 +24,7 @@ export type LibraryIntegrityResult = {
     orphanRemoval: OrphanRemovalPlan | null;
 };
 
-function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
+export function createEmptyLibraryIntegrityReport(): LibraryIntegrityReport {
     return {
         checked_media_files: 0,
         missing_media_files: 0,

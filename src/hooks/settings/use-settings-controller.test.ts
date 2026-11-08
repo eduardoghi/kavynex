@@ -22,9 +22,15 @@ vi.mock("../../services/database-service", () => ({
     undoDatabaseImport: vi.fn(),
 }));
 
-vi.mock("../../services/library-service", () => ({
-    getLibrarySummary: vi.fn(),
-}));
+// The empty summary stays real, since the controller starts from it.
+vi.mock("../../services/library-service", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("../../services/library-service")>();
+
+    return {
+        createEmptyLibrarySummary: actual.createEmptyLibrarySummary,
+        getLibrarySummary: vi.fn(),
+    };
+});
 
 vi.mock("../../utils/app-error", () => ({
     parseAppError: vi.fn((error: unknown) => error),

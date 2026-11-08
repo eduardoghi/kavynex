@@ -16,9 +16,15 @@ vi.mock("./diagnostics-library-summary", () => ({
     getLibrarySummary: vi.fn(),
 }));
 
-vi.mock("./diagnostics-library-integrity", () => ({
-    getLibraryIntegrity: vi.fn(),
-}));
+// The empty report stays real, since the service falls back to it when the check fails.
+vi.mock("./diagnostics-library-integrity", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("./diagnostics-library-integrity")>();
+
+    return {
+        createEmptyLibraryIntegrityReport: actual.createEmptyLibraryIntegrityReport,
+        getLibraryIntegrity: vi.fn(),
+    };
+});
 
 vi.mock("./diagnostics-live-chat-storage", () => ({
     getLiveChatStorageSummary: vi.fn(),

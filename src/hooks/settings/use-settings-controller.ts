@@ -13,6 +13,7 @@ import {
     type ExternalBackupStatus,
 } from "../../services/database-service";
 import {
+    createEmptyLibrarySummary,
     emptyLibraryTrash,
     getLibrarySummary,
     getLibraryTrashSummary,
@@ -27,14 +28,8 @@ import { useAppUpdate, type AppUpdateStatus } from "../use-app-update";
 import { useMemoObject } from "../use-memo-object";
 import { useRequestGuard } from "../use-request-guard";
 
-const EMPTY_LIBRARY_SUMMARY: LibrarySummaryInfo = {
-    total_bytes: 0,
-    formatted_size: "0 B",
-    video_files: 0,
-    audio_files: 0,
-    thumbnail_files: 0,
-    channel_image_files: 0,
-};
+// One object, so setting it again while it is already shown does not re-render.
+const EMPTY_LIBRARY_SUMMARY = createEmptyLibrarySummary();
 
 type DatabaseMessage = {
     tone: "success" | "error";

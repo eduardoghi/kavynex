@@ -20,7 +20,10 @@ import {
     buildDiagnosticsOverview,
     sortDiagnosticsIssues,
 } from "./diagnostics-rules";
-import { getLibraryIntegrity } from "./diagnostics-library-integrity";
+import {
+    createEmptyLibraryIntegrityReport,
+    getLibraryIntegrity,
+} from "./diagnostics-library-integrity";
 import { getLibrarySummary } from "./diagnostics-library-summary";
 import { createEmptyLibrarySummary } from "./library-service";
 import { getExternalToolsStatus } from "./diagnostics-external-tools";
@@ -106,38 +109,6 @@ function defaultMediaRepositoryStats(): MediaRepositoryStats {
     };
 }
 
-function defaultLibraryIntegrity(): LibraryIntegrityReport {
-    return {
-        checked_media_files: 0,
-        missing_media_files: 0,
-        missing_media_examples: [],
-        checked_thumbnail_files: 0,
-        missing_thumbnail_files: 0,
-        missing_thumbnail_examples: [],
-        orphan_media_files: 0,
-        orphan_media_examples: [],
-        orphan_thumbnail_files: 0,
-        orphan_thumbnail_examples: [],
-        invalid_media_files: 0,
-        invalid_media_examples: [],
-        invalid_thumbnail_files: 0,
-        invalid_thumbnail_examples: [],
-        corrupt_media_files: 0,
-        corrupt_media_examples: [],
-        corrupt_thumbnail_files: 0,
-        corrupt_thumbnail_examples: [],
-        checked_live_chat_files: 0,
-        missing_live_chat_files: 0,
-        missing_live_chat_examples: [],
-        corrupt_live_chat_files: 0,
-        corrupt_live_chat_examples: [],
-        orphan_live_chat_files: 0,
-        orphan_live_chat_examples: [],
-        invalid_live_chat_files: 0,
-        invalid_live_chat_examples: [],
-    };
-}
-
 // Live chat integrity is a projection of the single backend library-integrity check (the only
 // side that can stat the files), rather than a separate pass. This is what gives live chat the
 // same missing/corrupt/orphan detection media and thumbnails get.
@@ -205,7 +176,7 @@ function diagnosticChecks(libraryPath: string, libraryUnreachable: boolean) {
             run: () =>
                 libraryUnreachable
                     ? Promise.resolve({
-                          report: defaultLibraryIntegrity(),
+                          report: createEmptyLibraryIntegrityReport(),
                           mediaByPath: {},
                           orphanRemoval: null,
                       })
@@ -280,7 +251,7 @@ export async function getDiagnosticsSummary(
     const settled = await settleAll(checks);
 
     const libraryIntegrityResult = settledValue(settled.libraryIntegrity, {
-        report: defaultLibraryIntegrity(),
+        report: createEmptyLibraryIntegrityReport(),
         mediaByPath: {},
         orphanRemoval: null,
     });
