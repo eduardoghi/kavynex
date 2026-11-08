@@ -38,15 +38,41 @@ export function isFilesystemRootPath(path: string): boolean {
  * and never for anything sent back.
  */
 export function displayWindowsPath(path: string): string {
-    const normalizedPath = path.trim();
+    return stripWindowsExtendedPrefix(path.trim());
+}
 
-    if (normalizedPath.startsWith("\\\\?\\UNC\\")) {
-        return `\\\\${normalizedPath.slice(8)}`;
+export function normalizePathSeparators(value: string): string {
+    return value.replace(/\\/g, "/");
+}
+
+// Removes the Windows extended-length prefix (\\?\ or the slash-normalized //?/ form,
+// including the UNC variants) so the path handed to convertFileSrc matches the asset
+// protocol scope authorized on the backend. On non-Windows paths this is a no-op.
+export function stripWindowsExtendedPrefix(value: string): string {
+    const uncMatch = value.match(/^[\\/]{2}\?[\\/]UNC[\\/](.*)$/i);
+
+    if (uncMatch) {
+        return `\\\\${uncMatch[1]}`;
     }
 
-    if (normalizedPath.startsWith("\\\\?\\")) {
-        return normalizedPath.slice(4);
+    const match = value.match(/^[\\/]{2}\?[\\/](.*)$/);
+
+    if (match) {
+        return match[1] ?? value;
     }
 
-    return normalizedPath;
+    return value;
+}
+
+// The last component of a path, a file's or a folder's name, whichever separator it uses.
+export function fileNameFromPath(path: string): string {
+    const normalized = normalizePathSeparators(path.trim());
+
+    if (!normalized) {
+        return "";
+    }
+
+    const parts = normalized.split("/").filter(Boolean);
+
+    return parts[parts.length - 1] ?? "";
 }

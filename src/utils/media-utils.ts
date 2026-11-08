@@ -1,6 +1,10 @@
 import { convertFileSrc } from "../lib/tauri-platform";
 import { AUDIO_FILE_EXTENSIONS, IMAGE_FILE_EXTENSIONS } from "../types/generated/fileExtensions";
 import type { MediaType } from "../types/media";
+import { fileNameFromPath, normalizePathSeparators, stripWindowsExtendedPrefix } from "./paths";
+
+// Re-exported, since this is where the media code has always imported them from.
+export { fileNameFromPath, normalizePathSeparators, stripWindowsExtendedPrefix };
 
 // The file types the backend accepts (audio and video to import, images for a thumbnail or channel
 // avatar), generated from src-tauri/src/utils/format.rs so the file pickers offer exactly that and
@@ -52,43 +56,8 @@ const MEDIUM_DATE_TIME_FORMAT = new Intl.DateTimeFormat("en-US", {
     timeStyle: "short",
 });
 
-export function normalizePathSeparators(value: string): string {
-    return value.replace(/\\/g, "/");
-}
-
-// Removes the Windows extended-length prefix (\\?\ or the slash-normalized //?/ form,
-// including the UNC variants) so the path handed to convertFileSrc matches the asset
-// protocol scope authorized on the backend. On non-Windows paths this is a no-op.
-export function stripWindowsExtendedPrefix(value: string): string {
-    const uncMatch = value.match(/^[\\/]{2}\?[\\/]UNC[\\/](.*)$/i);
-
-    if (uncMatch) {
-        return `\\\\${uncMatch[1]}`;
-    }
-
-    const match = value.match(/^[\\/]{2}\?[\\/](.*)$/);
-
-    if (match) {
-        return match[1] ?? value;
-    }
-
-    return value;
-}
-
 function toAssetPath(value: string): string {
     return normalizePathSeparators(stripWindowsExtendedPrefix(value));
-}
-
-export function fileNameFromPath(path: string): string {
-    const normalized = normalizePathSeparators(path.trim());
-
-    if (!normalized) {
-        return "";
-    }
-
-    const parts = normalized.split("/").filter(Boolean);
-
-    return parts[parts.length - 1] ?? "";
 }
 
 export function extensionFromPath(path: string): string {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isFilesystemRootPath } from "./paths";
+import { displayWindowsPath, isFilesystemRootPath } from "./paths";
 
 describe("isFilesystemRootPath", () => {
     it("recognizes a POSIX root", () => {
@@ -58,5 +58,20 @@ describe("isFilesystemRootPath", () => {
 
     it("only treats a UNC share root anchored at the start", () => {
         expect(isFilesystemRootPath("x\\\\server\\share")).toBe(false);
+    });
+});
+
+describe("displayWindowsPath", () => {
+    it("drops the extended-length prefix, in either separator", () => {
+        expect(displayWindowsPath("\\\\?\\C:\\Videos")).toBe("C:\\Videos");
+        expect(displayWindowsPath("//?/C:/Videos")).toBe("C:/Videos");
+    });
+
+    it("turns an extended UNC path back into a share path", () => {
+        expect(displayWindowsPath("\\\\?\\UNC\\nas\\media")).toBe("\\\\nas\\media");
+    });
+
+    it("trims and leaves a plain path as it is", () => {
+        expect(displayWindowsPath("  /home/me/videos  ")).toBe("/home/me/videos");
     });
 });

@@ -1,5 +1,6 @@
 import { parseAppError } from "./app-error";
 import { redactCookiesBrowserSelector } from "../constants/cookies-browsers";
+import { fileNameFromPath } from "./paths";
 
 type LogLevel = "info" | "warn" | "error";
 
@@ -27,13 +28,6 @@ export function setLogSink(next: LogSink | null): void {
 // A meta key naming a path. Matched by name, since the values are plain strings.
 const PATH_META_KEY = /path$/i;
 
-// The final component of a path, the way the backend's `logger::redact_path` writes one.
-function lastPathComponent(value: string): string {
-    const parts = value.split(/[\\/]/).filter((part) => part.length > 0);
-
-    return parts[parts.length - 1] ?? "";
-}
-
 // What a meta value may say in the log file. The file is what a user attaches to a public bug report
 // (see TROUBLESHOOTING.md), and the backend reduces every path it logs to its last component and
 // hides the profile in a cookies selector. Done here, at the sink, so a call site that passes a path
@@ -54,7 +48,7 @@ function redactMetaForSink(meta: LogMeta): LogMeta {
             }
 
             if (PATH_META_KEY.test(key)) {
-                return [key, lastPathComponent(value)];
+                return [key, fileNameFromPath(value)];
             }
 
             return [key, value];
