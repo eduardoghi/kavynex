@@ -1,11 +1,12 @@
-//! Downloading a thumbnail or a channel avatar into the library.
+//! Downloading a thumbnail, a channel avatar or a channel banner into the library.
 //!
-//! This module orchestrates the three flows (a direct image URL, a media's thumbnail taken from
-//! yt-dlp metadata, and a channel avatar) and owns what they share. Resolving the library
-//! directory, the temp directory each run writes into, and persisting the result. The two ways
-//! bytes actually arrive live next to it, because they have nothing in common with each other.
-//! `fetch` goes over the network and owns every check on where a request may go, and `process`
-//! runs yt-dlp and owns the process tree that comes with it.
+//! This module orchestrates the flows (a thumbnail from an image URL or from yt-dlp, a channel's
+//! avatar and its banner) and owns what they share. Each runs inside `with_thumbnail_scratch`,
+//! which resolves the library directory, makes the temp directory the run writes into and removes
+//! it afterwards, and each ends by persisting the image it got. The two ways bytes actually
+//! arrive live next to it, because they have nothing in common with each other. `fetch` goes over
+//! the network and owns every check on where a request may go, and `process` runs yt-dlp and owns
+//! the process tree that comes with it.
 
 mod fetch;
 mod process;
@@ -55,23 +56,64 @@ async fn persist_thumbnail_from_source_async(
     run_blocking(move || persist_thumbnail_from_source_in_pass(&source, &library_dir, pass)).await
 }
 
-/// Shared tail for the yt-dlp thumbnail flows (generic fallback, pre-download media thumbnail,
-/// channel avatar). Fails on a non-zero exit, locates the PNG yt-dlp wrote under
-/// `file_name_prefix`, and persists it into the library (content-addressed). `subject`
-/// distinguishes a `"thumbnail"` from a `"channel avatar"` in the error text, keeping the exact
-/// messages the three call sites used before they were unified.
-async fn finalize_thumbnail_download(
-    output: &std::process::Output,
+/// What a yt-dlp image run is pointed at and how it names what it writes. `subject` names the image
+/// (`"thumbnail"`, `"channel avatar"`) in the error text.
+struct YtDlpImageRun<'a> {
+    yt_dlp: &'a str,
+    ffmpeg_location: &'a str,
+    url: &'a str,
+    target: ThumbnailTarget,
+    file_prefix: &'a str,
+    subject: &'a str,
+}
+
+/// The yt-dlp half the generic thumbnail fallback and the channel avatar share. Runs yt-dlp in
+/// `thumb_temp_dir` to write the image under `run.file_prefix`, fails on a non-zero exit, finds
+/// what it wrote and persists it into the library (content-addressed).
+async fn run_yt_dlp_image(
+    run: YtDlpImageRun<'_>,
     thumb_temp_dir: &Path,
-    ffmpeg_location: &str,
-    file_name_prefix: &str,
     library_dir: PathBuf,
     pass: LibraryPass,
-    subject: &str,
 ) -> AppResult<String> {
+    let YtDlpImageRun {
+        yt_dlp,
+        ffmpeg_location,
+        url,
+        target,
+        file_prefix,
+        subject,
+    } = run;
+    let file_name_prefix = format!("{file_prefix}.");
+
+    clean_matching_files_in_dir(thumb_temp_dir, &file_name_prefix)?;
+
+    let args = build_thumbnail_command_args(
+        ffmpeg_location,
+        thumb_temp_dir,
+        file_prefix,
+        url,
+        target,
+        None,
+        None,
+    );
+
+    let mut command = Command::new(yt_dlp);
+    command.args(&args);
+    // Starts in the thumbnail scratch directory the output goes to rather than wherever the app was
+    // launched from (see utils::process::pin_working_dir_async).
+    crate::utils::process::pin_working_dir_async(&mut command, thumb_temp_dir);
+    let output = run_thumbnail_yt_dlp_with_timeout(
+        command,
+        &format!("yt-dlp {subject} download timed out"),
+        &format!("failed to execute yt-dlp for {subject} download"),
+        None,
+    )
+    .await?;
+
     if !output.status.success() {
         return Err(read_process_error(
-            output,
+            &output,
             AppErrorCode::YtDlpThumbnailFailed,
             &format!("yt-dlp {subject} download failed"),
             // Neither flow passes cookies, and the URL is a public one the user entered. The
@@ -82,7 +124,7 @@ async fn finalize_thumbnail_download(
 
     let downloaded_thumb = find_best_matching_file(
         thumb_temp_dir,
-        file_name_prefix,
+        &file_name_prefix,
         Some(THUMBNAIL_OUTPUT_FORMAT),
     )
     .map_err(|_| {
@@ -182,6 +224,43 @@ fn prepare_thumbnail_dirs<R: Runtime>(
     })?;
 
     Ok((library_dir, thumb_temp_dir))
+}
+
+/// Runs `body` with the library directory, a [`LibraryPass`] and a fresh scratch folder named
+/// `temp_dir_name`, and removes the folder afterwards whatever `body` returned, so no image flow
+/// leaves its scratch behind on a failure.
+///
+/// The pass is begun before the folder is resolved, so a library migration that completes during
+/// the fetch makes the persist refuse rather than write into the old library (see LibraryPass).
+async fn with_thumbnail_scratch<R, F, Fut>(
+    app: &AppHandle<R>,
+    library_path: &str,
+    temp_dir_name: String,
+    body: F,
+) -> AppResult<String>
+where
+    R: Runtime,
+    F: FnOnce(PathBuf, LibraryPass, PathBuf) -> Fut,
+    Fut: std::future::Future<Output = AppResult<String>>,
+{
+    let pass = LibraryPass::begin();
+    let (library_dir, thumb_temp_dir) = {
+        let app = app.clone();
+        let library_path = library_path.to_string();
+        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
+    };
+
+    let result = body(library_dir, pass, thumb_temp_dir.clone()).await;
+
+    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
+    // recursive removal to the blocking pool like the download temp-dir cleanup does.
+    let _ = run_blocking(move || {
+        let _ = fs::remove_dir_all(&thumb_temp_dir);
+        Ok::<(), AppError>(())
+    })
+    .await;
+
+    result
 }
 
 /// Fetches an image from YouTube's image CDNs into `dir` as `<stem>.<ext>` and returns the file.
@@ -316,137 +395,97 @@ pub async fn download_thumbnail_from_url_async<R: Runtime>(
         ));
     }
 
-    // Begun before the folder is resolved, so a library migration that completes during the fetch
-    // makes the persist refuse rather than write into the old library (see LibraryPass).
-    let pass = LibraryPass::begin();
-    let (library_dir, thumb_temp_dir) = {
-        let app = app.clone();
-        let library_path = library_path.to_string();
-        let temp_dir_name = unique_temp_suffix();
-        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
-    };
-
-    let result = async {
-        if let Some(ext) = direct_image_extension(&normalized_url) {
-            let direct_file_path = fetch_cdn_image(
-                &normalized_url,
-                &thumb_temp_dir,
-                "direct_thumbnail",
-                Some(ext),
-            )
-            .await?;
-
-            return persist_thumbnail_from_source_async(direct_file_path, library_dir, pass).await;
-        }
-
-        // yt-dlp's generic extractor is handed the URL with access to the user's browser
-        // cookies (indirectly, via the same yt-dlp binary used elsewhere), so (like every
-        // other yt-dlp invocation in this app), it must be restricted to YouTube. Without
-        // this, a non-image URL would fall through to yt-dlp's generic extractor for any
-        // host, which is far broader than this app ever intends to support.
-        //
-        // Checked before anything resolves the host. The address check below looks the name up,
-        // and a lookup of an arbitrary name is itself a request to whoever serves that domain's
-        // DNS, so a URL from a compromised renderer could carry data out in its labels before
-        // being refused.
-        if !is_allowed_youtube_url(&normalized_url) {
-            return Err(AppError::from_code(
-                AppErrorCode::InvalidUrl,
-                "generic thumbnail extraction is restricted to youtube urls",
-            ));
-        }
-
-        // One video, as the download and the format probe require. A channel, playlist or feed URL
-        // makes yt-dlp extract every entry under the minute this run gets, for one image.
-        if !crate::services::yt_dlp::url::names_one_video(&normalized_url) {
-            return Err(AppError::from_code(
-                AppErrorCode::InvalidUrl,
-                "generic thumbnail extraction needs the link of a single video",
-            ));
-        }
-
-        // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
-        // fallback has none, so validate the host here too. Reject URLs that resolve to
-        // loopback/private/link-local/reserved addresses before handing the URL to yt-dlp.
-        let fallback_uri: Uri = normalized_url.parse().map_err(|e| {
-            AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
-        })?;
-        assert_url_host_is_public(&fallback_uri).await?;
-
-        let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
-        let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
-        let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
-
-        let metadata = fetch_yt_dlp_metadata(&yt_dlp, &normalized_url, None, None, None).await?;
-
-        let id = metadata
-            .id
-            .filter(|v| !v.trim().is_empty())
-            .ok_or_else(|| {
-                AppError::from_code(
-                    AppErrorCode::YtDlpInvalidMetadata,
-                    "yt-dlp did not return a media id",
+    with_thumbnail_scratch(
+        app,
+        library_path,
+        unique_temp_suffix(),
+        |library_dir, pass, thumb_temp_dir| async move {
+            if let Some(ext) = direct_image_extension(&normalized_url) {
+                let direct_file_path = fetch_cdn_image(
+                    &normalized_url,
+                    &thumb_temp_dir,
+                    "direct_thumbnail",
+                    Some(ext),
                 )
+                .await?;
+
+                return persist_thumbnail_from_source_async(direct_file_path, library_dir, pass)
+                    .await;
+            }
+
+            // yt-dlp's generic extractor is handed the URL with access to the user's browser
+            // cookies (indirectly, via the same yt-dlp binary used elsewhere), so (like every
+            // other yt-dlp invocation in this app), it must be restricted to YouTube. Without
+            // this, a non-image URL would fall through to yt-dlp's generic extractor for any
+            // host, which is far broader than this app ever intends to support.
+            //
+            // Checked before anything resolves the host. The address check below looks the name up,
+            // and a lookup of an arbitrary name is itself a request to whoever serves that domain's
+            // DNS, so a URL from a compromised renderer could carry data out in its labels before
+            // being refused.
+            if !is_allowed_youtube_url(&normalized_url) {
+                return Err(AppError::from_code(
+                    AppErrorCode::InvalidUrl,
+                    "generic thumbnail extraction is restricted to youtube urls",
+                ));
+            }
+
+            // One video, as the download and the format probe require. A channel, playlist or feed URL
+            // makes yt-dlp extract every entry under the minute this run gets, for one image.
+            if !crate::services::yt_dlp::url::names_one_video(&normalized_url) {
+                return Err(AppError::from_code(
+                    AppErrorCode::InvalidUrl,
+                    "generic thumbnail extraction needs the link of a single video",
+                ));
+            }
+
+            // The direct-image path above runs through http_get_image's SSRF guard. This yt-dlp
+            // fallback has none, so validate the host here too. Reject URLs that resolve to
+            // loopback/private/link-local/reserved addresses before handing the URL to yt-dlp.
+            let fallback_uri: Uri = normalized_url.parse().map_err(|e| {
+                AppError::from_code(AppErrorCode::InvalidUrl, format!("invalid url: {e}"))
             })?;
+            assert_url_host_is_public(&fallback_uri).await?;
 
-        let extractor = metadata
-            .extractor
-            .filter(|v| !v.trim().is_empty())
-            .unwrap_or_else(|| "media".to_string());
+            let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
+            let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
+            let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
-        let safe_extractor = sanitize_filename_component(&extractor);
-        let safe_id = sanitize_filename_component(&id);
+            let metadata =
+                fetch_yt_dlp_metadata(&yt_dlp, &normalized_url, None, None, None).await?;
 
-        let file_prefix = format!("thumb_{}_{}", safe_extractor, safe_id);
-        let file_name_prefix = format!("{file_prefix}.");
+            let id = metadata
+                .id
+                .filter(|v| !v.trim().is_empty())
+                .ok_or_else(|| {
+                    AppError::from_code(
+                        AppErrorCode::YtDlpInvalidMetadata,
+                        "yt-dlp did not return a media id",
+                    )
+                })?;
 
-        clean_matching_files_in_dir(&thumb_temp_dir, &file_name_prefix)?;
+            let extractor = metadata
+                .extractor
+                .filter(|v| !v.trim().is_empty())
+                .unwrap_or_else(|| "media".to_string());
 
-        let args = build_thumbnail_command_args(
-            &ffmpeg_location,
-            &thumb_temp_dir,
-            &file_prefix,
-            normalized_url.as_str(),
-            ThumbnailTarget::SingleMedia,
-            None,
-            None,
-        );
+            let safe_extractor = sanitize_filename_component(&extractor);
+            let safe_id = sanitize_filename_component(&id);
 
-        let mut command = Command::new(&yt_dlp);
-        command.args(&args);
-        // Starts in the thumbnail scratch directory the output goes to rather than wherever the
-        // app was launched from (see utils::process::pin_working_dir_async).
-        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
-        let output = run_thumbnail_yt_dlp_with_timeout(
-            command,
-            "yt-dlp thumbnail download timed out",
-            "failed to execute yt-dlp for thumbnail download",
-            None,
-        )
-        .await?;
+            let file_prefix = format!("thumb_{}_{}", safe_extractor, safe_id);
+            let run = YtDlpImageRun {
+                yt_dlp: &yt_dlp,
+                ffmpeg_location: &ffmpeg_location,
+                url: &normalized_url,
+                target: ThumbnailTarget::SingleMedia,
+                file_prefix: &file_prefix,
+                subject: "thumbnail",
+            };
 
-        finalize_thumbnail_download(
-            &output,
-            &thumb_temp_dir,
-            &ffmpeg_location,
-            &file_name_prefix,
-            library_dir,
-            pass,
-            "thumbnail",
-        )
-        .await
-    }
-    .await;
-
-    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
-    // recursive removal to the blocking pool like the download temp-dir cleanup does.
-    let _ = run_blocking(move || {
-        let _ = fs::remove_dir_all(&thumb_temp_dir);
-        Ok::<(), AppError>(())
-    })
-    .await;
-
-    result
+            run_yt_dlp_image(run, &thumb_temp_dir, library_dir, pass).await
+        },
+    )
+    .await
 }
 
 /// How many of a media's thumbnail candidates are tried before it is saved without one. Each try is
@@ -569,66 +608,25 @@ pub async fn download_channel_avatar_from_handle_async<R: Runtime>(
     let ffmpeg = resolve_ffmpeg_binary_async(app).await?;
     let ffmpeg_location = ffmpeg_location_argument(&ffmpeg);
 
-    // See download_thumbnail_from_url_async.
-    let pass = LibraryPass::begin();
-    let (library_dir, thumb_temp_dir) = {
-        let app = app.clone();
-        let library_path = library_path.to_string();
-        let temp_dir_name = format!("channel-avatar-{}", unique_temp_suffix());
-        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
-    };
+    let temp_dir_name = format!("channel-avatar-{}", unique_temp_suffix());
+    with_thumbnail_scratch(
+        app,
+        library_path,
+        temp_dir_name,
+        |library_dir, pass, thumb_temp_dir| async move {
+            let run = YtDlpImageRun {
+                yt_dlp: &yt_dlp,
+                ffmpeg_location: &ffmpeg_location,
+                url: &normalized_url,
+                target: ThumbnailTarget::ChannelAvatar,
+                file_prefix: "channel_avatar",
+                subject: "channel avatar",
+            };
 
-    let result = async {
-        let file_prefix = "channel_avatar";
-        let file_name_prefix = "channel_avatar.";
-
-        clean_matching_files_in_dir(&thumb_temp_dir, file_name_prefix)?;
-
-        let args = build_thumbnail_command_args(
-            &ffmpeg_location,
-            &thumb_temp_dir,
-            file_prefix,
-            normalized_url.as_str(),
-            ThumbnailTarget::ChannelAvatar,
-            None,
-            None,
-        );
-
-        let mut command = Command::new(&yt_dlp);
-        command.args(&args);
-        // Starts in the thumbnail scratch directory the output goes to rather than wherever the
-        // app was launched from (see utils::process::pin_working_dir_async).
-        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
-        let output = run_thumbnail_yt_dlp_with_timeout(
-            command,
-            "yt-dlp channel avatar download timed out",
-            "failed to execute yt-dlp for channel avatar download",
-            None,
-        )
-        .await?;
-
-        finalize_thumbnail_download(
-            &output,
-            &thumb_temp_dir,
-            &ffmpeg_location,
-            file_name_prefix,
-            library_dir,
-            pass,
-            "channel avatar",
-        )
-        .await
-    }
-    .await;
-
-    // Small (an image or two), but still filesystem IO on a possibly slow disk. Offload the
-    // recursive removal to the blocking pool like the download temp-dir cleanup does.
-    let _ = run_blocking(move || {
-        let _ = fs::remove_dir_all(&thumb_temp_dir);
-        Ok::<(), AppError>(())
-    })
-    .await;
-
-    result
+            run_yt_dlp_image(run, &thumb_temp_dir, library_dir, pass).await
+        },
+    )
+    .await
 }
 
 /// The id yt-dlp gives a channel's banner at full size, the page's banner with its crop removed.
@@ -670,59 +668,49 @@ pub async fn download_channel_banner_from_handle_async<R: Runtime>(
 
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
 
-    // See download_thumbnail_from_url_async.
-    let pass = LibraryPass::begin();
-    let (library_dir, thumb_temp_dir) = {
-        let app = app.clone();
-        let library_path = library_path.to_string();
-        let temp_dir_name = format!("channel-banner-{}", unique_temp_suffix());
-        run_blocking(move || prepare_thumbnail_dirs(app, library_path, temp_dir_name)).await?
-    };
+    let temp_dir_name = format!("channel-banner-{}", unique_temp_suffix());
+    with_thumbnail_scratch(
+        app,
+        library_path,
+        temp_dir_name,
+        |library_dir, pass, thumb_temp_dir| async move {
+            let mut command = Command::new(&yt_dlp);
+            command.args(process::build_channel_images_command_args(&normalized_url));
+            crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
 
-    let result = async {
-        let mut command = Command::new(&yt_dlp);
-        command.args(process::build_channel_images_command_args(&normalized_url));
-        crate::utils::process::pin_working_dir_async(&mut command, &thumb_temp_dir);
+            let output = run_thumbnail_yt_dlp_with_timeout(
+                command,
+                "yt-dlp channel banner lookup timed out",
+                "failed to execute yt-dlp for the channel banner lookup",
+                None,
+            )
+            .await?;
 
-        let output = run_thumbnail_yt_dlp_with_timeout(
-            command,
-            "yt-dlp channel banner lookup timed out",
-            "failed to execute yt-dlp for the channel banner lookup",
-            None,
-        )
-        .await?;
+            if !output.status.success() {
+                return Err(read_process_error(
+                    &output,
+                    AppErrorCode::YtDlpThumbnailFailed,
+                    "yt-dlp channel banner lookup failed",
+                    // No cookies are passed, and the URL is the public channel page. The scratch folder
+                    // the run starts in is under the user's profile.
+                    |line| redact_run_paths(line, &[thumb_temp_dir.as_path()]),
+                ));
+            }
 
-        if !output.status.success() {
-            return Err(read_process_error(
-                &output,
-                AppErrorCode::YtDlpThumbnailFailed,
-                "yt-dlp channel banner lookup failed",
-                // No cookies are passed, and the URL is the public channel page. The scratch folder
-                // the run starts in is under the user's profile.
-                |line| redact_run_paths(line, &[thumb_temp_dir.as_path()]),
-            ));
-        }
+            let Some(banner_url) = channel_banner_url(&output.stdout) else {
+                return Err(AppError::from_code(
+                    AppErrorCode::ChannelBannerNotFound,
+                    "the channel page lists no banner",
+                ));
+            };
 
-        let Some(banner_url) = channel_banner_url(&output.stdout) else {
-            return Err(AppError::from_code(
-                AppErrorCode::ChannelBannerNotFound,
-                "the channel page lists no banner",
-            ));
-        };
+            let banner =
+                fetch_cdn_image(&banner_url, &thumb_temp_dir, "channel_banner", None).await?;
 
-        let banner = fetch_cdn_image(&banner_url, &thumb_temp_dir, "channel_banner", None).await?;
-
-        persist_thumbnail_from_source_async(banner, library_dir, pass).await
-    }
-    .await;
-
-    let _ = run_blocking(move || {
-        let _ = fs::remove_dir_all(&thumb_temp_dir);
-        Ok::<(), AppError>(())
-    })
-    .await;
-
-    result
+            persist_thumbnail_from_source_async(banner, library_dir, pass).await
+        },
+    )
+    .await
 }
 
 #[cfg(test)]
