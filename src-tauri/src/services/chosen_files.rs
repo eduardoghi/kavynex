@@ -1,18 +1,11 @@
 //! The files the renderer may name where a command reads a file the user chose, or writes to a
 //! destination the user chose.
 //!
-//! The same rule `chosen_folders` holds for folders. In the app's own flows each of those paths came
-//! out of a dialog the backend opened (`commands::dialog`), or is a preview the backend itself wrote
-//! and handed back. Anything else is a value the renderer made up, and accepting it let a
-//! compromised renderer import any image, video or cookies file on disk into the library (where the
-//! asset protocol serves it), load any `.db` file as the database, or have an export overwrite a
-//! `.db` file it never saw a dialog for.
-//!
-//! A pick is recorded with what it was picked for, the way `chosen_folders` records a folder's
-//! purpose. An image picked as a thumbnail cannot be imported as media (in Move mode that would
-//! remove it from where the user keeps it), read as a cookies file or loaded as the database, and a
-//! save destination cannot be read at all, so one dialog answers one question. The check is a
-//! string comparison done before anything touches the filesystem. The record lasts for the process.
+//! The same rule `chosen_folders` holds for folders. A path is accepted only if it came out of a
+//! dialog the backend opened (`commands::dialog`) or is a preview the backend itself wrote, and only
+//! for the use it was picked for, checked as a string before anything touches the filesystem. The
+//! record lasts for the process. What it stops, and which command needs which use, is in "Only a
+//! file the user picked" in `docs/THREAT-MODEL.md`.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};

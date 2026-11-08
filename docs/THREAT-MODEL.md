@@ -343,13 +343,9 @@ picker for one, the backend titles the dialog after it, and the folder is accept
 that purpose only. A folder the user picked as the backup mirror is not accepted as the library or as
 the library's new home, so what the user was told the folder was for is what it is used for.
 
-What counts as handed out is a short list. The answer of the backend's folder picker
-(`commands/dialog.rs::open_folder_dialog`), the canonical spelling the two helpers return for a
-folder already allowed (which is what the frontend persists next), and the folder a migration ended
-in. The record lives for the process, and the stored settings carry the folder that matters across a
-restart. The check is an exact string comparison made before any filesystem call, so a path the
-renderer made up is refused without being resolved, which on Windows is what would have
-authenticated to its host.
+What counts as handed out is listed in `services/chosen_folders.rs`. The check is an exact string
+comparison made before any filesystem call, so a path the renderer made up is refused without being
+resolved, which on Windows is what would have authenticated to its host.
 
 What the record stops is worth naming. Without it, a compromised renderer could set
 `\\host\share\lib` as the library and have an import or `persist_thumbnail_file` copy any media or

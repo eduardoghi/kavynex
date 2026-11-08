@@ -1,18 +1,11 @@
 //! The folders the renderer may name where a command persists, creates or probes one.
 //!
-//! In the app's own flows a folder reaches those commands in one of two ways. The user picked it in
-//! the folder dialog the backend opened (`commands::dialog`), or it is the library folder already
-//! stored in the settings. Anything else is a value the renderer made up. Accepting it is what let a
-//! compromised renderer point the library at `\\host\share` and have imports copy the user's files
-//! there, move the whole library onto it, or mirror the database to it every day, while the mere
-//! act of resolving the path authenticated to the host over SMB.
-//!
-//! So each of those commands checks the value against this record, exactly as a string and before
-//! anything touches the filesystem, and refuses one that was neither picked nor stored. What gets
-//! recorded is only what the backend itself handed out. The picker's answer, the spelling
-//! `ensure_directory_exists` and `resolve_existing_directory` return for a folder already allowed
-//! (the frontend persists that spelling), and the folder a migration ended in. The record lasts for
-//! the process. A restart forgets it, and the stored settings carry the folder that matters across.
+//! Each of those commands accepts only a folder the backend handed out (the folder dialog's answer,
+//! the spelling `ensure_directory_exists` and `resolve_existing_directory` return for a folder
+//! already allowed, the folder a migration ended in) or the library folder the settings store. The
+//! check is an exact string comparison made before anything touches the filesystem. The record
+//! lasts for the process, and the stored settings carry the folder that matters across a restart.
+//! What it stops is in "Only a folder the user picked" in `docs/THREAT-MODEL.md`.
 
 use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock};
