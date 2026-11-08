@@ -845,12 +845,14 @@ impl<R: Runtime> DownloadRun<'_, R> {
         }
     }
 
-    /// The run itself, from the first line in the terminal to the file in the library. Sets
-    /// `download_left_in_run_dir` when a finished download could be neither placed nor kept
-    /// elsewhere, so the caller leaves its run folder for the user.
-    async fn run(
+    /// Moves the downloaded file into the library, then saves the live chat and the thumbnail
+    /// beside it. A cancel before the placement leaves nothing in the library, and one after it
+    /// sends what the run placed to the trash. Sets `download_left_in_run_dir` when the file could
+    /// be neither placed nor kept elsewhere.
+    async fn place_and_complete(
         &self,
-        run_cookies: RunCookies,
+        metadata: &YtDlpMetadata,
+        plan: DownloadPlan,
         download_left_in_run_dir: &mut bool,
     ) -> AppResult<DownloadedMediaResult> {
         let DownloadRun {
@@ -865,9 +867,6 @@ impl<R: Runtime> DownloadRun<'_, R> {
             skip_auto_thumbnail_download,
             ..
         } = *self;
-
-        self.announce()?;
-        let metadata = self.fetch_metadata().await?;
         let DownloadPlan {
             media_subdir,
             media_dir,
@@ -878,10 +877,8 @@ impl<R: Runtime> DownloadRun<'_, R> {
             is_live,
             file_prefix,
             expected_ext,
-        } = self.plan(&metadata)?;
+        } = plan;
         let file_name_prefix = format!("{file_prefix}.");
-
-        self.run_yt_dlp(&suggested_title, &file_prefix).await?;
 
         // A cancel that arrived after yt-dlp exited is still honored before the file is placed, the
         // last point where stopping leaves nothing in the library. The Cancel button stays up for
@@ -976,7 +973,7 @@ impl<R: Runtime> DownloadRun<'_, R> {
                 app,
                 normalized_run_id,
                 library_path,
-                &metadata,
+                metadata,
                 cancel_flag,
             )
             .await
@@ -1003,7 +1000,7 @@ impl<R: Runtime> DownloadRun<'_, R> {
 
         let result = DownloadedMediaResult {
             file_path,
-            suggested_title: suggested_title.clone(),
+            suggested_title,
             youtube_video_id,
             published_at,
             media_type: media_subdir.to_string(),
@@ -1013,11 +1010,31 @@ impl<R: Runtime> DownloadRun<'_, R> {
             placement_marker,
         };
 
+        Ok(result)
+    }
+
+    /// The run itself, from the first line in the terminal to the file in the library. Sets
+    /// `download_left_in_run_dir` when a finished download could be neither placed nor kept
+    /// elsewhere, so the caller leaves its run folder for the user.
+    async fn run(
+        &self,
+        run_cookies: RunCookies,
+        download_left_in_run_dir: &mut bool,
+    ) -> AppResult<DownloadedMediaResult> {
+        self.announce()?;
+        let metadata = self.fetch_metadata().await?;
+        let plan = self.plan(&metadata)?;
+        self.run_yt_dlp(&plan.suggested_title, &plan.file_prefix)
+            .await?;
+        let result = self
+            .place_and_complete(&metadata, plan, download_left_in_run_dir)
+            .await?;
+
         run_cookies.keep_refreshed_async().await;
 
         emit_download_finished(
-            app,
-            normalized_run_id,
+            self.app,
+            self.run_id,
             result.file_path.clone(),
             result.suggested_title.clone(),
         );
@@ -1026,7 +1043,7 @@ impl<R: Runtime> DownloadRun<'_, R> {
             "yt_dlp",
             format!(
                 "download run finished successfully: run_id='{}', file='{}', live_chat='{}'",
-                normalized_run_id,
+                self.run_id,
                 result.file_path,
                 result.live_chat_file_path.clone().unwrap_or_default()
             ),
@@ -1061,10 +1078,10 @@ pub async fn download_media_from_url_async<R: Runtime>(
     };
 
     let cancel_flag = register_download_run(&normalized_run_id)?;
-    // Release the registry entry on every exit path. The `?` operators below (binary
-    // resolution, library dir, temp-dir creation) run before the main async block that used
-    // to be the only place `unregister_download_run` was reached, so without this guard an
-    // early failure there would leak the run_id in the process-global registry for good.
+    // Release the registry entry on every exit path, including the `?` operators below (binary
+    // resolution, library dir, temp-dir creation) that return before the run itself starts.
+    // Without this guard an early failure there would leak the run_id in the process-global
+    // registry for good.
     let _run_release_guard = DownloadRunReleaseGuard::new(&normalized_run_id);
 
     // Wait for a download slot (see DOWNLOAD_SEMAPHORE). Acquired after the run is registered, so a
