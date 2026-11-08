@@ -248,7 +248,7 @@ either. See "The Tauri boundary" below.)
   is the failure mode this rule exists to avoid, not the goal.
 - **Use-cases** (`src/use-cases/`) capture a business operation that spans more than one
   repository/service call as a single named function (e.g. `create-channel.ts`,
-  `delete-media.ts`, `mark-media-watched.ts`, `change-library-path.ts`,
+  `delete-media.ts`, `set-media-watched.ts`, `change-library-path.ts`,
   `initialize-app-settings.ts`). Hooks call into use-cases for these flows instead of
   inlining multi-step orchestration.
 - **Services** (`src/services/`) wrap a feature area's behavior on top of one or more

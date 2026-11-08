@@ -11,13 +11,10 @@ vi.mock("../../use-cases/delete-media", () => ({
     executeDeleteMedia: vi.fn(),
 }));
 
-vi.mock("../../use-cases/mark-media-watched", () => ({
-    executeMarkMediaWatched: vi.fn(),
+vi.mock("../../use-cases/set-media-watched", () => ({
+    executeSetMediaWatched: vi.fn(),
 }));
 
-vi.mock("../../use-cases/mark-media-unwatched", () => ({
-    executeMarkMediaUnwatched: vi.fn(),
-}));
 
 vi.mock("../../services/library-service", () => ({
     openYoutubeVideo: vi.fn(),
@@ -35,8 +32,7 @@ vi.mock("../../services/media-download-service", () => ({
 }));
 
 import { executeDeleteMedia } from "../../use-cases/delete-media";
-import { executeMarkMediaWatched } from "../../use-cases/mark-media-watched";
-import { executeMarkMediaUnwatched } from "../../use-cases/mark-media-unwatched";
+import { executeSetMediaWatched } from "../../use-cases/set-media-watched";
 import { openFileLocation, openYoutubeVideo } from "../../services/library-service";
 import { refreshMediaComments, updateMediaTitle } from "../../services/media-service";
 import { cancelMediaDownload } from "../../services/media-download-service";
@@ -119,9 +115,7 @@ describe("useMediaActions", () => {
     it("marks media as watched and updates active player state", async () => {
         const mediaPlayer = createMediaPlayer(createMediaRow({ progress_seconds: 42 }));
 
-        vi.mocked(executeMarkMediaWatched).mockResolvedValue(
-            "2026-03-31T20:00:00.000Z"
-        );
+        vi.mocked(executeSetMediaWatched).mockResolvedValue({ watched_at: "2026-03-31T20:00:00.000Z", progress_seconds: 0 });
 
         const { result } = renderHook(() =>
             useMediaActions({
@@ -140,8 +134,9 @@ describe("useMediaActions", () => {
             await result.current.markAsWatched(1);
         });
 
-        expect(executeMarkMediaWatched).toHaveBeenCalledWith({
+        expect(executeSetMediaWatched).toHaveBeenCalledWith({
             mediaId: 1,
+            watched: true,
             updateMediaItems: setMediaItems,
         });
         expect(onWatchedChanged).toHaveBeenCalledWith(1, true);
@@ -158,10 +153,10 @@ describe("useMediaActions", () => {
         const mediaPlayer = createMediaPlayer();
 
         // A slow round trip, so the second toggle starts while the first is still running.
-        vi.mocked(executeMarkMediaWatched).mockImplementation(
+        vi.mocked(executeSetMediaWatched).mockImplementation(
             () =>
                 new Promise((resolve) =>
-                    setTimeout(() => resolve("2026-03-31T20:00:00.000Z"), 0)
+                    setTimeout(() => resolve({ watched_at: "2026-03-31T20:00:00.000Z", progress_seconds: 0 }), 0)
                 )
         );
 
@@ -185,13 +180,15 @@ describe("useMediaActions", () => {
             await Promise.all([result.current.markAsWatched(1), result.current.markAsWatched(2)]);
         });
 
-        expect(executeMarkMediaWatched).toHaveBeenCalledTimes(2);
-        expect(executeMarkMediaWatched).toHaveBeenCalledWith({
+        expect(executeSetMediaWatched).toHaveBeenCalledTimes(2);
+        expect(executeSetMediaWatched).toHaveBeenCalledWith({
             mediaId: 1,
+            watched: true,
             updateMediaItems: setMediaItems,
         });
-        expect(executeMarkMediaWatched).toHaveBeenCalledWith({
+        expect(executeSetMediaWatched).toHaveBeenCalledWith({
             mediaId: 2,
+            watched: true,
             updateMediaItems: setMediaItems,
         });
     });
@@ -202,10 +199,10 @@ describe("useMediaActions", () => {
         const mediaPlayer = createMediaPlayer();
 
         let resolveWatched: (() => void) | undefined;
-        vi.mocked(executeMarkMediaWatched).mockImplementation(
+        vi.mocked(executeSetMediaWatched).mockImplementation(
             () =>
                 new Promise((resolve) => {
-                    resolveWatched = () => resolve("2026-03-31T20:00:00.000Z");
+                    resolveWatched = () => resolve({ watched_at: "2026-03-31T20:00:00.000Z", progress_seconds: 0 });
                 })
         );
 
@@ -242,10 +239,10 @@ describe("useMediaActions", () => {
     it("still guards a repeated watched toggle on the same media", async () => {
         const mediaPlayer = createMediaPlayer();
 
-        vi.mocked(executeMarkMediaWatched).mockImplementation(
+        vi.mocked(executeSetMediaWatched).mockImplementation(
             () =>
                 new Promise((resolve) =>
-                    setTimeout(() => resolve("2026-03-31T20:00:00.000Z"), 0)
+                    setTimeout(() => resolve({ watched_at: "2026-03-31T20:00:00.000Z", progress_seconds: 0 }), 0)
                 )
         );
 
@@ -268,13 +265,13 @@ describe("useMediaActions", () => {
             await Promise.all([result.current.markAsWatched(1), result.current.markAsWatched(1)]);
         });
 
-        expect(executeMarkMediaWatched).toHaveBeenCalledTimes(1);
+        expect(executeSetMediaWatched).toHaveBeenCalledTimes(1);
     });
 
     it("marks media as unwatched and updates active player state", async () => {
         const mediaPlayer = createMediaPlayer();
 
-        vi.mocked(executeMarkMediaUnwatched).mockResolvedValue(undefined);
+        vi.mocked(executeSetMediaWatched).mockResolvedValue({ watched_at: null });
 
         const { result } = renderHook(() =>
             useMediaActions({
@@ -293,8 +290,9 @@ describe("useMediaActions", () => {
             await result.current.markAsUnwatched(1);
         });
 
-        expect(executeMarkMediaUnwatched).toHaveBeenCalledWith({
+        expect(executeSetMediaWatched).toHaveBeenCalledWith({
             mediaId: 1,
+            watched: false,
             updateMediaItems: setMediaItems,
         });
         expect(onWatchedChanged).toHaveBeenCalledWith(1, false);
@@ -405,7 +403,7 @@ describe("useMediaActions", () => {
     it("reports watched update error", async () => {
         const mediaPlayer = createMediaPlayer();
 
-        vi.mocked(executeMarkMediaWatched).mockRejectedValue(new Error("boom"));
+        vi.mocked(executeSetMediaWatched).mockRejectedValue(new Error("boom"));
 
         const { result } = renderHook(() =>
             useMediaActions({
@@ -1365,7 +1363,7 @@ describe("useMediaActions", () => {
             onNotice,
         });
 
-        vi.mocked(executeMarkMediaWatched).mockResolvedValue("2026-03-31T20:00:00.000Z");
+        vi.mocked(executeSetMediaWatched).mockResolvedValue({ watched_at: "2026-03-31T20:00:00.000Z", progress_seconds: 0 });
 
         const { result, rerender } = renderHook((props) => useMediaActions(props), {
             initialProps: makeProps(createMediaRow({ id: 1, title: "Old" })),

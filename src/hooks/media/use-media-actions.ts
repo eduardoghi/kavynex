@@ -5,8 +5,7 @@ import { parseAppError } from "../../utils/app-error";
 import { INVALID_RUN_ID_ERROR_CODE } from "../../constants/error-codes";
 import { executeDeleteMedia } from "../../use-cases/delete-media";
 import { leftoverFilesNotice } from "../../utils/leftover-files-notice";
-import { executeMarkMediaWatched } from "../../use-cases/mark-media-watched";
-import { executeMarkMediaUnwatched } from "../../use-cases/mark-media-unwatched";
+import { executeSetMediaWatched } from "../../use-cases/set-media-watched";
 import { useAsyncFlag } from "../use-async-flag";
 import { usePerIdAsyncFlag } from "../use-per-id-async-flag";
 import { logError } from "../../utils/app-logger";
@@ -203,32 +202,29 @@ export function useMediaActions({
         runDeleteAction,
     ]);
 
-    const markAsWatched = useCallback(
-        async (mediaId: number): Promise<void> => {
+    // Marking watched and unwatched differ only in what they change in the row, which the use-case
+    // returns, so the open player gets the same change the list did.
+    const setWatched = useCallback(
+        async (mediaId: number, watched: boolean): Promise<void> => {
             await runWatchedActionFor(mediaId, async () => {
                 try {
-                    const watchedAt = await executeMarkMediaWatched({
+                    const change = await executeSetMediaWatched({
                         mediaId,
+                        watched,
                         updateMediaItems: setMediaItems,
                     });
 
-                    onWatchedChanged(mediaId, true);
+                    onWatchedChanged(mediaId, watched);
 
                     const active = activeMediaRef.current;
 
                     if (active?.id === mediaId) {
-                        // Reset progress together with watched_at, matching the media-list update
-                        // and the backend (which zeroes progress_seconds when marking watched).
-                        setActiveMedia({
-                            ...active,
-                            watched_at: watchedAt,
-                            progress_seconds: 0,
-                        });
+                        setActiveMedia({ ...active, ...change });
                     }
                 } catch (error) {
                     logError("media-actions", "Failed to update watched status.", error, {
                         mediaId,
-                        nextState: "watched",
+                        nextState: watched ? "watched" : "unwatched",
                     });
                     onError(resolveErrorMessage(error, "Failed to update watched status."));
                 }
@@ -237,35 +233,14 @@ export function useMediaActions({
         [setActiveMedia, onError, onWatchedChanged, runWatchedActionFor, setMediaItems]
     );
 
+    const markAsWatched = useCallback(
+        (mediaId: number) => setWatched(mediaId, true),
+        [setWatched]
+    );
+
     const markAsUnwatched = useCallback(
-        async (mediaId: number): Promise<void> => {
-            await runWatchedActionFor(mediaId, async () => {
-                try {
-                    await executeMarkMediaUnwatched({
-                        mediaId,
-                        updateMediaItems: setMediaItems,
-                    });
-
-                    onWatchedChanged(mediaId, false);
-
-                    const active = activeMediaRef.current;
-
-                    if (active?.id === mediaId) {
-                        setActiveMedia({
-                            ...active,
-                            watched_at: null,
-                        });
-                    }
-                } catch (error) {
-                    logError("media-actions", "Failed to update watched status.", error, {
-                        mediaId,
-                        nextState: "unwatched",
-                    });
-                    onError(resolveErrorMessage(error, "Failed to update watched status."));
-                }
-            });
-        },
-        [setActiveMedia, onError, onWatchedChanged, runWatchedActionFor, setMediaItems]
+        (mediaId: number) => setWatched(mediaId, false),
+        [setWatched]
     );
 
     const refreshComments = useCallback(
