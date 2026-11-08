@@ -105,16 +105,9 @@ async fn library_has_media<R: Runtime>(app: &AppHandle<R>) -> bool {
         return true;
     };
 
-    sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM videos) OR EXISTS(
-             SELECT 1 FROM channels
-             WHERE (avatar_path IS NOT NULL AND TRIM(avatar_path) <> '')
-                OR (banner_path IS NOT NULL AND TRIM(banner_path) <> '')
-         )",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(true)
+    crate::services::video_repository::library_holds_any_file(&pool)
+        .await
+        .unwrap_or(true)
 }
 
 #[tauri::command]
@@ -932,7 +925,7 @@ mod tests {
     fn open_path_in_system_command_rejects_a_missing_library_over_ipc() {
         let webview = test_webview(memory_db());
 
-        // With no library path supplied the command rejects in the configured-library guard,
+        // With no library configured the command rejects in the configured-library guard,
         // before it ever spawns a file manager, and the error code must survive the IPC round
         // trip. Also exercises the `path`/`libraryPath` (camelCase Option<String>) argument
         // deserialization. The one command in this file that takes an optional argument over IPC.

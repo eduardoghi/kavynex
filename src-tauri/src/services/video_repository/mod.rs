@@ -279,6 +279,34 @@ pub async fn list_channel_youtube_video_ids(
         .collect())
 }
 
+/// The YouTube video id stored for `media_id`. `None` when the media does not exist, and
+/// `Some(None)` when it exists without one (a local import).
+pub async fn find_media_youtube_video_id(
+    pool: &SqlitePool,
+    media_id: i64,
+) -> AppResult<Option<Option<String>>> {
+    sqlx::query_scalar("SELECT youtube_video_id FROM videos WHERE id = ?")
+        .bind(media_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|error| db_error("failed to read the media's video id", error))
+}
+
+/// Whether the database lists anything stored in the library, a media or a channel's avatar or
+/// banner.
+pub async fn library_holds_any_file(pool: &SqlitePool) -> AppResult<bool> {
+    sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM videos) OR EXISTS(
+             SELECT 1 FROM channels
+             WHERE (avatar_path IS NOT NULL AND TRIM(avatar_path) <> '')
+                OR (banner_path IS NOT NULL AND TRIM(banner_path) <> '')
+         )",
+    )
+    .fetch_one(pool)
+    .await
+    .map_err(|error| db_error("failed to check whether the library holds any file", error))
+}
+
 /// One media as the library index lists it (`library::index`).
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct LibraryIndexMediaRow {

@@ -56,16 +56,9 @@ async fn ensure_video_belongs_to_media(
     media_id: i64,
     video_id: &str,
 ) -> AppResult<()> {
-    let stored: Option<Option<String>> =
-        sqlx::query_scalar("SELECT youtube_video_id FROM videos WHERE id = ?")
-            .bind(media_id)
-            .fetch_optional(pool)
-            .await
-            .map_err(|error| {
-                crate::services::database::db_error("failed to read the media's video id", error)
-            })?;
-
-    let Some(stored) = stored else {
+    let Some(stored) =
+        crate::services::video_repository::find_media_youtube_video_id(pool, media_id).await?
+    else {
         return Err(AppError::from_code(
             AppErrorCode::MediaNotFound,
             "the media no longer exists",
