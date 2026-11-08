@@ -9,12 +9,9 @@ import { describe, expect, it } from "vitest";
 // is served from `http://tauri.localhost`, a different origin), so both tokens have to be named
 // in the CSP or the WebView refuses to load them.
 //
-// This is pinned in a test rather than left to review because nothing else can catch it. A unit
-// test only ever sees a mocked convertFileSrc. `pnpm tauri dev` serves the page from the Vite
-// origin, where Tauri injects no CSP header at all. Tauri does not add these tokens for you
-// (its set_csp only touches script-src/style-src and the isolation schema). The first thing to
-// exercise the real CSP is a packaged build, which is exactly where dropping a token would show
-// up as a library with no thumbnails and a player that cannot start.
+// Tauri does not add these tokens itself, and only a packaged build applies the CSP (see "How the
+// grant list is actually verified" in docs/THREAT-MODEL.md), so a dropped token is caught here
+// instead of as a release with no thumbnails.
 const REQUIRED_ASSET_SOURCES = ["asset:", "http://asset.localhost"];
 
 // The directives that actually serve library files. thumbnails/avatars, and video/audio.
