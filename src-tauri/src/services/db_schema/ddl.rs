@@ -146,19 +146,6 @@ pub(super) const INDEX_DDLS: &[IndexDdl] = &[
         since: BASELINE_SCHEMA_VERSION,
         ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id)",
     },
-    // Covers a channel's media newest-first (channel_id = ? ORDER BY created_at DESC, id DESC)
-    // without a separate sort step. Its original caller (the unpaginated list_media_by_channel)
-    // was removed. The paginated list_media_page sorts include title_normalized and are served by
-    // the composite indexes below, not this one. Kept because it is v8's only index and it still
-    // fits any future newest-first-only listing.
-    //
-    // MEASURED DEAD (2026-08-16), confirming the paragraph above rather than adding to it. It is
-    // chosen by nothing the backend issues.
-    IndexDdl {
-        table: "videos",
-        since: 8,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)",
-    },
     // Serves the title-sorted page of a channel's media (the paginated library list ordering by
     // title_normalized within a channel), so that sort does not filesort the whole channel.
     IndexDdl {
@@ -204,14 +191,6 @@ pub(super) const INDEX_DDLS: &[IndexDdl] = &[
         since: 12,
         ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_published_desc ON videos(channel_id, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN 0 ELSE 1 END) ASC, (CASE WHEN published_at IS NOT NULL AND TRIM(published_at) <> '' THEN published_at END) DESC, title_normalized ASC)",
     },
-    // MEASURED DEAD (2026-08-16). Never chosen. `channels.youtube_handle` is declared UNIQUE, so
-    // SQLite already maintains `sqlite_autoindex_channels_1` on exactly this column, and the handle
-    // lookup uses that one. This is a duplicate of an index the table definition creates for free.
-    IndexDdl {
-        table: "channels",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)",
-    },
     IndexDdl {
         table: "channels",
         since: BASELINE_SCHEMA_VERSION,
@@ -249,58 +228,6 @@ pub(super) const INDEX_DDLS: &[IndexDdl] = &[
         since: BASELINE_SCHEMA_VERSION,
         ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_thumb ON videos(channel_id, thumbnail_path)",
     },
-    // MEASURED DEAD (2026-08-16). None of the six below is chosen by any statement the backend
-    // issues. The first three would each serve a standalone lookup and there is none, because every
-    // query reaching those columns is scoped by `channel_id` first, so a `idx_videos_channel_*`
-    // composite above wins. The last three index booleans (cardinality 2). The only statements
-    // touching them are `get_media_repository_stats`, a full scan of `SUM(CASE ...)` with no WHERE,
-    // and the migration repairs, whose `<> 0` is not selective either.
-    //
-    // Left in place rather than dropped, deliberately. The cost is write amplification on a table
-    // this app inserts into a handful of rows at a time, and the removal is a migration every
-    // library runs once at startup for a saving nobody would notice. Bad trade. If a
-    // library-wide search (not scoped to a channel) ever arrives, it will want a *composite* tuned
-    // to its own clause anyway, not these. Re-measure before assuming any of this still holds. The
-    // method is EXPLAIN QUERY PLAN over the real statements on a schema with no ANALYZE, which is
-    // the planner production runs.
-    //
-    // What should send someone back to that measurement, because "a handful of rows at a time" is a
-    // premise the trade rests on rather than a property of the schema. A batched write path (a
-    // per-channel download queue, a folder import), or the first `apply_table_rebuilds` on this
-    // table. The rebuild recreates the indexes of every table it dropped by walking this list
-    // (rebuild.rs), so it would build all seven of the dead ones on `videos` over the whole library,
-    // inside a migration the user waits through at startup. That is where the cost stops being a
-    // rounding error on an insert and becomes something they can feel.
-    IndexDdl {
-        table: "videos",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)",
-    },
-    IndexDdl {
-        table: "videos",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)",
-    },
-    IndexDdl {
-        table: "videos",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)",
-    },
-    IndexDdl {
-        table: "videos",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)",
-    },
-    IndexDdl {
-        table: "videos",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)",
-    },
-    IndexDdl {
-        table: "videos",
-        since: BASELINE_SCHEMA_VERSION,
-        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)",
-    },
     // NOT dead, despite never appearing in a query plan, and the distinction matters because a
     // reader cleaning up on plan evidence alone would drop it. It is UNIQUE. It exists to enforce
     // "one row per (channel, youtube video id)", not to be chosen. It goes unused for lookups
@@ -322,6 +249,9 @@ pub(super) const INDEX_DDLS: &[IndexDdl] = &[
 /// An index an older schema created and a later migration dropped.
 pub(super) struct RetiredIndex {
     pub(super) name: &'static str,
+    /// The schema version that first created it, so a fixture of an older era does not get it.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(super) since: i64,
     /// The migration that drops it with `DROP INDEX IF EXISTS`.
     pub(super) retired_in: i64,
     /// The DDL older versions ran, kept for the test fixtures that rebuild a database of that era.
@@ -329,22 +259,85 @@ pub(super) struct RetiredIndex {
     pub(super) ddl: &'static str,
 }
 
-// The two `video_comments` indexes v16 drops. Neither was chosen by any statement the backend
-// issues (measured 2026-08-16 with EXPLAIN QUERY PLAN). The reply threads are rebuilt in the
-// renderer from the flat list the `video_id` query returns, so nothing looks a comment up by its
-// parent, and v10's dedup builds its own temporary index rather than walking the `comment_id` one.
-// Unlike the dead `videos` indexes above, these sit on the table a single comment merge writes up to
-// 100,000 rows into, so every merge paid for two indexes nobody read.
+// Every index below was dropped because no statement the backend issues chooses it, measured with
+// EXPLAIN QUERY PLAN over the real statements on a schema with no ANALYZE, which is the planner
+// production runs.
+//
+// v16 drops the two `video_comments` ones (measured 2026-08-16). The reply threads are rebuilt in
+// the renderer from the flat list the `video_id` query returns, so nothing looks a comment up by
+// its parent, and v10's dedup builds its own temporary index rather than walking the `comment_id`
+// one. A single comment merge writes up to 100,000 rows into that table, so every merge paid for
+// two indexes nobody read.
+//
+// v20 drops the eight on `videos` and `channels` (re-measured 2026-11-08 over 412 statements,
+// every filter and sort combination of the media grid included, with no plan getting worse).
+// `idx_channels_youtube_handle` duplicates the auto-index the UNIQUE `youtube_handle` column already
+// has, and the handle lookups take that one once it is gone. `idx_videos_channel_created_id`
+// served the unpaginated newest-first listing, since removed. The six single-column ones would each
+// serve a lookup that does not exist, since every query reaching those columns is scoped by
+// `channel_id` first, or index a boolean no query filters on selectively. Kept as long as the table
+// they sit on, they cost every write, and a table rebuild would have built all of them over the
+// whole library while the user waits at startup.
 pub(super) const RETIRED_INDEXES: &[RetiredIndex] = &[
     RetiredIndex {
         name: "idx_video_comments_parent_comment_id",
+        since: BASELINE_SCHEMA_VERSION,
         retired_in: 16,
         ddl: "CREATE INDEX IF NOT EXISTS idx_video_comments_parent_comment_id ON video_comments(parent_comment_id)",
     },
     RetiredIndex {
         name: "idx_video_comments_comment_id",
+        since: BASELINE_SCHEMA_VERSION,
         retired_in: 16,
         ddl: "CREATE INDEX IF NOT EXISTS idx_video_comments_comment_id ON video_comments(comment_id)",
+    },
+    RetiredIndex {
+        name: "idx_videos_channel_created_id",
+        since: 8,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_channel_created_id ON videos(channel_id, created_at DESC, id DESC)",
+    },
+    RetiredIndex {
+        name: "idx_channels_youtube_handle",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_channels_youtube_handle ON channels(youtube_handle)",
+    },
+    RetiredIndex {
+        name: "idx_videos_youtube_video_id",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_youtube_video_id ON videos(youtube_video_id)",
+    },
+    RetiredIndex {
+        name: "idx_videos_watched_at",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_watched_at ON videos(watched_at)",
+    },
+    RetiredIndex {
+        name: "idx_videos_published_at",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at)",
+    },
+    RetiredIndex {
+        name: "idx_videos_has_comments",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_has_comments ON videos(has_comments)",
+    },
+    RetiredIndex {
+        name: "idx_videos_is_live",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_is_live ON videos(is_live)",
+    },
+    RetiredIndex {
+        name: "idx_videos_has_live_chat",
+        since: BASELINE_SCHEMA_VERSION,
+        retired_in: 20,
+        ddl: "CREATE INDEX IF NOT EXISTS idx_videos_has_live_chat ON videos(has_live_chat)",
     },
 ];
 

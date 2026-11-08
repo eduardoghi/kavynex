@@ -199,15 +199,11 @@ ones the app's queries rely on are:
 - The partial unique index on `(channel_id, youtube_video_id)`. It never shows up in a query plan
   and is not meant to, since it exists to enforce one row per YouTube video per channel.
 
-Eight more are declared and marked MEASURED DEAD in `ddl.rs`, because no statement the backend
-issues chooses them (measured with `EXPLAIN QUERY PLAN` on 2026-08-16).
-`idx_videos_channel_created_id`, `idx_channels_youtube_handle` (a duplicate of the auto-index the
-UNIQUE `youtube_handle` column already has), and the single-column `youtube_video_id`,
-`watched_at`, `published_at`, `has_comments`, `is_live` and `has_live_chat` indexes on `videos`.
-They stay because the write cost is negligible at the rate this app inserts media rows. `ddl.rs`
-records what should send someone back to that measurement. The two dead `video_comments` indexes,
-on `parent_comment_id` and `comment_id`, did not get the same pass. A comment merge writes up to
-100,000 rows into that table, so v16 drops them (`RETIRED_INDEXES`).
+Ten more existed and were dropped, because no statement the backend issues chooses them
+(measured with `EXPLAIN QUERY PLAN`). v16 drops the two on `video_comments`, and v20 the eight on
+`videos` and `channels`, among them `idx_channels_youtube_handle`, a duplicate of the auto-index the
+UNIQUE `youtube_handle` column already has. `RETIRED_INDEXES` in `ddl.rs` lists them, with what was
+measured and why each was unused.
 
 Each entry in `INDEX_DDLS` carries the schema version that first created it (`since`), and a
 migration builds only the indexes up to its own version (`index_ddls_through`). Running the whole
@@ -238,7 +234,8 @@ in `ORDER BY` order when the leading terms match term for term, so:
   `duration_seconds` / `published_at` columns. A plain column index is still *reported* as
   used by `EXPLAIN QUERY PLAN` while the query silently sorts the whole result set anyway.
 - `added_date` sorts on `created_at DESC, title_normalized DESC, id DESC`. The older
-  `idx_videos_channel_created_id` omits `title_normalized`, so it could not serve that clause.
+  `idx_videos_channel_created_id` (dropped in v20) omitted `title_normalized`, so it could not
+  serve that clause.
 - `publication_date` is the only category needing **two** indexes, one per direction. SQLite can
   walk an index forwards or backwards, but not partly each way, and this clause is
   mixed-direction, since desc reverses only the date, keeping the dated-first group key and the title
@@ -262,7 +259,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `19`), in `db_schema/mod.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `20`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -276,8 +273,8 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   then stamps `user_version = 7`. Because every statement is idempotent
   (`IF NOT EXISTS` / column-existence-checked `ALTER`), running the baseline against an
   already-current database is a no-op.
-- **v8** adds the `idx_videos_channel_created_id` index. Being purely additive, its
-  migration builds the indexes up to v8 and stamps `user_version = 8`.
+- **v8** added the `idx_videos_channel_created_id` index. v20 drops it, so v8 no longer has a
+  migration, and a database below it goes on to v9.
 - **v9** adds the `idx_videos_file_path` and `idx_videos_live_chat_file_path` indexes,
   which keep the per-artifact reference-count lookups run on delete off a full table scan.
   Also purely additive, so its migration builds the indexes up to v9 and stamps
@@ -366,6 +363,8 @@ pool (`database.rs::build_pool_at`), before any other query executes.
 - **v19** creates `ignored_channel_media` (see above). Additive, with the stamp in the same
   transaction. An import stamped at v19 or later is refused when the table is missing. The table is created by this migration rather than by the baseline, which every
   database passes through first, so a new database and an upgraded one get it the same way.
+- **v20** drops the eight `videos` and `channels` indexes no statement chooses (see "Indexes"
+  above), with the stamp in the same transaction, like v16.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive, so guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump

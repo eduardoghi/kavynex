@@ -613,7 +613,7 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
 
         // The indexes this era still had and a later migration dropped.
         for retired in RETIRED_INDEXES {
-            if version < retired.retired_in {
+            if retired.since <= version && version < retired.retired_in {
                 sqlx::query(sqlx::AssertSqlSafe(retired.ddl))
                     .execute(pool)
                     .await
@@ -1246,7 +1246,6 @@ async fn migrates_a_real_v1_database_to_the_current_schema() {
 
     // The indexes the later migrations add exist.
     for index in [
-        "idx_videos_channel_created_id",           // v8
         "idx_videos_file_path",                    // v9
         "idx_videos_live_chat_file_path",          // v9
         "idx_video_comments_video_comment_unique", // v10
@@ -1257,7 +1256,8 @@ async fn migrates_a_real_v1_database_to_the_current_schema() {
         );
     }
 
-    // And the ones v16 drops are gone. The fixture was built by a real old version, so it has them.
+    // And the retired ones are gone. The fixture was built by a real old version, so it has the
+    // ones that version created.
     for retired in RETIRED_INDEXES {
         assert!(
             !object_exists(&pool, "index", retired.name).await,
@@ -1530,52 +1530,6 @@ async fn ensure_schema_refuses_database_from_newer_version() {
         .await
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION + 1);
-}
-
-#[tokio::test]
-async fn migration_8_adds_the_channel_created_index_to_a_pre_v8_database() {
-    let pool = memory_pool().await;
-    ensure_schema(&pool).await.unwrap();
-
-    // A fresh database already has the index from the baseline.
-    let fresh: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM sqlite_master
-         WHERE type = 'index' AND name = 'idx_videos_channel_created_id'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(fresh.0, 1);
-
-    // Simulate a database left by v7. Drop the v8 index and roll the marker back.
-    sqlx::query("DROP INDEX idx_videos_channel_created_id")
-        .execute(&pool)
-        .await
-        .unwrap();
-    sqlx::query("PRAGMA user_version = 7")
-        .execute(&pool)
-        .await
-        .unwrap();
-
-    ensure_schema(&pool).await.unwrap();
-
-    let (index_count,): (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM sqlite_master
-         WHERE type = 'index' AND name = 'idx_videos_channel_created_id'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        index_count, 1,
-        "migration 8 must add the index to a pre-v8 database"
-    );
-
-    let (version,): (i64,) = sqlx::query_as("PRAGMA user_version")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(version, SCHEMA_VERSION);
 }
 
 #[tokio::test]

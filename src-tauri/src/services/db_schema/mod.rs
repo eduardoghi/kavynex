@@ -5,7 +5,7 @@ use crate::{AppError, AppErrorCode, AppResult};
 
 /// Current schema version. Bump this and add a matching migration block in
 /// `ensure_schema` whenever the schema changes.
-pub(crate) const SCHEMA_VERSION: i64 = 19;
+pub(crate) const SCHEMA_VERSION: i64 = 20;
 
 /// The version from which a database holds every trigger in `TRIGGER_DDLS` without a migration
 /// still to create it. v13 creates them and v14 re-runs the whole list, so a database below 14 gets
@@ -85,7 +85,7 @@ mod migrations;
 use migrations::{
     apply_baseline_schema, apply_migration_10, apply_migration_11, apply_migration_12,
     apply_migration_13, apply_migration_14, apply_migration_15, apply_migration_16,
-    apply_migration_17, apply_migration_18, apply_migration_19, apply_migration_8,
+    apply_migration_17, apply_migration_18, apply_migration_19, apply_migration_20,
     apply_migration_9,
 };
 
@@ -170,10 +170,8 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_baseline_schema(pool).await?;
     }
 
-    // v8. Adds idx_videos_channel_created_id.
-    if needs_migration(current_version, 8) {
-        apply_migration_8(pool).await?;
-    }
+    // v8 added idx_videos_channel_created_id, which v20 drops (RETIRED_INDEXES), so a database
+    // below v8 has nothing left to get from it and goes on to v9.
 
     // v9. Adds idx_videos_file_path and idx_videos_live_chat_file_path.
     if needs_migration(current_version, 9) {
@@ -242,10 +240,15 @@ pub async fn ensure_schema(pool: &SqlitePool) -> AppResult<()> {
         apply_migration_19(pool).await?;
     }
 
+    // v20. Drops the eight videos and channels indexes no query reads. See apply_migration_20.
+    if needs_migration(current_version, 20) {
+        apply_migration_20(pool).await?;
+    }
+
     // Each migration is guarded by version and transactional (it stamps the new
     // user_version inside its own transaction, so a crash leaves the database fully at the
     // old or the new version). An additive migration (a new column or index) runs the
-    // guarded ALTER/CREATE like `apply_migration_8`. Enforcing a new invariant on an existing
+    // guarded ALTER/CREATE like `apply_migration_18`. Enforcing a new invariant on an existing
     // table can often stay additive too. `apply_migration_13` backports the videos live-chat
     // CHECK with a trigger rather than a rebuild. A change that genuinely rewrites the table (a
     // column type, dropping a column, replacing a UNIQUE) cannot be expressed with

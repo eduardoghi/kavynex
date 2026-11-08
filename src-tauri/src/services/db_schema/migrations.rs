@@ -69,11 +69,6 @@ async fn apply_index_only_migration(pool: &SqlitePool, target_version: i64) -> A
     Ok(())
 }
 
-/// v8. Creates `idx_videos_channel_created_id`.
-pub(super) async fn apply_migration_8(pool: &SqlitePool) -> AppResult<()> {
-    apply_index_only_migration(pool, 8).await
-}
-
 /// v9. Creates `idx_videos_file_path` and `idx_videos_live_chat_file_path`, which keep the
 /// per-artifact reference-count lookups run on delete off a full table scan.
 pub(super) async fn apply_migration_9(pool: &SqlitePool) -> AppResult<()> {
@@ -267,9 +262,9 @@ pub(super) async fn apply_migration_15(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
-/// v16. Drops the two `video_comments` indexes nothing reads (see RETIRED_INDEXES). Every comment
-/// merge was maintaining them. The drops and the stamp share one transaction.
-pub(super) async fn apply_migration_16(pool: &SqlitePool) -> AppResult<()> {
+/// Drops the indexes `RETIRED_INDEXES` retires in `target_version` and stamps it, in one
+/// transaction.
+async fn apply_index_retirement(pool: &SqlitePool, target_version: i64) -> AppResult<()> {
     let mut tx = pool
         .begin()
         .await
@@ -277,7 +272,7 @@ pub(super) async fn apply_migration_16(pool: &SqlitePool) -> AppResult<()> {
 
     for index in RETIRED_INDEXES
         .iter()
-        .filter(|index| index.retired_in == 16)
+        .filter(|index| index.retired_in == target_version)
     {
         // The name is a constant from RETIRED_INDEXES, never input.
         sqlx::query(sqlx::AssertSqlSafe(format!(
@@ -289,13 +284,19 @@ pub(super) async fn apply_migration_16(pool: &SqlitePool) -> AppResult<()> {
         .map_err(|error| db_error("failed to drop a retired index", error))?;
     }
 
-    set_user_version(&mut tx, 16).await?;
+    set_user_version(&mut tx, target_version).await?;
 
     tx.commit()
         .await
         .map_err(|error| db_error("failed to commit schema migration", error))?;
 
     Ok(())
+}
+
+/// v16. Drops the two `video_comments` indexes nothing reads (see RETIRED_INDEXES). Every comment
+/// merge was maintaining them.
+pub(super) async fn apply_migration_16(pool: &SqlitePool) -> AppResult<()> {
+    apply_index_retirement(pool, 16).await
 }
 
 /// v17. Adds `video_comments.original_text`, the text a comment had when it was first stored.
@@ -388,6 +389,11 @@ pub(super) async fn apply_migration_19(pool: &SqlitePool) -> AppResult<()> {
         .map_err(|error| db_error("failed to commit schema migration", error))?;
 
     Ok(())
+}
+
+/// v20. Drops the eight `videos` and `channels` indexes nothing reads (see RETIRED_INDEXES).
+pub(super) async fn apply_migration_20(pool: &SqlitePool) -> AppResult<()> {
+    apply_index_retirement(pool, 20).await
 }
 
 /// v10. Creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
