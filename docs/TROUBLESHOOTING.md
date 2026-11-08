@@ -60,12 +60,10 @@ Neither message means the download is corrupt. Kavynex's installers are not code
 [`RELEASE-SECURITY.md`](RELEASE-SECURITY.md) for why), so macOS quarantines the app on first launch
 and refuses it.
 
-Which of the two you get follows from the bundle's signature, not from your macOS version, which
-this page claimed until it was checked on a real machine. Releases through v1.5.0 carried only the
-signature the linker adds to the executable, with the bundle itself unsealed, and got the harsher
-"damaged" wording, the one a genuinely broken bundle gets too. **From v1.6.0 the bundle is sealed
-with an ad-hoc signature**, and macOS says instead that it could not verify the app is free of
-malware. Both were seen on macOS 26.6.1, on the same machine, against the two builds.
+Which of the two you get follows from the release, not from your macOS version. Releases through
+v1.5.0 get the harsher "damaged" wording, the one a genuinely broken bundle gets too. **From v1.6.0
+the bundle is sealed with an ad-hoc signature**, and macOS says instead that it could not verify
+the app is free of malware (`RELEASE-SECURITY.md` explains the difference).
 
 The difference is not only wording. Only the sealed build offers a route that does not need a
 terminal.

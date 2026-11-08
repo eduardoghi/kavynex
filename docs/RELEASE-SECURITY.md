@@ -115,11 +115,9 @@ a corrupt download and sends the user to check a file that is perfectly fine.
 
 Sealing the bundle moved it, and v1.6.0 is the first release where that was measured rather than
 predicted. On macOS 26.6.1 the sealed build says it **could not verify kavynex is free of
-malware**, and offers an **Open Anyway** button under System Settings > Privacy & Security that the
-"damaged" case on the same machine never showed. Clicking it asks once more, with "Move to Bin" as
-the highlighted button, and then for an administrator password, so the route exists without being
-short. "Unidentified developer" is the older phrasing for this path and is not what current macOS
-shows, which matters when matching a user's report against `TROUBLESHOOTING.md`.
+malware**, and offers an **Open Anyway** route the "damaged" case on the same machine never showed.
+What the user sees and does on each build is in `TROUBLESHOOTING.md`. "Unidentified developer" is
+the older phrasing for this path and is not what current macOS shows.
 
 ## When these three controls started applying
 
