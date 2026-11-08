@@ -120,7 +120,7 @@ fn redact_run_paths(line: &str, paths: &[&Path]) -> String {
 /// a control character, a stray `[`) is now refused here instead of being handed to yt-dlp to fail
 /// on. Real handles are unaffected. YouTube's own `@name`, `c/` and `user/` forms carry none of
 /// those, and the refusal is the clearer of the two failures.
-fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
+pub(crate) fn normalize_channel_handle_to_url(youtube_handle: &str) -> AppResult<String> {
     let normalized = youtube_handle.trim();
 
     if normalized.is_empty() {

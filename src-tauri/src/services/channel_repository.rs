@@ -225,6 +225,87 @@ pub async fn update_channel_name_and_handle(
     Ok(())
 }
 
+/// Refuses a value that is not a YouTube video id, and a channel that does not exist, before an
+/// ignore or an unignore touches the table.
+async fn ensure_ignorable(
+    pool: &SqlitePool,
+    channel_id: i64,
+    youtube_video_id: &str,
+) -> AppResult<()> {
+    if !crate::services::yt_dlp::metadata::is_valid_youtube_video_id(youtube_video_id) {
+        return Err(AppError::from_code(
+            AppErrorCode::InvalidYoutubeVideoId,
+            "not a YouTube video id",
+        ));
+    }
+
+    if get_channel_by_id(pool, channel_id).await?.is_none() {
+        return Err(AppError::from_code(
+            AppErrorCode::ChannelNotFound,
+            "channel not found",
+        ));
+    }
+
+    Ok(())
+}
+
+/// Stops offering one of the channel's media on YouTube for import, in its "Not in library" list.
+/// Ignoring one already ignored changes nothing.
+pub async fn ignore_channel_media(
+    pool: &SqlitePool,
+    channel_id: i64,
+    youtube_video_id: &str,
+) -> AppResult<()> {
+    let youtube_video_id = youtube_video_id.trim();
+    ensure_ignorable(pool, channel_id, youtube_video_id).await?;
+
+    sqlx::query(
+        "INSERT INTO ignored_channel_media (channel_id, youtube_video_id) VALUES (?, ?) \
+         ON CONFLICT (channel_id, youtube_video_id) DO NOTHING",
+    )
+    .bind(channel_id)
+    .bind(youtube_video_id)
+    .execute(pool)
+    .await
+    .map_err(|error| db_error("failed to ignore the channel media", error))?;
+
+    Ok(())
+}
+
+/// Offers an ignored media for import again. One that was not ignored changes nothing.
+pub async fn unignore_channel_media(
+    pool: &SqlitePool,
+    channel_id: i64,
+    youtube_video_id: &str,
+) -> AppResult<()> {
+    let youtube_video_id = youtube_video_id.trim();
+    ensure_ignorable(pool, channel_id, youtube_video_id).await?;
+
+    sqlx::query("DELETE FROM ignored_channel_media WHERE channel_id = ? AND youtube_video_id = ?")
+        .bind(channel_id)
+        .bind(youtube_video_id)
+        .execute(pool)
+        .await
+        .map_err(|error| db_error("failed to unignore the channel media", error))?;
+
+    Ok(())
+}
+
+/// The YouTube video ids of the channel's ignored media.
+pub async fn list_ignored_channel_media_ids(
+    pool: &SqlitePool,
+    channel_id: i64,
+) -> AppResult<std::collections::HashSet<String>> {
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT youtube_video_id FROM ignored_channel_media WHERE channel_id = ?")
+            .bind(channel_id)
+            .fetch_all(pool)
+            .await
+            .map_err(|error| db_error("failed to list the ignored channel media", error))?;
+
+    Ok(rows.into_iter().map(|(id,)| id).collect())
+}
+
 // `update_channel_avatar_path` and `count_channels_using_avatar_path_outside_channel` lived here
 // until they were superseded by `library::cleanup::replace_channel_image_and_plan_cleanup`, which
 // does the update and the reference decision in one transaction. Both were removed rather than

@@ -369,6 +369,27 @@ pub(super) async fn apply_migration_18(pool: &SqlitePool) -> AppResult<()> {
     Ok(())
 }
 
+/// v19. Creates `ignored_channel_media`. Additive, with the stamp in the same transaction.
+pub(super) async fn apply_migration_19(pool: &SqlitePool) -> AppResult<()> {
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|error| db_error("failed to begin schema migration", error))?;
+
+    sqlx::query(IGNORED_CHANNEL_MEDIA_TABLE_DDL)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| db_error("failed to create the ignored channel media table", error))?;
+
+    set_user_version(&mut tx, 19).await?;
+
+    tx.commit()
+        .await
+        .map_err(|error| db_error("failed to commit schema migration", error))?;
+
+    Ok(())
+}
+
 /// v10. Creates `idx_video_comments_video_comment_unique`, moving the "no duplicate
 /// (video_id, comment_id)" invariant out of application code (media_comments::
 /// dedupe_comments_by_id) and into the schema. Unlike the index-only migrations above it cannot

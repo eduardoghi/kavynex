@@ -544,6 +544,31 @@ async fn media_exists_for_channel_and_youtube_id_matches_channel_and_id() {
 }
 
 #[tokio::test]
+async fn the_channel_youtube_ids_are_its_own_and_only_the_set_ones() {
+    let pool = create_test_pool().await;
+
+    for (channel, path, id) in [
+        (1, "video/a.mp4", Some("yt1")),
+        (1, "video/b.mp4", None),
+        (1, "video/c.mp4", Some("yt3")),
+        (2, "video/d.mp4", Some("yt2")),
+    ] {
+        insert_media(
+            &pool, channel, "A", path, None, "video", id, None, None, false, None,
+        )
+        .await
+        .unwrap();
+    }
+
+    let ids = list_channel_youtube_video_ids(&pool, 1).await.unwrap();
+
+    assert_eq!(
+        ids,
+        std::collections::HashSet::from(["yt1".to_string(), "yt3".to_string()])
+    );
+}
+
+#[tokio::test]
 async fn media_exists_for_channel_and_youtube_id_treats_blank_id_as_absent() {
     let pool = create_test_pool().await;
     insert_media(

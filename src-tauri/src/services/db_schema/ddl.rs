@@ -92,6 +92,18 @@ pub(super) const APP_SETTINGS_TABLE_DDL: &str = "CREATE TABLE IF NOT EXISTS app_
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 )";
 
+/// The media of a channel on YouTube that the user chose to stop being offered for import (the
+/// channel page's "Not in library" list). By YouTube video id, and gone with the channel. Created by
+/// v19 rather than by the baseline, which every database passes before it, so a fresh one gets it
+/// from the same migration an older one does.
+pub(super) const IGNORED_CHANNEL_MEDIA_TABLE_DDL: &str =
+    "CREATE TABLE IF NOT EXISTS ignored_channel_media (
+    channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    youtube_video_id TEXT NOT NULL CHECK (length(youtube_video_id) = 11),
+    ignored_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (channel_id, youtube_video_id)
+) WITHOUT ROWID";
+
 pub(super) const TABLE_DDLS: &[&str] = &[
     CHANNELS_TABLE_DDL,
     VIDEOS_TABLE_DDL,

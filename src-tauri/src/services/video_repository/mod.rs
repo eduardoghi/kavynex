@@ -257,6 +257,27 @@ pub async fn find_media_by_channel_and_file_path(
     .map_err(|error| db_error("failed to find media by file path", error))
 }
 
+/// The YouTube video ids of the channel's media, for telling what it has on YouTube that the
+/// library does not (`yt_dlp::channel_listing`).
+pub async fn list_channel_youtube_video_ids(
+    pool: &SqlitePool,
+    channel_id: i64,
+) -> AppResult<std::collections::HashSet<String>> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT youtube_video_id FROM videos          WHERE channel_id = ? AND youtube_video_id IS NOT NULL",
+    )
+    .bind(channel_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|error| db_error("failed to list the channel's youtube video ids", error))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(id,)| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect())
+}
+
 /// Cheap pre-check for the yt-dlp (URL) add flow. Whether `channel_id` already has a media row
 /// for `youtube_video_id`, mirroring the "non-empty trimmed id" semantics of the unique partial
 /// index `idx_videos_channel_youtube_video_id_unique`. Letting the caller run this before

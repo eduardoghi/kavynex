@@ -145,6 +145,23 @@ optional off-volume mirror directory, see "External database mirror" below). Rea
 rather than trusting a count here, because adding a setting is a one-line change on that struct, and
 this document is not what stops the two from drifting.
 
+### `ignored_channel_media`
+
+```sql
+CREATE TABLE ignored_channel_media (
+    channel_id INTEGER NOT NULL REFERENCES channels(id) ON DELETE CASCADE,
+    youtube_video_id TEXT NOT NULL CHECK (length(youtube_video_id) = 11),
+    ignored_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (channel_id, youtube_video_id)
+) WITHOUT ROWID
+```
+
+The media of a channel on YouTube that the user chose to stop being offered in the channel page's
+"Not in library" list (v19). One row per channel and YouTube video id, written by
+`ignore_channel_media` and removed by `unignore_channel_media` (`channel_repository.rs`). Nothing
+else reads it. It holds no title, since the listing that shows an ignored media brings its title
+along, and a row whose media has left the channel simply matches nothing.
+
 ### Live chat is not in the database
 
 Live chat replay data is stored as gzip-compressed JSON files on disk under the library's
@@ -156,7 +173,7 @@ always empty by design; it is dropped by the baseline migration
 
 ### Foreign keys and cascades
 
-`videos.channel_id` and `video_comments.video_id` both declare
+`videos.channel_id`, `video_comments.video_id` and `ignored_channel_media.channel_id` all declare
 `FOREIGN KEY (...) REFERENCES ... ON DELETE CASCADE`, and every connection opens with
 `PRAGMA foreign_keys = ON` (see "Connection settings" below). Deleting a channel deletes
 its videos, which in turn deletes their comments, in the database itself. The artifact
@@ -245,7 +262,7 @@ tells you the matching index no longer applies.
 ## Versioned migrations
 
 The schema version is tracked with SQLite's built-in `PRAGMA user_version`, compared
-against a Rust constant, `SCHEMA_VERSION` (currently `18`), in `db_schema/mod.rs`.
+against a Rust constant, `SCHEMA_VERSION` (currently `19`), in `db_schema/mod.rs`.
 `ensure_schema(pool)` runs once, synchronously, as part of opening the shared connection
 pool (`database.rs::build_pool_at`), before any other query executes.
 
@@ -343,6 +360,11 @@ pool (`database.rs::build_pool_at`), before any other query executes.
   fetch brings a different text for a stored comment (see `video_comments` above). Additive, with a
   guarded `ALTER TABLE ADD COLUMN` and the stamp in one transaction. An import stamped at v17 or
   later is refused when the column is missing (see "Import" below).
+- **v18** adds `channels.banner_path` and its index `idx_channels_banner_path`, which the thumbnail
+  reference count reads. Additive, with the stamp in the same transaction.
+- **v19** creates `ignored_channel_media` (see above). Additive, with the stamp in the same
+  transaction. The table is created by this migration rather than by the baseline, which every
+  database passes through first, so a new database and an upgraded one get it the same way.
 - **Additive vs. table-rebuild migrations.** A new column or index is additive, so guard it
   with a column-existence check (like `ensure_videos_additive_columns`) or
   `CREATE INDEX IF NOT EXISTS`, wrap it in a migration function, and bump

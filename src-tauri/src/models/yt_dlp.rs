@@ -418,6 +418,70 @@ pub struct ExternalToolsStatus {
     pub js_runtime: ExternalToolHealth,
 }
 
+/// One tab of a channel (its videos, or its past lives) as `--flat-playlist --dump-single-json`
+/// prints it. The entries stay JSON values here and are read one at a time, so an entry of an odd
+/// shape is skipped rather than failing the whole list (see `yt_dlp::channel_listing`).
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct YtDlpChannelTab {
+    #[serde(default)]
+    pub entries: Vec<serde_json::Value>,
+}
+
+/// What an entry of [`YtDlpChannelTab`] says about one media, the fields the comparison with the
+/// library and the list on screen read.
+#[derive(Deserialize, Default, Clone, Debug)]
+pub struct YtDlpChannelTabEntry {
+    #[serde(default, deserialize_with = "lenient_string")]
+    pub id: Option<String>,
+    #[serde(default, deserialize_with = "lenient_string")]
+    pub title: Option<String>,
+    #[serde(default, deserialize_with = "lenient_f64")]
+    pub duration: Option<f64>,
+    /// Approximate in a flat list. yt-dlp reads it from the "3 weeks ago" the tab shows.
+    #[serde(default, deserialize_with = "lenient_i64")]
+    pub timestamp: Option<i64>,
+    #[serde(default, deserialize_with = "lenient_string")]
+    pub live_status: Option<String>,
+}
+
+/// Which tab of the channel a media was listed on. Shorts are left out on purpose.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
+pub enum ChannelTabKind {
+    Video,
+    Live,
+}
+
+/// A media the channel has on YouTube.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
+pub struct ChannelMediaOnYoutube {
+    pub youtube_video_id: String,
+    pub title: String,
+    pub kind: ChannelTabKind,
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub duration_seconds: Option<i64>,
+    /// Unix seconds, approximate (see [`YtDlpChannelTabEntry::timestamp`]).
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub published_at: Option<i64>,
+}
+
+/// The media a channel has on YouTube that its library entry does not, newest first, apart from
+/// the ones the user ignored.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/types/generated/"))]
+pub struct MissingChannelMedia {
+    pub missing: Vec<ChannelMediaOnYoutube>,
+    /// The missing media the user chose to stop being offered, in the same order.
+    pub ignored: Vec<ChannelMediaOnYoutube>,
+    /// How many media the channel's tabs listed, the ones already in the library included.
+    pub listed: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

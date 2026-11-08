@@ -585,7 +585,7 @@ async fn read_filtered_stderr_lines(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn run_yt_dlp_and_capture_json(
+pub(super) async fn run_yt_dlp_and_capture_json(
     yt_dlp: &str,
     args: &[String],
     timeout_secs: u64,
@@ -724,7 +724,7 @@ async fn run_yt_dlp_and_capture_json(
 /// `run_yt_dlp_and_capture_json` and a release guard that unregisters the run when dropped. An
 /// empty/absent run_id means the caller opted out of cancellation, so the flag is `None` and the
 /// fetch runs uninterruptibly to completion or timeout as before.
-fn optional_cancellable_run(
+pub(super) fn optional_cancellable_run(
     run_id: Option<&str>,
 ) -> AppResult<(Option<Arc<AtomicBool>>, Option<DownloadRunReleaseGuard>)> {
     match run_id.map(str::trim).filter(|value| !value.is_empty()) {

@@ -194,6 +194,28 @@ pub async fn replace_channel_banner<R: Runtime>(
     .await
 }
 
+/// Stops offering one of the channel's media on YouTube for import, in its "Not in library" list.
+#[tauri::command]
+pub async fn ignore_channel_media(
+    db: State<'_, Db>,
+    channel_id: i64,
+    youtube_video_id: String,
+) -> AppResult<()> {
+    let pool = db.pool().await?;
+    repo::ignore_channel_media(&pool, channel_id, &youtube_video_id).await
+}
+
+/// Offers an ignored media of the channel for import again.
+#[tauri::command]
+pub async fn unignore_channel_media(
+    db: State<'_, Db>,
+    channel_id: i64,
+    youtube_video_id: String,
+) -> AppResult<()> {
+    let pool = db.pool().await?;
+    repo::unignore_channel_media(&pool, channel_id, &youtube_video_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,7 +234,9 @@ mod tests {
                 find_channel_by_youtube_handle,
                 get_channel_by_id,
                 insert_channel,
-                update_channel_name_and_handle
+                update_channel_name_and_handle,
+                ignore_channel_media,
+                unignore_channel_media
             ])
             .build(mock_context(noop_assets()))
             .unwrap();
@@ -256,6 +280,62 @@ mod tests {
         assert_eq!(channels.len(), 1);
         assert_eq!(channels[0]["youtube_handle"], "@chan");
         assert_eq!(channels[0]["name"], "Chan");
+    }
+
+    /// The ids of the channel's ignored media, read straight from the database the webview manages.
+    fn ignored_ids(
+        webview: &tauri::WebviewWindow<tauri::test::MockRuntime>,
+        channel_id: i64,
+    ) -> std::collections::HashSet<String> {
+        tauri::async_runtime::block_on(async {
+            let pool = webview.state::<Db>().pool().await.unwrap();
+            repo::list_ignored_channel_media_ids(&pool, channel_id)
+                .await
+                .unwrap()
+        })
+    }
+
+    #[test]
+    fn a_channel_media_is_ignored_and_shown_again_over_ipc() {
+        let webview = test_webview(memory_db());
+        insert(&webview, "Chan", "@chan");
+        let body = serde_json::json!({ "channelId": 1, "youtubeVideoId": "aaaaaaaaaaa" });
+
+        invoke(&webview, "ignore_channel_media", body.clone()).unwrap();
+        // Twice is the same as once.
+        invoke(&webview, "ignore_channel_media", body.clone()).unwrap();
+        assert_eq!(
+            ignored_ids(&webview, 1),
+            std::collections::HashSet::from(["aaaaaaaaaaa".to_string()])
+        );
+
+        invoke(&webview, "unignore_channel_media", body).unwrap();
+        assert!(ignored_ids(&webview, 1).is_empty());
+    }
+
+    #[test]
+    fn ignoring_refuses_a_value_that_is_not_a_video_id_and_a_channel_that_is_not_there() {
+        let webview = test_webview(memory_db());
+        insert(&webview, "Chan", "@chan");
+
+        let not_an_id = invoke(
+            &webview,
+            "ignore_channel_media",
+            serde_json::json!({ "channelId": 1, "youtubeVideoId": "../x" }),
+        )
+        .unwrap_err();
+        assert_eq!(
+            not_an_id["code"],
+            AppErrorCode::InvalidYoutubeVideoId.as_str()
+        );
+
+        let no_channel = invoke(
+            &webview,
+            "ignore_channel_media",
+            serde_json::json!({ "channelId": 99, "youtubeVideoId": "aaaaaaaaaaa" }),
+        )
+        .unwrap_err();
+        assert_eq!(no_channel["code"], AppErrorCode::ChannelNotFound.as_str());
     }
 
     #[test]

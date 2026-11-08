@@ -9,6 +9,7 @@
 //!
 //! Beyond the re-exports the command layer imports, this module holds nothing of its own.
 
+pub mod channel_listing;
 pub mod cookies;
 pub mod download;
 pub mod events;
@@ -16,6 +17,7 @@ pub mod metadata;
 pub mod registry;
 pub mod url;
 
+pub use channel_listing::list_channel_missing_media_async;
 pub use download::{cancel_all_active_downloads_blocking, download_media_from_url_async};
 pub use metadata::{
     fetch_youtube_comments_async, fetch_yt_dlp_metadata, list_yt_dlp_formats_async,

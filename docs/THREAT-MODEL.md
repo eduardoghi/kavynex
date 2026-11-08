@@ -598,14 +598,19 @@ one. `download_channel_avatar_from_handle` (`commands/thumbnail.rs`) takes it st
 never calls `utils::validation::ensure_valid_youtube_handle`, so this function is the only gate that
 value meets before it becomes a yt-dlp argument.
 
+`list_channel_missing_media` (`commands/yt_dlp.rs`) takes a channel id rather than a handle, and
+`services/yt_dlp/channel_listing.rs` reads the handle from the database and builds each tab's URL
+from what this function returns, so the listing passes the same gate. It runs without cookies, and
+like every other run it puts `--` before the URL.
+
 One behavior follows and is worth naming rather than discovering. A handle carrying a character no
 URI may hold (a space, a control character) does not parse, so it is refused here instead of being
 handed to yt-dlp to fail on. No real `@name`, `c/` or `user/` form contains one, and a refusal up
 front is the clearer of the two failures.
 
 Every yt-dlp invocation also places a literal `--` separator before the URL argument
-(the argv builder in `services/yt_dlp/download/command.rs`, and `services/yt_dlp/metadata.rs`
-for the metadata calls), so the URL can never be reinterpreted as a
+(the argv builder in `services/yt_dlp/download/command.rs`, `services/yt_dlp/metadata.rs`
+for the metadata calls, and `services/yt_dlp/channel_listing.rs` for the channel listing), so the URL can never be reinterpreted as a
 command-line flag by yt-dlp itself. Defense-in-depth on top of the scheme/host check,
 not a substitute for it. Binaries are always invoked via `std::process::Command`/
 `tokio::process::Command` with an argument array, never a shell string, so there is no

@@ -43,7 +43,13 @@ async fn ensure_schema_creates_all_tables() {
     let pool = memory_pool().await;
     ensure_schema(&pool).await.unwrap();
 
-    for table in ["channels", "videos", "video_comments", "app_settings"] {
+    for table in [
+        "channels",
+        "videos",
+        "video_comments",
+        "app_settings",
+        "ignored_channel_media",
+    ] {
         let (count,): (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?")
                 .bind(table)
@@ -52,6 +58,43 @@ async fn ensure_schema_creates_all_tables() {
                 .unwrap();
         assert_eq!(count, 1, "expected table {table} to exist");
     }
+}
+
+#[tokio::test]
+async fn an_ignored_media_goes_with_its_channel_and_needs_a_youtube_id() {
+    let pool = memory_pool().await;
+    ensure_schema(&pool).await.unwrap();
+    sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'A', '@a')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query(
+        "INSERT INTO ignored_channel_media (channel_id, youtube_video_id) VALUES (1, 'aaaaaaaaaaa')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(sqlx::query(
+        "INSERT INTO ignored_channel_media (channel_id, youtube_video_id) VALUES (1, 'short')",
+    )
+    .execute(&pool)
+    .await
+    .is_err());
+
+    sqlx::query("DELETE FROM channels WHERE id = 1")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (left,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ignored_channel_media")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(left, 0, "the ignored media go with the channel");
 }
 
 #[tokio::test]
@@ -491,6 +534,14 @@ async fn seed_database_at_version(pool: &SqlitePool, version: i64) {
             .unwrap();
     }
 
+    // v19 added the ignored channel media table.
+    if version >= 19 {
+        sqlx::query(IGNORED_CHANNEL_MEDIA_TABLE_DDL)
+            .execute(pool)
+            .await
+            .unwrap();
+    }
+
     // v17 added `original_text` to the comments table.
     if version >= 17 {
         sqlx::query("ALTER TABLE video_comments ADD COLUMN original_text TEXT")
@@ -763,6 +814,12 @@ async fn every_historical_version_migrates_to_the_current_schema() {
                 .await
                 .unwrap(),
             "a database stamped v{from_version} reached head without channels.banner_path"
+        );
+
+        // The table v19 adds, which the channel page's "Not in library" list reads.
+        assert!(
+            object_exists(&pool, "table", "ignored_channel_media").await,
+            "a database stamped v{from_version} reached head without ignored_channel_media"
         );
 
         // The row survived and carries the normalized title every later query depends on. A

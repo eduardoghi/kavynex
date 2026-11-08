@@ -1,8 +1,9 @@
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Runtime, State};
 
-use crate::models::yt_dlp::{ExternalToolsStatus, YtDlpFormatsResult};
+use crate::models::yt_dlp::{ExternalToolsStatus, MissingChannelMedia, YtDlpFormatsResult};
 use crate::services::binaries::resolve_external_tools_status_async;
 use crate::services::chosen_files::{self, ChosenFile};
+use crate::services::database::Db;
 use crate::services::yt_dlp;
 use crate::AppResult;
 
@@ -24,6 +25,21 @@ pub async fn list_yt_dlp_formats<R: Runtime>(
         run_id.as_deref(),
     )
     .await
+}
+
+/// The videos and past lives the channel has on YouTube that its library entry does not, for the
+/// user to import one at a time. Lists only, downloads nothing. Takes the channel's id rather than
+/// a handle, so what is listed is the channel the database names.
+#[tauri::command]
+pub async fn list_channel_missing_media<R: Runtime>(
+    app: AppHandle<R>,
+    db: State<'_, Db>,
+    channel_id: i64,
+    run_id: Option<String>,
+) -> AppResult<MissingChannelMedia> {
+    let pool = db.pool().await?;
+
+    yt_dlp::list_channel_missing_media_async(&app, &pool, channel_id, run_id.as_deref()).await
 }
 
 #[tauri::command]
