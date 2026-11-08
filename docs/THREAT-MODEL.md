@@ -378,7 +378,7 @@ stands in for an original that is about to be deleted
 
 ### Creating a media is one command, and that is a boundary decision
 
-`create_media` (`commands/media.rs`, `services/media_creation.rs`) produces a media's artifacts,
+`create_media` (`commands/media.rs`, `services/media_creation/`) produces a media's artifacts,
 records the crash marker, inserts the row and clears the marker as a single backend operation. It
 replaced a sequence the renderer drove across seven IPC calls, and the reason it is in this document
 rather than only in the architecture guide is that the sequence had two properties a security review

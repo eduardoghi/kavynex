@@ -27,7 +27,7 @@ examine_globs = [
     "src/services/thumbnail/redirect.rs",
     "src/services/media_protocol.rs",
     "src/services/library/migration.rs",
-    "src/services/media_creation.rs",
+    "src/services/media_creation/*.rs",
     "src/services/thumbnail/picked.rs",
     "src/services/thumbnail/display.rs",
     "src/services/pending_media.rs",

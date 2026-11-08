@@ -51,7 +51,8 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     `migrations.rs`, `introspection.rs`, `rebuild.rs`), `db_backup/` (`snapshot.rs`,
     `archive.rs`, `restore.rs`, `integrity.rs`, `external.rs`, `import.rs`, `gates.rs`,
     `compaction.rs`, `lineage.rs`), `filesystem/` (`retry.rs`, `durable.rs`, `verified_copy.rs`,
-    `move_file.rs`, `replace.rs`, `scan.rs`), `video_repository/` (`media_page.rs`) and
+    `move_file.rs`, `replace.rs`, `scan.rs`), `media_creation/` (`request.rs`, `prepare.rs`,
+    `artifact_cleanup.rs`, `register.rs`), `video_repository/` (`media_page.rs`) and
     `yt_dlp/download/` (`command.rs`, `redaction.rs`, `placement.rs`, `post_download.rs`).
   - **A feature family that outgrew a shared filename prefix becomes a directory too.**
     `library_*`, `thumbnail_*` and `yt_dlp_*` were nine, six and seven flat siblings whose
@@ -78,7 +79,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
   `kept_files.rs`, `startup_notices.rs`, `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `live_chat_storage.rs`,
-  `media_comments.rs`, `media_creation.rs`, `media_protocol.rs`, `pending_media.rs`,
+  `media_comments.rs`, `media_protocol.rs`, `pending_media.rs`,
   `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
 
   `media_protocol.rs` is the `kvxmedia:` scheme the player streams media through. Tauri's `asset:`
@@ -334,7 +335,7 @@ the run id and opens the terminal session before calling into the service layer.
 
 `createMedia` (`src/services/media-service.ts`) is a thin wrapper from there. It normalizes the form
 through `validateCreateMediaInput` and hands the whole request to one command, `create_media`. The
-ordering lives on the other side, in `services/media_creation.rs`:
+ordering lives on the other side, in `services/media_creation/`:
 
 1. `normalize_create_media_request`: title, media type, and every stored value trimmed. Runs first
    and entirely, so a rejected request has produced nothing to clean up.
@@ -399,7 +400,7 @@ by `id` and stops at its row and text caps.
 UX only, since closing the modal mid-run would discard a terminal the user is watching. Two creations
 racing the reference-counted cleanup is handled by the lock in `library::cleanup`, not by the modal,
 so a queue or a batch import is a UX question rather than a correctness one. The same goes for a
-library move during a creation, which `CREATION_GATE` (`services/media_creation.rs`) refuses.
+library move during a creation, which `CREATION_GATE` (`services/media_creation/register.rs`) refuses.
 
 **What the channel has that the library does not.** The channel page's **Not in library** button
 opens `ChannelMissingMediaModal` (`src/components/modals/`), which `useChannelMissingMedia`
@@ -472,7 +473,7 @@ self-healed by `reconcile_interrupted_migration` on the next `get_app_settings`;
 succeeds the old directory's asset-scope grant is revoked.
 
 The move is refused with `MEDIA_CREATION_IN_PROGRESS` while a media is being added, by the backend
-and not only by the add-media modal (`CREATION_GATE` in `services/media_creation.rs` says why). The
+and not only by the add-media modal (`CREATION_GATE` in `services/media_creation/register.rs` says why). The
 move holds the gate until it has stored the new folder in the settings itself, and the frontend's
 own write that follows stores the same path again. The download also begins a `LibraryPass` before
 it resolves the folder, and a move it did not see sends the file to the recovered downloads rather
@@ -573,7 +574,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 |---|---|---|
 | Channels CRUD | `commands/channels.rs`, `services/channel_repository.rs` | `repositories/channel-repository.ts` |
 | Media CRUD | `commands/videos.rs`, `services/video_repository/` | `repositories/media-repository.ts`, `services/media-service.ts` |
-| Creating a media (download or import, thumbnail, crash marker, row) | `commands/media.rs`, `services/media_creation.rs`, `services/library/media.rs` | `services/media-input-service.ts`, `hooks/use-add-media-workflow.ts` |
+| Creating a media (download or import, thumbnail, crash marker, row) | `commands/media.rs`, `services/media_creation/`, `services/library/media.rs` | `services/media-input-service.ts`, `hooks/use-add-media-workflow.ts` |
 | yt-dlp downloads | `commands/yt_dlp.rs`, `services/yt_dlp/download/`, `services/yt_dlp/metadata.rs`, `services/yt_dlp/cookies.rs`, `services/yt_dlp/url.rs` | `services/media-download-service.ts`, `hooks/use-yt-dlp-events.ts` |
 | Media the channel has that the library does not | `commands/yt_dlp.rs` (`list_channel_missing_media`), `services/yt_dlp/channel_listing.rs` | `hooks/channels/use-channel-missing-media.ts`, `hooks/use-batch-import.ts`, `hooks/use-batch-import-options.ts`, `hooks/use-batch-formats.ts`, `components/modals/channel-missing-media-modal.tsx`, `components/modals/channel-batch-import-panel.tsx`, `components/modals/batch-import-setup-panel.tsx` |
 | Thumbnails | `commands/thumbnail.rs`, `services/thumbnail/persist.rs`, `services/thumbnail/download/` (`mod.rs`, `fetch.rs`, `process.rs`), `services/thumbnail/url.rs`, `services/thumbnail/redirect.rs`, `services/thumbnail/picked.rs`, `services/thumbnail/temp.rs`, `services/thumbnail/display.rs` | `services/thumbnail-service.ts`, `hooks/use-temp-thumbnail.ts`, `hooks/use-display-thumbnails.ts` |

@@ -320,7 +320,7 @@ export function extractPathTakingCommands(source, structSources = []) {
 // `structSources` are searched for the declaration of a struct-typed parameter. They are a separate
 // argument from `files` because the two sets differ. The commands live in `commands/`, while the
 // request struct one of them takes is declared beside the service that consumes it
-// (`services/media_creation.rs`).
+// (`services/media_creation/`).
 export function collectPathSurface(files, structSources = []) {
     const surface = files.flatMap(({ content }) =>
         extractPathTakingCommands(content, structSources)

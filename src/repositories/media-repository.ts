@@ -21,7 +21,7 @@ export async function listMediaPage(
 
 // Creates a media end to end. One call rather than a chain (duplicate pre-check, download or
 // import, crash marker, duplicate check, insert, clear marker), because the backend owns that
-// sequence. See src-tauri/src/services/media_creation.rs.
+// sequence. See src-tauri/src/services/media_creation/.
 //
 // The request is passed as one named object. It carries four `string | null` fields in a row, and
 // a positional list would let two of them be
