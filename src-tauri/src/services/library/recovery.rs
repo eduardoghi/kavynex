@@ -448,25 +448,7 @@ mod tests {
     }
 
     async fn memory_settings_pool(library_path: &str) -> sqlx::SqlitePool {
-        use sqlx::sqlite::SqlitePoolOptions;
-
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("create sqlite memory pool");
-
-        sqlx::query(
-            "CREATE TABLE app_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )",
-        )
-        .execute(&pool)
-        .await
-        .expect("create app_settings table");
+        let pool = crate::test_support::memory_pool().await;
 
         sqlx::query("INSERT INTO app_settings (key, value) VALUES ('library_path', ?)")
             .bind(library_path)

@@ -498,7 +498,7 @@ async fn merge_media_comments_in_pool(
 
 #[cfg(test)]
 mod tests {
-    use sqlx::sqlite::SqlitePoolOptions;
+
     use sqlx::SqlitePool;
 
     use super::*;
@@ -525,70 +525,21 @@ mod tests {
         assert_eq!(MAX_COMMENT_TEXT_CHARS, shared_comment_text_limit());
     }
 
+    /// The real schema, with one channel and the media every test writes comments to (id 1).
     async fn create_test_pool() -> SqlitePool {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("create sqlite memory pool");
+        let pool = crate::test_support::memory_pool().await;
 
+        sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
+            .execute(&pool)
+            .await
+            .expect("insert channel");
         sqlx::query(
-            r#"
-            CREATE TABLE videos (
-                id INTEGER PRIMARY KEY,
-                has_comments INTEGER NOT NULL DEFAULT 0,
-                comments_count INTEGER NOT NULL DEFAULT 0,
-                -- The CHECK is mirrored from the real DDL rather than left off: these tests are
-                -- what pin which state each write records, and a column that accepted any string
-                -- would let a typo pass here and fail against the real schema.
-                comments_state TEXT NOT NULL DEFAULT 'unknown'
-                    CHECK (comments_state IN ('unknown', 'none', 'available'))
-            );
-            "#,
+            "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
+             VALUES (1, 1, 'V', 'v', 'video/v.mp4', 'video')",
         )
         .execute(&pool)
         .await
-        .expect("create videos table");
-
-        sqlx::query(
-            r#"
-            CREATE TABLE video_comments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                video_id INTEGER NOT NULL,
-                comment_id TEXT,
-                parent_comment_id TEXT,
-                author_name TEXT NOT NULL,
-                author_handle TEXT,
-                author_channel_id TEXT,
-                author_thumbnail TEXT,
-                text TEXT NOT NULL CHECK (text <> 'Invalid'),
-                original_text TEXT,
-                like_count INTEGER NOT NULL DEFAULT 0,
-                reply_count INTEGER NOT NULL DEFAULT 0,
-                is_author_uploader INTEGER NOT NULL DEFAULT 0,
-                is_favorited INTEGER NOT NULL DEFAULT 0,
-                is_pinned INTEGER NOT NULL DEFAULT 0,
-                is_edited INTEGER NOT NULL DEFAULT 0,
-                time_text TEXT,
-                published_at TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
-            );
-            "#,
-        )
-        .execute(&pool)
-        .await
-        .expect("create comments table");
-
-        sqlx::query(crate::services::db_schema::COMMENT_UNIQUE_INDEX_DDL)
-            .execute(&pool)
-            .await
-            .expect("create the comment unique index the upsert arbitrates on");
-
-        sqlx::query("INSERT INTO videos (id) VALUES (1)")
-            .execute(&pool)
-            .await
-            .expect("insert video");
+        .expect("insert video");
 
         pool
     }
@@ -1098,13 +1049,6 @@ mod tests {
     #[tokio::test]
     async fn merge_media_comments_maps_foreign_key_violation_to_media_not_found() {
         let pool = create_test_pool().await;
-        // The real pool opens with foreign_keys ON (services::database). The in-memory test pool
-        // must enable it explicitly to exercise the mapping. max_connections(1) keeps this PRAGMA
-        // on the same connection the transaction below reuses.
-        sqlx::query("PRAGMA foreign_keys = ON")
-            .execute(&pool)
-            .await
-            .expect("enable foreign keys");
 
         // media id 999 has no `videos` row, so the comment insert violates the video_id FK.
         let error = merge_media_comments_in_pool(&pool, 999, vec![sample_comment("orphan")])
@@ -1144,10 +1088,6 @@ mod tests {
     #[tokio::test]
     async fn merge_media_comments_maps_a_missing_media_with_zero_comments_to_media_not_found() {
         let pool = create_test_pool().await;
-        sqlx::query("PRAGMA foreign_keys = ON")
-            .execute(&pool)
-            .await
-            .expect("enable foreign keys");
 
         // media id 999 has no `videos` row and there are no comments to insert, so the foreign-key
         // path never fires. The missing row is caught by the UPDATE matching no row instead. A
@@ -1166,6 +1106,15 @@ mod tests {
         merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Original")])
             .await
             .expect("seed comments");
+        // The fault this test needs, made here rather than kept in a schema of the tests' own. The
+        // second merge's insert is refused, and the merge has to leave the first one in place.
+        sqlx::query(
+            "CREATE TEMP TRIGGER refuse_invalid_comment BEFORE INSERT ON video_comments \
+             WHEN NEW.text = 'Invalid' BEGIN SELECT RAISE(ABORT, 'refused by the test'); END",
+        )
+        .execute(&pool)
+        .await
+        .expect("create the refusing trigger");
 
         let result = merge_media_comments_in_pool(&pool, 1, vec![sample_comment("Invalid")]).await;
 

@@ -3,14 +3,6 @@
 // parent), so `use super::*` still reaches every private item it did.
 
 use super::*;
-use sqlx::sqlite::SqlitePoolOptions;
-
-/// A pool carrying the *real* schema (`db_schema::ensure_schema`), unlike `create_test_pool`
-/// below, which hand-rolls a minimal `videos` table. The sort-index test needs the real index
-/// set, since that is exactly what it is asserting about.
-async fn schema_pool() -> SqlitePool {
-    crate::test_support::memory_pool().await
-}
 
 /// Each `list_media_page` sort category and the index that must serve its ORDER BY.
 ///
@@ -48,7 +40,7 @@ const SORT_INDEX_EXPECTATIONS: &[(&str, &str, &str)] = &[
 /// index and reintroduces the full sort with no other symptom than a slow grid.
 #[tokio::test]
 async fn every_media_page_sort_is_served_by_an_index() {
-    let pool = schema_pool().await;
+    let pool = crate::test_support::memory_pool().await;
 
     for &(category, direction, expected_index) in SORT_INDEX_EXPECTATIONS {
         let order_by = resolve_order_by(category, direction).unwrap();
@@ -99,7 +91,7 @@ async fn every_media_page_sort_is_served_by_an_index() {
 /// quietly reintroducing a full sort on a video with many comments.
 #[tokio::test]
 async fn media_comments_query_is_served_by_its_index() {
-    let pool = schema_pool().await;
+    let pool = crate::test_support::memory_pool().await;
 
     let plan: Vec<String> = sqlx::query_as::<_, (i64, i64, i64, String)>(
         "EXPLAIN QUERY PLAN SELECT id FROM video_comments \
@@ -131,7 +123,7 @@ async fn media_comments_query_is_served_by_its_index() {
 /// that here so a schema change that leaves this pre-check scanning the table fails loudly.
 #[tokio::test]
 async fn media_existence_pre_check_is_served_by_an_index() {
-    let pool = schema_pool().await;
+    let pool = crate::test_support::memory_pool().await;
 
     let plan: Vec<String> = sqlx::query_as::<_, (i64, i64, i64, String)>(
         "EXPLAIN QUERY PLAN \
@@ -156,69 +148,18 @@ async fn media_existence_pre_check_is_served_by_an_index() {
     );
 }
 
+/// The real schema with the two channels (ids 1 and 2) the tests file media under. Their handles
+/// differ in more than case, so the stats on handles shared between channels start at zero.
 async fn create_test_pool() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .expect("create sqlite memory pool");
-
-    sqlx::query("PRAGMA foreign_keys = ON;")
-        .execute(&pool)
-        .await
-        .expect("enable foreign keys");
+    let pool = crate::test_support::memory_pool().await;
 
     sqlx::query(
-        "CREATE TABLE videos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            title_normalized TEXT,
-            file_path TEXT NOT NULL,
-            thumbnail_path TEXT,
-            media_type TEXT NOT NULL DEFAULT 'video',
-            youtube_video_id TEXT,
-            watched_at TEXT,
-            published_at TEXT,
-            duration_seconds INTEGER,
-            progress_seconds INTEGER NOT NULL DEFAULT 0,
-            has_comments INTEGER NOT NULL DEFAULT 0,
-            comments_count INTEGER NOT NULL DEFAULT 0,
-            comments_state TEXT NOT NULL DEFAULT 'unknown'
-                CHECK (comments_state IN ('unknown', 'none', 'available')),
-            is_live INTEGER NOT NULL DEFAULT 0,
-            has_live_chat INTEGER NOT NULL DEFAULT 0,
-            live_chat_file_path TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            UNIQUE (channel_id, file_path)
-        );",
+        "INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'One', '@one'), \
+         (2, 'Two', '@two')",
     )
     .execute(&pool)
     .await
-    .expect("create videos table");
-
-    // Only what the repository stats read from it. These tests do not need the foreign key.
-    sqlx::query(
-        "CREATE TABLE channels (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            youtube_handle TEXT NOT NULL UNIQUE
-        );",
-    )
-    .execute(&pool)
-    .await
-    .expect("create channels table");
-
-    // Mirror the production partial unique index so the youtube_video_id conflict path is
-    // exercised by tests (the table-level UNIQUE above only covers file_path).
-    sqlx::query(
-        "CREATE UNIQUE INDEX idx_videos_channel_youtube_video_id_unique
-         ON videos(channel_id, youtube_video_id)
-         WHERE youtube_video_id IS NOT NULL AND TRIM(youtube_video_id) <> ''",
-    )
-    .execute(&pool)
-    .await
-    .expect("create youtube_video_id unique index");
+    .expect("insert channels");
 
     pool
 }
@@ -271,66 +212,11 @@ async fn mark_media_as_unwatched_errors_when_the_media_is_missing() {
     assert_eq!(error.code, AppErrorCode::MediaNotFound.as_str());
 }
 
-/// A pool whose `videos.channel_id` actually references a `channels` table, so the
-/// foreign-key violation path in `insert_media` can be exercised (the main test pool has no
-/// FK, since most tests do not need one).
-async fn create_test_pool_with_channel_fk() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .expect("create sqlite memory pool");
-
-    sqlx::query("PRAGMA foreign_keys = ON;")
-        .execute(&pool)
-        .await
-        .expect("enable foreign keys");
-
-    sqlx::query(
-        "CREATE TABLE channels (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);",
-    )
-    .execute(&pool)
-    .await
-    .expect("create channels table");
-
-    sqlx::query(
-        "CREATE TABLE videos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            title_normalized TEXT,
-            file_path TEXT NOT NULL,
-            thumbnail_path TEXT,
-            media_type TEXT NOT NULL DEFAULT 'video',
-            youtube_video_id TEXT,
-            watched_at TEXT,
-            published_at TEXT,
-            duration_seconds INTEGER,
-            progress_seconds INTEGER NOT NULL DEFAULT 0,
-            has_comments INTEGER NOT NULL DEFAULT 0,
-            comments_count INTEGER NOT NULL DEFAULT 0,
-            comments_state TEXT NOT NULL DEFAULT 'unknown'
-                CHECK (comments_state IN ('unknown', 'none', 'available')),
-            is_live INTEGER NOT NULL DEFAULT 0,
-            has_live_chat INTEGER NOT NULL DEFAULT 0,
-            live_chat_file_path TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE,
-            UNIQUE (channel_id, file_path)
-        );",
-    )
-    .execute(&pool)
-    .await
-    .expect("create videos table with a channel foreign key");
-
-    pool
-}
-
 #[tokio::test]
 async fn insert_media_maps_a_missing_channel_to_channel_not_found() {
-    let pool = create_test_pool_with_channel_fk().await;
+    let pool = create_test_pool().await;
 
-    // No channel row exists, so the channel_id foreign key does not resolve.
+    // No channel 999 exists, so the channel_id foreign key does not resolve.
     let error = insert_media(
         &pool,
         999,
@@ -352,12 +238,7 @@ async fn insert_media_maps_a_missing_channel_to_channel_not_found() {
 
 #[tokio::test]
 async fn insert_media_succeeds_for_an_existing_channel_with_fk_enforced() {
-    let pool = create_test_pool_with_channel_fk().await;
-
-    sqlx::query("INSERT INTO channels (id, name) VALUES (1, 'Chan')")
-        .execute(&pool)
-        .await
-        .unwrap();
+    let pool = create_test_pool().await;
 
     let id = insert_media(
         &pool,
@@ -684,38 +565,43 @@ async fn progress_is_saved_for_a_media_whose_watched_at_is_a_blank_string() {
     assert_eq!(media.progress_seconds, 55);
 }
 
+/// The test pool with media 7 and 8 under channel 1, for the comment loads, which write to them.
+async fn comments_pool() -> SqlitePool {
+    let pool = create_test_pool().await;
+
+    sqlx::query(
+        "INSERT INTO videos (id, channel_id, title, title_normalized, file_path, media_type) \
+         VALUES (7, 1, 'Seven', 'seven', 'video/7.mp4', 'video'), \
+         (8, 1, 'Eight', 'eight', 'video/8.mp4', 'video')",
+    )
+    .execute(&pool)
+    .await
+    .expect("insert the media the comments belong to");
+
+    pool
+}
+
 #[tokio::test]
 async fn lists_comments_in_id_order_within_the_load_cap() {
     // The load is capped (MAX_MEDIA_COMMENTS_LOADED) so a pathological backup cannot pull every
     // row at once, but a normal set must come back whole and ordered by id. Guards the query's
     // LIMIT/ORDER BY so the cap never accidentally truncates or reorders an ordinary load.
-    let pool = create_test_pool().await;
-    sqlx::query(
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER, \
-         comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', \
-         author_handle TEXT, author_channel_id TEXT, author_thumbnail TEXT, \
-         text TEXT NOT NULL DEFAULT '', original_text TEXT, like_count INTEGER NOT NULL DEFAULT 0, \
-         reply_count INTEGER NOT NULL DEFAULT 0, is_author_uploader INTEGER NOT NULL DEFAULT 0, \
-         is_favorited INTEGER NOT NULL DEFAULT 0, is_pinned INTEGER NOT NULL DEFAULT 0, \
-         is_edited INTEGER NOT NULL DEFAULT 0, time_text TEXT, published_at TEXT, \
-         created_at TEXT NOT NULL DEFAULT (datetime('now')));",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    let pool = comments_pool().await;
 
     for text in ["first", "second", "third"] {
-        sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (7, ?)")
+        sqlx::query("INSERT INTO video_comments (video_id, author_name, text) VALUES (7, 'A', ?)")
             .bind(text)
             .execute(&pool)
             .await
             .unwrap();
     }
     // A comment on a different media must not leak into the result.
-    sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (8, 'other')")
-        .execute(&pool)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO video_comments (video_id, author_name, text) VALUES (8, 'A', 'other')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let comments = list_media_comments_by_media_id(&pool, 7).await.unwrap();
 
@@ -725,26 +611,12 @@ async fn lists_comments_in_id_order_within_the_load_cap() {
     );
 }
 
-/// A `video_comments` table with the columns the comment load selects, and `count` comments on
-/// media 7 whose text is `text_chars` characters long.
+/// `count` comments on media 7 whose text is `text_chars` characters long.
 async fn seed_comments(count: usize, text_chars: usize) -> SqlitePool {
-    let pool = create_test_pool().await;
-    sqlx::query(
-        "CREATE TABLE video_comments (id INTEGER PRIMARY KEY AUTOINCREMENT, video_id INTEGER, \
-         comment_id TEXT, parent_comment_id TEXT, author_name TEXT NOT NULL DEFAULT '', \
-         author_handle TEXT, author_channel_id TEXT, author_thumbnail TEXT, \
-         text TEXT NOT NULL DEFAULT '', original_text TEXT, like_count INTEGER NOT NULL DEFAULT 0, \
-         reply_count INTEGER NOT NULL DEFAULT 0, is_author_uploader INTEGER NOT NULL DEFAULT 0, \
-         is_favorited INTEGER NOT NULL DEFAULT 0, is_pinned INTEGER NOT NULL DEFAULT 0, \
-         is_edited INTEGER NOT NULL DEFAULT 0, time_text TEXT, published_at TEXT, \
-         created_at TEXT NOT NULL DEFAULT (datetime('now')));",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    let pool = comments_pool().await;
 
     for index in 0..count {
-        sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (7, ?)")
+        sqlx::query("INSERT INTO video_comments (video_id, author_name, text) VALUES (7, 'A', ?)")
             .bind(format!("{index:0>width$}", width = text_chars))
             .execute(&pool)
             .await
@@ -858,10 +730,12 @@ async fn the_comment_text_cap_counts_characters_not_bytes() {
     // eight bytes in UTF-8, so a byte count would stop after the first comment.
     let pool = seed_comments(0, 0).await;
     for _ in 0..2 {
-        sqlx::query("INSERT INTO video_comments (video_id, text) VALUES (7, 'ãéíõ')")
-            .execute(&pool)
-            .await
-            .unwrap();
+        sqlx::query(
+            "INSERT INTO video_comments (video_id, author_name, text) VALUES (7, 'A', 'ãéíõ')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
     }
 
     let comments = list_media_comments_within(

@@ -317,50 +317,9 @@ pub async fn list_ignored_channel_media_ids(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::sqlite::SqlitePoolOptions;
 
     async fn create_test_pool() -> SqlitePool {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("create sqlite memory pool");
-
-        sqlx::query("PRAGMA foreign_keys = ON;")
-            .execute(&pool)
-            .await
-            .expect("enable foreign keys");
-
-        sqlx::query(
-            "CREATE TABLE channels (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                youtube_handle TEXT NOT NULL UNIQUE,
-                avatar_path TEXT,
-                banner_path TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );",
-        )
-        .execute(&pool)
-        .await
-        .expect("create channels table");
-
-        sqlx::query(
-            "CREATE TABLE videos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                channel_id INTEGER NOT NULL,
-                title TEXT NOT NULL,
-                file_path TEXT NOT NULL,
-                thumbnail_path TEXT,
-                media_type TEXT NOT NULL DEFAULT 'video',
-                FOREIGN KEY (channel_id) REFERENCES channels(id) ON DELETE CASCADE
-            );",
-        )
-        .execute(&pool)
-        .await
-        .expect("create videos table");
-
-        pool
+        crate::test_support::memory_pool().await
     }
 
     #[tokio::test]
@@ -378,8 +337,8 @@ mod tests {
             .await
             .unwrap();
         sqlx::query(
-            "INSERT INTO videos (channel_id, title, file_path, thumbnail_path)
-             VALUES (?, 'V', 'video/v.mp4', 'thumbnails/shared.jpg')",
+            "INSERT INTO videos (channel_id, title, title_normalized, file_path, media_type, \
+             thumbnail_path) VALUES (?, 'V', 'v', 'video/v.mp4', 'video', 'thumbnails/shared.jpg')",
         )
         .bind(id)
         .execute(&pool)

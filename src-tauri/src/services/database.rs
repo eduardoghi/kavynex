@@ -866,27 +866,7 @@ mod tests {
     }
 
     async fn create_test_pool() -> SqlitePool {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("create sqlite memory pool");
-
-        sqlx::query(
-            r#"
-            CREATE TABLE app_settings (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            "#,
-        )
-        .execute(&pool)
-        .await
-        .expect("create app_settings table");
-
-        pool
+        crate::test_support::memory_pool().await
     }
 
     /// The four keys the settings form owns, shaped the way `commands::settings` builds them.
