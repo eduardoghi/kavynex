@@ -92,37 +92,20 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     containment-checking a path against a base directory). See `docs/DATABASE.md` and
     `THREAT-MODEL.md` for how this backs the library/asset-scope guarantees.
   - `process.rs`: everything about spawning an external child. `configure_child` (and
-    `configure_child_async`) is what every yt-dlp and FFmpeg child gets before it is spawned: no
-    console window (`hide_console`), its own process group, no stdin, and none of an AppImage's
-    library variables. `kill_process_tree` kills a whole tree. The process group and the tree
-    kill are a pair. The Unix kill signals the negated pid,
-    i.e. the group, so a child spawned without its own group is not reachable by the kill that
-    every timeout path depends on.
+    `configure_child_async`) is what every yt-dlp and FFmpeg child gets before it is spawned, and
+    `kill_process_tree` kills a whole tree.
   - `bounded_run.rs`: running yt-dlp or FFmpeg to completion under a time limit, for every call
-    site outside the download (the health checks, the metadata, comment and format runs, the
-    thumbnail and avatar runs, the local FFmpeg thumbnails). The child setup, the tracking for the
-    app-exit sweep, both pipes drained while it runs, the deadline and the cancel flag ending in a
-    tree kill, and a bounded wait for the readers once it exits. Each of those call sites had its
-    own copy of that loop before, and the copies had drifted apart. The download keeps its own,
-    since it streams progress and has a stall watchdog.
+    site outside the download, which keeps its own loop since it streams progress and has a stall
+    watchdog.
   - `hash.rs`: SHA-256 file hashing used for the content-addressed media/thumbnail
     filenames (see `docs/DIRECTORIES.md`).
-  - `naming.rs`: `unique_temp_suffix()` (pid + nanoseconds + a monotonic counter), and the
-    **only** place in the tree allowed to derive a name from a raw timestamp. Every temporary
-    path, in production and in tests, is built from it, because pid + nanoseconds alone
-    collides when two callers land in the same clock tick, which was a real intermittent
-    failure, on macOS, surfacing nowhere near its cause. `ci.yml`'s "Verify temp paths are
-    built from the shared unique suffix" step enforces this, since the convention had already
-    drifted back twice.
+  - `naming.rs`: `unique_temp_suffix()`, the **only** place in the tree allowed to derive a name
+    from a raw timestamp. Every temporary path, in production and in tests, is built from it, and
+    `ci.yml`'s "Verify temp paths are built from the shared unique suffix" step enforces that.
   - `validation.rs`: the channel name/handle and media title/type validators every write
-    boundary calls, including the control-character and length rules. Under the mutation gate
-    (`src-tauri/.cargo/mutants.toml`), and its handle *shape* rule is asserted against
-    `shared/youtube-handle-cases.json` so it cannot drift from the frontend's copy. Note the split
-    that follows from that. The shape lives in `is_valid_youtube_handle`, which the shared fixture
-    pins, while the control-character and length rules sit beside it in
-    `ensure_valid_youtube_handle`, matching how the name and title validators are already built.
-    They are not part of the shared contract because they are not part of the shape, and folding
-    them in would mean changing the frontend to keep the fixture honest.
+    boundary calls. Under the mutation gate (`src-tauri/.cargo/mutants.toml`), and its handle
+    *shape* rule is asserted against `shared/youtube-handle-cases.json` so it cannot drift from the
+    frontend's copy.
   - `text.rs`: accent stripping, whitespace collapsing and `LIKE`-metacharacter escaping,
     behind the normalized columns the media search queries against.
   - `format.rs`: the allowed media/thumbnail extension lists (and their user-facing labels),
