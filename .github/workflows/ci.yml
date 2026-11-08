@@ -526,14 +526,13 @@ jobs:
             # silently. An unsound crate is a real defect (UB reachable from safe code), unlike an
             # unmaintained notice.
             #
-            # Not `--deny warnings`. It fails on proc-macro-error, which is unmaintained upstream and
-            # arrives transitively through tauri itself. Gating on something this project cannot
+            # Not `--deny warnings`. It fails on the unmaintained crates that arrive transitively
+            # through tauri (listed in src-tauri/deny.toml). Gating on something this project cannot
             # act on only trains everyone to ignore a red run.
             #
-            # Not `--deny yanked` either, for the same reason and no other. `spin 0.9.8` is yanked
-            # and comes in via sqlx-sqlite -> flume, so it is equally out of reach. Unlike an
-            # advisory it has no RUSTSEC id, so it cannot be ignored one-by-one the way the line
-            # below does. It is deny-all or nothing. Worth revisiting whenever sqlx moves.
+            # Not `--deny yanked` either. A yanked crate has no RUSTSEC id, so here it is deny-all or
+            # nothing, while cargo-deny below already fails on one (`yanked = "deny"` in
+            # src-tauri/deny.toml) and can except a single crate that is out of reach.
             #
             # RUSTSEC-2024-0429 (glib unsound, via that same GTK3 tree) is ignored by name rather
             # than by omission, in .cargo/audit.toml, which cargo-audit reads from the repository

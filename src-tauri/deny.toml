@@ -70,12 +70,17 @@ unknown-git = "deny"
 
 [advisories]
 # cargo-audit already fails on vulnerabilities and unsound crates, but it can only deny the
-# unmaintained and yanked classes as a whole, and the tree carries entries of both that arrive
-# through tauri and sqlx. So it allows them all, and a crate that turns unmaintained or yanked
-# tomorrow would pass unnoticed next to the known ones. This section is what can tell them apart.
+# unmaintained and yanked classes as a whole, and the tree carries unmaintained crates that arrive
+# through tauri. So it allows both, and a crate that turns unmaintained or yanked tomorrow would
+# pass unnoticed next to the known ones. This section is what can tell them apart.
 #
-# Unmaintained notices count only for crates this project depends on directly. The current one
-# (proc-macro-error) is transitive through tauri and not actionable here.
+# Unmaintained notices count only for crates this project depends on directly. The current ones are
+# transitive and not actionable here, so this is where they are listed:
+#
+# - proc-macro-error (RUSTSEC-2024-0370), through tauri's GTK3 tree.
+# - zvariant, zvariant_derive and zbus_names (RUSTSEC-2026-0370, -0372 and -0371), merged into zbus
+#   6. They come through zbus 5, the Linux D-Bus client of tauri-plugin-opener and
+#   tauri-plugin-single-instance, and leave when those move to zbus 6.
 unmaintained = "workspace"
 # The default here is "workspace", which would not see the glib advisory below at all. "all"
 # matches cargo-audit's `--deny unsound`.
@@ -87,5 +92,4 @@ yanked = "deny"
 # (scripts/verify-advisory-ignores.js checks the two agree).
 ignore = [
     { id = "RUSTSEC-2024-0429", reason = "glib unsound, via tauri's GTK3 tree. Re-check when GTK3 moves." },
-    { crate = "spin@0.9.8", reason = "yanked, via sqlx-sqlite -> flume. Re-check when sqlx moves." },
 ]

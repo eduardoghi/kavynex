@@ -94,8 +94,7 @@ jobs:
               run: cargo install cargo-audit@0.22.2 --locked
 
             # Same flags as ci.yml's audit job. See its comments for why each deny is set the way it
-            # is (the GTK3/unic-* unmaintained tree, the yanked spin via sqlx). The accepted
-            # advisories (RUSTSEC-2024-0429) come from .cargo/audit.toml.
+            # is. The accepted advisories (RUSTSEC-2024-0429) come from .cargo/audit.toml.
             - name: Audit Rust dependencies
               run: >
                   cargo audit --file src-tauri/Cargo.lock
