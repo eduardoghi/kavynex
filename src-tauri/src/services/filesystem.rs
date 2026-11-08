@@ -1,5 +1,6 @@
 use std::fs;
 use std::io::ErrorKind;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::SystemTime;
@@ -1350,6 +1351,44 @@ pub fn find_best_matching_file(
     });
 
     Ok(matches.remove(0))
+}
+
+/// Calls `visit` with every regular file under `dir`, at any depth, until it returns
+/// [`ControlFlow::Break`]. A folder that cannot be read is skipped, so a folder that is not there
+/// holds nothing.
+///
+/// A link is never followed, neither a symlink nor, on Windows, a junction (see
+/// [`dir_entry_is_symlink`]), so a link pointing at an ancestor cannot make the walk loop, and one
+/// pointing outside the folder cannot make it report what is there. Each entry's type is read
+/// from the listing itself rather than asked of the disk again, which on a library on a slow drive
+/// is most of what a walk costs.
+pub(crate) fn walk_regular_files(
+    dir: &Path,
+    mut visit: impl FnMut(&fs::DirEntry) -> ControlFlow<()>,
+) {
+    let mut pending = vec![dir.to_path_buf()];
+
+    while let Some(current) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&current) else {
+            continue;
+        };
+
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+
+            if file_type.is_symlink() {
+                continue;
+            }
+
+            if file_type.is_dir() {
+                pending.push(entry.path());
+            } else if file_type.is_file() && visit(&entry).is_break() {
+                return;
+            }
+        }
+    }
 }
 
 /// True when a directory entry is a symbolic link, read from the entry's own type without

@@ -109,33 +109,16 @@ fn is_populated_library(dir: &Path) -> bool {
 
 /// True when `dir` exists and contains at least one regular file at any depth. Walks lazily and
 /// stops at the first file found, so it is cheap on a populated library.
+/// A symlinked file does not count, since the walk never follows a link.
 fn dir_contains_a_file(dir: &Path) -> bool {
-    let mut stack = vec![dir.to_path_buf()];
+    let mut found = false;
 
-    while let Some(current) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&current) else {
-            continue;
-        };
+    crate::services::filesystem::walk_regular_files(dir, |_| {
+        found = true;
+        std::ops::ControlFlow::Break(())
+    });
 
-        for entry in entries.flatten() {
-            // Skip symlinks without following them. A symlinked directory cycle would loop here
-            // forever. The library never creates symlinks of its own, and a symlinked file must not
-            // count as a real library file for the populated-library check either.
-            if crate::services::filesystem::dir_entry_is_symlink(&entry) {
-                continue;
-            }
-
-            let path = entry.path();
-
-            if path.is_file() {
-                return true;
-            } else if path.is_dir() {
-                stack.push(path);
-            }
-        }
-    }
-
-    false
+    found
 }
 
 /// What to do with the commit marker for the currently stored library path.

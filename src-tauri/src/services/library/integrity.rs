@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::ops::ControlFlow;
 use std::path::{Component, Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::services::filesystem::dir_entry_is_symlink;
+use crate::services::filesystem::walk_regular_files;
 use crate::services::logger;
 use crate::services::video_repository::MediaIntegrityReference;
 use crate::AppResult;
@@ -330,32 +331,14 @@ fn build_expected_set(stored_paths: &[String]) -> HashSet<String> {
 /// Lists every file under `dir` as a path relative to `root`, using forward slashes.
 pub(crate) fn list_files_relative(dir: &Path, root: &Path) -> Vec<String> {
     let mut files = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
 
-    while let Some(current) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&current) else {
-            continue;
-        };
-
-        for entry in entries.flatten() {
-            // Skip symlinks without following them. A symlinked directory pointing at an ancestor
-            // would push its own subtree back onto the stack forever (a DoS reachable through
-            // check_library_integrity). The library never creates symlinks of its own.
-            if dir_entry_is_symlink(&entry) {
-                continue;
-            }
-
-            let path = entry.path();
-
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.is_file() {
-                if let Ok(relative) = path.strip_prefix(root) {
-                    files.push(relative.to_string_lossy().replace('\\', "/"));
-                }
-            }
+    walk_regular_files(dir, |entry| {
+        if let Ok(relative) = entry.path().strip_prefix(root) {
+            files.push(relative.to_string_lossy().replace('\\', "/"));
         }
-    }
+
+        ControlFlow::Continue(())
+    });
 
     files
 }

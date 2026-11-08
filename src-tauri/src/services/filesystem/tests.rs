@@ -246,6 +246,62 @@ fn copy_directory_contents_does_not_follow_a_symlink_cycle() {
     let _ = fs::remove_dir_all(&base);
 }
 
+#[test]
+fn walk_regular_files_finds_files_at_any_depth_and_stops_when_asked() {
+    let base = unique_test_dir();
+    fs::create_dir_all(base.join("a").join("b")).unwrap();
+    fs::write(base.join("top.txt"), b"1").unwrap();
+    fs::write(base.join("a").join("mid.txt"), b"2").unwrap();
+    fs::write(base.join("a").join("b").join("deep.txt"), b"3").unwrap();
+
+    let mut names = Vec::new();
+    walk_regular_files(&base, |entry| {
+        names.push(entry.file_name().to_string_lossy().into_owned());
+        ControlFlow::Continue(())
+    });
+    names.sort();
+    assert_eq!(names, ["deep.txt", "mid.txt", "top.txt"]);
+
+    let mut visited = 0;
+    walk_regular_files(&base, |_| {
+        visited += 1;
+        ControlFlow::Break(())
+    });
+    assert_eq!(visited, 1);
+
+    // A folder that is not there holds nothing, rather than failing.
+    walk_regular_files(&base.join("missing"), |_| panic!("nothing to visit"));
+
+    let _ = fs::remove_dir_all(&base);
+}
+
+// Unix only, for the reason above.
+#[cfg(unix)]
+#[test]
+fn walk_regular_files_does_not_follow_a_link() {
+    use std::os::unix::fs::symlink;
+
+    let base = unique_test_dir();
+    let inside = base.join("inside");
+    let outside = base.join("outside");
+    fs::create_dir_all(&inside).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    fs::write(inside.join("real.txt"), b"1").unwrap();
+    fs::write(outside.join("secret.txt"), b"2").unwrap();
+    symlink(&outside, inside.join("to_outside")).unwrap();
+    symlink(outside.join("secret.txt"), inside.join("linked.txt")).unwrap();
+    symlink(&inside, inside.join("loop")).unwrap();
+
+    let mut names = Vec::new();
+    walk_regular_files(&inside, |entry| {
+        names.push(entry.file_name().to_string_lossy().into_owned());
+        ControlFlow::Continue(())
+    });
+    assert_eq!(names, ["real.txt"]);
+
+    let _ = fs::remove_dir_all(&base);
+}
+
 /// Names of the `.<file>.backup-<suffix>` scratch files `replace_file_safely` creates, so a
 /// test can assert it cleaned up after itself rather than leaving one in the library.
 fn leftover_backup_names(dir: &Path) -> Vec<String> {

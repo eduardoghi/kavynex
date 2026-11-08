@@ -61,26 +61,15 @@ pub enum KeptFolder {
 /// what the folder itself holds. A folder that is not there holds nothing.
 pub fn folder_summary(dir: &Path) -> FolderSummary {
     let mut summary = FolderSummary::default();
-    let mut pending = vec![dir.to_path_buf()];
 
-    while let Some(current) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&current) else {
-            continue;
-        };
+    crate::services::filesystem::walk_regular_files(dir, |entry| {
+        summary.files += 1;
+        // The entry's own metadata, which does not follow a link (the walk skips those anyway).
+        let bytes = entry.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+        summary.bytes = summary.bytes.saturating_add(bytes);
 
-        for entry in entries.flatten() {
-            let Ok(metadata) = std::fs::symlink_metadata(entry.path()) else {
-                continue;
-            };
-
-            if metadata.is_dir() {
-                pending.push(entry.path());
-            } else if metadata.is_file() {
-                summary.files += 1;
-                summary.bytes = summary.bytes.saturating_add(metadata.len());
-            }
-        }
-    }
+        std::ops::ControlFlow::Continue(())
+    });
 
     summary
 }

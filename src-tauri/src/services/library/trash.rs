@@ -45,21 +45,22 @@ impl LibraryTrashSummary {
 /// empty, anything outside it.
 fn summarize(path: &Path) -> LibraryTrashSummary {
     let mut summary = LibraryTrashSummary::default();
-    let mut pending = vec![path.to_path_buf()];
 
-    while let Some(current) = pending.pop() {
-        let Ok(metadata) = std::fs::symlink_metadata(&current) else {
-            continue;
-        };
-
-        if metadata.is_file() {
-            summary.files += 1;
-            summary.bytes = summary.bytes.saturating_add(metadata.len());
-        } else if metadata.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&current) {
-                pending.extend(entries.flatten().map(|entry| entry.path()));
-            }
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            summary.files = 1;
+            summary.bytes = metadata.len();
         }
+        Ok(metadata) if metadata.is_dir() => {
+            crate::services::filesystem::walk_regular_files(path, |entry| {
+                summary.files += 1;
+                let bytes = entry.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+                summary.bytes = summary.bytes.saturating_add(bytes);
+
+                std::ops::ControlFlow::Continue(())
+            });
+        }
+        _ => {}
     }
 
     summary
