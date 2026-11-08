@@ -194,31 +194,17 @@ case has limited blast radius:
   The source is also rejected up front if it
   is a UNC/network location (`services/thumbnail/temp.rs::validate_source_media_path`), since a
   picker can return one.
-- `export_database`: the destination is **extension-gated** to `.db`/`.sqlite`/
-  `.sqlite3` (`services/db_backup/gates.rs::validate_export_destination`) so the exported
-  database cannot be written over an arbitrary file such as a document or a key, a
-  **network location is refused outright** (`prepare_export_destination`, see the cross-cutting
-  rule above, since this is the direction where a share is an exfiltration of every row, not only an
-  NTLM leak), and it is
-  additionally **refused if it resolves inside the app's own config directory**
-  (`destination_is_inside_dir`), where the live `kavynex.db` and every backup generation live.
-  Those share the `.db` extension, so without this a save aimed there could clobber the live
-  database or a recovery snapshot. The destination must also be one the user picked in the save
-  dialog (`services/chosen_files.rs`), so overwriting another app's `.db`/`.sqlite` file takes the
-  user choosing that file.
-- `import_database`: the mirror image of the export gate, on the way in
-  (`services/db_backup/gates.rs::prepare_import_source`). The source is **extension-gated** to the same
-  `.db`/`.sqlite`/`.sqlite3` list the export uses (one shared `DATABASE_FILE_EXTENSIONS`, so the
-  two directions cannot drift), and a **network location is refused outright**. `stage_database_import`
-  stats and then opens this path, and on Windows the stat alone authenticates to the host over SMB
-  (see `open_path_in_system` below for the same escalation). Importing a database off a share still
-  works; it has to be copied locally first, which the staging copy does anyway. The extension gate is
-  not a boundary on its own (the source is only ever read, and `validate_import_source` still has to
-  recognize it as a kavynex database), but it turns a mistyped or hostile path into a clear refusal
-  rather than an "is this a valid SQLite file?" probe of any path on disk. The gate lives on the
-  command rather than in `stage_database_import` because the undo path
-  (`stage_database_import_undo`) reuses that function with the `.pre-import` snapshot, whose
-  extension it would reject; that source is written by the backend and never comes from IPC.
+- `export_database`: the destination must be one the user picked in the save dialog
+  (`services/chosen_files.rs`), is **extension-gated** to `.db`/`.sqlite`/`.sqlite3`, has a
+  **network location refused outright** (this is the direction where a share is an exfiltration of
+  every row, not only an NTLM leak), and is **refused if it resolves inside the app's own config
+  directory**, where the live `kavynex.db` and every backup generation share the `.db` extension
+  (`services/db_backup/gates.rs::prepare_export_destination`).
+- `import_database`: the mirror image on the way in
+  (`services/db_backup/gates.rs::prepare_import_source`), with the same extension list and the same
+  network refusal, since staging stats and opens the path. A database on a share has to be copied
+  locally first. Why each check is there, its order, and why the import gate sits on the command
+  rather than in the staging function, is on those two functions.
 
   The file's *contents* are untrusted too, since a database can come from anyone. Its triggers and
   views are replaced by the app's own before the staged copy is first written
