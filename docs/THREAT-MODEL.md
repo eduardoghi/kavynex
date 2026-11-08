@@ -889,11 +889,8 @@ already authorized as a directory (below), and the preview draws the copy. The f
 reaches the library is byte-identical because it is a copy, and the copy is swept like every other
 preview.
 
-That shape is deliberate and the alternative is worse, which is worth knowing before anyone proposes
-it: Tauri's scope has no way to *withdraw* a grant, so a per-file grant accumulates for the whole
-session, and revoking one is not a fix either, since a forbid outranks every later allow (the
-asymmetry `session_forbidden_dirs` exists to work around). A command doing exactly that existed
-until 2026-07-30; see
+That shape is deliberate, since a per-file grant can never be withdrawn and revoking one breaks the
+same image picked again. A command doing exactly that existed until 2026-07-30, see
 [`decisions/2026-07-30-no-per-file-asset-scope-grant.md`](decisions/2026-07-30-no-per-file-asset-scope-grant.md).
 
 Two subdirectories of the app's cache directory are authorized once, in `lib.rs`'s `setup()`

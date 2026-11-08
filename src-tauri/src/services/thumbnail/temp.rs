@@ -378,14 +378,10 @@ fn partial_thumbnail_file_name(source_hash: &str) -> String {
 
 /// Copies an image the user picked into the preview directory and returns its path there.
 ///
-/// This exists so the manual-thumbnail flow does not need the asset scope widened to the file the
-/// user chose. The preview directory is already authorized wholesale
+/// The preview directory is already authorized wholesale
 /// (`commands::security::register_cache_asset_scope`), so a staged copy is renderable through
-/// `convertFileSrc` with no per-file grant at all, which matters because Tauri's asset scope has no
-/// way to withdraw a grant, so per-file grants accumulated for the lifetime of the session and the
-/// obvious cleanup (forbid the file when the preview is discarded) is worse than the disease. A
-/// forbid outranks every later allow, so picking the same image for a second media would silently
-/// render nothing.
+/// `convertFileSrc` with no grant for the file the user chose. Why a per-file grant is the shape to
+/// avoid is on `commands::thumbnail::stage_manual_thumbnail`.
 ///
 /// The copy is byte-identical, so the content hash the persist step computes is unchanged and the
 /// file that eventually lands in the library is exactly what it was before. Staging also gives the

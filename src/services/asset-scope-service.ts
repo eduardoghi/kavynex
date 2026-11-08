@@ -24,9 +24,6 @@ export async function registerLibraryAssetScope(libraryPath: string): Promise<vo
     });
 }
 
-// There is no per-file grant here for a user-picked image. The scope has no way to withdraw a
-// grant, so those would accumulate for the whole session, and revoking one would be worse (a
-// forbid outranks every later allow, so the same image picked twice would stop rendering). The
-// manual thumbnail preview draws a staged copy from a directory that is already authorized. See
-// `stageManualThumbnail` in `services/thumbnail-service.ts`. This module is therefore down to the
-// library grant alone.
+// There is no per-file grant here for a user-picked image. The manual thumbnail preview draws a
+// staged copy from a directory that is already authorized (`stageManualThumbnail` in
+// `services/thumbnail-service.ts`), so this module is down to the library grant alone.
