@@ -535,6 +535,27 @@ async fn supervise_download_child<R: Runtime>(
     })
 }
 
+/// Tells the frontend the run was cancelled, and returns the error that ends it.
+fn cancelled<R: Runtime>(app: &AppHandle<R>, run_id: &str) -> AppError {
+    let message = "yt-dlp download cancelled";
+    emit_download_cancelled(app, run_id, message);
+
+    AppError::from_code(AppErrorCode::YtDlpDownloadCancelled, message)
+}
+
+/// Tells the frontend the run failed with `message`, and returns the error that ends it.
+fn failed<R: Runtime>(
+    app: &AppHandle<R>,
+    run_id: &str,
+    code: AppErrorCode,
+    message: impl Into<String>,
+) -> AppError {
+    let message = message.into();
+    emit_download_error(app, run_id, message.clone());
+
+    AppError::from_code(code, message)
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn download_media_from_url_async<R: Runtime>(
     app: &AppHandle<R>,
@@ -572,13 +593,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
     let _download_permit = tokio::select! {
         permit = DOWNLOAD_SEMAPHORE.acquire(AppErrorCode::TooManyConcurrentYtDlpRuns) => permit?,
         () = crate::utils::process::wait_for_cancel(Some(&cancel_flag)) => {
-            let message = "yt-dlp download cancelled";
-            emit_download_cancelled(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadCancelled,
-                message,
-            ));
+            return Err(cancelled(app, &normalized_run_id));
         }
     };
     let yt_dlp = resolve_yt_dlp_binary_async(app).await?;
@@ -729,12 +744,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
                 // The metadata phase honors cancellation itself (killing the tree
                 // promptly). Surface that as a cancellation event rather than a generic error.
                 if cancel_flag.load(Ordering::SeqCst) {
-                    let message = "yt-dlp download cancelled";
-                    emit_download_cancelled(app, &normalized_run_id, message);
-                    return Err(AppError::from_code(
-                        AppErrorCode::YtDlpDownloadCancelled,
-                        message,
-                    ));
+                    return Err(cancelled(app, &normalized_run_id));
                 }
 
                 emit_download_error(app, &normalized_run_id, error.message.clone());
@@ -743,13 +753,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         };
 
         if cancel_flag.load(Ordering::SeqCst) {
-            let message = "yt-dlp download cancelled";
-            emit_download_cancelled(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadCancelled,
-                message,
-            ));
+            return Err(cancelled(app, &normalized_run_id));
         }
 
         let selected_format = metadata
@@ -873,12 +877,11 @@ pub async fn download_media_from_url_async<R: Runtime>(
         // classify_download_termination would otherwise report it as a plain cancel. It gets its own
         // message so the cause is clear rather than looking like a user cancel.
         if timed_out {
-            let message = "yt-dlp download exceeded the maximum allowed run time and was stopped";
-            emit_download_error(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
+            return Err(failed(
+                app,
+                &normalized_run_id,
                 AppErrorCode::YtDlpDownloadTimeout,
-                message,
+                "yt-dlp download exceeded the maximum allowed run time and was stopped",
             ));
         }
 
@@ -889,27 +892,20 @@ pub async fn download_media_from_url_async<R: Runtime>(
             &captured_stderr,
         ) {
             DownloadTermination::Stalled => {
-                let message = "yt-dlp download stalled with no progress and was stopped";
-                emit_download_error(app, &normalized_run_id, message);
-
-                return Err(AppError::from_code(
+                return Err(failed(
+                    app,
+                    &normalized_run_id,
                     AppErrorCode::YtDlpDownloadTimeout,
-                    message,
+                    "yt-dlp download stalled with no progress and was stopped",
                 ));
             }
             DownloadTermination::Cancelled => {
-                let message = "yt-dlp download cancelled";
-                emit_download_cancelled(app, &normalized_run_id, message);
-
-                return Err(AppError::from_code(
-                    AppErrorCode::YtDlpDownloadCancelled,
-                    message,
-                ));
+                return Err(cancelled(app, &normalized_run_id));
             }
             DownloadTermination::Failed(message) => {
-                emit_download_error(app, &normalized_run_id, message.clone());
-
-                return Err(AppError::from_code(
+                return Err(failed(
+                    app,
+                    &normalized_run_id,
                     AppErrorCode::YtDlpDownloadFailed,
                     message,
                 ));
@@ -921,13 +917,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
         // last point where stopping leaves nothing in the library. The Cancel button stays up for
         // the whole creation, not only while the process runs.
         if cancel_flag.load(Ordering::SeqCst) {
-            let message = "yt-dlp download cancelled";
-            emit_download_cancelled(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadCancelled,
-                message,
-            ));
+            return Err(cancelled(app, &normalized_run_id));
         }
 
         let downloaded_temp =
@@ -1038,13 +1028,7 @@ pub async fn download_media_from_url_async<R: Runtime>(
             )
             .await;
 
-            let message = "yt-dlp download cancelled";
-            emit_download_cancelled(app, &normalized_run_id, message);
-
-            return Err(AppError::from_code(
-                AppErrorCode::YtDlpDownloadCancelled,
-                message,
-            ));
+            return Err(cancelled(app, &normalized_run_id));
         }
 
         let result = DownloadedMediaResult {
