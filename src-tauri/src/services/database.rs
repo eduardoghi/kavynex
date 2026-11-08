@@ -418,10 +418,10 @@ async fn database_holds_data(path: &Path) -> bool {
         && !crate::services::db_backup::database_has_no_schema(path).await
 }
 
-/// The two pragmas the pools that open an outside file already set (`db_backup`), on the main pool
-/// too. After an import or a restore, the main database is such a file, and its schema is parsed on
-/// every open. A schema from outside may not call functions with side effects, and a page whose
-/// cells overrun it is reported as damage rather than read past.
+/// The two pragmas every pool that can open a file from outside sets, which is the `db_backup` pools
+/// and the main pool, since after an import or a restore the main database is such a file and its
+/// schema is parsed on every open. A schema from outside may not call functions with side effects,
+/// and a page whose cells overrun it is reported as damage rather than read past.
 pub(crate) fn harden_against_foreign_schema(options: SqliteConnectOptions) -> SqliteConnectOptions {
     options
         .pragma("trusted_schema", "OFF")

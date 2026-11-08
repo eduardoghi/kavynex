@@ -28,7 +28,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 
-use crate::services::database::SQLITE_BUSY_TIMEOUT_MS;
+use crate::services::database::{harden_against_foreign_schema, SQLITE_BUSY_TIMEOUT_MS};
 use crate::services::logger;
 use crate::{AppError, AppResult};
 // Used by `mod tests` below, which asserts against the codes the submodules return.
@@ -194,17 +194,15 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
 /// [`open`] with the driver's error kept, for a caller that has to tell damage from a file it
 /// merely could not reach.
 async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
-    let options = SqliteConnectOptions::new()
-        .filename(db_path)
-        .create_if_missing(false)
-        // Backup/export/import can run while the main pool holds the write lock. Without
-        // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
-        .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
-        // This pool also opens files that came from outside (an import, the external mirror), whose
-        // schema SQLite parses on open. Untrusted schema may not call functions with side effects,
-        // and a page whose cells overrun it is reported as damage rather than read past.
-        .pragma("trusted_schema", "OFF")
-        .pragma("cell_size_check", "ON");
+    // This pool also opens files that came from outside (an import, the external mirror).
+    let options = harden_against_foreign_schema(
+        SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(false)
+            // Backup/export/import can run while the main pool holds the write lock. Without
+            // a busy timeout any contention surfaces as an immediate SQLITE_BUSY failure.
+            .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS)),
+    );
     // Foreign keys are on here as well, through sqlx's own default rather than an explicit
     // `.foreign_keys(true)`. Nothing depends on it either way. This pool only reads (quick_check,
     // VACUUM INTO, import validation), so there is no INSERT/UPDATE/DELETE for it to guard.
@@ -226,13 +224,13 @@ async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
 ///
 /// For a file the user picked to import. Same untrusted-schema settings as [`connect`].
 async fn connect_read_only(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
-    let options = SqliteConnectOptions::new()
-        .filename(db_path)
-        .create_if_missing(false)
-        .read_only(true)
-        .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
-        .pragma("trusted_schema", "OFF")
-        .pragma("cell_size_check", "ON");
+    let options = harden_against_foreign_schema(
+        SqliteConnectOptions::new()
+            .filename(db_path)
+            .create_if_missing(false)
+            .read_only(true)
+            .busy_timeout(Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS)),
+    );
 
     SqlitePoolOptions::new()
         .max_connections(1)

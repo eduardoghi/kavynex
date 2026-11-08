@@ -415,16 +415,14 @@ pub(super) async fn prepare_staged_database(
     db_file: &Path,
     paths: Option<&MachinePaths>,
 ) -> AppResult<()> {
-    let options = SqliteConnectOptions::new()
-        .filename(db_file)
-        .create_if_missing(false)
-        .journal_mode(SqliteJournalMode::Delete)
-        .busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS))
-        // The file came from outside (an import) or is about to replace the database (a restore).
-        // Same open as `connect`. Its schema may not call functions with side effects, and a page
-        // whose cells overrun it is damage rather than something to read past.
-        .pragma("trusted_schema", "OFF")
-        .pragma("cell_size_check", "ON");
+    // The file came from outside (an import) or is about to replace the database (a restore).
+    let options = crate::services::database::harden_against_foreign_schema(
+        SqliteConnectOptions::new()
+            .filename(db_file)
+            .create_if_missing(false)
+            .journal_mode(SqliteJournalMode::Delete)
+            .busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS)),
+    );
     let pool = SqlitePoolOptions::new()
         .max_connections(1)
         .connect_with(options)
