@@ -205,11 +205,7 @@ pub fn sanitize_identifier_component(value: &str) -> String {
 fn short_identifier_hash(value: &str) -> String {
     use sha2::{Digest, Sha256};
 
-    Sha256::digest(value.as_bytes())
-        .iter()
-        .take(5)
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    crate::utils::hash::hex_encode(&Sha256::digest(value.as_bytes())[..5])
 }
 
 fn is_json_payload_line(line: &str) -> bool {

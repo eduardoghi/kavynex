@@ -63,14 +63,15 @@ pub fn hash_while_copying<R: Read, W: Write>(reader: &mut R, writer: &mut W) -> 
 }
 
 /// Hex-encodes a finished hasher. sha2 0.11 returns a hybrid-array `Array` (no `LowerHex`), so the
-/// encoding is spelled out. Sharing it keeps the two producers here from drifting into different
-/// casings, which would silently break any comparison between them.
+/// encoding is spelled out, in [`hex_encode`].
 pub(crate) fn hex_digest(hasher: Sha256) -> String {
-    hasher
-        .finalize()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    hex_encode(&hasher.finalize())
+}
+
+/// `bytes` as lowercase hex. One spelling for every hash the app writes, so no two producers drift
+/// into different casings, which would silently break any comparison between them.
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// True once the caller's cancel flag is set. `None` means the caller did not offer one, which is
