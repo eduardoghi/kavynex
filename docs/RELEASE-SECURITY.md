@@ -335,3 +335,20 @@ with SQLite's latest release each week and keeps an issue open while they differ
 and the connections that open those files set `trusted_schema=OFF` and `cell_size_check=ON`. So
 does the main database's pool (`database::harden_against_foreign_schema`), since after an import or
 a restore the main database is such a file. The bump arrives with sqlx, which pins libsqlite3-sys.
+
+Waiting for sqlx is the default, and the hardening above is why it can be. It stops being enough
+when SQLite publishes a fix for a flaw reachable by *opening or reading* a database file (the schema
+parser, the page and record decoding, a corrupt-file check), since that is the input the import and
+the mirror hand it. Such a fix is not waited for. In order of preference:
+
+1. **A libsqlite3-sys release within sqlx's range.** sqlx-sqlite 0.9 accepts `>=0.30.1, <0.38.0`,
+   so a 0.37.x that bundles the fixed SQLite is taken with `cargo update -p libsqlite3-sys` and a
+   reviewed `Cargo.lock` diff, like any other bump.
+2. **A vendored copy, when no such release exists yet.** Copy the libsqlite3-sys version the tree
+   resolves into `src-tauri/vendor/libsqlite3-sys`, replace its bundled `sqlite3.c` and `sqlite3.h`
+   with the fixed amalgamation from sqlite.org (checking its published SHA3-256), and point
+   `[patch.crates-io]` in `src-tauri/Cargo.toml` at it. The patch comes out again once a
+   libsqlite3-sys release carries the fix.
+
+Either way the release that ships it says so in its notes, and the `sqlite-freshness` issue is
+closed by the run after it.
