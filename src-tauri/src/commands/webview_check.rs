@@ -4,9 +4,9 @@
 //! matters is in "How the grant list is actually verified" in `docs/THREAT-MODEL.md`.
 //!
 //! The window opens normally, the frontend (`src/lib/webview-check.ts`) drives one call of each
-//! family and reports the outcome back through [`report_webview_check`], and the process exits 0 or
-//! 1. A frontend that never loads reports nothing, which the watchdog in `lib.rs` turns into a
-//! non-zero exit rather than a hang.
+//! family and reports the outcome back through [`report_webview_check`], and the process exits
+//! with 0 or 1. A frontend that never loads reports nothing, which the watchdog in `lib.rs` turns
+//! into a non-zero exit rather than a hang.
 //!
 //! **What it does not cover, stated plainly.** The update check and install and the relaunch
 //! (`commands::updater`), which cannot be exercised without a side effect, since the first two reach
