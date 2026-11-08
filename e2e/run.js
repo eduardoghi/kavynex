@@ -15,6 +15,7 @@
 
 import { existsSync } from "node:fs";
 import { basename, extname } from "node:path";
+import { expectReadableContrast } from "./contrast.js";
 import { createSession, waitFor } from "./webdriver.js";
 
 const PICKED_FOLDER = process.env.KAVYNEX_E2E_PICK_FOLDER ?? "";
@@ -100,6 +101,18 @@ async function closeNoticeIfShown(session) {
     }
 }
 
+// Runs `check` in the dark theme the app opens in and again in the light one, then leaves it dark,
+// so the flows after it see the page they expect.
+async function inBothThemes(session, check) {
+    await check("the dark theme");
+    await clickButton(session, "Switch to light theme");
+    try {
+        await check("the light theme");
+    } finally {
+        await clickButton(session, "Switch to dark theme");
+    }
+}
+
 // What the window held when a flow failed, so a timeout says whether the page was blank, still
 // loading, an error screen or simply different from what the flow expected.
 async function describePage(session) {
@@ -124,6 +137,22 @@ const flows = [
             await waitFor("a button to choose the library folder", async () =>
                 (await session.findButton("Choose library folder")).length > 0
             );
+        },
+    ],
+    [
+        "the text on the empty library and in Settings is readable in both themes",
+        async (session) => {
+            await closeNoticeIfShown(session);
+            await inBothThemes(session, async (theme) => {
+                await expectReadableContrast(session, `the empty library, ${theme}`);
+                await clickButton(session, "Open settings");
+                await waitForText(session, "Database");
+                try {
+                    await expectReadableContrast(session, `Settings, ${theme}`);
+                } finally {
+                    await clickButton(session, "Close settings");
+                }
+            });
         },
     ],
     [
@@ -194,6 +223,14 @@ const dialogFlows = [
                 `the card of "${MEDIA_TITLE}"`,
                 async () => (await session.findByLabel(`Open ${MEDIA_TITLE}`)).length > 0,
                 60_000
+            );
+        },
+    ],
+    [
+        "the text on a channel page with a media is readable in both themes",
+        async (session) => {
+            await inBothThemes(session, (theme) =>
+                expectReadableContrast(session, `the channel page, ${theme}`)
             );
         },
     ],

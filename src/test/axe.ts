@@ -11,8 +11,9 @@
 // technology cannot count the items by walking the DOM. The explicit `list` role plus
 // `aria-setsize`/`aria-posinset` on each row are what restore that, and nothing failed if a refactor
 // dropped them. They are also blind to the things jsdom has no answer for. Colour contrast needs
-// real computed styles, and focus order needs a real layout. Neither is asserted here, and neither
-// should be read as covered.
+// real computed styles, and focus order needs a real layout. Neither is asserted here. Contrast is
+// checked in the running app by the end-to-end flows (e2e/contrast.js), and focus order is not
+// covered at all.
 //
 // Where to root the scan. For a component rendered inline, the `container` Testing Library returns
 // is the tree. For a Mantine `Modal` (or anything else that portals), it is not. The dialog is

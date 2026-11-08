@@ -359,7 +359,9 @@ launches it with empty data directories through `tauri-driver`, and drives it wi
 The flows are a first launch, Settings and the full integrity check in Diagnostics, then choosing a
 library folder, creating a channel, importing a one-second WebM made with FFmpeg in the job, opening
 it in the player until the video has loaded, deleting it and finding its files in the trash, and
-exporting the database. A native dialog is out of WebDriver's reach, so the job names what each one
+exporting the database. Along the way the empty library, Settings and a channel page with a media
+are checked for text contrast in both themes, with axe-core's `color-contrast` rule run inside the
+window (`e2e/contrast.js`), since the component tests cannot compute colours. A native dialog is out of WebDriver's reach, so the job names what each one
 answers through `KAVYNEX_E2E_PICK_FOLDER`, `KAVYNEX_E2E_PICK_FILE` and `KAVYNEX_E2E_SAVE_FILE`,
 which only a debug build reads (`commands/dialog.rs`). Without them, the flows that need a dialog
 are skipped. The runner talks plain
