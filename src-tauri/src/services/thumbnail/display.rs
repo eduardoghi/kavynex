@@ -20,9 +20,9 @@
 //! - **Nothing in the database changes.** `videos.thumbnail_path` and `channels.avatar_path` keep
 //!   pointing at the canonical file in the library. A derivative is addressed *by* the canonical
 //!   file's content hash, which is already in its name, so the mapping needs no storage of its own.
-//! - **It is disposable.** The cache directory is already swept of stale entries on startup
-//!   (`services::temp_cleanup`), and a missing derivative regenerates on demand, so losing the whole
-//!   directory costs one re-encode and never a user's data.
+//! - **It is disposable.** The startup sweep trims it to a size budget (`DISPLAY_CACHE_MAX_BYTES`),
+//!   and a missing derivative regenerates on demand, so losing the whole directory costs one
+//!   re-encode and never a user's data.
 //! - **It is retroactive.** A thumbnail that has been in the library for a year gets a derivative
 //!   the first time it is asked for, which is what the format switch could not do.
 //! - **It fails open.** Every failure path (an unreadable source, a missing FFmpeg, a refused

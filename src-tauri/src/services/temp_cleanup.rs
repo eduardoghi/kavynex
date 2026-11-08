@@ -115,15 +115,9 @@ fn cleanup_dir_children(dir: &Path, max_age: Duration) -> AppResult<CleanupSumma
 
 /// Trims the display-thumbnail cache to its size budget, dropping the oldest derivatives first.
 ///
-/// Kept apart from [`cleanup_dir_children`] because the two answer different questions. That one
-/// asks "is this entry stale?", which is the right question for the three scratch directories. An
-/// old entry there is state from an operation that already finished. This cache holds *derived*
-/// data. Each entry is regenerable, but only by spawning FFmpeg, and reading a cached one is a
-/// `stat` that renews nothing. Asking the age question of it therefore discarded the entries the
-/// grid draws daily as readily as the ones nothing had touched since they were written, emptying the
-/// whole cache every seven days and paying it all back as a burst of FFmpeg runs on the next scroll.
-///
-/// So the question here is "does the cache fit?", and when it does, nothing is removed at all.
+/// Kept apart from [`cleanup_dir_children`] because an age rule is wrong for derived data. A cache
+/// hit renews nothing, so age would empty the cache the grid draws daily and pay it back in FFmpeg
+/// runs. The question here is "does the cache fit?", and when it does, nothing is removed at all.
 /// [`plan_display_cache_eviction`] holds the decision itself (pure, and under the mutation gate);
 /// this is the `read_dir` around it.
 fn cleanup_display_cache(dir: &Path, max_bytes: u64) -> AppResult<CleanupSummary> {

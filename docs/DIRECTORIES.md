@@ -200,29 +200,12 @@ in `src-tauri/src/constants.rs`). Three of them hold pure scratch:
 
 A fourth, `thumb-display/`, holds something different from scratch data: a **display-sized copy** of
 each thumbnail the grid has drawn (`services/thumbnail/display.rs`), named
-`<sha256-of-the-stored-thumbnail>-w<width>.jpg`. The width is in the name so that changing
-`DISPLAY_THUMBNAIL_MAX_WIDTH` invalidates the cache. Nothing revalidates a cached file's dimensions,
-so a name without it would keep serving the old size indefinitely. A stored thumbnail keeps whatever
-size it arrived at (a
-yt-dlp `maxresdefault` is 1280x720), and a webview decodes an image at its natural size regardless
-of how well the file is compressed, so drawing one into a card a few hundred pixels wide costs the
-full bitmap. These copies are capped at `DISPLAY_THUMBNAIL_MAX_WIDTH` (640) so the card decodes a
-quarter of that.
-
-Nothing in the database refers to them. `videos.thumbnail_path` and `channels.avatar_path` still
-point at the canonical file in the library; a derivative is addressed *by* that file's own content
-hash, which is already in its name, so the mapping needs no storage. That is also why the cache is
-safe to delete at any time, because a missing entry is regenerated the next time the grid asks, and a
-thumbnail that has been in the library for years gets one the first time it is drawn. If FFmpeg is
-not available, or the source has moved, the grid simply draws the stored file as it always did.
-
-Being derived rather than scratch is also why this one is **not** swept by age like the three above.
-Regenerating a derivative costs an FFmpeg process, and a cache *hit* is a `stat` that renews nothing,
-so an age rule discarded the thumbnails the grid draws every day at the same rate as the ones nothing
-had looked at since they were written. Emptying the whole cache every seven days and paying it back
-as a burst of FFmpeg runs on the next scroll. It is bounded by total size instead
-(`DISPLAY_CACHE_MAX_BYTES` in `services/thumbnail/display.rs`). A cache that fits is left entirely
-alone whatever its age, and one that does not is trimmed oldest-first until it fits.
+`<sha256-of-the-stored-thumbnail>-w<width>.jpg`, capped at `DISPLAY_THUMBNAIL_MAX_WIDTH` (640) so
+a card does not decode a full-size image. Nothing in the database refers to them, so the folder is
+safe to delete at any time, since a missing entry is regenerated the next time the grid asks, and
+without FFmpeg the grid draws the stored file as before. It is bounded by total size rather than by
+age (`DISPLAY_CACHE_MAX_BYTES`), trimmed oldest-first on startup. Why it is shaped this way is in
+the module docs of `services/thumbnail/display.rs`.
 
 `child-cwd/` is an empty folder made at startup (`utils::process::init_private_child_working_dir`)
 for the yt-dlp and FFmpeg runs that have no directory of their own (the format listing, the
@@ -259,7 +242,7 @@ cache directory on every startup, and the rule it applies depends on what a dire
 - The three scratch directories (`thumbs-temp/`, `yt-dlp-temp/`, `yt-dlp-thumb-temp/`) lose any
   entry older than 7 days (`TEMP_ENTRY_MAX_AGE_HOURS = 24 * 7` in `services/temp_cleanup.rs`), so an
   interrupted download/thumbnail generation does not leak disk space indefinitely.
-- `thumb-display/` is bounded by total size instead, for the reason given above.
+- `thumb-display/` is bounded by total size instead (see above).
 - `pending-media/` is swept by neither. Its markers are reconciled by
   `spawn_pending_media_sweep`, which decides per marker (see `marker_is_sweepable`) rather than
   by age, and a marker it cannot reconcile is deliberately kept.
