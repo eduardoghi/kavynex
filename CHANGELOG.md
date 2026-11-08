@@ -4,6 +4,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+## [1.9.0] (2026-11-08)
+
 ### Added
 
 - The channel page has a Not in library list with the videos and lives the channel has on YouTube
