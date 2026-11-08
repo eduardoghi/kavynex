@@ -1,12 +1,10 @@
 //! Crash recovery for the artifacts a media creation prepared but never registered.
 //!
-//! Creating a media is not one call. The frontend prepares the artifacts (downloading or copying
-//! the media file into the library, plus its thumbnail and live chat replay) and only then inserts
-//! the row. Between those two steps the files exist in the library with nothing pointing at them.
-//! The frontend's `catch` cleans that up when a step *fails*, but a `catch` only runs if the process
-//! survives. Close the window, lose power, or have the OS kill the webview in that window and a
-//! multi-GB video is stranded in the library forever, discoverable only by running Diagnostics by
-//! hand.
+//! A media creation (`media_creation`) writes its artifacts into the library (the media file,
+//! downloaded or copied, plus its thumbnail and live chat replay) before it inserts the row, so for
+//! a while the files exist with nothing pointing at them. A failure cleans that up, but only if the
+//! process survives it. Close the window, lose power, or have the OS kill the app in that window
+//! and a multi-GB video is stranded in the library, found only by running Diagnostics by hand.
 //!
 //! So the intent is recorded on disk instead. Once the artifacts exist and before the row is
 //! inserted, a marker naming them is written to the app cache directory. It is removed as soon as
@@ -414,11 +412,12 @@ pub(crate) fn marker_is_sweepable(
 /// library was repointed, or the path went permanently invalid. Retrying it forever turns a one-off
 /// failure into a tax on every launch, with nothing but a `warn` line nobody reads to show for it.
 ///
-/// What this counts is therefore a property of *one marker*, and one class of failure had to be
-/// kept out of it because it is a property of the run instead. A database that will not open fails
-/// every marker identically, so passing it through the loop would spend an attempt per marker on a
-/// verdict none of them earned. [`sweep_pending_media_artifacts`] refuses before the loop for that
-/// reason rather than classifying the error afterwards.
+/// What this counts is therefore a property of *one marker*, and two classes of failure had to be
+/// kept out of it because they are a property of the run instead. A database that will not open,
+/// or a library folder that is not there, fails every marker identically, so passing either through
+/// the loop would spend an attempt per marker on a verdict none of them earned.
+/// [`sweep_pending_media_artifacts`] refuses before the loop for that reason rather than
+/// classifying the error afterwards.
 ///
 /// What this ceiling bounds is the *retrying*, and it is worth being exact about that because it is
 /// easy to read as bounding more. The directory itself is unbounded. An abandoned marker is

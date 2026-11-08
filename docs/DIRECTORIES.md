@@ -239,50 +239,15 @@ the files exist with nothing pointing at them, so the marker names them. It is r
 soon as the row lands (or the failure path has cleaned the artifacts up), which means a
 marker left over from an *earlier* run is a creation the process did not survive.
 
-`lib.rs`'s `spawn_pending_media_sweep` reconciles those shortly after launch by handing the
-paths to the same reference counting the deletions use, so an artifact a registered row still
-points at is kept, and a genuine orphan is moved to the library's `.trash` folder rather than
-deleted (a finished download may be of something no longer on YouTube). A yt-dlp download records
-a marker for its file the moment it is placed, before the live chat and the thumbnail, and the
-registration replaces it with its own. A local import records one before it writes into the library,
-so a sweep running meanwhile never takes the file for an earlier run's leftover. In Move mode it names
-where the file came from. On a volume without hard links the move renames the file into the library,
-and the sweep then puts it back there instead of trashing it. Finding a
-`pending-media/` marker on a healthy install means a media import died midway; the sweep
-handles it on the next launch and nothing needs to be deleted by hand.
-
-The sweep runs on a short delay rather than inline with startup, so "still present" is not by
-itself enough to act on. A marker written by a creation the user started *after* launch is
-also present, and its row has legitimately not been inserted yet. Consuming it would unlink
-the file being added right now. So the sweep only considers a marker that is neither
-registered as in flight by this process nor newer than the process itself
-(`pending_media::marker_is_sweepable`), and every uncertain case is left in place, one launch
-later is a cheaper mistake than deleting a file the user still wants.
-
-A marker whose reconciliation *fails* is kept for the next launch to retry, since the usual cause is
-transient (the library drive not mounted yet). A failure is either the cleanup returning an error or
-any of the marker's paths that could not be moved to the trash, and a library folder that does not
-exist right now counts as the second for every path, not as files already gone. The same rule applies
-where a marker is first cleared, after a creation fails or a download is cancelled. A cleanup there
-that leaves a file in place keeps the marker for the next launch instead of clearing it
-(`pending_media::cleanup_reconciled`). Nothing there can tell transient from permanent, so the marker
-carries an `attempts` count and is abandoned after `MAX_MARKER_SWEEP_ATTEMPTS` (5). A
-failure that survives five launches is not a slow drive. Abandoning it means the *record* is given
-up on, never the files. The marker stays on disk and its artifacts stay in the library, where the
-Diagnostics dialog reports them as unreferenced. The difference is that the failure is logged once,
-at error level with its count, instead of at warning level on every launch forever.
-
-Two things have to happen together for that to be true, and they are in different functions. The
-incremented count is written back to the marker on *every* failure, including the one that reaches
-the ceiling; and `read_pending_markers` drops a marker whose count is already at the ceiling before
-the sweep ever sees it. With only the first, an abandoned marker sits at five and is re-read on
-every launch. With only the second, it sits at four and never reaches five. Either way the sweep
-would retry the same failing cleanup and re-emit the notice below on every launch, which is worse
-than the unbounded warning line the ceiling replaced, because that one at least stayed in the log.
-
-Giving up is surfaced to the user once, as a notice pointing at Diagnostics
-(`EVENT_PENDING_MEDIA_ABANDONED`, one event per sweep however many markers it covered), rather than
-being left to the log file alone.
+`lib.rs`'s `spawn_pending_media_sweep` reconciles those shortly after launch. An artifact a
+registered row still points at is kept, a genuine orphan goes to the library's `.trash` folder, and
+a file a Move import took from the user's folder is put back there. A marker written by a creation
+still running is left alone, a marker that cannot be reconciled is kept and retried on later
+launches up to a ceiling, and giving up is said once in a notice that points at Diagnostics. The
+whole sweep waits for the next launch when the database will not open or the library folder is not
+there. How each of those is decided, and why, is in the module docs of `services/pending_media.rs`.
+Finding a `pending-media/` marker on a healthy install means a media import died midway, and the
+sweep handles it on the next launch, so nothing needs to be deleted by hand.
 
 On startup, `lib.rs`'s `setup()` authorizes `thumbs-temp/` and `thumb-display/` (and only those
 two), in the Tauri asset-protocol scope (`commands/security.rs::register_cache_asset_scope`, see
@@ -302,17 +267,11 @@ directory on every startup, and the rule it applies depends on what a directory 
   `spawn_pending_media_sweep`, which decides per marker (see `marker_is_sweepable`) rather than
   by age, and a marker it cannot reconcile is deliberately kept.
 
-So this one directory has no bound at all, and that is worth stating rather than leaving to be
-noticed. An abandoned marker is never removed by anything. The growth is accepted rather than
-overlooked. A marker is a couple of hundred bytes, and producing one that is never reconciled takes
-a media creation that crashed *and* five consecutive launches that could not clean up after it, so
-the directory grows at a rate no user will measure. Against that, a sweep able to delete these files
-would be a sweep able to delete the only record of artifacts sitting in the library, which is
-precisely the decision `marker_is_sweepable` refuses to make whenever it is uncertain. Diagnostics
-reports what an abandoned marker names as orphans, and its **Remove orphan files** action moves the
-media files and thumbnails among them to the library's `.trash` folder
-(`library::cleanup::remove_orphan_artifacts`, which refuses while a media is being added). The
-marker itself is safe to delete by hand once nothing references its files.
+So this one directory has no bound at all. An abandoned marker is never removed by anything, and
+that growth is accepted on purpose (see `MAX_MARKER_SWEEP_ATTEMPTS` in `services/pending_media.rs`).
+Diagnostics reports what an abandoned marker names as orphans, and its **Remove orphan files**
+action moves the media files and thumbnails among them to the library's `.trash` folder. The marker
+itself is safe to delete by hand once nothing references its files.
 
 ## App local data directory. Recovered downloads
 
