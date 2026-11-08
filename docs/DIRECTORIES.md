@@ -133,10 +133,8 @@ Those counts bound how *many* snapshots exist, never how *large* they get, and e
 with every comment backed up. The daily archives are compressed, to about a third of a library
 database's size, and the others are not. Up to thirteen such copies can therefore sit in this one directory. Because that is not
 otherwise visible anywhere (and on Windows this is the roaming profile), **Settings > Database**
-reports the total these files currently occupy alongside the date of the last automatic snapshot;
-`db_backup/mod.rs::managed_database_paths` is the set it sums. It stayed in `mod.rs` when the
-snapshot and restore machinery moved into submodules of their own, because it is the one thing there
-that has to know about all of them at once.
+reports the total these files currently occupy alongside the date of the last automatic snapshot
+(`db_backup/mod.rs::managed_database_paths` is the set it sums).
 
 All of the snapshots above sit on the same volume as the live database, so a disk failure takes
 them with it. Every generation, not just the newest. The `.bak` and its archives and the `.corrupt` ones
@@ -152,19 +150,17 @@ of it that does, and answering No keeps the directory while the app is still rem
 no such option. `PRIVACY.md` states the consequence for the user.
 
 **The external backup is what addresses that, and it is off unless you turn it on.** There is no
-default folder and nothing prompts for one, so a fresh install has no off-volume copy at all, which
-is worth stating plainly because the paragraph above otherwise reads as though the problem were
-already solved. When a folder *is* configured (Settings > Database, stored as `external_backup_dir`
-in `app_settings`), `db_backup/external.rs::mirror_database_to_external_dir` writes
-`kavynex-backup.db` there once a day, the first time as soon as the folder is chosen, rotated as
-`kavynex-backup.db.1` / `kavynex-backup.db.2` (`EXTERNAL_BACKUP_ROTATED_GENERATIONS` = 2), via the
-same atomic `export_database`. Only the
-database is mirrored (the media files are not), and the folder is left untouched when it is
-unreachable (an unplugged drive) rather than recreated. Next to the copies sits
-`kavynex-backup.lineage`, naming the database they were made from, and copies an earlier database
-left there are renamed to `kavynex-backup-previous-<UTC time>[-N].db` and kept rather than rotated
-out (see `docs/DATABASE.md`). While the database's last full check found damage the copies are not
-rotated, and `kavynex-backup.after-damage.db` gets the day's copy instead.
+default folder and nothing prompts for one, so a fresh install has no off-volume copy at all. When a
+folder *is* configured (Settings > Database), it holds these files, and the rules they follow are in
+"External database mirror" in `docs/DATABASE.md`:
+
+- `kavynex-backup.db`, `kavynex-backup.db.1` and `kavynex-backup.db.2`: the daily copy of the
+  database and two older generations. Only the database is mirrored, not the media files.
+- `kavynex-backup.lineage`: the id of the database the copies were made from.
+- `kavynex-backup-previous-<UTC time>[-N].db`: copies an earlier database left, set aside and kept.
+- `kavynex-backup.after-damage.db`: the day's copy while the last full check found damage.
+- `kavynex-backup.db.new` and `kavynex-backup.db.rotating`: scratch from a run, kept by one that
+  stopped short.
 
 What is at stake if it is left off is the metadata rather than the media. The comments, the live
 chat, the titles, the publication dates and the channel/watched state all live only in the database,
