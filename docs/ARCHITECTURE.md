@@ -173,16 +173,12 @@ Registering it after a plugin that can fail or block would leave that window ope
 stated here as well as in the code comment because a plugin list reads as an unordered set.
 
 None of the five is called by the frontend, so none has a grant in `src-tauri/capabilities/`.
-`tauri-plugin-updater` checks for and installs updates, but only through `commands/updater.rs`,
-whose commands take no argument from the renderer, because the plugin's own `check` takes a proxy and
-headers from its caller. The relaunch after an update or a database import is `AppHandle::restart`
-behind the same module. The other four do their whole job from the Rust side too.
-`tauri-plugin-single-instance` and `tauri-plugin-window-state` (which persists the window's size and
-position across launches) work through a launch hook and a window-event hook.
-`tauri-plugin-dialog` opens the file and folder pickers, but only through the commands in
-`commands/dialog.rs`, because its renderer-facing commands add every picked path to the asset scope.
-`tauri-plugin-opener` opens YouTube links, but only through `commands/external.rs`, which builds the
-URL from a video or channel id instead of taking one from the renderer.
+`tauri-plugin-updater` checks for and installs updates through `commands/updater.rs`, which also
+holds the relaunch. `tauri-plugin-single-instance` and `tauri-plugin-window-state` (which persists
+the window's size and position across launches) work through a launch hook and a window-event hook.
+`tauri-plugin-dialog` opens the pickers through `commands/dialog.rs`, and `tauri-plugin-opener`
+opens YouTube links through `commands/external.rs`. Why each is driven from Rust rather than granted
+to the renderer is in `THREAT-MODEL.md`.
 Nothing in `src/lib/` calls any of the five, so none appears in `capabilities/` and none needs to;
 see `docs/THREAT-MODEL.md` for why that is the correct state rather than a missing grant, and
 `docs/DIRECTORIES.md` for the file window-state writes.

@@ -23,11 +23,9 @@ public key embedded in `tauri.conf.json` before being installed. The matching pr
 password are secrets of the repository's `release` environment, never checked into the repository,
 and that environment only admits runs on `main`.
 
-The rest of the request is fixed too. The renderer holds no `updater:` permission. The check and the
-install are backend commands (`commands/updater.rs`) that take no argument from it, because the
-plugin's own `check` takes a proxy, extra headers, a timeout and a target platform from its caller,
-and a proxy of a compromised renderer's choosing would carry whatever it put in the proxy's URL to a
-host of its choosing (see `THREAT-MODEL.md`).
+The rest of the request is fixed too. The renderer holds no `updater:` permission, and the check and
+the install are backend commands (`commands/updater.rs`) that take no argument from it (why is in
+`THREAT-MODEL.md`).
 
 ### Accepted risk: the updater can be rolled back to an older signed release
 
