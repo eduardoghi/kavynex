@@ -54,15 +54,11 @@ actually act on what it says.
    AppImage bundler refuses to run without (the apt step installs it explicitly on both Linux
    legs for that reason).
    Each leg then **starts the binary it just built**, twice, before anything is attested.
-   `--smoke-test` runs the whole of `setup()` and exits, proving the process loads, every plugin
-   registers and the database path resolves. `--webview-check` goes further, letting the window
-   open and has the renderer report whether it could call `getVersion`, subscribe and unsubscribe
-   from an event, and load an image through `convertFileSrc`, and the backend confirms that a media
-   element pointed at the player's `kvxmedia` protocol reached it, i.e. whether the capability
-   grants in `src-tauri/capabilities/` and the packaged CSP actually work. Neither is reachable from
-   `cargo test` (which never initializes the Tauri runtime) or from `pnpm tauri dev` (which serves
-   the page from the Vite origin, with no CSP header). Both are skipped on the x86_64 macOS leg
-   alone, which is a cross-compile on an arm64 runner and cannot execute its own output. A failure
+   `--smoke-test` runs the whole of `setup()` and exits, and `--webview-check` lets the window open
+   and has the renderer report whether its grants, the asset protocol and the packaged CSP work.
+   What each proves, and why nothing else in the pipeline reaches it, is in "How the grant list is
+   actually verified" in `THREAT-MODEL.md`. Both are skipped on the x86_64 macOS leg alone, which
+   is a cross-compile on an arm64 runner and cannot execute its own output. A failure
    in either turns the run red with assets already on the draft, which is the intended outcome.
    The draft is published by hand, and a red run must not be published. What the webview check
    deliberately does not reach is the three plugin grants, because exercising any of them has a side
@@ -103,12 +99,9 @@ steps to the release workflow.
 
 ### The plugin-grant checklist
 
-Everything in `src-tauri/capabilities/` is evaluated by the ACL at runtime and nowhere else. A
-permission that is missing, misspelled, or scoped too narrowly compiles, passes `cargo test`, passes
-`pnpm build`, and fails on the first click a user makes. Two checks already cover part of that.
-`scripts/verify-capability-surface.js` (every push) proves the granted list and the two seam files in
-`src/lib/` cannot drift apart, and `--webview-check` (every release leg) proves the three `core:*`
-grants, the asset protocol and the player's `kvxmedia` protocol work in the packaged build.
+`scripts/verify-capability-surface.js` (every push) and `--webview-check` (every release leg)
+cover the grant list and what the renderer can do (see "How the grant list is actually verified" in
+`THREAT-MODEL.md`).
 
 Neither reaches the backend commands that drive the plugins, and the reason is that exercising one
 has a side effect no unattended run may take, whether a file picker, a browser launch, a network call

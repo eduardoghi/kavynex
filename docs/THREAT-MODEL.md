@@ -920,10 +920,7 @@ The two gates divide the work, and neither covers the other. `--webview-check`
 proves a grant *works*, on a packaged binary, at release time. This one proves the *list* cannot
 drift from the two files that define the used surface, for every grant, on every push, which is where the drift this section is about actually happens. It is deliberately not
 a claim that a granted permission functions, since only the ACL can answer that, and only in the renderer.
-
-The over-grant direction it added is not a hypothetical tidiness check. The list started as the
-scaffolded `core:default` and survived four rounds of capability hardening precisely because nothing
-was comparing it against `src/lib/`; that comparison is now a build step rather than a habit.
+The over-grant direction is the one the `core:default` history above shows was real.
 
 Nothing about the grant list remains manual. The update and the relaunch are backend commands that
 reach the network or restart the process, so `docs/RELEASING.md` step 6 still exercises them by hand

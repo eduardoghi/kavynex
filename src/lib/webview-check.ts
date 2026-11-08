@@ -1,10 +1,5 @@
-// The renderer half of the startup self-check (see src-tauri/src/commands/webview_check.rs for the
-// whole rationale, including what this deliberately does not cover).
-//
-// Everything here runs inside the webview on purpose. The Tauri ACL gates what the *renderer* may
-// call and is evaluated at runtime, and the packaged CSP is applied to the *document* and only in a
-// bundled build, so neither can be exercised by anything the backend does on its own, and neither
-// is reachable from `--smoke-test`, which exits inside `setup()` before the window opens.
+// The renderer half of the startup self-check, which has to run inside the webview, since the ACL
+// and the packaged CSP apply only there. See src-tauri/src/commands/webview_check.rs.
 //
 // This module is in the production bundle by design. The shipped binary has to be able to check
 // itself, without a second build that would then be a different binary. The cost on a normal launch

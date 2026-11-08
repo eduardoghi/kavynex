@@ -1,29 +1,12 @@
-//! The startup self-check that runs *inside* the webview.
+//! The startup self-check that runs *inside* the webview, `--webview-check`. It covers what no
+//! other gate reaches, the renderer loading at all, the Tauri ACL and the packaged CSP, since
+//! `cargo test`, `pnpm build` and `--smoke-test` all stop short of a running window. Why each
+//! matters is in "How the grant list is actually verified" in `docs/THREAT-MODEL.md`.
 //!
-//! `--smoke-test` (see `crate::is_smoke_test_run`) proves the process loads, every plugin
-//! registers and `setup()` completes, and then exits before the event loop starts. Everything
-//! after that point is unverified by any gate in the pipeline. `cargo test` links the `rlib` and
-//! never initializes the runtime or the webview, and `pnpm build` only emits the frontend bundle.
-//! Three things live in that gap, and each has a failure mode that reaches the user as an app that
-//! opens to a blank window or a feature that silently rejects:
-//!
-//! - **The renderer loads at all.** A bundle the webview refuses, or a CSP that blocks the entry
-//!   script, is invisible until someone opens the app.
-//! - **The Tauri ACL.** `src-tauri/capabilities/` gates what the *renderer* may call, and it is
-//!   evaluated at runtime only. A permission that is missing from the grant list fails on the first
-//!   call the user makes, not at build time. This is the reason the module exists. The grant list
-//!   was narrowed from the scaffolded `core:default` to the exact set the seam uses, which is the
-//!   right thing to have done and also exactly the change where a miss is silent.
-//! - **The packaged CSP.** Tauri injects `tauri.conf.json`'s `csp` only in a bundled app. `pnpm
-//!   tauri dev` serves the page from the Vite origin with no CSP header at all (see `docs/THREAT-MODEL.md`).
-//!   So `img-src`'s `asset:` / `http://asset.localhost` tokens (without which every thumbnail
-//!   silently fails to load) and `media-src`'s `kvxmedia:` / `http://kvxmedia.localhost` ones
-//!   (every video and recording) are exercised by a packaged build and nothing else.
-//!
-//! `--webview-check` covers all three. The window opens normally, the frontend
-//! (`src/lib/webview-check.ts`) drives one call of each family and reports the outcome back
-//! through [`report_webview_check`], and the process exits 0 or 1. A frontend that never loads
-//! reports nothing, which the watchdog in `lib.rs` turns into a non-zero exit rather than a hang.
+//! The window opens normally, the frontend (`src/lib/webview-check.ts`) drives one call of each
+//! family and reports the outcome back through [`report_webview_check`], and the process exits 0 or
+//! 1. A frontend that never loads reports nothing, which the watchdog in `lib.rs` turns into a
+//! non-zero exit rather than a hang.
 //!
 //! **What it does not cover, stated plainly.** The update check and install and the relaunch
 //! (`commands::updater`), which cannot be exercised without a side effect, since the first two reach

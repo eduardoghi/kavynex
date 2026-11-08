@@ -1,31 +1,17 @@
 // CI gate over the mapping between the Tauri APIs the frontend seam calls and the permissions
 // `src-tauri/capabilities/` grants.
 //
-// `docs/THREAT-MODEL.md` states that the grant list is "the exact list the app uses, not a preset",
-// and that the seam rule is what makes that auditable. `src/lib/tauri-client.ts` and
-// `src/lib/tauri-platform.ts` are the only files allowed to import `@tauri-apps` (enforced by
-// eslint), so the used surface is a two-file read. That is true, and it was still held by nothing
-// but someone remembering to do the read.
-//
-// The failure it leaves open is the one that document describes. A new Tauri API added to a seam
-// without its permission surfaces "on the first click a user makes". Nothing before this ran the
-// ACL. `cargo test` never initializes the Tauri runtime, `pnpm build` only emits the bundle, and
-// `--smoke-test` exits inside `setup()`. `--webview-check` (release.yml) closes the runtime half for
-// the three grants it can exercise without a side effect. The three plugin grants cannot be probed
-// that way (two network calls and a restart), so they are checked by hand
-// against the installed artifact, once per release, from the checklist in `docs/RELEASING.md` step 6.
-//
-// This closes the *declaration* half instead, which is where that drift actually happens, and it
-// runs on every push rather than only on a release.
+// `src/lib/tauri-client.ts` and `src/lib/tauri-platform.ts` are the only files allowed to import
+// `@tauri-apps` (enforced by eslint), so the used surface is a two-file read, and this makes that
+// read a build step. Why it and `--webview-check` both exist, and how they split the work, is in
+// "How the grant list is actually verified" in `docs/THREAT-MODEL.md`.
 //
 // What it proves and what it does not, stated exactly, because a gate that overstates itself is
 // worse than none. It does NOT prove a granted permission works at runtime. That needs the ACL,
 // which only the renderer evaluates. What it proves is that the two lists cannot drift apart
 // silently. A binding added to a seam fails here until its permission is decided, a permission
 // granted for nothing fails here too, and an entry naming an API that no longer exists cannot rot
-// in place. The over-grant direction is not hypothetical. The list started as the scaffolded
-// `core:default`, which expanded to 92 individual permissions, and stayed that way through four
-// rounds of capability hardening because nothing was comparing it to the two files above.
+// in place.
 //
 // Usage:
 //     node scripts/verify-capability-surface.js
