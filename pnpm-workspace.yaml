@@ -12,7 +12,7 @@ blockExoticSubdeps: true
 # (.github/dependabot.yml), so a dependency added by hand waits as long as one Dependabot bumps.
 minimumReleaseAge: 7200
 
-# Both entries below are **floors, not pins**. An exact version here raises the minimum today and
+# Every entry below is a **floor, not a pin**. An exact version here raises the minimum today and
 # freezes the package after that. Nothing can bump past an override, so Dependabot opens no PR, and
 # `scripts/check-js-advisories.js` sees only the resolved tree, which has no *open* advisory because
 # the override pinned it. The next advisory on the same package then goes unreported. A `>=` raises
@@ -38,3 +38,12 @@ overrides:
     #
     # REMOVE WHEN: ajv's own range floors fast-uri at 3.1.9 or later.
     fast-uri: ">=3.1.9 <4"
+    # Floors the transitive minimatch, pulled by ESLint, typescript-eslint and Stryker (dev scope,
+    # never shipped in the app), past GHSA-g3hv-75wg-m249, a DoS through a glob pattern that grows
+    # during preprocessing. The fix exists only in 11.x, a major none of the three declares yet, which
+    # is why Dependabot could not raise it. 11 removed `makeRe`, `regexp`, `matchOne` and the `AST`
+    # class, and the three only call `minimatch()` and `new Minimatch` with `match` and `hasMagic`,
+    # which it kept. Bounded to 11.x for the same reason fast-uri is bounded to 3.x.
+    #
+    # REMOVE WHEN: `pnpm why minimatch` shows every dependent declaring 11.0.1 or later itself.
+    minimatch: ">=11.0.1 <12"
