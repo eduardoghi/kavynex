@@ -633,14 +633,7 @@ mod registration {
 
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
 
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .unwrap();
+        let pool = crate::test_support::memory_pool().await;
 
         sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
             .execute(&pool)

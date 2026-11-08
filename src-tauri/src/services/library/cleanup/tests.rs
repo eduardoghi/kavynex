@@ -3,26 +3,11 @@
 // parent), so `use super::*` still reaches every private item it did.
 
 use super::*;
-use crate::services::db_schema::ensure_schema;
-use sqlx::sqlite::SqlitePoolOptions;
 use std::fs;
 use std::path::PathBuf;
 
 async fn create_test_pool() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .expect("create sqlite memory pool");
-
-    sqlx::query("PRAGMA foreign_keys = ON;")
-        .execute(&pool)
-        .await
-        .expect("enable foreign keys");
-
-    ensure_schema(&pool).await.expect("apply schema");
-
-    pool
+    crate::test_support::memory_pool().await
 }
 
 async fn insert_channel(pool: &SqlitePool, handle: &str, avatar: Option<&str>) -> i64 {

@@ -303,14 +303,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_full_integrity_check_reports_ok_for_a_healthy_schema() {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .unwrap();
+        let pool = crate::test_support::memory_pool().await;
 
         let report = run_full_integrity_check(&pool).await.unwrap();
 

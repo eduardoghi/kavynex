@@ -246,17 +246,7 @@ mod tests {
     /// An in-memory pool with the schema applied, for the guard tests that need a persisted
     /// setting to cross-check against rather than only the pure comparison.
     async fn memory_pool() -> SqlitePool {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("open in-memory database");
-
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .expect("apply schema");
-
-        pool
+        crate::test_support::memory_pool().await
     }
 
     async fn pool_with_library_path(library_path: &str) -> SqlitePool {

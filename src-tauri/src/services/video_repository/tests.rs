@@ -9,17 +9,7 @@ use sqlx::sqlite::SqlitePoolOptions;
 /// below, which hand-rolls a minimal `videos` table. The sort-index test needs the real index
 /// set, since that is exactly what it is asserting about.
 async fn schema_pool() -> SqlitePool {
-    let pool = SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .expect("create sqlite memory pool");
-
-    crate::services::db_schema::ensure_schema(&pool)
-        .await
-        .expect("apply schema");
-
-    pool
+    crate::test_support::memory_pool().await
 }
 
 /// Each `list_media_page` sort category and the index that must serve its ORDER BY.

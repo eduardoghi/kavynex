@@ -1514,14 +1514,7 @@ mod tests {
         fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
 
         let app = mock_app();
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .unwrap();
+        let pool = crate::test_support::memory_pool().await;
         sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
             .execute(&pool)
             .await

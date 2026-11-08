@@ -2507,14 +2507,7 @@ mod tests {
             std::env::temp_dir().join(format!("kavynex_cancel_placed_{}", unique_temp_suffix()));
         fs::create_dir_all(library.join(crate::constants::LIBRARY_DIR_VIDEO)).unwrap();
         let app = mock_builder().build(mock_context(noop_assets())).unwrap();
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .unwrap();
+        let pool = crate::test_support::memory_pool().await;
         let mut settings = get_app_settings_from_pool(&pool).await.unwrap();
         settings.library_path = Some(library.to_string_lossy().to_string());
         set_app_settings_in_pool(&pool, &settings).await.unwrap();

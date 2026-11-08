@@ -30,15 +30,7 @@ pub fn mock_webview(
 /// runtime so the pool's background tasks share the runtime [`invoke`] drives commands on.
 pub fn memory_db() -> Db {
     tauri::async_runtime::block_on(async {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .expect("open in-memory database");
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .expect("apply schema");
-        Db::from_pool(pool)
+        Db::from_pool(crate::test_support::memory_pool().await)
     })
 }
 

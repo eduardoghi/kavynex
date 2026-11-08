@@ -100,14 +100,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_video_id_another_media_owns_is_refused_before_fetching() {
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        crate::services::db_schema::ensure_schema(&pool)
-            .await
-            .unwrap();
+        let pool = crate::test_support::memory_pool().await;
         sqlx::query("INSERT INTO channels (id, name, youtube_handle) VALUES (1, 'C', '@c')")
             .execute(&pool)
             .await

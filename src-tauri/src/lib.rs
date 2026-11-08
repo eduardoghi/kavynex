@@ -6,6 +6,9 @@ pub mod models;
 pub mod services;
 pub mod utils;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub use error::{AppError, AppErrorCode, AppResult};
 
 use std::path::Path;

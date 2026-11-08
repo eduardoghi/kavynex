@@ -7,11 +7,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use std::path::{Path, PathBuf};
 
 async fn memory_pool() -> SqlitePool {
-    SqlitePoolOptions::new()
-        .max_connections(1)
-        .connect("sqlite::memory:")
-        .await
-        .expect("create sqlite memory pool")
+    crate::test_support::empty_memory_pool().await
 }
 
 #[test]
