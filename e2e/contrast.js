@@ -19,6 +19,18 @@ const RESULT_KEY = "__kavynexContrast";
 // Runs the rule over the whole page and returns one line per element that fails it. The page is
 // left as it was, and axe stays loaded for the next call.
 export async function findContrastViolations(session) {
+    // A modal that just opened, or a theme that just switched, is still fading in, and axe would
+    // measure its text at whatever opacity the transition had reached. Wait for every animation and
+    // transition on the page to finish first. A spinner loops forever and changes no text colour, so
+    // an endless animation is not waited for.
+    await waitFor("the page's transitions to finish", () =>
+        session.execute(
+            "return document.getAnimations().every((animation) => " +
+                "animation.playState !== 'running' || " +
+                "animation.effect?.getComputedTiming().iterations === Infinity);"
+        )
+    );
+
     await session.execute(
         `if (!window.axe) { ${AXE_SOURCE}\n}\n` +
             `window.${RESULT_KEY} = null;\n` +
