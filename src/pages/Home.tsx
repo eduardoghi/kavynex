@@ -193,16 +193,11 @@ export default function Home(): JSX.Element {
                                             exists. After that the folder belongs to Settings.
                                             Set off from the description by more than the stack's
                                             own gap, so it reads as its own line rather than as a
-                                            second sentence, and taken one step below `dimmed`,
-                                            which is the theme's only secondary level, with the
-                                            same opacity lever the cards already use. */}
+                                            second sentence, and quieter for being smaller. Not
+                                            dimmer than `dimmed`, since anything lighter falls
+                                            under 4.5:1 on the light page. */}
                                         {viewState.showLibrarySetup && (
-                                            <Text
-                                                c="dimmed"
-                                                size="xs"
-                                                mt="xs"
-                                                style={{ opacity: 0.85 }}
-                                            >
+                                            <Text c="dimmed" size="xs" mt="xs">
                                                 {UI_TEXT.home.librarySetupTitle}
                                             </Text>
                                         )}
