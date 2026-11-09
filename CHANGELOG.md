@@ -81,6 +81,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Security
 
+- A database brought in from outside (Import database, the external backup folder) is not opened
+  when the write-ahead log beside it declares a page size other than the database's. The SQLite
+  built into the app could read back stray memory from such a pair (CVE-2026-119375).
 - Checking for and installing updates goes through the app's backend, so the window holds no
   updater permission.
 - The main database is opened with the same guards against a schema brought in from outside that

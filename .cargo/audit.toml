@@ -6,4 +6,4 @@
 # scripts/verify-advisory-ignores.js fails CI when the two lists differ or a workflow passes its own
 # `--ignore` again.
 [advisories]
-ignore = ["RUSTSEC-2024-0429"]
+ignore = ["RUSTSEC-2024-0429", "RUSTSEC-2026-0459"]

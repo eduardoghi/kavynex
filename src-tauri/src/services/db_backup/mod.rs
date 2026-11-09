@@ -191,9 +191,88 @@ async fn open(db_path: &Path) -> AppResult<SqlitePool> {
         .map_err(|error| backup_error("failed to open database for backup", error))
 }
 
+/// The page size a database header declares, from bytes 16 and 17 of the file. `None` for
+/// something too short to be a database, which is left for SQLite to refuse.
+fn database_page_size(header: &[u8]) -> Option<u32> {
+    let bytes: [u8; 2] = header.get(16..18)?.try_into().ok()?;
+
+    // 1 is how the format writes 65536, which does not fit in two bytes.
+    match u16::from_be_bytes(bytes) {
+        1 => Some(65_536),
+        size => Some(u32::from(size)),
+    }
+}
+
+/// The page size a write-ahead-log header declares, from bytes 8 to 11. `None` for a log SQLite
+/// would not read (shorter than its 32-byte header, or without its magic number), which it treats
+/// as empty.
+fn wal_page_size(header: &[u8]) -> Option<u32> {
+    let magic = u32::from_be_bytes(header.get(0..4)?.try_into().ok()?);
+
+    if header.len() < 32 || !matches!(magic, 0x377f_0682 | 0x377f_0683) {
+        return None;
+    }
+
+    Some(u32::from_be_bytes(header.get(8..12)?.try_into().ok()?))
+}
+
+/// Whether a database and the write-ahead log beside it declare different page sizes.
+///
+/// SQLite before 3.54 returns uninitialized page-cache memory when it opens such a pair, so a
+/// crafted file brought in from outside could make an ordinary query read back bytes from this
+/// process (RUSTSEC-2026-0459, CVE-2026-119375). The bundled SQLite is 3.51.3, held there by the
+/// sqlx release this app uses, so the pair is refused before it is opened instead.
+fn wal_page_size_differs(database_header: &[u8], wal_header: &[u8]) -> bool {
+    match (
+        database_page_size(database_header),
+        wal_page_size(wal_header),
+    ) {
+        (Some(database), Some(wal)) => database != wal,
+        _ => false,
+    }
+}
+
+/// Refuses to open `db_path` when the write-ahead log beside it declares a page size other than
+/// the database's. See [`wal_page_size_differs`]. Reads the two headers on the blocking pool.
+async fn refuse_mismatched_wal(db_path: &Path) -> Result<(), sqlx::Error> {
+    fn read_header(path: &Path, len: usize) -> Vec<u8> {
+        use std::io::Read;
+
+        let mut header = Vec::with_capacity(len);
+        let _ = std::fs::File::open(path)
+            .and_then(|file| file.take(len as u64).read_to_end(&mut header));
+        header
+    }
+
+    let db_path = db_path.to_path_buf();
+
+    let differs = tauri::async_runtime::spawn_blocking(move || {
+        let mut wal_path = db_path.clone().into_os_string();
+        wal_path.push("-wal");
+
+        wal_page_size_differs(
+            &read_header(&db_path, 100),
+            &read_header(Path::new(&wal_path), 32),
+        )
+    })
+    .await
+    .unwrap_or(false);
+
+    if differs {
+        return Err(sqlx::Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "the write-ahead log beside this database declares a different page size, so it was not opened",
+        )));
+    }
+
+    Ok(())
+}
+
 /// [`open`] with the driver's error kept, for a caller that has to tell damage from a file it
 /// merely could not reach.
 async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    refuse_mismatched_wal(db_path).await?;
+
     // This pool also opens files that came from outside (an import, the external mirror).
     let options = harden_against_foreign_schema(
         SqliteConnectOptions::new()
@@ -224,6 +303,8 @@ async fn connect(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
 ///
 /// For a file the user picked to import. Same untrusted-schema settings as [`connect`].
 async fn connect_read_only(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
+    refuse_mismatched_wal(db_path).await?;
+
     let options = harden_against_foreign_schema(
         SqliteConnectOptions::new()
             .filename(db_path)

@@ -681,7 +681,10 @@ live connection pool is a singleton that cannot be reopened mid-session:
    and its log are left exactly as they were, and `VACUUM INTO` writes one consistent,
    self-contained database even while another program is writing the source. The copy is
    refused before it starts when the drive holding the database has less free space than the file
-   and its log (`NotEnoughSpaceForDatabase`).
+   and its log (`NotEnoughSpaceForDatabase`). A file whose write-ahead log declares a page size other
+   than its own is not opened at all, since SQLite before 3.54 reads stray memory from such a pair
+   (CVE-2026-119375), and the bundled SQLite is held at 3.51.3 by sqlx 0.9. Every pool `db_backup`
+   opens checks it first (`wal_page_size_differs`), which covers the external mirror as well.
 
    Everything after that runs on the copy, so what is checked is what is swapped in. The copy must
    contain the four core tables (`channels`, `videos`, `video_comments`, `app_settings`) *and* the

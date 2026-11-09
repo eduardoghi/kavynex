@@ -3926,3 +3926,93 @@ fn archives_of_the_same_second_sort_by_the_number_a_later_one_carries() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A write-ahead-log header (32 bytes) declaring `page_size`, with `magic` up front.
+fn wal_header(magic: u32, page_size: u32) -> Vec<u8> {
+    let mut header = vec![0_u8; 32];
+    header[0..4].copy_from_slice(&magic.to_be_bytes());
+    header[8..12].copy_from_slice(&page_size.to_be_bytes());
+    header
+}
+
+/// The first 100 bytes of a database file whose header declares `encoded` at bytes 16 and 17.
+fn database_header(encoded: u16) -> Vec<u8> {
+    let mut header = vec![0_u8; 100];
+    header[..16].copy_from_slice(b"SQLite format 3\0");
+    header[16..18].copy_from_slice(&encoded.to_be_bytes());
+    header
+}
+
+#[test]
+fn page_sizes_are_read_from_both_headers() {
+    assert_eq!(database_page_size(&database_header(4096)), Some(4096));
+    // The format writes 65536 as 1, since it does not fit in two bytes.
+    assert_eq!(database_page_size(&database_header(1)), Some(65_536));
+    assert_eq!(database_page_size(&[0_u8; 17]), None);
+
+    assert_eq!(wal_page_size(&wal_header(0x377f_0682, 8192)), Some(8192));
+    assert_eq!(wal_page_size(&wal_header(0x377f_0683, 1024)), Some(1024));
+    // A log SQLite would not read, which it treats as empty.
+    assert_eq!(wal_page_size(&wal_header(0x1234_5678, 8192)), None);
+    assert_eq!(wal_page_size(&wal_header(0x377f_0682, 8192)[..31]), None);
+    assert_eq!(wal_page_size(&[]), None);
+}
+
+#[test]
+fn only_a_log_declaring_another_page_size_is_a_mismatch() {
+    let database = database_header(4096);
+
+    assert!(wal_page_size_differs(
+        &database,
+        &wal_header(0x377f_0682, 8192)
+    ));
+    assert!(wal_page_size_differs(
+        &database_header(1),
+        &wal_header(0x377f_0683, 4096)
+    ));
+    assert!(!wal_page_size_differs(
+        &database,
+        &wal_header(0x377f_0682, 4096)
+    ));
+    assert!(!wal_page_size_differs(
+        &database_header(1),
+        &wal_header(0x377f_0682, 65_536)
+    ));
+    // Nothing to compare (no log, a log SQLite ignores, not a database) is left for SQLite.
+    assert!(!wal_page_size_differs(&database, &[]));
+    assert!(!wal_page_size_differs(&database, &wal_header(0, 8192)));
+    assert!(!wal_page_size_differs(&[], &wal_header(0x377f_0682, 8192)));
+}
+
+#[tokio::test]
+async fn a_database_whose_log_declares_another_page_size_is_not_opened() {
+    let dir = temp_dir("wal_page_size");
+    let db_path = dir.join("foreign.db");
+    seed_db(&db_path).await;
+
+    let page_size = database_page_size(&std::fs::read(&db_path).unwrap()).unwrap();
+    let mut wal_path = db_path.clone().into_os_string();
+    wal_path.push("-wal");
+
+    // The pair CVE-2026-119375 needs. Both ways in refuse it before SQLite reads a page.
+    std::fs::write(&wal_path, wal_header(0x377f_0682, page_size * 2)).unwrap();
+
+    for refused in [
+        connect_read_only(&db_path).await.err(),
+        connect(&db_path).await.err(),
+    ] {
+        match refused {
+            Some(sqlx::Error::Io(error)) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::InvalidData)
+            }
+            other => panic!("expected the mismatched log to be refused, got {other:?}"),
+        }
+    }
+
+    // A log of the database's own page size is no reason to refuse it.
+    std::fs::write(&wal_path, wal_header(0x377f_0682, page_size)).unwrap();
+    let pool = connect_read_only(&db_path).await.unwrap();
+    pool.close().await;
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
