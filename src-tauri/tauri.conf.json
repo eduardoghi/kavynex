@@ -53,11 +53,16 @@
             "signingIdentity": "-"
         },
         "linux": {
+            "appimage": {
+                "bundleMediaFramework": true
+            },
             "deb": {
-                "depends": ["libc6 (>= 2.39)"]
+                "depends": ["libc6 (>= 2.39)"],
+                "recommends": ["gstreamer1.0-plugins-good", "gstreamer1.0-libav"]
             },
             "rpm": {
-                "depends": ["glibc >= 2.39"]
+                "depends": ["glibc >= 2.39"],
+                "recommends": ["gstreamer1-plugins-good", "gstreamer1-plugin-libav"]
             }
         },
         "icon": [

@@ -52,6 +52,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   cannot read the address the player used, and every media showed "This file can't be played
   here". On Linux the player now reads from the app over the local loopback address, behind a key
   drawn at each launch.
+- Opening a video in the Linux AppImage no longer turns the window grey. The AppImage now carries
+  the GStreamer plugins its player needs, and the `.deb` and `.rpm` recommend them.
 - A library move no longer leaves behind the files of a media being added at the same time, and a
   move to another drive checks the copy before removing the original.
 - A file a move import took is put back in the library when the app closes before it is registered.

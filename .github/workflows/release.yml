@@ -321,11 +321,20 @@ jobs:
             # on the AppImage, taking all three down, since the leg uploads nothing when the
             # bundle step fails. Installed explicitly on both rather than relying on either image
             # to keep providing it, which is what made this a surprise in the first place.
+            #
+            # The GStreamer plugins are what the AppImage carries for playback. WebKitGTK plays media
+            # through GStreamer, and `bundleMediaFramework` (tauri.conf.json) copies the plugins of
+            # this machine into the AppImage. Without them its webview process aborts the moment a
+            # media element loads ("GStreamer element appsink not found"), which leaves the window
+            # grey. base and good hold the containers, VP8/VP9 and Opus, and libav holds H.264 and
+            # AAC, the formats most YouTube downloads arrive in. The .deb and .rpm recommend the
+            # same plugins instead of carrying them, since they use the system's WebKitGTK.
             - name: Install Linux dependencies
               if: startsWith(matrix.platform, 'ubuntu-')
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
+                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
 
             - name: Verify version consistency
               run: node scripts/verify-release-version.js

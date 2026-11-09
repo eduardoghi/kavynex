@@ -73,11 +73,14 @@ jobs:
                   toolchain: 1.99.1
                   targets: ${{ matrix.platform == 'macos-26' && 'aarch64-apple-darwin' || '' }}
 
+            # The GStreamer plugins as release.yml installs them, which the AppImage carries for
+            # playback (see the comment on that step there).
             - name: Install Linux dependencies
               if: startsWith(matrix.platform, 'ubuntu-')
               run: |
                   sudo apt-get update
-                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils xvfb
+                  sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils xvfb \
+                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
 
             - name: Install frontend dependencies
               run: pnpm install --frozen-lockfile

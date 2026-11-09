@@ -89,6 +89,10 @@ The `.deb` and `.rpm` need glibc 2.39 or newer, which means Ubuntu 24.04, Debian
 later. The AppImage carries its own WebKitGTK and the libraries under it, built on Ubuntu 26.04, and
 those need glibc 2.43 or newer (Ubuntu 26.04 or later). On an older system, use the `.deb` or `.rpm`.
 
+The built-in player plays media through GStreamer. The AppImage carries the plugins it needs. The
+`.deb` and `.rpm` use the system's and recommend the two packages most downloads need (the "good"
+plugins and libav), which a package manager installs along with Kavynex unless told to skip them.
+
 (The architecture is spelled differently by each packaging format. That is the format's convention,
 not an inconsistency in the build.)
 
