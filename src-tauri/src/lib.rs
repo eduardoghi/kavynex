@@ -532,8 +532,36 @@ fn show_startup_error_dialog(_message: &str) {
     // visible in the terminal/journal. No native dialog is needed.
 }
 
+/// Whether the AppImage should turn off WebKitGTK's DMA-BUF renderer, from the two variables that
+/// decide it. Only an AppImage (which sets `APPIMAGE`), and never over a value the user set.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn appimage_needs_dmabuf_off(appimage: Option<&str>, dmabuf_setting: Option<&str>) -> bool {
+    appimage.is_some_and(|path| !path.is_empty()) && dmabuf_setting.is_none()
+}
+
+/// Turns off WebKitGTK's DMA-BUF renderer when the app runs as an AppImage.
+///
+/// The AppImage carries its own WebKitGTK and GStreamer, built on Ubuntu, beside the user's graphics
+/// stack. On an Intel desktop running Arch with Mesa 26, its DMA-BUF path flickered over a video
+/// right after every seek, and the same video drew cleanly with the variable set, as it did in a
+/// build against the system's WebKitGTK. The .deb and .rpm use the system's WebKitGTK and are left
+/// alone. docs/TROUBLESHOOTING.md has the variable for a user who wants the other way.
+#[cfg(target_os = "linux")]
+fn configure_appimage_webview() {
+    let appimage = std::env::var("APPIMAGE").ok();
+    let dmabuf_setting = std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").ok();
+
+    if appimage_needs_dmabuf_off(appimage.as_deref(), dmabuf_setting.as_deref()) {
+        // Before the builder, while the process has a single thread and WebKitGTK has not read it.
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    configure_appimage_webview();
+
     tauri::Builder::default()
         // Must be the first plugin registered. A second launch is redirected here instead of
         // opening a second instance, which would otherwise open a second SqlitePool onto the
@@ -906,5 +934,21 @@ mod tests {
         assert!(!is_smoke_test_run(args(&["kavynex", "smoke-test"])));
         assert!(!is_smoke_test_run(args(&["kavynex", "--smoke"])));
         assert!(!is_smoke_test_run(Vec::new()));
+    }
+
+    #[test]
+    fn only_an_appimage_with_no_choice_of_its_own_turns_the_dmabuf_renderer_off() {
+        assert!(appimage_needs_dmabuf_off(
+            Some("/home/u/Kavynex.AppImage"),
+            None
+        ));
+
+        // Not an AppImage, which the .deb and .rpm are.
+        assert!(!appimage_needs_dmabuf_off(None, None));
+        assert!(!appimage_needs_dmabuf_off(Some(""), None));
+
+        // A value the user set is theirs, whichever way it goes.
+        assert!(!appimage_needs_dmabuf_off(Some("/a.AppImage"), Some("0")));
+        assert!(!appimage_needs_dmabuf_off(Some("/a.AppImage"), Some("1")));
     }
 }

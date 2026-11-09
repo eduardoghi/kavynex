@@ -192,6 +192,10 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 kavynex
 If one of them works, set it for this app alone (a `.desktop` file's `Exec=` line, or a shell alias)
 rather than globally, so it does not change how every other WebKitGTK app on the machine renders.
 
+The AppImage sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` on its own, since the WebKitGTK it carries made
+a video flicker after a seek with it on. A value you set yourself is kept, so
+`WEBKIT_DISABLE_DMABUF_RENDERER=0` turns that path back on.
+
 Launch from a terminal while working through either case. A fatal startup failure (a database
 directory that cannot be resolved, a plugin that fails to register) is written to stderr, and
 unlike Windows there is no dialog for it, so the terminal is the only place that line appears.
