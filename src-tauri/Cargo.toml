@@ -40,7 +40,7 @@ serde_json = "1"
 sqlx = { version = "0.9.0", default-features = false, features = ["sqlite", "runtime-tokio", "derive"] }
 sha2 = "0.11.0"
 flate2 = "1"
-tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread", "process", "io-util", "net"] }
+tokio = { version = "1.50.0", features = ["macros", "rt-multi-thread", "process", "io-util", "net", "sync"] }
 chrono = "0.4.44"
 # Unicode NFD normalization for the accent-insensitive title search/sort. Both the stored
 # `videos.title_normalized` column and the search term the frontend sends are normalized by the

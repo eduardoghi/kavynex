@@ -59,8 +59,8 @@
 //! already played included. The release legs' `--webview-check` confirms in each packaged build,
 //! under its real CSP, that a media element pointed at this scheme reaches the handler (see
 //! `commands::webview_check`). On Linux the player does not use this scheme at all. WebKitGTK's
-//! media player cannot read a custom scheme, so `services::media_server` serves the same requests
-//! over loopback HTTP, through [`serve_bounded`] here. Nothing measured above transfers to it, since
+//! media player cannot read a custom scheme, so `services::media_server` serves the same files over
+//! loopback HTTP, through [`open_media`] here. Nothing measured above transfers to it, since
 //! WebKitGTK routes media through GStreamer rather than AVFoundation.
 //!
 //! # What guards it
@@ -337,9 +337,8 @@ pub fn handle<R: Runtime>(
     });
 }
 
-/// [`serve`] on the blocking pool, within the bound on concurrent reads. Shared with the loopback
-/// server the player uses on Linux (`services::media_server`), so both paths read under one bound.
-pub(crate) async fn serve_bounded<R: Runtime>(
+/// [`serve`] on the blocking pool, within the bound on concurrent reads.
+async fn serve_bounded<R: Runtime>(
     app: AppHandle<R>,
     request: Request<Vec<u8>>,
 ) -> Response<Vec<u8>> {
@@ -446,20 +445,28 @@ fn may_resolve(path: &str, library_share: Option<&str>) -> bool {
     }
 }
 
-/// Serves one request for a media file.
+/// A media file a request may read, open, with what the response headers need.
+pub(crate) struct OpenMedia {
+    pub(crate) file: File,
+    pub(crate) len: u64,
+    pub(crate) content_type: &'static str,
+}
+
+/// Opens the file a request names, after every refusal below, or says which status refuses it.
 ///
 /// Refuses anything the asset-protocol scope would refuse, which is what keeps this from being a
-/// second, looser way to read the disk. See the module docs.
-pub(crate) fn serve<R: Runtime>(
+/// second, looser way to read the disk. See the module docs. Shared by [`serve`] and the loopback
+/// server the player uses on Linux (`services::media_server`), which reads the range itself.
+pub(crate) fn open_media<R: Runtime>(
     app: &AppHandle<R>,
     request: &Request<Vec<u8>>,
-) -> Response<Vec<u8>> {
+) -> Result<OpenMedia, StatusCode> {
     // Skip the leading `/` the URI always carries, then undo the encoding the renderer applied.
     let raw_path = request.uri().path();
     let path = percent_decode(raw_path.strip_prefix('/').unwrap_or(raw_path));
 
     if path.is_empty() || climbs_out_of_a_directory(&path) {
-        return empty_response(StatusCode::BAD_REQUEST);
+        return Err(StatusCode::BAD_REQUEST);
     }
 
     note_webview_check_probe(&path);
@@ -470,7 +477,7 @@ pub(crate) fn serve<R: Runtime>(
         .clone();
 
     if !may_resolve(&path, share.as_deref()) {
-        return empty_response(StatusCode::FORBIDDEN);
+        return Err(StatusCode::FORBIDDEN);
     }
 
     // The one authorization check, and deliberately the same one the asset protocol makes rather
@@ -487,7 +494,7 @@ pub(crate) fn serve<R: Runtime>(
             ),
         );
 
-        return empty_response(StatusCode::FORBIDDEN);
+        return Err(StatusCode::FORBIDDEN);
     }
 
     let file_path = Path::new(&path);
@@ -497,21 +504,43 @@ pub(crate) fn serve<R: Runtime>(
     // opens a device rather than a file. Neither is anything the app wrote.
     match std::fs::metadata(file_path) {
         Ok(metadata) if metadata.is_file() => {}
-        Ok(_) => return empty_response(StatusCode::NOT_FOUND),
-        Err(error) => return empty_response(status_for_open_error(error.kind())),
+        Ok(_) => return Err(StatusCode::NOT_FOUND),
+        Err(error) => return Err(status_for_open_error(error.kind())),
     }
 
-    let mut file = match File::open(file_path) {
+    let file = match File::open(file_path) {
         Ok(file) => file,
-        Err(error) => return empty_response(status_for_open_error(error.kind())),
+        Err(error) => return Err(status_for_open_error(error.kind())),
     };
 
     let len = match file.metadata() {
         Ok(metadata) => metadata.len(),
-        Err(_) => return empty_response(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(_) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
     };
 
     let content_type = media_content_type(file_path);
+
+    Ok(OpenMedia {
+        file,
+        len,
+        content_type,
+    })
+}
+
+/// Serves one request for a media file, at most [`MAX_RANGE_BYTES`] of it. See [`open_media`] for
+/// what is refused.
+pub(crate) fn serve<R: Runtime>(
+    app: &AppHandle<R>,
+    request: &Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
+    let OpenMedia {
+        mut file,
+        len,
+        content_type,
+    } = match open_media(app, request) {
+        Ok(opened) => opened,
+        Err(status) => return empty_response(status),
+    };
 
     // A header that is not valid text is treated as one that names nothing servable.
     let range_header = request

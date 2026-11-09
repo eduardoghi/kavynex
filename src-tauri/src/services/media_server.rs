@@ -24,17 +24,31 @@
 //! - The `Host` header must name the loopback address and the port, which turns away a page that
 //!   points a domain of its own at `127.0.0.1` (DNS rebinding).
 //! - Only `GET` and `HEAD` are answered.
-//! - What passes all of that is served by `media_protocol::serve_bounded`, the custom scheme's own
-//!   handler, so the asset-protocol scope check, the path refusals, the 16 MiB window and the bound
-//!   on concurrent reads are the same ones and live in one place.
+//! - What passes all of that is opened by `media_protocol::open_media`, the custom scheme's own
+//!   checks, so the asset-protocol scope check and the path refusals are the same ones and live in
+//!   one place.
+//!
+//! # Why it streams the whole range
+//!
+//! The custom scheme answers at most 16 MiB per request, because wry hands its body to the webview
+//! as one in-memory copy. Served the same way here, playback broke. WebKitGTK downloads a media
+//! element's file through GStreamer's download buffer, which reads a response that stops short as
+//! the end of the file, so seeking landed on the start or the end and playback stuttered. This
+//! server answers the range that was asked for, in full, read from the disk in
+//! [`STREAM_CHUNK_BYTES`] pieces as the connection takes them, so nothing larger than a piece is
+//! ever held.
 
 use std::convert::Infallible;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener as StdTcpListener};
+use std::pin::Pin;
 use std::sync::OnceLock;
+use std::task::{Context, Poll};
 
 use http::{Method, Request, Response, StatusCode};
-use http_body_util::Full;
-use hyper::body::{Bytes, Incoming};
+use http_body_util::{Either, Full};
+use hyper::body::{Bytes, Frame, Incoming};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
@@ -42,6 +56,12 @@ use tauri::{AppHandle, Runtime};
 
 /// How many random bytes the token carries. 32 is 256 bits, which no guessing over a socket reaches.
 const TOKEN_BYTES: usize = 32;
+
+/// How much of a range one read takes from the disk while it streams.
+const STREAM_CHUNK_BYTES: u64 = 256 * 1024;
+
+/// What a response carries, nothing (a refusal, a `HEAD`) or a range streamed from the disk.
+type ResponseBody = Either<Full<Bytes>, FileRangeBody>;
 
 /// The origin and token the running server answers to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,13 +203,15 @@ pub(crate) fn start<R: Runtime>(app: AppHandle<R>) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Answers one request, through [`admit`] and then the custom scheme's handler.
+/// Answers one request, through [`admit`] and the custom scheme's checks, streaming the range.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 async fn answer<R: Runtime>(
     app: AppHandle<R>,
     server: MediaServer,
     request: Request<Incoming>,
-) -> Result<Response<Full<Bytes>>, Infallible> {
+) -> Result<Response<ResponseBody>, Infallible> {
+    use crate::services::media_protocol::{open_media, plan_range, RangePlan};
+
     let host = request
         .headers()
         .get(http::header::HOST)
@@ -200,33 +222,125 @@ async fn answer<R: Runtime>(
         Admission::Refuse(status) => return Ok(empty(status)),
     };
 
-    // The handler takes the request the custom scheme would have received, so rebuild one with
-    // the path after the token and the one header it reads.
-    let mut forwarded = Request::builder().uri(path);
+    // A header that is not valid text names nothing servable, as in the custom scheme.
+    let range_header = request
+        .headers()
+        .get(http::header::RANGE)
+        .map(|value| value.to_str().unwrap_or("").to_string());
+    let is_head = request.method() == Method::HEAD;
 
-    if let Some(range) = request.headers().get(http::header::RANGE) {
-        forwarded = forwarded.header(http::header::RANGE, range);
-    }
-
-    let Ok(forwarded) = forwarded.body(Vec::new()) else {
+    // The checks take the request the custom scheme would have received, the path after the token.
+    let Ok(forwarded) = Request::builder().uri(path).body(Vec::new()) else {
         return Ok(empty(StatusCode::BAD_REQUEST));
     };
 
-    let response = crate::services::media_protocol::serve_bounded(app, forwarded).await;
-    let is_head = request.method() == Method::HEAD;
+    let opened = tauri::async_runtime::spawn_blocking(move || open_media(&app, &forwarded)).await;
 
-    Ok(response.map(|body| {
-        if is_head {
-            Full::new(Bytes::new())
-        } else {
-            Full::new(Bytes::from(body))
+    let media = match opened {
+        Ok(Ok(media)) => media,
+        Ok(Err(status)) => return Ok(empty(status)),
+        Err(_) => return Ok(empty(StatusCode::INTERNAL_SERVER_ERROR)),
+    };
+
+    let headers = Response::builder()
+        .header(http::header::CONTENT_TYPE, media.content_type)
+        .header(http::header::ACCEPT_RANGES, "bytes");
+
+    let response = match plan_range(range_header.as_deref(), media.len, u64::MAX) {
+        RangePlan::Empty => headers
+            .status(StatusCode::OK)
+            .header(http::header::CONTENT_LENGTH, 0)
+            .body(Either::Left(Full::new(Bytes::new()))),
+        RangePlan::Unsatisfiable => headers
+            .status(StatusCode::RANGE_NOT_SATISFIABLE)
+            .header(
+                http::header::CONTENT_RANGE,
+                format!("bytes */{}", media.len),
+            )
+            .body(Either::Left(Full::new(Bytes::new()))),
+        RangePlan::Window(start, end) => {
+            // No `Range` is the whole file as a 200, the plain answer to a plain request.
+            let headers = match range_header {
+                Some(_) => headers.status(StatusCode::PARTIAL_CONTENT).header(
+                    http::header::CONTENT_RANGE,
+                    format!("bytes {start}-{end}/{}", media.len),
+                ),
+                None => headers.status(StatusCode::OK),
+            };
+
+            let body = if is_head {
+                Either::Left(Full::new(Bytes::new()))
+            } else {
+                Either::Right(stream_range(media.file, start, end))
+            };
+
+            headers
+                .header(http::header::CONTENT_LENGTH, end - start + 1)
+                .body(body)
         }
-    }))
+    };
+
+    Ok(response.unwrap_or_else(|_| empty(StatusCode::INTERNAL_SERVER_ERROR)))
+}
+
+/// A range of a file, read from the disk as the connection takes it.
+pub(crate) struct FileRangeBody {
+    chunks: tokio::sync::mpsc::Receiver<std::io::Result<Bytes>>,
+}
+
+impl hyper::body::Body for FileRangeBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+
+    fn poll_frame(
+        mut self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+    ) -> Poll<Option<Result<Frame<Bytes>, std::io::Error>>> {
+        self.chunks
+            .poll_recv(context)
+            .map(|chunk| chunk.map(|read| read.map(Frame::data)))
+    }
+}
+
+/// Starts reading bytes `start..=end` of `file` on the blocking pool, a piece at a time.
+///
+/// The channel holds a couple of pieces, so the read waits on the connection rather than running
+/// ahead of it, and stops as soon as the player drops the connection (after a seek, typically),
+/// which closes the channel.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn stream_range(mut file: File, start: u64, end: u64) -> FileRangeBody {
+    let (sender, chunks) = tokio::sync::mpsc::channel(2);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(error) = file.seek(SeekFrom::Start(start)) {
+            let _ = sender.blocking_send(Err(error));
+            return;
+        }
+
+        let mut left = end - start + 1;
+
+        while left > 0 {
+            let mut piece = vec![0_u8; left.min(STREAM_CHUNK_BYTES) as usize];
+
+            if let Err(error) = file.read_exact(&mut piece) {
+                let _ = sender.blocking_send(Err(error));
+                return;
+            }
+
+            left -= piece.len() as u64;
+
+            if sender.blocking_send(Ok(Bytes::from(piece))).is_err() {
+                return;
+            }
+        }
+    });
+
+    FileRangeBody { chunks }
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn empty(status: StatusCode) -> Response<Full<Bytes>> {
-    let mut response = Response::new(Full::new(Bytes::new()));
+fn empty(status: StatusCode) -> Response<ResponseBody> {
+    let mut response = Response::new(Either::Left(Full::new(Bytes::new())));
     *response.status_mut() = status;
     response
 }
@@ -371,7 +485,7 @@ mod tests {
         let get = format!("GET /{}/{encoded} HTTP/1.1", server.token);
 
         let whole = send(&server.host, &get, "").await;
-        assert!(whole.starts_with("HTTP/1.1 206"), "{whole}");
+        assert!(whole.starts_with("HTTP/1.1 200"), "{whole}");
         assert!(whole.ends_with("media bytes"), "{whole}");
 
         let ranged = send(&server.host, &get, "Range: bytes=6-\r\n").await;
@@ -384,8 +498,44 @@ mod tests {
             "",
         )
         .await;
-        assert!(head.starts_with("HTTP/1.1 206"), "{head}");
+        assert!(head.starts_with("HTTP/1.1 200"), "{head}");
+        assert!(head.contains("content-length: 11"), "{head}");
         assert!(!head.contains("media bytes"), "{head}");
+
+        // A range is answered in full, past the custom scheme's 16 MiB window, since GStreamer's
+        // download buffer reads a short answer as the end of the file.
+        let large = library.join("large.mp4");
+        let large_len: usize = 16 * 1024 * 1024 + 1000;
+        std::fs::write(&large, vec![7_u8; large_len]).unwrap();
+        let large_encoded: String = large
+            .to_string_lossy()
+            .bytes()
+            .map(|byte| format!("%{byte:02X}"))
+            .collect();
+        let past_window = send(
+            &server.host,
+            &format!("GET /{}/{large_encoded} HTTP/1.1", server.token),
+            "Range: bytes=10-\r\n",
+        )
+        .await;
+        let header_end = past_window.find("\r\n\r\n").unwrap() + 4;
+        assert!(
+            past_window.starts_with("HTTP/1.1 206"),
+            "{}",
+            &past_window[..header_end]
+        );
+        assert!(
+            past_window.contains(&format!(
+                "content-range: bytes 10-{}/{large_len}",
+                large_len - 1
+            )),
+            "{}",
+            &past_window[..header_end]
+        );
+        assert_eq!(past_window.len() - header_end, large_len - 10);
+
+        let refused_range = send(&server.host, &get, "Range: bytes=500-\r\n").await;
+        assert!(refused_range.starts_with("HTTP/1.1 416"), "{refused_range}");
 
         let no_token = send(&server.host, &format!("GET /{encoded} HTTP/1.1"), "").await;
         assert!(no_token.starts_with("HTTP/1.1 404"), "{no_token}");

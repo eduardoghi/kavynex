@@ -916,9 +916,11 @@ holds against each of them in this order:
 - The `Host` header must be `127.0.0.1:<port>`. A page that points a domain of its own at
   `127.0.0.1` (DNS rebinding) sends that domain as the host and is refused.
 - Only `GET` and `HEAD` are answered.
-- What passes is handed to `media_protocol::serve_bounded`, the `kvxmedia:` handler itself, so the
-  asset-protocol scope check, the `..` and network-path refusals, the 16 MiB response window and
-  the bound on concurrent reads are the same code, not a second copy.
+- What passes is opened by `media_protocol::open_media`, the `kvxmedia:` handler's own checks, so
+  the asset-protocol scope check and the `..` and network-path refusals are the same code, not a
+  second copy. The range is then streamed from the disk in 256 KiB pieces as the connection takes
+  them, rather than read into memory under the scheme's 16 MiB window, which GStreamer reads as the
+  end of the file (see `services/media_server.rs`).
 
 The CSP names `http://127.0.0.1:*` in `media-src` and nowhere else. Script in the webview can point
 a media element at the server, which is what it could already do with `kvxmedia:`, but `connect-src`
