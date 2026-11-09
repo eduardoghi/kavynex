@@ -80,13 +80,15 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
   What stays a flat file is a concern with no family, so `chosen_files.rs`, `chosen_folders.rs`,
   `kept_files.rs`, `startup_notices.rs`, `app_close.rs`, `database.rs`, `binaries.rs`,
   `temp_cleanup.rs`, `logger.rs`, `file_manager.rs`, `live_chat_storage.rs`,
-  `media_comments.rs`, `media_protocol.rs`, `pending_media.rs`,
+  `media_comments.rs`, `media_protocol.rs`, `media_server.rs`, `pending_media.rs`,
   `process_registry.rs`, `ssrf_guard.rs`, `temp_paths.rs`, `channel_repository.rs`.
 
-  `media_protocol.rs` is the `kvxmedia:` scheme the player streams media through. Tauri's `asset:`
-  handler caps every range response at about 1 MB, which WebKit's media loader reads as the end of
-  the file, so long recordings would not play on macOS or Linux. Thumbnails and avatars still go
-  through `asset:`.
+  `media_protocol.rs` is the `kvxmedia:` scheme the player streams media through on Windows and
+  macOS. Tauri's `asset:` handler caps every range response at about 1 MB, which WebKit's media
+  loader reads as the end of the file, so long recordings would not play on macOS. Thumbnails and
+  avatars still go through `asset:`. On Linux, WebKitGTK's media player cannot read a custom scheme
+  at all, so `media_server.rs` serves the same files over HTTP on `127.0.0.1`, behind a per-launch
+  token, through the scheme's own handler (see "The loopback media server" in `THREAT-MODEL.md`).
 
   `file_manager.rs` moved out of `library/` once the log folder became a second caller, leaving the
   containment check behind (its module docs say why that split matters).
@@ -588,7 +590,7 @@ See `docs/DATABASE.md` for the backup, restore and import rules these three step
 | Live chat | `commands/live_chat.rs`, `services/live_chat_storage.rs` | `services/live-chat-service.ts`, `services/live-chat-parsing.ts` |
 | Database schema/migrations | `services/db_schema/` | (none) |
 | Database backup/restore/export/import | `commands/database.rs`, `services/db_backup/` (the compressed daily archives in `archive.rs`, the export and import gates in `gates.rs`, compaction in `compaction.rs`, the mirror's lineage ids in `lineage.rs`) | `services/database-service.ts` |
-| Media playback | `services/media_protocol.rs` | `utils/media-utils.ts` |
+| Media playback | `services/media_protocol.rs`, `services/media_server.rs`, `commands/media.rs` (`media_server_origin`) | `utils/media-utils.ts`, `services/media-server-service.ts` |
 | Path safety / asset scope | `utils/path.rs`, `commands/security.rs` | `services/asset-scope-service.ts` |
 | Diagnostics | `commands/library.rs`, `services/library/summary.rs`, `services/library/integrity.rs`, `services/library/cleanup/` | `services/diagnostics-*.ts`, `hooks/use-diagnostics.ts` |
 | Deep library check | `commands/library.rs` (`verify_library_content`), `services/library/verification.rs` | `hooks/use-library-verification.ts`, `components/modals/diagnostics-sections/diagnostics-content-verification.tsx` |

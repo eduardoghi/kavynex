@@ -6,8 +6,13 @@ import App from "./App";
 import { AppErrorBoundary } from "./components/common/app-error-boundary";
 import { installGlobalErrorHandlers } from "./utils/global-error-reporting";
 import { runWebviewCheckIfRequested } from "./lib/webview-check";
+import { loadMediaServerOrigin } from "./services/media-server-service";
 
 installGlobalErrorHandlers();
+
+// Where the player reads media from, asked once at boot so it is known before anything is played.
+// Not awaited, since nothing on the first screen plays media.
+void loadMediaServerOrigin();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <React.StrictMode>

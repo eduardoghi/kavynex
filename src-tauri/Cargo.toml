@@ -49,7 +49,8 @@ chrono = "0.4.44"
 unicode-normalization = "0.1.25"
 tauri-plugin-window-state = "2"
 # Minimal hand-rolled HTTP client (hyper) for the direct thumbnail/avatar download in
-# services/thumbnail/download/fetch.rs. Deliberately kept separate from `reqwest` (pulled in
+# services/thumbnail/download/fetch.rs, and hyper's `server` side for the loopback server the player
+# reads from on Linux (services/media_server.rs). Deliberately kept separate from `reqwest` (pulled in
 # transitively by tauri-plugin-updater): that download follows redirects manually so it can
 # re-run its SSRF guard on every hop, which reqwest's automatic redirect following would bypass.
 # See http_get_image in services/thumbnail/download/fetch.rs for the full rationale.
@@ -58,7 +59,10 @@ hyper-util = { version = "0.1", default-features = false, features = ["client-le
 http-body-util = { version = "0.1", default-features = false }
 http = "1"
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
-hyper = { version = "1", default-features = false }
+hyper = { version = "1", default-features = false, features = ["server", "http1"] }
+# The operating system's random source, for the token the loopback media server requires in every
+# URL (services/media_server.rs). Already present transitively; pinned here as a direct dependency.
+getrandom = "0.3"
 # The `Service<Name>` trait hyper-util's HttpConnector takes as a custom DNS resolver. Used by the
 # thumbnail downloader's SSRF guard to pin resolution to public addresses (see
 # services/thumbnail/download/fetch.rs). Already present transitively via hyper-util; pinned here as a

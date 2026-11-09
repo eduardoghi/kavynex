@@ -588,6 +588,17 @@ pub fn run() {
 
             services::logger::info("app", "application setup started");
 
+            // Before the window, so the origin is known by the time the renderer asks for it. On
+            // Linux the player cannot read the `kvxmedia` scheme (see services::media_server). A
+            // server that fails to start leaves the player as it was there, and the app runs.
+            #[cfg(target_os = "linux")]
+            if let Err(error) = services::media_server::start(app_handle.clone()) {
+                services::logger::error(
+                    "media_server",
+                    format!("failed to start the media server: {error}"),
+                );
+            }
+
             // First, where Tauri would have created it from the config. See main_window.
             main_window::create(app)?;
 
@@ -770,6 +781,7 @@ pub fn run() {
             commands::logging::open_log_directory,
             commands::startup::take_startup_notices,
             commands::window::close_app_anyway,
+            commands::media::media_server_origin,
             commands::updater::check_for_app_update,
             commands::updater::install_app_update,
             commands::updater::relaunch_app,

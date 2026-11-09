@@ -166,6 +166,16 @@ export function resolveStoredPath(
 // which is why the CSP lists both spellings under `media-src`.
 const MEDIA_SCHEME = "kvxmedia";
 
+// The loopback server's origin and token (`http://127.0.0.1:<port>/<token>`) when the backend runs
+// one, which it does on Linux only. WebKitGTK's media player cannot read a custom scheme, so there
+// the player reads from this server instead. See `services/media_server.rs`. Set once at boot by
+// `services/media-server-service.ts`.
+let mediaServerOrigin: string | null = null;
+
+export function setMediaServerOrigin(origin: string | null): void {
+    mediaServerOrigin = origin;
+}
+
 /**
  * Builds the URL the player's `<video>`/`<audio>` reads from.
  *
@@ -183,6 +193,11 @@ export function mediaSrcFromAbsolutePath(path: string | null): string {
 
     if (!normalized) {
         return "";
+    }
+
+    // The server answers the same encoded path the scheme carries, after its token.
+    if (mediaServerOrigin) {
+        return `${mediaServerOrigin}/${encodeURIComponent(toAssetPath(normalized))}`;
     }
 
     // `convertFileSrc` with a protocol argument rather than a hand-built URL. The scheme reaches

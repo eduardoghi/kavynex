@@ -34,6 +34,10 @@ activity Kavynex initiates is:
   media makes no network requests at all. If you turn it on, only those small profile/emoji
   images are fetched, never the video, your library, or any of your data.
 
+On Linux the player also reads your media from Kavynex itself over the loopback address
+(`127.0.0.1`), because the webview there cannot play it any other way. That connection never leaves
+your computer, and it answers only requests that carry a key drawn at each launch.
+
 The optional "cookies from browser" option (used to back up member-only or otherwise
 authenticated content) reads cookies directly from your local browser profile and hands
 them to yt-dlp for that request only; Kavynex does not transmit, store, or display those

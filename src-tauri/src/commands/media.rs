@@ -24,6 +24,14 @@ pub async fn create_media<R: Runtime>(
     media_creation::create_media_async(&app, request).await
 }
 
+/// The origin the player builds media URLs on, `http://127.0.0.1:<port>/<token>`, when the
+/// loopback media server runs (Linux, see `services::media_server`). `None` elsewhere, where the
+/// player uses the `kvxmedia` scheme.
+#[tauri::command]
+pub fn media_server_origin() -> Option<String> {
+    crate::services::media_server::running().map(|server| server.origin())
+}
+
 // The rule this file holds, for a command added later. The IPC surface exposes an operation, not
 // its steps. `services::pending_media`, `services::yt_dlp` and `services::library::media` hold the
 // steps of a media creation, and the backend is their only caller. Why, step by step, is in

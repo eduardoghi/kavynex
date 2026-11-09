@@ -48,6 +48,10 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Fixed
 
+- The built-in player plays video and audio on Linux. It never could, since the webview there
+  cannot read the address the player used, and every media showed "This file can't be played
+  here". On Linux the player now reads from the app over the local loopback address, behind a key
+  drawn at each launch.
 - A library move no longer leaves behind the files of a media being added at the same time, and a
   move to another drive checks the copy before removing the original.
 - A file a move import took is put back in the library when the app closes before it is registered.

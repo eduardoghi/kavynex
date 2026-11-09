@@ -58,8 +58,10 @@
 //! On macOS 26.6.1 (M4), every file of the first table plays through this handler, the one that
 //! already played included. The release legs' `--webview-check` confirms in each packaged build,
 //! under its real CSP, that a media element pointed at this scheme reaches the handler (see
-//! `commands::webview_check`). Long recordings on Linux are untested. WebKitGTK routes media
-//! through GStreamer rather than AVFoundation, so nothing measured here transfers to it.
+//! `commands::webview_check`). On Linux the player does not use this scheme at all. WebKitGTK's
+//! media player cannot read a custom scheme, so `services::media_server` serves the same requests
+//! over loopback HTTP, through [`serve_bounded`] here. Nothing measured above transfers to it, since
+//! WebKitGTK routes media through GStreamer rather than AVFoundation.
 //!
 //! # What guards it
 //!
@@ -331,23 +333,29 @@ pub fn handle<R: Runtime>(
     let app = context.app_handle().clone();
 
     tauri::async_runtime::spawn(async move {
-        // At most MAX_CONCURRENT_MEDIA_READS reads at once, and a burst past MAX_MEDIA_READS_IN_FLIGHT
-        // is refused rather than queued. Each read holds a blocking thread and a buffer of up to the
-        // response window, and the blocking pool is the one every other command offloads to.
-        let Ok(_permit) = MEDIA_READ_SEMAPHORE
-            .acquire(crate::AppErrorCode::TooManyConcurrentMediaJobs)
-            .await
-        else {
-            responder.respond(empty_response(StatusCode::SERVICE_UNAVAILABLE));
-            return;
-        };
-
-        let response = tauri::async_runtime::spawn_blocking(move || serve(&app, &request)).await;
-
-        responder.respond(
-            response.unwrap_or_else(|_| empty_response(StatusCode::INTERNAL_SERVER_ERROR)),
-        );
+        responder.respond(serve_bounded(app, request).await);
     });
+}
+
+/// [`serve`] on the blocking pool, within the bound on concurrent reads. Shared with the loopback
+/// server the player uses on Linux (`services::media_server`), so both paths read under one bound.
+pub(crate) async fn serve_bounded<R: Runtime>(
+    app: AppHandle<R>,
+    request: Request<Vec<u8>>,
+) -> Response<Vec<u8>> {
+    // At most MAX_CONCURRENT_MEDIA_READS reads at once, and a burst past MAX_MEDIA_READS_IN_FLIGHT
+    // is refused rather than queued. Each read holds a blocking thread and a buffer of up to the
+    // response window, and the blocking pool is the one every other command offloads to.
+    let Ok(_permit) = MEDIA_READ_SEMAPHORE
+        .acquire(crate::AppErrorCode::TooManyConcurrentMediaJobs)
+        .await
+    else {
+        return empty_response(StatusCode::SERVICE_UNAVAILABLE);
+    };
+
+    tauri::async_runtime::spawn_blocking(move || serve(&app, &request))
+        .await
+        .unwrap_or_else(|_| empty_response(StatusCode::INTERNAL_SERVER_ERROR))
 }
 
 /// How many media reads run at once. A player seeking issues a few range requests in quick
@@ -557,7 +565,7 @@ pub(crate) fn serve<R: Runtime>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -903,8 +911,8 @@ mod tests {
     }
 
     /// A mock app whose asset scope grants `dir`, in both spellings, the way
-    /// `register_library_asset_scope` does.
-    fn app_granting(dir: &Path) -> tauri::App<tauri::test::MockRuntime> {
+    /// `register_library_asset_scope` does. Shared with `services::media_server`'s tests.
+    pub(crate) fn app_granting(dir: &Path) -> tauri::App<tauri::test::MockRuntime> {
         let app = tauri::test::mock_builder()
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap();
@@ -978,6 +986,25 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn serve_bounded_answers_through_serve() {
+        let library = std::env::temp_dir().join(format!(
+            "kavynex-media-bounded-{}",
+            crate::utils::naming::unique_temp_suffix()
+        ));
+        std::fs::create_dir_all(&library).unwrap();
+        let inside = library.join("clip.mp4");
+        std::fs::write(&inside, b"media bytes").unwrap();
+
+        let app = app_granting(&library);
+        let answered = serve_bounded(app.handle().clone(), request_for(&inside)).await;
+
+        assert_eq!(answered.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(answered.body(), b"media bytes");
+
+        let _ = std::fs::remove_dir_all(&library);
     }
 }
 

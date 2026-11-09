@@ -89,6 +89,20 @@ describe("asset protocol CSP", () => {
             });
         }
 
+        it(`${label} lets the player read the kvxmedia scheme and the loopback media server`, () => {
+            // Both are how the player reaches the library, kvxmedia on Windows and macOS and the
+            // loopback server on Linux (services/media_server.rs), whose WebKitGTK media player
+            // cannot read a custom scheme. Dropping either leaves one platform's player playing nothing.
+            const media = directiveSources(csp, "media-src");
+            expect(media).toEqual(
+                expect.arrayContaining(["kvxmedia:", "http://kvxmedia.localhost", "http://127.0.0.1:*"])
+            );
+
+            // Media only. The loopback origin stays out of connect-src, so script in the webview can
+            // point a <video> at the server but never read its bytes back with fetch.
+            expect(directiveSources(csp, "connect-src")).not.toContain("http://127.0.0.1:*");
+        });
+
         for (const [directive, expected] of LOCKED_DOWN_DIRECTIVES) {
             it(`${label} pins ${directive} to ${expected}`, () => {
                 // Asserted as the exact source list, not just presence. A directive widened to

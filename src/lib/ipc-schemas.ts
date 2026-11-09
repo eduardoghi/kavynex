@@ -420,6 +420,12 @@ const IPC_RESULT_SCHEMAS: IpcResultSchemas = {
     // Null when no newer release is out.
     check_for_app_update: appUpdateInfoSchema.nullable() satisfies z.ZodType<AppUpdateInfo | null>,
     check_external_tools: externalToolsStatusSchema satisfies z.ZodType<ExternalToolsStatus>,
+    // The loopback origin and token the player builds media URLs on, held to that exact shape since
+    // every media URL starts with it. Null off Linux.
+    media_server_origin: z
+        .string()
+        .regex(/^http:\/\/127\.0\.0\.1:\d{1,5}\/[0-9a-f]{64}$/)
+        .nullable(),
     // Nullable because a normal launch answers null. Only a `--webview-check` run gets a plan.
     begin_webview_check: webviewCheckPlanSchema.nullable() satisfies z.ZodType<WebviewCheckPlan | null>,
     get_library_summary: librarySummaryInfoSchema satisfies z.ZodType<LibrarySummaryInfo>,

@@ -22,6 +22,7 @@ import {
     resolveStoredPath,
     RESUME_COMPLETION_TOLERANCE_SECONDS,
     resumePositionFor,
+    setMediaServerOrigin,
     stripWindowsExtendedPrefix,
 } from "./media-utils";
 
@@ -353,6 +354,25 @@ describe("media-utils", () => {
             expect(convertFileSrcMock).toHaveBeenCalledWith(
                 "/library/video/a.mp4",
                 "kvxmedia"
+            );
+        });
+
+        it("reads from the loopback server, with the path encoded after its token, when one runs", () => {
+            // Linux. WebKitGTK's media player cannot read a custom scheme, so the backend serves the
+            // same files over HTTP on 127.0.0.1 and the player has to be pointed there instead.
+            const origin = `http://127.0.0.1:4242/${"a".repeat(64)}`;
+            setMediaServerOrigin(origin);
+
+            try {
+                expect(mediaSrcFromAbsolutePath("/library/video/a b.mp4")).toBe(
+                    `${origin}/%2Flibrary%2Fvideo%2Fa%20b.mp4`
+                );
+            } finally {
+                setMediaServerOrigin(null);
+            }
+
+            expect(mediaSrcFromAbsolutePath("/library/video/a.mp4")).toBe(
+                "kvxmedia://localhost//library/video/a.mp4"
             );
         });
 

@@ -896,6 +896,35 @@ form. Nothing in the normal loop catches it. `pnpm tauri dev` serves the page fr
 origin, where no CSP header is injected, so only a packaged build exercises this. That is why
 `src/lib/tauri-platform.test.ts` pins both tokens.
 
+### The loopback media server (Linux)
+
+On Linux the player cannot use the `kvxmedia:` scheme. WebKitGTK plays media through GStreamer,
+which has no source for a custom scheme, so the media player refuses the URL before reading a byte
+(WebKit bug 146351). `services/media_server.rs` therefore serves the library's media over HTTP on
+`127.0.0.1`, and it is the one listening socket the app opens. Windows and macOS never start it.
+
+What can reach a loopback socket is every process on the machine, every other local user, and any
+web page in a browser, which can make a `<video>` or an `<img>` request to `127.0.0.1`. The server
+holds against each of them in this order:
+
+- It binds `127.0.0.1` only, on a port the system picks at each launch, so nothing off the machine
+  reaches it.
+- Every URL carries a 256-bit token drawn from the operating system's random source at launch, and
+  the token is compared in constant time. A request without it gets 404, so finding the port reads
+  nothing. The token reaches the renderer through one command (`media_server_origin`), whose
+  answer is validated against the exact `http://127.0.0.1:<port>/<64 hex>` shape at the IPC seam.
+- The `Host` header must be `127.0.0.1:<port>`. A page that points a domain of its own at
+  `127.0.0.1` (DNS rebinding) sends that domain as the host and is refused.
+- Only `GET` and `HEAD` are answered.
+- What passes is handed to `media_protocol::serve_bounded`, the `kvxmedia:` handler itself, so the
+  asset-protocol scope check, the `..` and network-path refusals, the 16 MiB response window and
+  the bound on concurrent reads are the same code, not a second copy.
+
+The CSP names `http://127.0.0.1:*` in `media-src` and nowhere else. Script in the webview can point
+a media element at the server, which is what it could already do with `kvxmedia:`, but `connect-src`
+does not list it, so `fetch` cannot read the bytes back. `src/lib/tauri-platform.test.ts` pins both
+halves.
+
 ### The one relaxed directive: `style-src 'unsafe-inline'`
 
 Every other directive in the CSP is strict, so this one is called out rather than left to be

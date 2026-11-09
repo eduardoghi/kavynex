@@ -28,6 +28,7 @@ pub mod media_creation;
 // because that one truncates every range response to 1 MB, which the Apple media stack does not
 // recover from on a long recording. See the module docs for the measurement.
 pub mod media_protocol;
+pub mod media_server;
 pub mod pending_media;
 pub mod process_registry;
 pub mod ssrf_guard;

@@ -9,6 +9,7 @@ import { TAURI_COMMANDS } from "../constants/tauri-commands";
 import { invokeCommand, listenTauri } from "./tauri-client";
 import { convertFileSrc, getVersion } from "./tauri-platform";
 import { mediaSrcFromAbsolutePath } from "../utils/media-utils";
+import { loadMediaServerOrigin } from "../services/media-server-service";
 import type { WebviewCheckReport } from "../types/generated/WebviewCheckReport";
 
 // How long the asset probe waits for the image to load or fail. An `<img>` whose URL the CSP
@@ -117,7 +118,10 @@ const MEDIA_PROBE_TIMEOUT_MS = 15_000;
 // the renderer). Whether the sound then decodes depends on the codecs the machine has, so neither a
 // load nor an error is reported. This only waits for the element to settle, so the report does not
 // overtake the request.
-function probeMediaRequest(mediaPath: string): Promise<void> {
+async function probeMediaRequest(mediaPath: string): Promise<void> {
+    // The probe goes where the player goes, which on Linux is the loopback server.
+    await loadMediaServerOrigin();
+
     let mediaUrl: string;
 
     try {
