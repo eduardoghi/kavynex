@@ -262,7 +262,21 @@ const dialogFlows = [
                 },
                 30_000
             );
-            await clickButton(session, "Back to library");
+            // Until the grid is back. The one-second clip ends and is marked watched about now, and
+            // a click landing during that re-render was taken without leaving the player.
+            await waitFor(`the library after leaving the player`, async () => {
+                if ((await session.findByLabel(`Open ${MEDIA_TITLE}`)).length > 0) {
+                    return true;
+                }
+
+                const [back] = await session.findButton("Back to library");
+
+                if (back) {
+                    await session.click(back).catch(() => {});
+                }
+
+                return false;
+            });
         },
     ],
     [
