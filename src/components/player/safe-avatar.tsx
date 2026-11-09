@@ -39,7 +39,7 @@ export function SafeAvatar({
 
     return (
         <Avatar
-            radius="xl"
+            radius="100%"
             size={size}
             src={finalSrc}
             // Decorative. The author name is always shown next to the avatar, so an empty alt

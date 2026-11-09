@@ -171,7 +171,7 @@ describe("MediaCard", () => {
 
         const card = screen.getByText("Video A").closest("[class*='mantine-Paper-root']");
         expect(card).not.toBeNull();
-        expect((card as HTMLElement).style.boxShadow).toContain("124,92,255");
+        expect((card as HTMLElement).style.boxShadow).toContain("var(--kx-accent)");
 
         rerender(
             <MediaCard
@@ -186,7 +186,7 @@ describe("MediaCard", () => {
 
         // The glow is gone, and the resting elevation actually applied rather than being dropped as
         // an invalid declaration. The second half of the same defect, which left every card flat.
-        expect((card as HTMLElement).style.boxShadow).not.toContain("124,92,255");
+        expect((card as HTMLElement).style.boxShadow).not.toContain("var(--kx-accent)");
         expect((card as HTMLElement).style.boxShadow).not.toBe("");
     });
 

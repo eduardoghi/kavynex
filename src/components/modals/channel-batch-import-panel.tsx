@@ -57,7 +57,7 @@ export function ChannelBatchImportPanel({
     return (
         <Stack gap="sm">
             <Group justify="space-between" align="center">
-                <Text size="sm" fw={600} role="status">
+                <Text size="sm" fw={600} role="status" className="kx-tabular-nums">
                     {isRunning
                         ? `Importing ${formatNumber(Math.min(settled + 1, items.length))} of ${formatNumber(items.length)}`
                         : `${formatNumber(count("done"))} added, ${formatNumber(failed.length)} failed, ${formatNumber(count("stopped"))} stopped`}

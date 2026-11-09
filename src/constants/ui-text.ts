@@ -45,6 +45,9 @@ export const UI_TEXT = {
         typeLabel: "Type",
         statusLabel: "Status",
         publicationDateLabel: "Publication date",
+        // The names shown inside the filter fields, where the full one does not fit.
+        publicationDateShortLabel: "Date",
+        sortShortLabel: "Sort",
         sortLabel: "Sort by",
         showing: "Showing",
         of: "of",

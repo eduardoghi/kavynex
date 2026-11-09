@@ -143,7 +143,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 onClose={closeDeleteMediaModal}
                 onConfirm={() => void mediaActions.confirmDeleteMedia()}
                 loading={isDeletingMedia}
-                title={<Text fw={900}>Delete</Text>}
+                title={<Text fw={700}>Delete</Text>}
                 message={
                     <>
                         Delete <b>{mediaToDelete?.title ?? "this item"}</b>?
@@ -157,7 +157,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                 onClose={channels.closeDeleteChannelModal}
                 onConfirm={() => void mediaActions.confirmDeleteChannel()}
                 loading={channels.isDeletingChannel}
-                title={<Text fw={900}>Delete channel</Text>}
+                title={<Text fw={700}>Delete channel</Text>}
                 message={
                     <>
                         Delete channel <b>{channels.channelToDelete?.name ?? "this channel"}</b>?
@@ -242,7 +242,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                     onClose={databaseRecovery.cancelStartEmpty}
                     onConfirm={() => void databaseRecovery.startEmpty()}
                     loading={databaseRecovery.isRestoring}
-                    title={<Text fw={900}>Start with an empty library</Text>}
+                    title={<Text fw={700}>Start with an empty library</Text>}
                     message="Start with an empty library instead of restoring?"
                     description="The backups are moved to a folder of their own and kept. Diagnostics shows where, and Settings > Database > Import can bring one back later. The app will reload."
                     cancelLabel="Back"
@@ -261,7 +261,7 @@ const HomeSecondaryModals = memo(function HomeSecondaryModals({
                     }
                     onConfirm={() => void databaseRecovery.restoreFromBackup()}
                     loading={databaseRecovery.isRestoring}
-                    title={<Text fw={900}>Restore database</Text>}
+                    title={<Text fw={700}>Restore database</Text>}
                     message={
                         databaseRecovery.reason === "missing"
                             ? "The database file is missing, but backups of it are still there."

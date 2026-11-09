@@ -60,7 +60,13 @@ function LibraryMoveProgress({ progress, onCancelRunning }: LibraryMoveProgressP
     return (
         <Stack gap="xs">
             <Progress value={percent} aria-label="Library move progress" />
-            <Text size="sm" c="dimmed" role="status" aria-live="polite">
+            <Text
+                size="sm"
+                c="dimmed"
+                role="status"
+                aria-live="polite"
+                className="kx-tabular-nums"
+            >
                 {progress
                     ? `Copied ${formatNumber(progress.copiedFiles)} of ${formatNumber(progress.totalFiles)} files`
                     : "Preparing the move..."}

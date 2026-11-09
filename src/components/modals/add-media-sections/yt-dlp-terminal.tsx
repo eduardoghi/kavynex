@@ -199,7 +199,7 @@ export function YtDlpTerminal({
             <YtDlpProgressBar progress={ytDlpProgress} isRunning={isYtDlpRunning} />
 
             <Group justify="space-between" mb="xs">
-                <Text fw={800}>Integrated terminal</Text>
+                <Text fw={600}>Integrated terminal</Text>
 
                 <Badge variant="light" color={badge.color}>
                     {badge.label}

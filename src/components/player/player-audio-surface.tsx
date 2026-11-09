@@ -39,10 +39,9 @@ export function PlayerAudioSurface({
         // which is what would keep it from collapsing back to a strip if the cover shrinks.
         <Box
             style={{
-                borderRadius: rem(24),
+                borderRadius: rem(8),
                 border: `1px solid ${shellBorder}`,
-                background:
-                    "light-dark(linear-gradient(180deg, #ffffff 0%, #f6f5f9 100%), linear-gradient(180deg, #101114 0%, #0b0c0f 100%))",
+                background: "light-dark(#ffffff, #17181B)",
                 minHeight: rem(232),
                 padding: rem(26),
                 display: "flex",
@@ -63,11 +62,11 @@ export function PlayerAudioSurface({
                     style={{
                         width: rem(320),
                         aspectRatio: "16 / 9",
-                        borderRadius: rem(18),
+                        borderRadius: rem(6),
                         overflow: "hidden",
                         background: thumbnailSrc
-                            ? "light-dark(#e9e8ee, #111)"
-                            : "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(59,130,246,0.14))",
+                            ? "light-dark(#E8E9EB, #111214)"
+                            : "#26282D",
                         border: `1px solid ${shellBorder}`,
                         flex: "0 0 auto",
                         display: "grid",

@@ -154,12 +154,12 @@ export function DiagnosticsContentVerification({
             {running && progress && (
                 <Box>
                     <Group justify="space-between" mb={4}>
-                        <Text size="xs" c="dimmed">
+                        <Text size="xs" c="dimmed" className="kx-tabular-nums">
                             {/* The count, not only the bar: on a large library the percentage moves
                                 slowly enough to look stuck, and "412 of 3,208" visibly does not. */}
                             {progress.checked} of {progress.total} file(s)
                         </Text>
-                        <Text size="xs" c="dimmed">
+                        <Text size="xs" c="dimmed" className="kx-tabular-nums">
                             {percent}%
                         </Text>
                     </Group>

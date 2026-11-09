@@ -1,4 +1,4 @@
-import { Button, Group, Modal, Stack, Text, ThemeIcon } from "@mantine/core";
+import { Button, Group, Modal, Stack, Text } from "@mantine/core";
 import { AlertTriangle, Info } from "lucide-react";
 import type { ReactNode } from "react";
 import { MODAL_CLOSE_BUTTON_STYLE } from "../ui/modal-chrome";
@@ -30,7 +30,7 @@ export function ErrorModal({
     const Icon = isNotice ? Info : AlertTriangle;
 
     const resolvedTitle = title ?? (
-        <Text fw={900} c={color}>
+        <Text fw={700} c={color}>
             {heading}
         </Text>
     );
@@ -52,9 +52,13 @@ export function ErrorModal({
         >
             <Stack gap="md">
                 <Group gap="sm" align="center">
-                    <ThemeIcon color={color} variant="light" radius="xl" size="lg">
-                        <Icon size={18} />
-                    </ThemeIcon>
+                    {/* The icon alone, in the semantic text colour, with no tinted disc. */}
+                    <Icon
+                        size={20}
+                        color={isNotice ? "var(--kx-color-link)" : "var(--kx-color-error-text)"}
+                        style={{ flexShrink: 0 }}
+                        aria-hidden
+                    />
                     <Text fw={700}>{subheading}</Text>
                 </Group>
 

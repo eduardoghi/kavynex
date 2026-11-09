@@ -178,7 +178,7 @@ export default function Home(): JSX.Element {
                                     aria-label={UI_TEXT.home.emptyTitle}
                                 >
                                     <Stack gap={4} align="center">
-                                        <Title order={4} fw={900}>
+                                        <Title order={4} fw={700}>
                                             {UI_TEXT.home.emptyTitle}
                                         </Title>
 

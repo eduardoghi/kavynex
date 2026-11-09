@@ -103,9 +103,8 @@ export function ChannelSidebar({
         <AppShell.Navbar
             p="lg"
             style={{
-                background: "light-dark(rgba(255, 255, 255, 0.82), rgba(15, 11, 19, 0.72))",
+                background: "light-dark(#ffffff, #17181B)",
                 borderRight: `1px solid ${shellBorder}`,
-                backdropFilter: "blur(18px)",
             }}
         >
             <Stack gap="sm" h="100%">
@@ -181,14 +180,19 @@ export function ChannelSidebar({
                     </Group>
                 </Group>
 
-                <Group justify="space-between" align="center" mt="xl" mb="xs">
-                    <Text size="xs" fw={700} c="dimmed" style={{ letterSpacing: "0.08em" }}>
-                        CHANNELS
+                {/* A plain label with the count beside it, like the comments heading. Nothing
+                    stands in for the count while the list loads, since a placeholder there read as
+                    broken text. */}
+                <Group gap={8} align="baseline" mt="xl" mb="xs">
+                    <Text size="sm" fw={600} c="dimmed">
+                        Channels
                     </Text>
 
-                    <Text size="xs" c="dimmed">
-                        {loading ? "..." : channels.length}
-                    </Text>
+                    {!loading && (
+                        <Text size="sm" c="dimmed" className="kx-tabular-nums">
+                            {channels.length}
+                        </Text>
+                    )}
                 </Group>
 
                 <ScrollArea
@@ -214,7 +218,7 @@ export function ChannelSidebar({
                             </Box>
                         )}
 
-                        {/* No empty state here, deliberately. The count beside the CHANNELS
+                        {/* No empty state here, deliberately. The count beside the Channels
                             heading already says the list holds nothing, and the page's own empty
                             state carries the same words plus the button to act on them. A card
                             repeating them here made one screen say the same sentence twice and

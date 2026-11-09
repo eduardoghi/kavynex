@@ -99,7 +99,7 @@ function LocalMediaSectionView({
                         name used to run the row wide enough to drag the rest of it out of
                         alignment. */}
                     <Tooltip label={mediaPath} disabled={!hasMedia} withArrow multiline w={420}>
-                        <Text fw={900} truncate>
+                        <Text fw={700} truncate>
                             {hasMedia
                                 ? fileNameFromPath(mediaPath)
                                 : "Choose a video/audio file to import"}

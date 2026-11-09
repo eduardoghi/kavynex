@@ -35,7 +35,7 @@ export function PlayerVideoSurface({
                 borderRadius: rem(26),
                 overflow: "hidden",
                 background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015))",
+                    "rgba(255,255,255,0.02)",
                 border: `1px solid ${shellBorder}`,
                 padding: rem(10),
             }}

@@ -35,7 +35,7 @@ export function CloseWhileBusyPrompt(): JSX.Element {
             opened={pending !== null}
             onClose={keepRunning}
             onConfirm={() => void closeAnyway()}
-            title={<Text fw={900}>Close Kavynex?</Text>}
+            title={<Text fw={700}>Close Kavynex?</Text>}
             message={
                 <>
                     Closing now stops {pending ? describeWork(pending) : "the work in progress"}.

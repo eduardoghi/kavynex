@@ -130,7 +130,7 @@ export function PlayerMediaHeader({
 
                 <Stack gap={4} style={{ minWidth: 0, flex: 1 }}>
                     <Group gap="xs" wrap="wrap">
-                        <Text fw={900} size="lg" lineClamp={1}>
+                        <Text fw={700} size="lg" lineClamp={1}>
                             {title}
                         </Text>
 
@@ -156,19 +156,25 @@ export function PlayerMediaHeader({
                     </Group>
 
                     {/* Both dates on one line, reading as a single metadata strip under the title
-                        rather than two stacked sentences competing with it. The separator is hidden
-                        from assistive tech, which would otherwise announce the dot. */}
+                        rather than two stacked sentences competing with it. A media with no
+                        publication date shows only when it was added, rather than a line saying the
+                        date is missing. The separator is hidden from assistive tech, which would
+                        otherwise announce the dot. */}
                     <Group gap={8} wrap="wrap">
-                        <Text size="sm" c="dimmed" lineClamp={1}>
-                            Published: {publishedLabel || UI_TEXT.library.noPublicationDate}
-                        </Text>
+                        {publishedLabel && (
+                            <>
+                                <Text size="sm" c="dimmed" lineClamp={1}>
+                                    Published {publishedLabel}
+                                </Text>
 
-                        <Text size="sm" c="dimmed" aria-hidden>
-                            ·
-                        </Text>
+                                <Text size="sm" c="dimmed" aria-hidden>
+                                    ·
+                                </Text>
+                            </>
+                        )}
 
                         <Text size="sm" c="dimmed" lineClamp={1}>
-                            Added to Kavynex: {createdLabel || "Unknown date"}
+                            Added {createdLabel || "on an unknown date"}
                         </Text>
                     </Group>
                 </Stack>

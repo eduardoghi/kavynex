@@ -93,7 +93,7 @@ export class SectionErrorBoundary extends Component<
                 <Stack gap="sm">
                     <Group gap="xs" align="center">
                         <AlertTriangle size={20} color="var(--mantine-color-red-5)" />
-                        <Title order={4} fw={900}>
+                        <Title order={4} fw={700}>
                             {title}
                         </Title>
                     </Group>

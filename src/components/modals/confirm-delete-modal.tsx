@@ -30,7 +30,7 @@ export function ConfirmDeleteModal({
     opened,
     onClose,
     onConfirm,
-    title = <Text fw={900}>Delete</Text>,
+    title = <Text fw={700}>Delete</Text>,
     message,
     description,
     confirmLabel = "Delete",

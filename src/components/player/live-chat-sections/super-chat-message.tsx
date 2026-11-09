@@ -38,7 +38,7 @@ export function SuperChatMessage({
                     >
                         {message.author_name}
                     </AuthorName>
-                    <Text fw={800} size="sm" style={{ color: "inherit", flexShrink: 0 }}>
+                    <Text fw={600} size="sm" style={{ color: "inherit", flexShrink: 0 }}>
                         {message.amount_text}
                     </Text>
                 </Group>

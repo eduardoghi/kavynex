@@ -34,14 +34,16 @@ type MediaCardProps = {
     tabIndex?: number;
 };
 
-export const MEDIA_CARD_HEIGHT = 292;
+// What the card's content takes and no more (12px padding each side, the 158px thumbnail, its 12px
+// margin, the title, the 6px gap, the footer and the 1px border each side), so the footer sits
+// right under a two-line title instead of being pushed down by spare height.
+export const MEDIA_CARD_HEIGHT = 274;
 const MEDIA_TITLE_HEIGHT = 44;
 const MEDIA_FOOTER_HEIGHT = 28;
 
 // Style values that never depend on the card's props or state, hoisted to module scope so they
 // are built once instead of on every render. Truly only the delta that reacts to state stays
-// inline below. The media-type badge reacts only to isAudio (a boolean), so both of its variants
-// are fully hoisted and picked between. The root card keeps its static base here
+// inline below. The root card keeps its static base here
 // (ROOT_CARD_BASE_STYLE) and spreads only the few properties that react to isActive/isWatched/
 // shellBorder over it. This component is memoized and re-renders whenever its own primitive props
 // flip (e.g. the active-media id changes), so avoiding the per-render work compounds across a
@@ -97,7 +99,7 @@ const MEDIA_TYPE_BADGE_STYLE_AUDIO: CSSProperties = {
     background: "rgba(249,115,22,0.13)",
     borderColor: "rgba(249,115,22,0.34)",
     color: MEDIA_TYPE_ACCENT_COLOR.audio,
-    fontWeight: 800,
+    fontWeight: 600,
 };
 
 const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
@@ -105,13 +107,13 @@ const MEDIA_TYPE_BADGE_STYLE_VIDEO: CSSProperties = {
     background: "rgba(59,130,246,0.13)",
     borderColor: "rgba(59,130,246,0.34)",
     color: MEDIA_TYPE_ACCENT_COLOR.video,
-    fontWeight: 800,
+    fontWeight: 600,
 };
 
 // The media-type badge carries an icon where the others carry text, and Badge lays its label out
 // for text. Without this the glyph sits on the text baseline instead of the middle of the pill.
 // Only the centring lives here. Height, padding and colour stay on the two style objects above,
-// which is what keeps this badge the same size as CHAT and the comment count beside it.
+// which is what keeps this badge the same size as the comment count beside it.
 const MEDIA_TYPE_BADGE_LABEL_STYLE: CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -129,19 +131,16 @@ const MEDIA_TYPE_BADGE_LABEL_STYLE: CSSProperties = {
 //
 // Both geometries are kept by emitting both shadows and letting each one be transparent in the theme
 // it does not belong to, which preserves the original per-theme look exactly.
-const INACTIVE_CARD_SHADOW =
-    "0 4px 12px light-dark(rgba(26,24,37,0.06), transparent)," +
-    " 0 12px 32px light-dark(transparent, rgba(0,0,0,0.12))";
+const INACTIVE_CARD_SHADOW = "0 1px 2px light-dark(rgba(20,20,24,0.06), rgba(0,0,0,0.20))";
 
-// The static base of the root card. Only the four properties that react to isActive/isWatched
-// (background, borderColor, boxShadow, transform) are spread over this inline below. The rest,
+// The static base of the root card. Only the three properties that react to isActive/isWatched
+// (background, borderColor, boxShadow) are spread over this inline below. The rest,
 // including the rem() height and the long transition string, is built once here.
 const ROOT_CARD_BASE_STYLE: CSSProperties = {
     height: rem(MEDIA_CARD_HEIGHT),
     cursor: "pointer",
     outline: "none",
-    transition:
-        "transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease",
+    transition: "border-color 140ms ease, background 140ms ease, box-shadow 140ms ease",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
@@ -212,26 +211,23 @@ function MediaCardComponent({
                 // there now and the green border, which is a thin line rather than an area, is
                 // what states the run of them.
                 //
-                // Active still wins on more than alpha. It also gets the ring, the drop glow and the
-                // lift below, none of which watched has. That is what lets watched sit this close in
-                // tint without the two competing for "which card am I on".
+                // Active still wins on more than tint. It also gets the ring below, which watched
+                // does not have. That is what lets watched sit this close in tint without the two
+                // competing for "which card am I on".
                 background: isActive
-                    ? "light-dark(linear-gradient(180deg, rgba(124,92,255,0.12), rgba(124,92,255,0.04)), linear-gradient(180deg, rgba(124,92,255,0.18), rgba(124,92,255,0.05)))"
+                    ? "var(--kx-accent-soft)"
                     : isWatched
-                    ? "light-dark(linear-gradient(180deg, rgba(34,197,94,0.10), rgba(34,197,94,0.035)), linear-gradient(180deg, rgba(34,197,94,0.16), rgba(34,197,94,0.06)))"
+                    ? "light-dark(rgba(34,197,94,0.07), rgba(34,197,94,0.11))"
                     : "light-dark(#ffffff, rgba(255,255,255,0.028))",
                 borderColor: isActive
-                    ? "rgba(124,92,255,0.68)"
+                    ? "var(--kx-accent)"
                     : isWatched
                       // Green-600 in light rather than the same green-500 the dark scheme
                       // uses. The lighter one washes out against a white card, which left
                       // watched reading as a slightly tinted card and nothing more.
                       ? "light-dark(rgba(22,163,74,0.72), rgba(34,197,94,0.55))"
                       : shellBorder,
-                boxShadow: isActive
-                    ? "0 0 0 1px rgba(124,92,255,0.24), 0 18px 42px rgba(80,50,180,0.22)"
-                    : INACTIVE_CARD_SHADOW,
-                transform: isActive ? "translateY(-2px)" : "none",
+                boxShadow: isActive ? "0 0 0 1px var(--kx-accent)" : INACTIVE_CARD_SHADOW,
             }}
         >
             <MediaCardThumbnail
@@ -256,10 +252,10 @@ function MediaCardComponent({
                 >
                     <Box style={TITLE_BOX_STYLE}>
                         <Text
-                            fw={900}
+                            fw={700}
                             lineClamp={2}
                             title={media.title}
-                            c={isActive ? "violet.1" : undefined}
+                            c={isActive ? "kavynex.1" : undefined}
                             style={TITLE_TEXT_STYLE}
                         >
                             {media.title}

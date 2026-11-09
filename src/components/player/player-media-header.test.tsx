@@ -23,8 +23,29 @@ describe("PlayerMediaHeader", () => {
         );
 
         expect(screen.getByText("Video A")).toBeInTheDocument();
-        expect(screen.getByText(/Published:/i)).toBeInTheDocument();
-        expect(screen.getByText(/Added to Kavynex:/i)).toBeInTheDocument();
+        expect(screen.getByText("Published 31 de mar. de 2026")).toBeInTheDocument();
+        expect(screen.getByText("Added 31 de mar. de 2026, 10:00")).toBeInTheDocument();
+    });
+
+    it("leaves the publication date out when the media has none", () => {
+        renderWithMantine(
+            <PlayerMediaHeader
+                title="Video A"
+                publishedLabel=""
+                createdLabel="31 de mar. de 2026, 10:00"
+                shellBorder="rgba(255,255,255,0.1)"
+                canOpenInYoutube={false}
+                isWatched={false}
+                isLive={false}
+                onOpenInYoutube={vi.fn()}
+                onMarkWatched={vi.fn()}
+                onMarkUnwatched={vi.fn()}
+                onBack={vi.fn()}
+            />
+        );
+
+        expect(screen.queryByText(/Published/)).not.toBeInTheDocument();
+        expect(screen.getByText("Added 31 de mar. de 2026, 10:00")).toBeInTheDocument();
     });
 
     it("calls watched and back actions", () => {

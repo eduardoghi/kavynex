@@ -46,25 +46,24 @@ const DURATION_BADGE_STYLE: CSSProperties = {
     bottom: rem(6),
     background: "rgba(0, 0, 0, 0.78)",
     color: "#ffffff",
-    fontWeight: 800,
+    fontWeight: 600,
     letterSpacing: rem(0.2),
+    // Digits of one width, so durations line up from card to card (see .kx-tabular-nums).
+    fontVariantNumeric: "tabular-nums",
     pointerEvents: "none",
 };
 
 // The static base of the container. Only the `border` (which reacts to isActive/isWatched and the
-// shellBorder prop) is spread over this inline below, but the three rem() sizes and the multi-layer
-// gradient background are built once here.
+// shellBorder prop) is spread over this inline below, but the rem() sizes are built once here.
 const THUMBNAIL_CONTAINER_BASE_STYLE: CSSProperties = {
     height: rem(MEDIA_THUMBNAIL_HEIGHT),
     minHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
     maxHeight: rem(MEDIA_THUMBNAIL_HEIGHT),
-    borderRadius: rem(14),
+    borderRadius: rem(6),
     overflow: "hidden",
     position: "relative",
-    background:
-        "radial-gradient(220px 130px at 55% 35%, rgba(168,85,247,0.28), transparent 60%)," +
-        "radial-gradient(260px 160px at 35% 65%, rgba(59,130,246,0.22), transparent 65%)," +
-        "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.52))",
+    // A plain dark frame in both schemes, the way a player shows a video that has no picture yet.
+    background: "#26282D",
     flexShrink: 0,
 };
 
@@ -126,7 +125,7 @@ export function MediaCardThumbnail({
 
     return (
         /* The thumbnail carries the watched border too, not just the card around it. Of the card's
-           292px this block is 158, so the outer border is a thin line drawn around a mass that is
+           274px this block is 158, so the outer border is a thin line drawn around a mass that is
            almost entirely image. The state has to appear on the part the eye is already looking at,
            or it is only technically on screen. Kept a step below the outer border's alpha so the
            card still reads as one shape rather than two rings. */
@@ -135,7 +134,7 @@ export function MediaCardThumbnail({
                 ...THUMBNAIL_CONTAINER_BASE_STYLE,
                 border: `1px solid ${
                     isActive
-                        ? "rgba(124,92,255,0.52)"
+                        ? "var(--kx-accent-line)"
                         : isWatched
                         ? "rgba(34,197,94,0.45)"
                         : shellBorder
@@ -165,7 +164,7 @@ export function MediaCardThumbnail({
 
             <Group gap="xs" style={TOP_BADGE_GROUP_STYLE}>
                 {isActive && (
-                    <Badge variant="filled" color="violet">
+                    <Badge variant="filled" color="kavynex">
                         {UI_TEXT.library.selected}
                     </Badge>
                 )}

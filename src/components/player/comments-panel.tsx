@@ -10,10 +10,9 @@ import {
     Stack,
     Text,
     TextInput,
-    rem,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { MessageCircle, RefreshCw, Search, X } from "lucide-react";
+import { RefreshCw, Search, X } from "lucide-react";
 import { UI_TEXT } from "../../constants/ui-text";
 import type { MediaCommentRow, MediaRow } from "../../types/media";
 import { AsyncStatusRegion } from "../common/async-status-region";
@@ -148,106 +147,85 @@ export function CommentsPanel({
             style={{
                 borderColor: shellBorder,
                 background:
-                    "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
+                    "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
             }}
         >
             <Stack gap="lg">
-                <Group justify="space-between" align="center" wrap="wrap">
-                    <Group gap="sm" wrap="nowrap">
-                        <Box
-                            style={{
-                                width: rem(40),
-                                height: rem(40),
-                                borderRadius: rem(14),
-                                display: "grid",
-                                placeItems: "center",
-                                background: "rgba(139,92,246,0.12)",
-                                border: `1px solid ${shellBorder}`,
-                                flex: "0 0 auto",
-                            }}
-                        >
-                            <MessageCircle size={18} />
-                        </Box>
+                <Box>
+                    {/* Title and count on one line, with no icon tile beside them. The heading
+                        says what the panel is, and the count is the one fact worth adding. */}
+                    <Group gap={8} wrap="wrap" align="baseline">
+                        <Text fw={700}>{UI_TEXT.comments.title}</Text>
 
-                        <Box style={{ minWidth: 0, flex: 1 }}>
-                            {/* Title and count on one line. The count used to sit under the
-                                title as its own sentence, which spent two rows and a full stack
-                                of vertical space restating a number the heading already implies
-                                is a count of saved comments. */}
-                            <Group gap={8} wrap="wrap" align="baseline">
-                                <Text fw={900}>{UI_TEXT.comments.title}</Text>
-
-                                {hasComments ? (
-                                    <>
-                                        <Text c="dimmed" aria-hidden>
-                                            ·
-                                        </Text>
-
-                                        <Text c="dimmed" fw={700}>
-                                            {formatNumber(commentsCount ?? comments.length)}
-                                        </Text>
-                                    </>
-                                ) : (
-                                    <Text size="sm" c="dimmed">
-                                        {UI_TEXT.comments.none}
-                                    </Text>
-                                )}
-                            </Group>
-                            {isCommentLoadTruncated && (
-                                <Text size="xs" c="dimmed" role="status">
-                                    {UI_TEXT.comments.truncatedNoticePrefix}{" "}
-                                    {formatNumber(comments.length)}{" "}
-                                    {UI_TEXT.comments.truncatedNoticeMiddle}{" "}
-                                    {formatNumber(commentsCount ?? 0)}{" "}
-                                    {UI_TEXT.comments.truncatedNoticeSuffix}
-                                </Text>
-                            )}
-                        </Box>
+                        {hasComments ? (
+                            <Text c="dimmed" fw={600} className="kx-tabular-nums">
+                                {formatNumber(commentsCount ?? comments.length)}
+                            </Text>
+                        ) : (
+                            <Text size="sm" c="dimmed">
+                                {UI_TEXT.comments.none}
+                            </Text>
+                        )}
                     </Group>
-
-                    {hasComments && comments.length > 0 && (
-                        <Select
-                            label={UI_TEXT.comments.sortLabel}
-                            value={commentSortMode}
-                            onChange={(value) =>
-                                setCommentSortMode(
-                                    toUnionValue(
-                                        value,
-                                        ["likes", "newest", "oldest"] as const,
-                                        "likes"
-                                    )
-                                )
-                            }
-                            data={[
-                                { value: "likes", label: UI_TEXT.comments.sortOptions.likes },
-                                { value: "newest", label: UI_TEXT.comments.sortOptions.newest },
-                                { value: "oldest", label: UI_TEXT.comments.sortOptions.oldest },
-                            ]}
-                            w={220}
-                        />
+                    {isCommentLoadTruncated && (
+                        <Text size="xs" c="dimmed" role="status">
+                            {UI_TEXT.comments.truncatedNoticePrefix}{" "}
+                            {formatNumber(comments.length)}{" "}
+                            {UI_TEXT.comments.truncatedNoticeMiddle}{" "}
+                            {formatNumber(commentsCount ?? 0)}{" "}
+                            {UI_TEXT.comments.truncatedNoticeSuffix}
+                        </Text>
                     )}
-                </Group>
+                </Box>
 
                 {hasComments && comments.length > 0 && (
                     <Stack gap="xs">
-                        <TextInput
-                            label={UI_TEXT.comments.searchLabel}
-                            placeholder={UI_TEXT.comments.searchPlaceholder}
-                            value={commentSearchValue}
-                            onChange={(event) => setCommentSearchValue(event.currentTarget.value)}
-                            leftSection={<Search size={16} />}
-                            rightSection={
-                                commentSearchValue.trim() ? (
-                                    <ActionIcon
-                                        variant="subtle"
-                                        aria-label="Clear comment search"
-                                        onClick={() => setCommentSearchValue("")}
-                                    >
-                                        <X size={16} />
-                                    </ActionIcon>
-                                ) : undefined
-                            }
-                        />
+                        {/* Search and sort are one toolbar, so they share a row. Both are named by
+                            aria-label rather than a visible label above them, since the placeholder
+                            and the chosen sort already say what each does. */}
+                        <Group gap="sm" wrap="nowrap" align="center">
+                            <TextInput
+                                aria-label={UI_TEXT.comments.searchLabel}
+                                placeholder={UI_TEXT.comments.searchPlaceholder}
+                                value={commentSearchValue}
+                                onChange={(event) =>
+                                    setCommentSearchValue(event.currentTarget.value)
+                                }
+                                leftSection={<Search size={16} />}
+                                rightSection={
+                                    commentSearchValue.trim() ? (
+                                        <ActionIcon
+                                            variant="subtle"
+                                            aria-label="Clear comment search"
+                                            onClick={() => setCommentSearchValue("")}
+                                        >
+                                            <X size={16} />
+                                        </ActionIcon>
+                                    ) : undefined
+                                }
+                                style={{ flex: 1, minWidth: 0 }}
+                            />
+
+                            <Select
+                                aria-label={UI_TEXT.comments.sortLabel}
+                                value={commentSortMode}
+                                onChange={(value) =>
+                                    setCommentSortMode(
+                                        toUnionValue(
+                                            value,
+                                            ["likes", "newest", "oldest"] as const,
+                                            "likes"
+                                        )
+                                    )
+                                }
+                                data={[
+                                    { value: "likes", label: UI_TEXT.comments.sortOptions.likes },
+                                    { value: "newest", label: UI_TEXT.comments.sortOptions.newest },
+                                    { value: "oldest", label: UI_TEXT.comments.sortOptions.oldest },
+                                ]}
+                                w={180}
+                            />
+                        </Group>
 
                         {normalizedCommentSearch && (
                             <Text size="sm" c="dimmed" role="status" aria-live="polite">
@@ -302,7 +280,7 @@ export function CommentsPanel({
                                 </Text>
                                 <Button
                                     variant="light"
-                                    color="violet"
+                                    color="kavynex"
                                     leftSection={<RefreshCw size={16} />}
                                     loading={isFetchingComments}
                                     onClick={() => void onFetchComments()}

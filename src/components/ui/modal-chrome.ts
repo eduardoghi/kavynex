@@ -16,7 +16,7 @@ import { rem } from "@mantine/core";
 export const MODAL_TITLE_STYLE: CSSProperties = {
     fontFamily: "var(--mantine-font-family-headings)",
     fontSize: rem(22),
-    fontWeight: 800,
+    fontWeight: 600,
 };
 
 /**

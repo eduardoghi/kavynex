@@ -40,7 +40,7 @@ export function DiagnosticsOverviewHeader({
                 <Group gap={8} wrap="nowrap" align="center">
                     <OverviewStatusIcon status={overview.status} />
 
-                    <Text fw={800}>{overview.headline}</Text>
+                    <Text fw={600}>{overview.headline}</Text>
                 </Group>
 
                 <Text size="sm" c="dimmed">

@@ -56,7 +56,7 @@ export function DiagnosticsMetric({ label, value }: DiagnosticsMetricProps): JSX
                 {label}
             </Text>
 
-            <Text fw={800} lh={1.3} lineClamp={1}>
+            <Text fw={600} lh={1.3} lineClamp={1}>
                 {value}
             </Text>
         </Box>

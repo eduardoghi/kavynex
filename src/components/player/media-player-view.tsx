@@ -220,7 +220,7 @@ export function MediaPlayerView({
                         <ArrowLeft size={18} />
                     </Box>
 
-                    <Text fw={900} size="lg">
+                    <Text fw={700} size="lg">
                         Player
                     </Text>
                 </Group>
@@ -232,7 +232,7 @@ export function MediaPlayerView({
                     style={{
                         borderColor: shellBorder,
                         background:
-                            "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
+                            "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
                         minHeight: rem(540),
                         display: "grid",
                         placeItems: "center",
@@ -253,7 +253,7 @@ export function MediaPlayerView({
                             <PlayCircle size={30} />
                         </Box>
 
-                        <Text fw={900} size="lg">
+                        <Text fw={700} size="lg">
                             Unable to open media
                         </Text>
 

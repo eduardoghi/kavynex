@@ -27,13 +27,9 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
     primary: {
         variant: "filled",
         style: {
-            border: "1px solid rgba(124,92,255,0.45)",
-            background: "#7C5CFF",
+            border: "1px solid transparent",
+            background: "var(--kx-accent)",
             color: "#ffffff",
-            // A soft, muted shadow rather than a bright glow. A saturated semi-transparent violet
-            // over a near-black OLED background reads as a burned purple halo, so keep the color
-            // dark and the alpha low so it registers as depth, not light.
-            boxShadow: "0 8px 22px rgba(60,40,120,0.22)",
         },
     },
     secondary: {
@@ -56,11 +52,10 @@ const BUTTON_STYLES: Record<AppButtonVariant, AppButtonStyleConfig> = {
         variant: "filled",
         color: "red",
         style: {
-            border: "1px solid rgba(239,68,68,0.34)",
-            background:
-                "linear-gradient(135deg, rgba(239,68,68,0.88), rgba(185,28,28,0.76))",
+            border: "1px solid transparent",
+            // White text clears 5.6:1 on it.
+            background: "#C92A2A",
             color: "#ffffff",
-            boxShadow: "0 12px 28px rgba(127,29,29,0.20)",
         },
     },
 };
@@ -88,7 +83,7 @@ export function AppButton({
 
     return (
         <Button
-            radius="xl"
+            radius="sm"
             variant={buttonStyle.variant}
             color={buttonStyle.color}
             {...props}

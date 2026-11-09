@@ -24,7 +24,7 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 
 vi.mock("./media-card", () => ({
-    MEDIA_CARD_HEIGHT: 292,
+    MEDIA_CARD_HEIGHT: 274,
     MediaCard: ({
         media,
         onOpen,

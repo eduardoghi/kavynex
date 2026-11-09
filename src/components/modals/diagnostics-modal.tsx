@@ -212,7 +212,7 @@ export function DiagnosticsModal({
                             setConfirmRemoveOrphansOpen(false)
                         );
                     }}
-                    title={<Text fw={900}>Remove orphan files</Text>}
+                    title={<Text fw={700}>Remove orphan files</Text>}
                     message={
                         orphanRemoval
                             ? `Move ${formatCount(orphanRemoval.files, "file")} (${formatBytes(orphanRemoval.bytes)}) that nothing in the library uses to the trash?`

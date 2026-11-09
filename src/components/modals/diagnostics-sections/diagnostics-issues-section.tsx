@@ -1,4 +1,4 @@
-import { Anchor, Box, Divider, Group, Paper, Stack, Text, ThemeIcon, Title, Badge } from "@mantine/core";
+import { Anchor, Box, Divider, Group, Paper, Stack, Text, Title, Tooltip } from "@mantine/core";
 import { AlertTriangle, FolderOpen, Info, Trash2 } from "lucide-react";
 import type {
     DiagnosticsIssue,
@@ -81,59 +81,34 @@ function ExamplePathLink({
     );
 }
 
-function IssueSeverityBadge({
-    severity,
-}: {
-    severity: DiagnosticsIssue["severity"];
-}): JSX.Element {
-    if (severity === "error") {
-        return (
-            <Badge color="red" variant="light">
-                Error
-            </Badge>
-        );
-    }
+const SEVERITY_ICON = {
+    error: { label: "Error", color: "var(--kx-color-error-text)", Icon: AlertTriangle },
+    warning: { label: "Warning", color: "var(--kx-color-warning-text)", Icon: AlertTriangle },
+    info: { label: "Info", color: "var(--kx-color-link)", Icon: Info },
+} as const;
 
-    if (severity === "warning") {
-        return (
-            <Badge color="yellow" variant="light">
-                Warning
-            </Badge>
-        );
-    }
-
-    return (
-        <Badge color="blue" variant="light">
-            Info
-        </Badge>
-    );
-}
-
+// The severity as its icon alone, in the semantic text colour (which clears 4.5:1 in both schemes),
+// with no tinted disc behind it and no badge repeating it at the end of the row. The name is the
+// icon's tooltip and its accessible name, so a screen reader still hears it. The top margin lines
+// the glyph up with the first line of the title beside it.
 function IssueSeverityIcon({
     severity,
 }: {
     severity: DiagnosticsIssue["severity"];
 }): JSX.Element {
-    if (severity === "error") {
-        return (
-            <ThemeIcon color="red" variant="light" radius="xl">
-                <AlertTriangle size={16} />
-            </ThemeIcon>
-        );
-    }
-
-    if (severity === "warning") {
-        return (
-            <ThemeIcon color="yellow" variant="light" radius="xl">
-                <AlertTriangle size={16} />
-            </ThemeIcon>
-        );
-    }
+    const { label, color, Icon } = SEVERITY_ICON[severity];
 
     return (
-        <ThemeIcon color="blue" variant="light" radius="xl">
-            <Info size={16} />
-        </ThemeIcon>
+        <Tooltip label={label} withArrow>
+            <Box
+                component="span"
+                role="img"
+                aria-label={label}
+                style={{ display: "flex", flexShrink: 0, marginTop: 3, color }}
+            >
+                <Icon size={18} aria-hidden />
+            </Box>
+        </Tooltip>
     );
 }
 
@@ -166,7 +141,7 @@ export function DiagnosticsIssuesSection({
             p="md"
             style={{
                 background:
-                    "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
+                    "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
             }}
         >
             <Stack gap="sm">
@@ -277,8 +252,6 @@ export function DiagnosticsIssuesSection({
                                     )}
                                 </Box>
                             </Group>
-
-                            <IssueSeverityBadge severity={issue.severity} />
                         </Group>
 
                         {index < issues.length - 1 && <Divider mt="md" />}

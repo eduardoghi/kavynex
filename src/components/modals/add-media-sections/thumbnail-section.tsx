@@ -115,7 +115,7 @@ function ThumbnailSectionView({
                         multiline
                         w={420}
                     >
-                        <Text fw={900} truncate>
+                        <Text fw={700} truncate>
                             {!canSelectThumb
                                 ? "Select a media file first"
                                 : hasThumbnail
@@ -148,7 +148,7 @@ function ThumbnailSectionView({
                             background: badgeBackground,
                             borderColor: badgeBorder,
                             color: badgeColor,
-                            fontWeight: 800,
+                            fontWeight: 600,
                         }}
                     >
                         {badgeLabel}

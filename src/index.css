@@ -3,7 +3,7 @@
    does not: the custom card overlay and the native scrollbars. */
 
 /* StretchedButtonCard activates a whole card through an absolutely-positioned UnstyledButton,
-   which is unstyled and shows nothing on keyboard focus. Draw a crisp violet ring, inset so it
+   which is unstyled and shows nothing on keyboard focus. Draw a crisp accent ring, inset so it
    sits just inside the card's rounded edge (offset follows the button's inherited radius). Only
    on :focus-visible, so it appears for keyboard navigation and never on a mouse click.
 
@@ -11,7 +11,7 @@
    Mantine's to draw a ring on them. */
 .kx-card-button:focus-visible,
 .kx-file-picker:focus-visible {
-    outline: 2px solid rgba(124, 92, 255, 0.9);
+    outline: 2px solid var(--kx-accent);
     outline-offset: -3px;
 }
 
@@ -68,4 +68,10 @@
 ::-webkit-scrollbar-thumb:hover {
     background: light-dark(rgba(26, 24, 37, 0.34), rgba(255, 255, 255, 0.24));
     background-clip: padding-box;
+}
+
+/* Digits of one width, for a number that changes in place (a count, a percentage, a duration), so
+   the text around it does not shift as it ticks. Running text keeps the proportional ones. */
+.kx-tabular-nums {
+    font-variant-numeric: tabular-nums;
 }

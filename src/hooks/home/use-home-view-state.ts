@@ -50,10 +50,9 @@ export function useHomeViewState({
     const shellSurface = "light-dark(#ffffff, rgba(255,255,255,0.035))";
     // Firmer than it was in light. At 0.09 on a near-white page a card had almost no edge,
     // so its shadow was doing the whole job of separating it from the canvas.
-    const shellBorder = "light-dark(rgba(26,24,37,0.14), rgba(255,255,255,0.085))";
-    // A step greyer and cooler. Against white surfaces the old value left page and card
-    // reading as one plane, which is what pushed the shadows to compensate.
-    const pageBackground = "light-dark(#E9E8EF, #0C0A10)";
+    const shellBorder = "light-dark(rgba(20,20,24,0.14), rgba(255,255,255,0.085))";
+    // Neutral grays, a step below the surfaces in each scheme, so page and card read as two planes.
+    const pageBackground = "light-dark(#F0F0F2, #111214)";
 
     const showLoading =
         (!selectedChannel && isLoadingChannels) || isPreparingSettings;

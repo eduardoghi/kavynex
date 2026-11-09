@@ -21,7 +21,7 @@ export function MembershipChatMessage({
                 />
 
                 <Text size="sm" style={{ minWidth: 0, wordBreak: "break-word" }}>
-                    <Text component="span" fw={800} c="var(--kx-color-success-text)">
+                    <Text component="span" fw={600} c="var(--kx-color-success-text)">
                         {message.author_name}
                     </Text>{" "}
                     {renderMessageContent(message)}

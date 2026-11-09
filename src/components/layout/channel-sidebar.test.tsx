@@ -55,7 +55,9 @@ describe("ChannelSidebar", () => {
         // "Loading channels" text so a screen reader still announces the load.
         expect(screen.getByRole("status")).toBeInTheDocument();
         expect(screen.getByText("Loading channels")).toBeInTheDocument();
-        expect(screen.getByText("...")).toBeInTheDocument();
+        // No placeholder stands in for the count while the list loads.
+        expect(screen.queryByText("...")).not.toBeInTheDocument();
+        expect(screen.queryByText("0")).not.toBeInTheDocument();
     });
 
     it("states an empty list with the count alone, and carries no empty card", () => {
@@ -86,7 +88,7 @@ describe("ChannelSidebar", () => {
         // The count beside the heading is the whole empty state here. The words and the button
         // for that step belong to the page, and a card repeating them made one screen say the
         // same sentence twice.
-        expect(screen.getByText("CHANNELS")).toBeInTheDocument();
+        expect(screen.getByText("Channels")).toBeInTheDocument();
         expect(screen.getByText("0")).toBeInTheDocument();
         expect(screen.queryByText("No channels yet")).not.toBeInTheDocument();
     });

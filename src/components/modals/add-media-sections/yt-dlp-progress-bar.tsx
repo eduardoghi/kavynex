@@ -55,7 +55,7 @@ export function YtDlpProgressBar({
                     {label}
                 </Text>
 
-                <Text size="sm" c="dimmed" fw={600}>
+                <Text size="sm" c="dimmed" fw={600} className="kx-tabular-nums">
                     {/* One decimal, matching what yt-dlp reports, so the number here and the number
                         in the terminal below agree. A stage with no percentage says so in words
                         rather than showing nothing: the right-hand side going blank reads as the

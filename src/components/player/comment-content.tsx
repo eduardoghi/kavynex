@@ -63,7 +63,7 @@ export function CommentContent({
                 <Group gap={8} wrap="wrap">
                     <AuthorName
                         channelId={authorChannelId}
-                        fw={800}
+                        fw={600}
                         linkColor="var(--kx-color-link)"
                         inline={false}
                     >

@@ -20,14 +20,13 @@ import { fileSrcFromStoredPath } from "../../utils/media-utils";
 // because they read runtime values.
 const ROW_MENU_STYLES = {
     dropdown: {
-        borderRadius: 14,
-        padding: 6,
-        background: "light-dark(rgba(255, 255, 255, 0.98), rgba(36, 36, 40, 0.98))",
+        borderRadius: 6,
+        padding: 4,
+        background: "light-dark(#ffffff, #26282D)",
         border: "1px solid light-dark(rgba(0,0,0,0.10), rgba(255,255,255,0.08))",
-        backdropFilter: "blur(12px)",
     },
     item: {
-        borderRadius: 10,
+        borderRadius: 4,
         paddingBlock: 10,
         paddingInline: 12,
     },
@@ -113,13 +112,13 @@ export const ChannelListItem = memo(function ChannelListItem({
             ariaBusy={isBusy}
             disabled={isBusy}
             onClick={handleSelect}
-            radius="xl"
+            radius="md"
             p="sm"
             style={{
                 cursor: isBusy ? "default" : "pointer",
-                borderColor: selected ? "rgba(139,92,246,0.45)" : shellBorder,
+                borderColor: selected ? "var(--kx-accent-line)" : shellBorder,
                 background: selected
-                    ? "rgba(124,92,255,0.10)"
+                    ? "var(--kx-accent-soft)"
                     : "light-dark(rgba(0,0,0,0.025), rgba(255,255,255,0.025))",
                 opacity: isBusy ? 0.6 : 1,
                 transition: "background 160ms ease, border-color 160ms ease",
@@ -127,7 +126,7 @@ export const ChannelListItem = memo(function ChannelListItem({
         >
             <Group wrap="nowrap" gap="sm">
                 <Avatar
-                    radius="xl"
+                    radius="100%"
                     size={44}
                     src={avatarSrc || undefined}
                     // Decorative. The channel name is the next thing in the row, so the image adds
@@ -136,8 +135,7 @@ export const ChannelListItem = memo(function ChannelListItem({
                     alt=""
                     styles={{
                         root: {
-                            background:
-                                "linear-gradient(135deg, rgba(124,92,255,0.34), rgba(124,92,255,0.16))",
+                            background: "light-dark(#E8E9EB, #2E3036)",
                             border: `1px solid ${shellBorder}`,
                         },
                     }}
@@ -146,7 +144,7 @@ export const ChannelListItem = memo(function ChannelListItem({
                 </Avatar>
 
                 <Stack gap={1} style={{ flex: 1, minWidth: 0 }}>
-                    <Text fw={900} truncate>
+                    <Text fw={700} truncate>
                         {channel.name}
                     </Text>
 

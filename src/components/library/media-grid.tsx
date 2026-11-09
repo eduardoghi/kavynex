@@ -64,11 +64,11 @@ const GRID_GAP = 16;
 const GRID_SCROLLBAR_GUTTER = GRID_GAP;
 
 // Roughly what sits above the grid inside the viewport. The app shell's padding, the channel
-// header, the filter row and the grid's own title. Deliberately an approximation rather than a
+// header, the filter row and the count under it. Deliberately an approximation rather than a
 // measurement. Reading it would mean a layout query on a container that re-renders on every scroll
 // tick, which is the cost this file already refuses to pay for row heights (see measureFirstRow).
 // Being a little wrong costs a few pixels of outer page scroll. Measuring costs a reflow per frame.
-const GRID_CHROME_ABOVE = 300;
+const GRID_CHROME_ABOVE = 230;
 
 // The inner scroll area the virtualizer measures against. This was a flat `70vh`, which is wrong in
 // both directions once the window is not about 1080 tall. On a short window the grid plus the chrome
@@ -487,23 +487,21 @@ export function MediaGrid({
 
     return (
         <Stack gap="md">
-            <Group justify="space-between" align="center" wrap="wrap">
-                <Group gap="xs" align="center">
-                    <Title order={3} fw={900}>
-                        {UI_TEXT.library.title}
-                    </Title>
+            {/* A heading for screen-reader navigation only. On screen the filter row and the count
+                above already say what the grid holds, and a visible "Media" title repeated it. */}
+            <VisuallyHidden>
+                <Title order={3}>{UI_TEXT.library.title}</Title>
+            </VisuallyHidden>
 
-                    {/* A reload with rows already on screen keeps them, with this beside the title
-                        instead of the skeleton. Replacing them unmounted the scroll container, so
-                        adding a media or typing in the search sent the user back to the top. */}
-                    {loading && hasItems && (
-                        <Box role="status">
-                            <Loader size="xs" aria-hidden />
-                            <VisuallyHidden>{UI_TEXT.library.loading}</VisuallyHidden>
-                        </Box>
-                    )}
-                </Group>
-            </Group>
+            {/* A reload with rows already on screen keeps them, with this above them instead of the
+                skeleton. Replacing them unmounted the scroll container, so adding a media or typing
+                in the search sent the user back to the top. */}
+            {loading && hasItems && (
+                <Box role="status">
+                    <Loader size="xs" aria-hidden />
+                    <VisuallyHidden>{UI_TEXT.library.loading}</VisuallyHidden>
+                </Box>
+            )}
 
             {loading && !hasItems && (
                 <Box role="status">
@@ -520,7 +518,7 @@ export function MediaGrid({
                     style={{ background: shellSurface, borderColor: shellBorder }}
                 >
                     <Stack gap="xs" align="flex-start" role="alert">
-                        <Title order={4} fw={900}>
+                        <Title order={4} fw={700}>
                             {UI_TEXT.library.loadFailedTitle}
                         </Title>
 
@@ -562,7 +560,7 @@ export function MediaGrid({
                     style={{ background: shellSurface, borderColor: shellBorder }}
                 >
                     <Stack gap="xs">
-                        <Title order={4} fw={900}>
+                        <Title order={4} fw={700}>
                             {emptyTitle}
                         </Title>
 
@@ -662,10 +660,10 @@ export function MediaGrid({
                                                         1
                                                     }
                                                     style={{
-                                                        borderRadius: 18,
+                                                        borderRadius: 12,
                                                         outline:
                                                             media.id === highlightedMediaId
-                                                                ? "2px solid var(--mantine-color-violet-5)"
+                                                                ? "2px solid var(--kx-accent)"
                                                                 : "2px solid transparent",
                                                         outlineOffset: 2,
                                                         transition: "outline-color 220ms ease",

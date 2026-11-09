@@ -24,14 +24,14 @@ describe("PlayerAudioSurface", () => {
     });
 
     it("leaves the title and both dates to the header instead of printing them again", () => {
-        // The surface must not repeat the title, Published and Added to Kavynex directly under the
+        // The surface must not repeat the title and the published and added dates directly under the
         // header that already carries all three. The title stays as a prop because the cover image
         // and the audio element still need it for their accessible names, which is why this checks
         // for rendered text rather than for the prop being gone.
         renderSurface();
 
         expect(screen.queryByText("Audio A")).not.toBeInTheDocument();
-        expect(screen.queryByText(/Published:/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/Added to Kavynex:/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/^Published /)).not.toBeInTheDocument();
+        expect(screen.queryByText(/^Added /)).not.toBeInTheDocument();
     });
 });

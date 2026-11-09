@@ -263,7 +263,7 @@ export function LiveChatPanel({
             style={{
                 borderColor: shellBorder,
                 background:
-                    "light-dark(linear-gradient(180deg, rgba(0,0,0,0.028), rgba(0,0,0,0.015)), linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015)))",
+                    "light-dark(rgba(0,0,0,0.02), rgba(255,255,255,0.02))",
                 // No height of its own. The cell around it sets one, from the player
                 // beside it when the two are side by side and from its own bounds when
                 // they stack (see liveLayoutPanel). overflow plus the column below is
@@ -302,7 +302,7 @@ export function LiveChatPanel({
                     the heading says once. */}
                 <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
                     <Group gap={6} wrap="nowrap" style={{ minWidth: 0 }}>
-                        <Text fw={900} lineClamp={1}>
+                        <Text fw={700} lineClamp={1}>
                             Live chat replay
                         </Text>
 

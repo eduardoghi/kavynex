@@ -40,6 +40,20 @@ import type { ChannelMediaOnYoutube } from "../../types/generated/ChannelMediaOn
 import type { BatchImportController } from "../../hooks/use-batch-import";
 import type { YtDlpTerminalStore } from "../../hooks/yt-dlp-terminal-store";
 
+// A filter's name drawn inside its field, before the value ("Type: All"), in place of a label
+// above it. Hidden from screen readers, which get the field's aria-label instead. The width follows
+// the name, so a short one does not leave a gap before the value.
+function filterPrefixProps(name: string) {
+    return {
+        leftSection: (
+            <Text size="sm" c="dimmed" component="span" aria-hidden>
+                {name}:
+            </Text>
+        ),
+        leftSectionWidth: Math.ceil(name.length * 7.5) + 24,
+        leftSectionPointerEvents: "none" as const,
+    };
+}
 
 // The per-card actions the grid exposes on each media row. Grouped into one object rather than
 // passed as eight separate props (most of them optional callbacks) so the section's contract stays
@@ -197,11 +211,11 @@ export function SelectedChannelLibrarySection({
                 <Group gap="md" wrap="nowrap">
                     <Avatar
                         size={58}
-                        radius="xl"
+                        radius="100%"
                         src={avatarSrc || undefined}
                         // Decorative. The channel's name is the heading beside it.
                         alt=""
-                        color="violet"
+                        color="kavynex"
                         style={{
                             border: `1px solid ${shellBorder}`,
                         }}
@@ -278,9 +292,12 @@ export function SelectedChannelLibrarySection({
             </Group>
 
             <Stack gap="sm">
-                <Group align="end" wrap="wrap">
+                {/* One toolbar row. The search is named by aria-label like the comments search, and
+                    each filter carries its name inside the field (FilterPrefix), since three of
+                    them would otherwise all read "All" with nothing saying of what. */}
+                <Group align="center" wrap="wrap" gap="sm">
                     <TextInput
-                        label={UI_TEXT.library.searchLabel}
+                        aria-label={UI_TEXT.library.searchLabel}
                         placeholder={UI_TEXT.library.searchPlaceholder}
                         value={searchValue}
                         onChange={(event) => setSearchValue(event.currentTarget.value)}
@@ -301,7 +318,8 @@ export function SelectedChannelLibrarySection({
                     />
 
                     <Select
-                        label={UI_TEXT.library.typeLabel}
+                        aria-label={UI_TEXT.library.typeLabel}
+                        {...filterPrefixProps(UI_TEXT.library.typeLabel)}
                         value={mediaTypeFilter}
                         onChange={(value) =>
                             setMediaTypeFilter(
@@ -313,11 +331,12 @@ export function SelectedChannelLibrarySection({
                             { value: "video", label: UI_TEXT.library.filters.video },
                             { value: "audio", label: UI_TEXT.library.filters.audio },
                         ]}
-                        w={160}
+                        w={150}
                     />
 
                     <Select
-                        label={UI_TEXT.library.statusLabel}
+                        aria-label={UI_TEXT.library.statusLabel}
+                        {...filterPrefixProps(UI_TEXT.library.statusLabel)}
                         value={watchedFilter}
                         onChange={(value) =>
                             setWatchedFilter(
@@ -329,11 +348,12 @@ export function SelectedChannelLibrarySection({
                             { value: "watched", label: UI_TEXT.library.filters.watched },
                             { value: "unwatched", label: UI_TEXT.library.filters.unwatched },
                         ]}
-                        w={180}
+                        w={190}
                     />
 
                     <Select
-                        label={UI_TEXT.library.publicationDateLabel}
+                        aria-label={UI_TEXT.library.publicationDateLabel}
+                        {...filterPrefixProps(UI_TEXT.library.publicationDateShortLabel)}
                         value={publicationDateFilter}
                         onChange={(value) =>
                             setPublicationDateFilter(
@@ -351,11 +371,12 @@ export function SelectedChannelLibrarySection({
                                 label: UI_TEXT.library.filters.withoutPublicationDate,
                             },
                         ]}
-                        w={220}
+                        w={250}
                     />
 
                     <Select
-                        label={UI_TEXT.library.sortLabel}
+                        aria-label={UI_TEXT.library.sortLabel}
+                        {...filterPrefixProps(UI_TEXT.library.sortShortLabel)}
                         value={sortCategory}
                         onChange={(value) =>
                             setSortCategory(
@@ -385,7 +406,7 @@ export function SelectedChannelLibrarySection({
                             { value: "duration", label: UI_TEXT.library.sortOptions.duration },
                             { value: "comments", label: UI_TEXT.library.sortOptions.comments },
                         ]}
-                        w={210}
+                        w={230}
                     />
 
                     <Tooltip
@@ -397,9 +418,8 @@ export function SelectedChannelLibrarySection({
                     >
                         <ActionIcon
                             variant="light"
-                            color="violet"
+                            color="kavynex"
                             size="lg"
-                            mt={24}
                             onClick={() =>
                                 setSortDirection((current) => (current === "desc" ? "asc" : "desc"))
                             }
@@ -409,8 +429,8 @@ export function SelectedChannelLibrarySection({
                                     : UI_TEXT.library.sortAscendingLabel
                             }
                             style={{
-                                border: "1px solid rgba(139,92,246,0.26)",
-                                background: "rgba(124,92,255,0.13)",
+                                border: "1px solid var(--kx-accent-line)",
+                                background: "var(--kx-accent-soft)",
                             }}
                         >
                             {/* A to Z is the title sort only. Dates, durations and counts are
@@ -430,7 +450,7 @@ export function SelectedChannelLibrarySection({
                     </Tooltip>
                 </Group>
 
-                <Text size="sm" c="dimmed">
+                <Text size="sm" c="dimmed" className="kx-tabular-nums">
                     {filteredCountLabel}
                 </Text>
 

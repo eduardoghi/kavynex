@@ -219,7 +219,7 @@ describe("useHomeViewState", () => {
 
         // Pinned exactly on purpose. The canvas is the one value the whole light scheme is
         // calibrated against, so it should not drift without someone deciding to move it.
-        expect(result.current.pageBackground).toBe("light-dark(#E9E8EF, #0C0A10)");
+        expect(result.current.pageBackground).toBe("light-dark(#F0F0F2, #111214)");
     });
 
     it("shows loading when there is no selected channel and channels are loading, even when settings are not preparing", () => {
