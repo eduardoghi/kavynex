@@ -108,6 +108,18 @@ class Session {
         return found.map(elementId);
     }
 
+    // The same, inside an open dialog only. A dialog's button can share its name with one behind it,
+    // such as a menu's Delete left open under the confirmation it opened.
+    async findDialogButton(label) {
+        const literal = JSON.stringify(label);
+        const found = await this.call("POST", "/elements", {
+            using: "xpath",
+            value: `//*[@role="dialog"]//button[normalize-space(.)=${literal} or @aria-label=${literal}]`,
+        });
+
+        return found.map(elementId);
+    }
+
     // Scrolls the element to the middle of its scroll container first. A button below the fold of a
     // modal's scroll area is refused as not interactable otherwise.
     async click(element) {

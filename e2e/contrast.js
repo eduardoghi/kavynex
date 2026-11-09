@@ -34,7 +34,9 @@ export async function findContrastViolations(session) {
     await session.execute(
         `if (!window.axe) { ${AXE_SOURCE}\n}\n` +
             `window.${RESULT_KEY} = null;\n` +
-            "window.axe.run(document, { runOnly: ['color-contrast'] }).then(" +
+            // Tooltips are left out. One opens under the pointer after a click (the theme
+            // switch, typically) and is measured mid-fade, white text over the page behind it.
+            "window.axe.run({ exclude: [['[role=\"tooltip\"]']] }, { runOnly: ['color-contrast'] }).then(" +
             `(results) => { window.${RESULT_KEY} = results.violations.flatMap((violation) => ` +
             "violation.nodes.map((node) => `${node.target.join(' ')}: ${node.failureSummary}`)); }," +
             `(error) => { window.${RESULT_KEY} = { error: String(error) }; });\n` +
