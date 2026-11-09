@@ -224,6 +224,11 @@ const dialogFlows = [
                 async () => (await session.findByLabel(`Open ${MEDIA_TITLE}`)).length > 0,
                 60_000
             );
+            // The card lands before the form closes, and the contrast check after this would
+            // otherwise read the form's controls while they are still locked and dimmed.
+            await waitUntilGone(session, "the import form", () =>
+                session.findByText("Import media")
+            );
         },
     ],
     [
