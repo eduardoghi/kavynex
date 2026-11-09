@@ -25,6 +25,13 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ### Changed
 
+- The interface has a quieter look. The logo's violet is the one accent color, surfaces are neutral
+  grays, and the gradients, glows and frosted panels are gone. Text and buttons are easier to read
+  in the dark theme.
+- The library filters fit on one row, and the comments search and sort share one.
+- Diagnostics shows each issue's kind as its icon, with the name on hover, instead of a badge.
+- The player shows when a media was added without the "to Kavynex", and leaves the publication date
+  out when there is none.
 - A video download is joined to the original audio track rather than a dubbed one, and YouTube's
   dynamic range compressed audio copy is skipped by default.
 - The comments search ignores accents on Latin letters. Other scripts keep their letters.
