@@ -262,16 +262,18 @@ const dialogFlows = [
                 },
                 30_000
             );
-            // Until the grid is back. The one-second clip ends and is marked watched about now, and
-            // a click landing during that re-render was taken without leaving the player.
-            await waitFor(`the library after leaving the player`, async () => {
-                if ((await session.findByLabel(`Open ${MEDIA_TITLE}`)).length > 0) {
+            // Until the player is gone, which its back button is the sign of. The grid stays mounted
+            // behind the player, so the card being in the page says nothing. The one-second clip
+            // ends and is marked watched about now, and a click landing during that re-render was
+            // taken without leaving the player, so the click is repeated until it lands.
+            await waitFor(`the player to close`, async () => {
+                const buttons = await session.findButton("Back to library");
+
+                if (buttons.length === 0) {
                     return true;
                 }
 
-                const [back] = await session.findButton("Back to library");
-
-                if (back) {
+                for (const back of buttons) {
                     await session.click(back).catch(() => {});
                 }
 
