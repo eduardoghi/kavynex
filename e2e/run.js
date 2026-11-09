@@ -270,6 +270,9 @@ const dialogFlows = [
         async (session) => {
             await clickButton(session, `Actions for ${MEDIA_TITLE}`);
             await clickButton(session, "Delete");
+            // The confirmation's own button, once it is open. Clicked at once, the menu's Delete,
+            // still on screen while the menu closes, was the last match and took the click again.
+            await waitForText(session, `Delete ${MEDIA_TITLE}?`);
             await clickButton(session, "Delete", { last: true });
             await waitUntilGone(session, `the card of "${MEDIA_TITLE}"`, () =>
                 session.findByLabel(`Open ${MEDIA_TITLE}`)
