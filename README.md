@@ -118,27 +118,27 @@ verify` will report *no attestation* for those installers rather than a failure 
 
 ### Channel library
 
-<img width="2114" height="1431" alt="image" src="https://github.com/user-attachments/assets/c22ab449-bdbd-41fa-8cd0-b35cc38ff6c8" />
+<img width="2110" height="1450" alt="image" src="https://github.com/user-attachments/assets/a1e8d805-6ce7-48f2-bf94-a80b09881124" />
 
 ### YouTube import
 
-<img width="2114" height="1431" alt="image" src="https://github.com/user-attachments/assets/164a377d-12bd-4b2d-9112-184fd904ccd9" />
+<img width="2110" height="1450" alt="image" src="https://github.com/user-attachments/assets/93ea80fe-d1b2-478e-8838-024ba52f998f" />
 
 ### Video player
 
-<img width="2114" height="1431" alt="image" src="https://github.com/user-attachments/assets/85e32d28-134d-4e53-acae-f128b8c650fe" />
+<img width="2110" height="1450" alt="image" src="https://github.com/user-attachments/assets/6217d56d-b7d9-44ef-a2bc-2b5315645ed4" />
 
 ### Live chat backup
 
-<img width="2114" height="1431" alt="image" src="https://github.com/user-attachments/assets/a213a105-31ea-4ba8-93d6-e5092fc4cf7e" />
+<img width="2110" height="1450" alt="image" src="https://github.com/user-attachments/assets/7a752957-0bca-41cd-9626-7b0e48544ecf" />
 
 ### Diagnostics
 
-<img width="2114" height="1431" alt="image" src="https://github.com/user-attachments/assets/2cc9a0aa-b0b5-4f94-9dc4-313fb7a20d2d" />
+<img width="2110" height="1450" alt="image" src="https://github.com/user-attachments/assets/8b834774-4ddd-4778-84d8-22477f48d920" />
 
 ### Light theme
 
-<img width="2114" height="1431" alt="image" src="https://github.com/user-attachments/assets/ce467708-77ed-4b63-9d1e-422596b96f05" />
+<img width="2110" height="1450" alt="image" src="https://github.com/user-attachments/assets/d7eb0cf5-345f-4bfb-9884-f8450685c365" />
 
 
 ## Development
