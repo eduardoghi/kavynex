@@ -58,11 +58,11 @@
             },
             "deb": {
                 "depends": ["libc6 (>= 2.39)"],
-                "recommends": ["gstreamer1.0-plugins-good", "gstreamer1.0-libav"]
+                "recommends": ["gstreamer1.0-plugins-good", "gstreamer1.0-plugins-bad", "gstreamer1.0-libav"]
             },
             "rpm": {
                 "depends": ["glibc >= 2.39"],
-                "recommends": ["gstreamer1-plugins-good", "gstreamer1-plugin-libav"]
+                "recommends": ["gstreamer1-plugins-good", "gstreamer1-plugins-bad-free", "gstreamer1-plugin-libav"]
             }
         },
         "icon": [

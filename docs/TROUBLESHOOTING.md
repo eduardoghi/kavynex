@@ -140,19 +140,20 @@ Or skip the mount entirely, which needs nothing installed:
 
 If neither appeals, the `.deb` and `.rpm` on the release page carry no FUSE requirement.
 
-## Linux: a video says "This file can't be played here"
+## Linux: a video says "This file can't be played here", or keeps stepping back
 
 The player plays media through GStreamer, and a format whose plugin is missing is one it cannot
 play. The AppImage carries its plugins. The `.deb` and `.rpm` use the system's and only recommend
 them, so an install that skipped recommended packages can be missing the ones most downloads need.
 Install them and reopen the video:
 
-- Debian/Ubuntu: `sudo apt install gstreamer1.0-plugins-good gstreamer1.0-libav`
-- Fedora: `sudo dnf install gstreamer1-plugins-good gstreamer1-plugin-libav`
-- Arch: `sudo pacman -S gst-plugins-good gst-libav`
+- Debian/Ubuntu: `sudo apt install gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav`
+- Fedora: `sudo dnf install gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav`
+- Arch: `sudo pacman -S gst-plugins-good gst-plugins-bad gst-libav`
 
-"good" covers WebM (VP8, VP9, Opus) and libav covers H.264 and AAC, which is what an MP4 from
-YouTube usually holds.
+"good" covers WebM (VP8, VP9, Opus), libav covers H.264 and AAC, which is what an MP4 from YouTube
+usually holds, and "bad" holds the H.264 parser. Without the parser an H.264 video still plays, but
+its picture keeps stepping back a few frames.
 
 ## Linux: the window opens blank, or the app exits immediately
 

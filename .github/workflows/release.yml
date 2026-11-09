@@ -326,15 +326,18 @@ jobs:
             # through GStreamer, and `bundleMediaFramework` (tauri.conf.json) copies the plugins of
             # this machine into the AppImage. Without them its webview process aborts the moment a
             # media element loads ("GStreamer element appsink not found"), which leaves the window
-            # grey. base and good hold the containers, VP8/VP9 and Opus, and libav holds H.264 and
-            # AAC, the formats most YouTube downloads arrive in. The .deb and .rpm recommend the
-            # same plugins instead of carrying them, since they use the system's WebKitGTK.
+            # grey. base and good hold the containers, VP8/VP9 and Opus, libav holds the H.264 and
+            # AAC decoders, the formats most YouTube downloads arrive in, and bad holds h264parse.
+            # Without the parser the decoder gets H.264 unparsed and hands frames back with
+            # timestamps that go backwards, which plays as a picture that keeps stepping back. The
+            # .deb and .rpm recommend the same plugins instead of carrying them, since they use the
+            # system's WebKitGTK.
             - name: Install Linux dependencies
               if: startsWith(matrix.platform, 'ubuntu-')
               run: |
                   sudo apt-get update
                   sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils \
-                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav
+                      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav
 
             - name: Verify version consistency
               run: node scripts/verify-release-version.js
