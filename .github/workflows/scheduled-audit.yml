@@ -33,7 +33,7 @@ jobs:
                   persist-credentials: false
 
             # No version input. The pnpm version comes from package.json's packageManager field, so
-            # this and local Corepack install the same pinned pnpm.
+            # this installs the pnpm that field pins.
             - name: Setup pnpm
               uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
 

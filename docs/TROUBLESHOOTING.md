@@ -19,7 +19,9 @@ directories listed in your `PATH` environment variable (never the current workin
 directory, so a file dropped next to the app cannot shadow the real binary). On Windows
 it also honors `PATHEXT`, so a bare `yt-dlp` on PATH resolves to `yt-dlp.exe` (batch
 shims (`.bat`/`.cmd`) are deliberately skipped, so install yt-dlp and ffmpeg as real
-executables rather than wrapper scripts). If both lookups fail, it falls back to an optional
+executables rather than wrapper scripts). On macOS it then looks in `/opt/homebrew/bin`,
+`/usr/local/bin` and `/opt/local/bin`, since an app opened from Finder does not get the `PATH` your
+terminal has. If that finds nothing, it falls back to an optional
 `tools/yt-dlp(.exe)` and `tools/ffmpeg(.exe)` inside the app's data directory, so a
 portable install can be dropped there instead of PATH.
 

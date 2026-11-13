@@ -12,7 +12,7 @@ database file and its backups live on disk.
 
 ## Schema
 
-Four tables, declared in `db_schema/ddl.rs` and created by `db_schema/migrations.rs`:
+The tables are declared in `db_schema/ddl.rs` and created by `db_schema/migrations.rs`:
 
 ### `channels`
 

@@ -5,11 +5,14 @@ given*).
 
 ## What the code does now
 
-`get_library_summary`, `check_library_integrity` and `open_path_in_system` verify the
-`library_path` they receive over IPC against the persisted setting
-(`library::guard::ensure_configured_library_path_in_pool`), like every other command that takes one.
-Each has an IPC-level test pinning the refusal
-(`commands/library.rs::*_rejects_a_path_that_is_not_the_configured_library`).
+`get_library_summary`, `check_library_integrity` and `open_path_in_system` take no library path at
+all. Each reads the configured one from the settings
+(`library::guard::with_configured_library_then_blocking_in_pool`,
+`library::guard::configured_library_path_in_pool`), so there is nothing for a caller to supply. The
+commit above made them verify the path they were given, and the parameter was removed afterwards.
+The two commands that still take a library path (`register_library_asset_scope`,
+`migrate_library_directory`) verify it against the persisted setting, as
+[`../THREAT-MODEL.md`](../THREAT-MODEL.md) describes.
 
 ## What it did before
 
@@ -20,8 +23,8 @@ from settings would break both.
 The premise did not hold, and that is the part worth keeping. **No caller ever passed a candidate.**
 The settings modal and the diagnostics summary both pass `settings.libraryPath`, which is the
 persisted value, and the change-library flow (`src/use-cases/change-library-path.ts`) previews a
-candidate with `ensure_directory_exists` / `is_directory_empty`, a different group of commands with
-their own residual. The exception cost the central rule of the whole backend and bought nothing.
+candidate with `ensure_directory_exists` / `is_directory_empty` (the second has since been removed),
+a different group of commands with their own residual. The exception cost the central rule of the whole backend and bought nothing.
 
 ## What breaks if someone goes back
 

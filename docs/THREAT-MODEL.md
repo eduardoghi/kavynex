@@ -653,13 +653,20 @@ yt-dlp extract every entry for one image.
 
 ## External binary resolution (no working-directory hijack)
 
-`services/binaries.rs` resolves `yt-dlp`/`ffmpeg` by walking only the directories listed
-in the `PATH` environment variable (honoring `PATHEXT` on Windows). It never searches
+`services/binaries.rs` resolves `yt-dlp`/`ffmpeg` by walking the directories listed
+in the `PATH` environment variable (honoring `PATHEXT` on Windows) and, on macOS, three fixed
+ones after them (below). It never searches
 the process's current working directory, unlike Windows' own `where.exe`. This matters
 because the app is not code-signed (see below) and could otherwise be tricked into
 launching a malicious `yt-dlp.exe`/`ffmpeg.exe` planted next to a downloaded file if
 directory search order included the CWD. See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for
 the (documented, opt-in) fallback to a `tools/` folder inside the app data directory.
+
+On macOS a name `PATH` does not hold is looked for in `/opt/homebrew/bin`, `/usr/local/bin` and
+`/opt/local/bin` (`WELL_KNOWN_BIN_DIRS`). An app opened from Finder gets launchd's `PATH` rather
+than the shell's, so without them a yt-dlp installed with Homebrew read as missing. They are
+absolute literals rather than values read from the environment, so the working directory is still
+never searched.
 
 An empty or relative `PATH` entry (`.`, `bin`) is skipped too, since it names a folder under the
 working directory. `taskkill.exe`, which every cancel and timeout runs on Windows, is started from
@@ -720,9 +727,10 @@ takes a proxy, extra headers, a timeout and a target platform from its caller, s
 choosing, carrying in the proxy's URL whatever it had read through IPC. That was the one outbound
 channel the CSP and the image host allow-list did not cover. `commands/updater.rs` checks and installs
 with the endpoint and timeouts of the app's own configuration, takes no such argument, and keeps the
-update it found, so the renderer never names one. The relaunch after an update or a database import
-is `AppHandle::restart` behind the same module, so the renderer holds no `updater:` or `process:`
-permission.
+update it found, so the renderer never names one. The relaunch is behind the same module.
+`relaunch_app` calls `AppHandle::request_restart`, which goes through the normal exit from any
+thread, and `install_app_update` ends in `AppHandle::restart`. So the renderer holds no `updater:`
+or `process:` permission.
 
 The window those grants belong to is built in `main_window.rs` rather than from the config, so it
 can carry two hooks. A navigation is allowed only to the origin the bundle is served from on this
