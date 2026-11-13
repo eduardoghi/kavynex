@@ -329,6 +329,21 @@ pub async fn restore_database_from_backup(db_path: &Path) -> AppResult<()> {
             }
         }
 
+        // A snapshot with no schema restores to the file the open path reports as missing
+        // (`database::database_holds_data`), so the same recovery would be offered again with
+        // nothing gained. Passed over like a damaged one, for the snapshots behind it.
+        if super::database_has_no_schema(&readable).await {
+            remove_unpacked(db_path);
+            logger::warn(
+                "db_backup",
+                format!(
+                    "restore: passed over {}, which holds no schema",
+                    logger::redact_path(&candidate)
+                ),
+            );
+            continue;
+        }
+
         // Refuse a backup whose schema is newer than this build supports. Restoring it would only
         // "succeed" for `ensure_schema` to reject it on the next open (DatabaseSchemaTooNew),
         // leaving the app unable to start. Catching it here fails the restore itself with a clear

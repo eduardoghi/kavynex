@@ -645,11 +645,17 @@ pub(crate) async fn database_has_no_schema(db_path: &Path) -> bool {
     let Ok(pool) = open(db_path).await else {
         return false;
     };
-    let objects: Result<(i64,), _> = sqlx::query_as("SELECT COUNT(*) FROM sqlite_master")
-        .fetch_one(&pool)
-        .await;
+    let objects = schema_object_count(&pool).await;
     pool.close().await;
-    matches!(objects, Ok((0,)))
+    matches!(objects, Ok(0))
+}
+
+/// How many schema objects (tables, indexes, triggers, views) the database behind `pool` holds.
+/// Zero for a file of zero bytes, which SQLite opens as an empty database.
+async fn schema_object_count(pool: &SqlitePool) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master")
+        .fetch_one(pool)
+        .await
 }
 
 /// Whether opening the database will run a schema migration, which is when the file is missing

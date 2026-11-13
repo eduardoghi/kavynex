@@ -50,12 +50,24 @@ pub(super) fn library_check_scratch_path(db_path: &Path) -> PathBuf {
 /// Whether the database behind `pool` has any channel or media. A query that fails answers yes, so a
 /// database the check cannot read is backed up as before rather than skipped.
 pub(super) async fn holds_library(pool: &sqlx::SqlitePool) -> bool {
+    library_rows_exist(pool).await.unwrap_or(true)
+}
+
+/// The question [`holds_library`] and [`any_holds_library`] ask, with the error kept.
+///
+/// A database with no schema object answers no. Asked for its rows it fails on the missing tables,
+/// and both callers read a failure as a library, so the file a quarantine or a sync client empties
+/// to zero bytes would count as one.
+async fn library_rows_exist(pool: &sqlx::SqlitePool) -> Result<bool, sqlx::Error> {
+    if super::schema_object_count(pool).await? == 0 {
+        return Ok(false);
+    }
+
     sqlx::query_scalar::<_, bool>(
         "SELECT EXISTS(SELECT 1 FROM channels) OR EXISTS(SELECT 1 FROM videos)",
     )
     .fetch_one(pool)
     .await
-    .unwrap_or(true)
 }
 
 /// Whether any of the daily snapshots holds a library.
@@ -117,11 +129,7 @@ pub(super) async fn any_holds_library(paths: &[PathBuf]) -> bool {
             }
         };
 
-        let answer = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(SELECT 1 FROM channels) OR EXISTS(SELECT 1 FROM videos)",
-        )
-        .fetch_one(&pool)
-        .await;
+        let answer = library_rows_exist(&pool).await;
         pool.close().await;
 
         match answer {
@@ -407,6 +415,20 @@ pub async fn backup_database(db_path: &Path) -> AppResult<bool> {
         logger::warn(
             "db_backup",
             "skipping backup: source database failed quick_check",
+        );
+        return Ok(false);
+    }
+
+    // A file with no schema is not a database to snapshot. It is what a quarantine or a sync client
+    // leaves in place of the real one, and the open path reports it as missing
+    // (`database::database_holds_data`). This function also runs on a timer, whether or not the
+    // database opened, so without the same rule here the snapshot of that file would replace `.bak`,
+    // the first one a restore offers for that very failure.
+    if matches!(super::schema_object_count(&pool).await, Ok(0)) {
+        pool.close().await;
+        logger::warn(
+            "db_backup",
+            "skipping backup: the database file holds no schema",
         );
         return Ok(false);
     }

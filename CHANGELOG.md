@@ -4,6 +4,11 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 ## [Unreleased]
 
+### Fixed
+
+- A database file emptied from outside (by an antivirus or a sync client) is no longer backed up
+  over the last good backup, and a restore passes over an empty backup for the ones before it.
+
 ## [1.9.0] (2026-11-08)
 
 ### Added

@@ -510,7 +510,9 @@ missing while snapshots of it are still on disk is not created on open (`Databas
 of zero bytes counts as missing, and so does one with no schema object in it, which is what a first
 open cut short leaves behind (`database::database_holds_data`). The
 startup recovery offers the restore, or starting with an empty library (`start_with_empty_database`,
-refused once the database opened or its file is back).
+refused once the database opened or its file is back). `backup_database` skips such a file as well,
+whatever the snapshots hold. It runs on a timer whether or not the database opened, and the
+snapshot of a file with no schema would otherwise replace `.bak` while that recovery is on screen.
 
 Several snapshots are kept. The newest is `.bak`, uncompressed, since it is the one a restore
 reaches first and the one the throttle reads. Before a fresh snapshot replaces it, the previous `.bak`
@@ -578,7 +580,9 @@ into it and only promotes it once that succeeds, so a run that died in that wind
 complete snapshot there that nothing else would look at, but a run that died *during* the
 vacuum leaves a partial file under the same name, and nothing can tell them apart, so it must
 never outrank a real generation. The `quick_check` on the chosen candidate is what makes
-offering it safe. A candidate whose `user_version` is *newer* than this build's
+offering it safe. A candidate with no schema object in it is passed over like a damaged one, since
+restoring it would only bring back the file the open reports as missing. A candidate whose
+`user_version` is *newer* than this build's
 `SCHEMA_VERSION` is skipped as well, and if that was the only thing on offer the restore fails
 with `DatabaseSchemaTooNew` rather than "succeeding" into a database the next open would
 reject. With nothing healthy left, it fails with `NoDatabaseBackupAvailable`.
@@ -642,9 +646,10 @@ up separately.
   the target will not let go of) keeps `.new` the same way rather than renaming it over the current
   copy, and the next run tries again.
 - **Not rotated** while the last full integrity check found damage (`.integrity-failed`), and
-  **skipped** while the database is empty and a copy in the folder holds a library. These are the two
-  rules the daily `.bak` snapshot keeps, for the same reason. Without them a database recreated empty,
-  or one found damaged, replaced all three copies in three days. A damaged database is exported to
+  **skipped** while the database is empty and a copy in the folder holds a library, or while its
+  file holds no schema. These are the rules the daily `.bak` snapshot keeps, for the same reason.
+  Without them a database recreated empty, or one found damaged, replaced all three copies in three
+  days. A damaged database is exported to
   `kavynex-backup.after-damage.db` beside the copies instead, at most once a day, like
   `kavynex.db.after-damage`.
 - **Copies of an earlier database are set aside, not rotated out.** A database created from nothing

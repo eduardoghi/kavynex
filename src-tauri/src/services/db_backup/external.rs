@@ -356,10 +356,18 @@ pub async fn mirror_database_to_external_dir(
         }
     }
 
-    // The same two rules the daily snapshot keeps (see `snapshot::backup_database`). A database whose
-    // last full check found damage is not copied over the copies taken before it, and an empty
-    // database is not rotated over copies that hold a library. The second is what a database
-    // recreated empty does in the three days the mirror keeps.
+    // The same three rules the daily snapshot keeps (see `snapshot::backup_database`). A file with no
+    // schema is not copied at all. A database whose last full check found damage is not copied over
+    // the copies taken before it, and an empty database is not rotated over copies that hold a
+    // library. The last is what a database recreated empty does in the three days the mirror keeps.
+    if super::database_has_no_schema(db_path).await {
+        crate::services::logger::warn(
+            "db_backup",
+            "external backup skipped: the database file holds no schema",
+        );
+        return Ok(false);
+    }
+
     if super::integrity::integrity_check_failed(db_path) {
         mirror_damaged_database(db_path, external_dir).await;
         return Ok(false);

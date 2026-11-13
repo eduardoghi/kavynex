@@ -242,6 +242,145 @@ async fn an_empty_database_is_not_rotated_over_an_archive_of_a_library() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A database file with pages in it and no schema object. A file of zero bytes is the other shape
+/// with no schema, and `VACUUM INTO` turns that one into this.
+async fn schemaless_db(path: &Path) {
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(
+            SqliteConnectOptions::new()
+                .filename(path)
+                .create_if_missing(true),
+        )
+        .await
+        .unwrap();
+    for statement in ["CREATE TABLE scratch (id INTEGER)", "DROP TABLE scratch"] {
+        sqlx::query(statement).execute(&pool).await.unwrap();
+    }
+    pool.close().await;
+}
+
+/// Puts a file with no schema where the database was, as zero bytes or as empty pages.
+async fn replace_with_a_file_without_schema(db: &Path, zero_bytes: bool) {
+    std::fs::remove_file(db).unwrap();
+
+    if zero_bytes {
+        std::fs::write(db, b"").unwrap();
+    } else {
+        schemaless_db(db).await;
+    }
+}
+
+#[tokio::test]
+async fn a_database_file_with_no_schema_is_not_snapshotted_over_a_library() {
+    // What a quarantine or a sync client leaves in place of the database. The open path reports it
+    // as missing and never opens it, and the periodic backup reaches it all the same.
+    for zero_bytes in [true, false] {
+        let dir = temp_dir("no-schema-over-library");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "kept").await;
+        assert!(backup_database(&db).await.unwrap());
+        filetime_set(
+            &backup_path(&db),
+            SystemTime::now() - Duration::from_secs(2 * 24 * 60 * 60),
+        );
+
+        replace_with_a_file_without_schema(&db, zero_bytes).await;
+
+        assert!(
+            !backup_database(&db).await.unwrap(),
+            "zero_bytes={zero_bytes}"
+        );
+        assert_eq!(
+            read_title(&backup_path(&db)).await,
+            "kept",
+            "the snapshot of the library is still the newest, zero_bytes={zero_bytes}"
+        );
+        assert!(
+            archived_backups(&db).is_empty(),
+            "nothing was rotated, zero_bytes={zero_bytes}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[tokio::test]
+async fn a_database_file_with_no_schema_is_not_snapshotted_at_all() {
+    // With no snapshot beside it either. A `.bak` of nothing would make the next launch report the
+    // database as missing with backups on disk, for a database that never held anything.
+    for zero_bytes in [true, false] {
+        let dir = temp_dir("no-schema-alone");
+        let db = dir.join("kavynex.db");
+        seed_db(&db).await;
+        replace_with_a_file_without_schema(&db, zero_bytes).await;
+
+        assert!(
+            !backup_database(&db).await.unwrap(),
+            "zero_bytes={zero_bytes}"
+        );
+        assert!(!has_backup_candidates(&db), "zero_bytes={zero_bytes}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[tokio::test]
+async fn a_snapshot_with_no_schema_does_not_count_as_a_library() {
+    for zero_bytes in [true, false] {
+        let dir = temp_dir("holds-library-no-schema");
+        let snapshot = dir.join("kavynex.db.bak");
+        seed_db(&snapshot).await;
+        replace_with_a_file_without_schema(&snapshot, zero_bytes).await;
+
+        assert!(
+            !super::snapshot::any_holds_library(&[snapshot]).await,
+            "zero_bytes={zero_bytes}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[tokio::test]
+async fn a_restore_passes_over_a_snapshot_with_no_schema() {
+    // The newest snapshot is of an emptied database file, and the library is in the one behind it.
+    for zero_bytes in [true, false] {
+        let dir = temp_dir("restore-no-schema");
+        let db = dir.join("kavynex.db");
+        seed_kavynex_db(&db, "kept").await;
+        std::fs::copy(&db, legacy_generation_path(&db, 1)).unwrap();
+        std::fs::copy(&db, backup_path(&db)).unwrap();
+        replace_with_a_file_without_schema(&backup_path(&db), zero_bytes).await;
+        std::fs::write(&db, b"").unwrap();
+
+        restore_database_from_backup(&db).await.unwrap();
+
+        assert_eq!(read_title(&db).await, "kept", "zero_bytes={zero_bytes}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[tokio::test]
+async fn a_restore_with_only_a_snapshot_with_no_schema_says_there_is_none() {
+    let dir = temp_dir("restore-only-no-schema");
+    let db = dir.join("kavynex.db");
+    schemaless_db(&backup_path(&db)).await;
+    std::fs::write(&db, b"").unwrap();
+
+    let error = restore_database_from_backup(&db).await.unwrap_err();
+
+    assert_eq!(error.code, AppErrorCode::NoDatabaseBackupAvailable.as_str());
+    assert_eq!(
+        std::fs::metadata(&db).unwrap().len(),
+        0,
+        "the database file was left as it was"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 async fn read_title(path: &Path) -> String {
     let pool = open(path).await.unwrap();
     let (title,): (String,) = sqlx::query_as("SELECT title FROM videos LIMIT 1")
@@ -432,6 +571,38 @@ async fn mirror_does_not_rotate_an_empty_database_over_copies_of_a_library() {
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&external);
+}
+
+#[tokio::test]
+async fn mirror_does_not_copy_a_database_file_with_no_schema() {
+    for zero_bytes in [true, false] {
+        let dir = temp_dir("ext-no-schema-src");
+        let db = dir.join("kavynex.db");
+        let external = temp_dir("ext-no-schema-dest");
+        seed_kavynex_db(&db, "the library").await;
+        assert!(mirror_database_to_external_dir(&db, &external)
+            .await
+            .unwrap());
+        age_external_copies(&external);
+
+        replace_with_a_file_without_schema(&db, zero_bytes).await;
+
+        assert!(
+            !mirror_database_to_external_dir(&db, &external)
+                .await
+                .unwrap(),
+            "zero_bytes={zero_bytes}"
+        );
+        assert_eq!(
+            read_title(&external_backup_path(&external)).await,
+            "the library",
+            "zero_bytes={zero_bytes}"
+        );
+        assert!(!generation_external_backup_path(&external, 1).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&external);
+    }
 }
 
 #[tokio::test]
