@@ -97,6 +97,23 @@ fn is_ignorable_os_entry(name: &str) -> bool {
     IGNORABLE_OS_FILES.contains(&normalized.as_str())
 }
 
+/// True for the library index (`library::index`) and for the scratch file it is written through
+/// (`filesystem::write_file_durably`'s `.<name>.tmp-<suffix>`), which a crash can leave behind.
+///
+/// The app writes the index into the root of every library it can reach, so a folder that was a
+/// library always holds one. Read as someone else's file, it would make every such folder unusable
+/// as a destination, including the same library under a new drive letter and the original folder
+/// after a switch away from it.
+fn is_library_index_entry(name: &str) -> bool {
+    let index = crate::services::library::index::LIBRARY_INDEX_FILE;
+
+    name == index
+        || name
+            .strip_prefix('.')
+            .and_then(|rest| rest.strip_prefix(index))
+            .is_some_and(|rest| rest.starts_with(".tmp-"))
+}
+
 /// Refuses a destination that is the current library, or sits inside it or above it, under another
 /// name.
 ///
@@ -164,13 +181,13 @@ fn directory_chain_contains(path: &Path, target: &Path) -> bool {
         .any(|ancestor| ancestor == target)
 }
 
-/// The destination must be empty, or contain only the app's managed subdirectories
-/// (video/audio/thumbnails/live_chat) and nothing else. Empty is the normal case. A destination
-/// that holds only managed folders is treated as a previously interrupted migration and allowed
-/// to resume. The copy phase is idempotent (identical files are skipped, differing ones error
-/// without overwriting), so re-running safely completes the copy. Any top-level entry that is
-/// not a managed directory means the folder holds unrelated user content and is rejected, so a
-/// crash mid-migration does not wedge the retry with an opaque "not empty" error.
+/// The destination must be empty, or contain only what a library holds, which is the app's managed
+/// subdirectories (video/audio/thumbnails/live_chat and the trash) and the library index. Empty is
+/// the normal case. A destination that holds only those is a library already, either a previously
+/// interrupted migration being resumed or a folder the app used before, and is allowed. The copy
+/// phase is idempotent (identical files are skipped, differing ones error without overwriting), so
+/// re-running safely completes the copy. Any other top-level entry means the folder holds unrelated
+/// user content and is rejected.
 fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
     let entries = fs::read_dir(path).map_err(|e| {
         AppError::from_code(
@@ -209,14 +226,16 @@ fn ensure_destination_is_migratable(path: &Path) -> AppResult<()> {
         }
 
         let is_managed_dir = is_managed_name && entry.path().is_dir();
+        let is_library_index = is_library_index_entry(&name) && entry.path().is_file();
 
-        // A managed subdirectory (a previous, interrupted migration to resume) and an OS-generated
-        // file (which the user did not put there) are both allowed. Anything else is unrelated user
-        // content and rejected, so a real non-empty folder is never migrated into.
-        if !is_managed_dir && !is_ignorable_os_entry(&name) {
+        // A managed subdirectory, the library index and an OS-generated file (which the user did
+        // not put there) are allowed. Anything else is unrelated user content and rejected, so a
+        // folder holding someone's own files is never migrated into.
+        if !is_managed_dir && !is_library_index && !is_ignorable_os_entry(&name) {
             return Err(AppError::from_code(
                 AppErrorCode::InvalidLibraryMigration,
-                "the selected library folder must be empty (or contain only a previous, interrupted Kavynex migration); choose an empty folder to continue",
+                "the selected library folder holds files that are not a Kavynex library's, so \
+                 choose an empty folder or one that holds only a library",
             ));
         }
     }
@@ -1535,6 +1554,132 @@ mod tests {
 
         let _ = fs::remove_dir_all(&destination);
         let _ = fs::remove_dir_all(&named_like_managed);
+    }
+
+    #[test]
+    fn ensure_destination_is_migratable_accepts_a_folder_that_is_already_a_library() {
+        // What a used library looks like from outside. The managed folders, the trash, the index
+        // the app writes into its root, and a scratch file an interrupted index write left.
+        let library = unique_test_dir("dest-used-library");
+        for name in MIGRATED_LIBRARY_DIRS {
+            fs::create_dir_all(library.join(name)).unwrap();
+        }
+        fs::write(library.join("video").join("media_abc.mp4"), b"data").unwrap();
+        let index = crate::services::library::index::LIBRARY_INDEX_FILE;
+        fs::write(library.join(index), b"{}").unwrap();
+        fs::write(library.join(format!(".{index}.tmp-123")), b"{").unwrap();
+
+        ensure_destination_is_migratable(&library).unwrap();
+
+        let _ = fs::remove_dir_all(&library);
+    }
+
+    #[test]
+    fn ensure_destination_is_migratable_rejects_what_only_resembles_the_library_index() {
+        let index = crate::services::library::index::LIBRARY_INDEX_FILE;
+
+        // A file whose name merely starts or ends like the index is the user's.
+        for name in [
+            format!("{index}.bak"),
+            format!("my-{index}"),
+            format!(".{index}"),
+            format!(".{index}.tmp"),
+            format!("{index}.tmp-123"),
+        ] {
+            let destination = unique_test_dir("dest-index-lookalike");
+            fs::create_dir_all(&destination).unwrap();
+            fs::write(destination.join(&name), b"data").unwrap();
+
+            let error = ensure_destination_is_migratable(&destination)
+                .expect_err("a file that only resembles the index must not be accepted");
+            assert_eq!(
+                error.code,
+                AppErrorCode::InvalidLibraryMigration.as_str(),
+                "{name}"
+            );
+
+            let _ = fs::remove_dir_all(&destination);
+        }
+
+        // And a directory under the index's own name is not the index.
+        let destination = unique_test_dir("dest-index-named-dir");
+        fs::create_dir_all(destination.join(index)).unwrap();
+
+        ensure_destination_is_migratable(&destination)
+            .expect_err("a directory named like the index is still user content");
+
+        let _ = fs::remove_dir_all(&destination);
+    }
+
+    #[test]
+    fn a_library_whose_folder_moved_is_switched_to_under_its_new_path() {
+        // The drive letter changed. The configured folder is gone and the same library, index and
+        // all, answers under another path.
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let missing_old = unique_test_dir("moved-old");
+        let new_root = unique_test_dir("moved-new");
+        fs::create_dir_all(new_root.join("video")).unwrap();
+        fs::write(new_root.join("video").join("media_abc.mp4"), b"data").unwrap();
+        fs::write(
+            new_root.join(crate::services::library::index::LIBRARY_INDEX_FILE),
+            b"{}",
+        )
+        .unwrap();
+
+        let switched = migrate_library_directory_in_context(
+            missing_old.to_string_lossy().as_ref(),
+            new_root.to_string_lossy().as_ref(),
+            None,
+            MigrationContext {
+                library_has_media: true,
+                switch_without_moving: true,
+            },
+            &mut |_| {},
+        )
+        .unwrap();
+
+        assert!(switched.changed);
+        assert!(
+            new_root.join("video").join("media_abc.mp4").exists(),
+            "nothing in the library was touched"
+        );
+
+        let _ = fs::remove_dir_all(new_root);
+    }
+
+    #[test]
+    fn a_library_is_moved_back_into_the_folder_it_was_switched_away_from() {
+        // The way back the troubleshooting guide gives after a switch to an empty folder. The
+        // original library still holds its files and its index.
+        let _guard = migration_test_lock().lock().unwrap();
+
+        let empty_current = unique_test_dir("back-current");
+        let original = unique_test_dir("back-original");
+        fs::create_dir_all(&empty_current).unwrap();
+        fs::create_dir_all(original.join("video")).unwrap();
+        fs::write(original.join("video").join("media_abc.mp4"), b"data").unwrap();
+        fs::write(
+            original.join(crate::services::library::index::LIBRARY_INDEX_FILE),
+            b"{}",
+        )
+        .unwrap();
+
+        let result = migrate_library_directory_sync(
+            empty_current.to_string_lossy().as_ref(),
+            original.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert!(result.changed);
+        assert_eq!(
+            fs::read(original.join("video").join("media_abc.mp4")).unwrap(),
+            b"data"
+        );
+
+        let _ = fs::remove_dir_all(empty_current);
+        let _ = fs::remove_dir_all(original);
     }
 
     #[test]

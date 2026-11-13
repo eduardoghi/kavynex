@@ -150,7 +150,7 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     [INVALID_LIBRARY_PATH_ERROR_CODE]:
         "The library folder is missing or not valid. Reconnect the drive it is on, or choose the folder in Settings.",
     [INVALID_LIBRARY_MIGRATION_ERROR_CODE]:
-        "The new library folder cannot be used. It has to be empty, or hold only an interrupted Kavynex move, and it cannot be inside the current library folder or contain it.",
+        "The new library folder cannot be used. It has to be empty, or hold only a Kavynex library, and it cannot be inside the current library folder or contain it.",
     [LIBRARY_FOLDER_UNREACHABLE_ERROR_CODE]:
         "The current library folder cannot be reached. Reconnect the drive it is on and try again.",
     // The amounts arrive in the backend details and are appended after this line.

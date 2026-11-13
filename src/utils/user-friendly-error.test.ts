@@ -84,7 +84,7 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [INVALID_LIBRARY_PATH_ERROR_CODE, "The library folder is missing or not valid. Reconnect the drive it is on, or choose the folder in Settings."],
     [
         INVALID_LIBRARY_MIGRATION_ERROR_CODE,
-        "The new library folder cannot be used. It has to be empty, or hold only an interrupted Kavynex move, and it cannot be inside the current library folder or contain it.",
+        "The new library folder cannot be used. It has to be empty, or hold only a Kavynex library, and it cannot be inside the current library folder or contain it.",
     ],
     [INVALID_MEDIA_PATH_ERROR_CODE, "The selected media item is invalid."],
     [INVALID_THUMBNAIL_PATH_ERROR_CODE, "The selected thumbnail is invalid."],
@@ -278,7 +278,7 @@ describe("toUserFriendlyError", () => {
                 code: INVALID_LIBRARY_MIGRATION_ERROR_CODE,
                 message: "new library path cannot be inside the current library path",
             })
-        ).toBe("The new library folder cannot be used. It has to be empty, or hold only an interrupted Kavynex move, and it cannot be inside the current library folder or contain it.");
+        ).toBe("The new library folder cannot be used. It has to be empty, or hold only a Kavynex library, and it cannot be inside the current library folder or contain it.");
     });
 
     it("explains a library move whose new folder is the current one under another name", () => {

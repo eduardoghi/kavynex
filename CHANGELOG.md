@@ -8,6 +8,9 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 
 - A database file emptied from outside (by an antivirus or a sync client) is no longer backed up
   over the last good backup, and a restore passes over an empty backup for the ones before it.
+- A folder that already holds a Kavynex library can be chosen as the library folder. A library
+  whose drive letter changed, or the original folder after a switch away from it, is picked back up
+  instead of being refused as not empty.
 
 ## [1.9.0] (2026-11-08)
 

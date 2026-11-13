@@ -462,7 +462,9 @@ Entry point: Settings > Library folder. `useHomeController` overrides the settin
    `migrateLibraryDirectory(old, new)`.
 
 Whether the destination can take the library is left to the backend, which accepts an empty
-folder or one holding only managed directories (an interrupted move being retried).
+folder or one holding only what a library holds, the managed directories and
+`kavynex-library-index.json`. That is an interrupted move being retried, or a folder that was the
+library before (the same one under a new drive letter, or the original after a switch away from it).
 
 Every folder this flow hands the backend has to be one it handed out first, so the picker's answer,
 the canonical spelling `ensure_directory_exists` returns for it, or the stored library.

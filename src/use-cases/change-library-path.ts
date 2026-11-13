@@ -71,8 +71,8 @@ export async function planChangeLibraryPath({
         return { kind: "apply", finalLibraryPath: ensuredSelectedPath };
     }
 
-    // Whether the destination can take the library (empty, or holding only an interrupted move)
-    // is the backend's to decide. Checking emptiness here refused the folder of an interrupted
+    // Whether the destination can take the library (empty, or holding only a library already) is
+    // the backend's to decide. Checking emptiness here would refuse the folder of an interrupted
     // move, which is exactly the one a retry has to accept.
     return {
         kind: "move",

@@ -244,6 +244,11 @@ the new, empty folder. Your media is not deleted (the disconnected drive is neve
 item reads as missing until you point Settings > Library folder back at the original path. Reconnect
 the drive first and the question does not come up.
 
+The one case where pointing it elsewhere is right is a library that is still there under another
+path, which is what a drive letter that changed looks like (`E:\Kavynex` now answering as
+`F:\Kavynex`). Choose that folder and confirm the switch. A folder that already holds a library is
+accepted as it is, nothing is moved, and every item finds its file again.
+
 (The log records this too, as a `library_guard` line saying the library path was accepted by an
 exact-string match because it could not be canonicalized. That line is the app noting it could not
 confirm where the folder really is, which is exactly what an absent drive looks like from inside.)
