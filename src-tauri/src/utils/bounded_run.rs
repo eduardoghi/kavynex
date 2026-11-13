@@ -13,7 +13,8 @@
 //!   AppImage library variables), and a [`TrackedChildGuard`] so the app-exit sweep reaches it;
 //! - both pipes drained while it runs, so neither can fill and stall it;
 //! - the deadline, and the caller's cancel flag for the async runs, each ending in a kill of the
-//!   whole process tree, as does a wait that fails;
+//!   whole process tree, as does a wait that fails. An async run can also be given an idle limit
+//!   ([`RunLimits`]), which ends it when it has printed nothing for that long;
 //! - after it exits, at most [`PIPE_DRAIN_AFTER_EXIT`] for the readers to finish.
 //!
 //! What stays with the caller is what differs between them. The command and its arguments, where
@@ -27,10 +28,14 @@
 //! [`TrackedChildGuard`]: crate::services::process_registry::TrackedChildGuard
 
 use std::future::Future;
+use std::pin::Pin;
 use std::process::{ExitStatus, Output, Stdio};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+
+use tokio::io::{AsyncRead, ReadBuf};
 
 use crate::services::process_registry::TrackedChildGuard;
 use crate::utils::process::{
@@ -52,8 +57,111 @@ pub(crate) enum RunFailure {
     Wait(std::io::Error),
     /// It ran past the time limit and was killed with everything it started.
     TimedOut,
+    /// It printed nothing for the idle limit and was killed with everything it started.
+    Stalled,
     /// The caller's cancel flag was set, and it was killed with everything it started.
     Cancelled,
+}
+
+/// How long an async run may take.
+///
+/// `total` alone suits a run that is over in seconds. One whose length follows what it is asked
+/// for (the comments of a video, a page at a time) has no total that fits both the short and the
+/// long case. Sized for the long one it leaves a hung run unnoticed, and sized for the short one it
+/// kills a run that is working. Such a run prints as it goes, so `idle` ends it when it stops
+/// printing, and `total` stays as the ceiling for one that prints forever.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RunLimits {
+    total: Duration,
+    idle: Option<Duration>,
+}
+
+impl RunLimits {
+    /// At most `total`, however much the run prints.
+    pub(crate) fn total(total: Duration) -> Self {
+        Self { total, idle: None }
+    }
+
+    /// Also ended once it has printed nothing, on either stream, for `idle`.
+    pub(crate) fn idle_after(self, idle: Duration) -> Self {
+        Self {
+            idle: Some(idle),
+            ..self
+        }
+    }
+}
+
+impl From<Duration> for RunLimits {
+    fn from(total: Duration) -> Self {
+        Self::total(total)
+    }
+}
+
+/// When a run last printed something, counted from its start.
+struct Activity {
+    started: tokio::time::Instant,
+    last_output_ms: AtomicU64,
+}
+
+impl Activity {
+    fn starting_now() -> Arc<Self> {
+        Arc::new(Self {
+            started: tokio::time::Instant::now(),
+            last_output_ms: AtomicU64::new(0),
+        })
+    }
+
+    fn stamp(&self) {
+        let elapsed = u64::try_from(self.started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        self.last_output_ms.store(elapsed, Ordering::Relaxed);
+    }
+
+    /// How long ago the last output was, or the start when there has been none.
+    fn quiet_for(&self) -> Duration {
+        let last_output = Duration::from_millis(self.last_output_ms.load(Ordering::Relaxed));
+        self.started.elapsed().saturating_sub(last_output)
+    }
+}
+
+/// Completes once the run has been quiet for `idle`. Never, without an idle limit.
+async fn quiet_for_too_long(activity: &Activity, idle: Option<Duration>) {
+    let Some(idle) = idle else {
+        return std::future::pending().await;
+    };
+
+    loop {
+        let quiet = activity.quiet_for();
+
+        if quiet >= idle {
+            return;
+        }
+
+        tokio::time::sleep(idle - quiet).await;
+    }
+}
+
+/// One of a run's pipes, handed to its reader. Reads like the pipe, and every read that returns
+/// bytes counts as the run showing it is still working ([`RunLimits::idle_after`]).
+pub(crate) struct Watched<R> {
+    pipe: R,
+    activity: Arc<Activity>,
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for Watched<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buffer: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let filled_before = buffer.filled().len();
+        let polled = Pin::new(&mut self.pipe).poll_read(cx, buffer);
+
+        if matches!(polled, Poll::Ready(Ok(()))) && buffer.filled().len() > filled_before {
+            self.activity.stamp();
+        }
+
+        polled
+    }
 }
 
 /// What a blocking run keeps of the program's output.
@@ -182,20 +290,23 @@ pub(crate) struct AsyncOutput<O, E> {
     pub stdout_cut_short: bool,
 }
 
-/// Runs `command` until it exits, for at most `timeout`, or until `cancel` is set. For the async
-/// call sites (the yt-dlp metadata and thumbnail runs).
+/// Runs `command` until it exits, within `limits` (a `Duration` is a total with no idle limit), or
+/// until `cancel` is set. For the async call sites (the yt-dlp metadata and thumbnail runs).
 ///
 /// Each pipe is read by the reader the caller passes, on a task of its own, so a run that needs
 /// its stdout as JSON and its stderr as filtered lines reads them that way. The reader fills a
 /// value it shares with the run rather than returning one, so what it had read is kept when a
 /// program the run started holds the pipe past the exit. Returned only at the end, that output was
 /// lost with the reader, and a finished run whose JSON had arrived failed as if it had none.
+///
+/// The readers get the pipes as [`Watched`], which is how an idle limit sees output. It counts
+/// what a reader takes off the pipe, so a reader that stops reading makes the run read as idle.
 pub(crate) async fn run_bounded_async<O, E, ReadOut, ReadErr>(
     mut command: tokio::process::Command,
-    timeout: Duration,
+    limits: impl Into<RunLimits>,
     cancel: Option<&AtomicBool>,
-    read_stdout: impl FnOnce(tokio::process::ChildStdout, Arc<Mutex<O>>) -> ReadOut,
-    read_stderr: impl FnOnce(tokio::process::ChildStderr, Arc<Mutex<E>>) -> ReadErr,
+    read_stdout: impl FnOnce(Watched<tokio::process::ChildStdout>, Arc<Mutex<O>>) -> ReadOut,
+    read_stderr: impl FnOnce(Watched<tokio::process::ChildStderr>, Arc<Mutex<E>>) -> ReadErr,
 ) -> Result<AsyncOutput<O, E>, RunFailure>
 where
     ReadOut: Future<Output = ()> + Send + 'static,
@@ -203,33 +314,43 @@ where
     O: Default + Send + 'static,
     E: Default + Send + 'static,
 {
+    let limits = limits.into();
+
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     configure_child_async(&mut command);
 
     let mut child = command.spawn().map_err(RunFailure::Spawn)?;
     let pid = child.id();
     let _tracked = TrackedChildGuard::register(pid);
+    let activity = Activity::starting_now();
 
     let stdout_read = Arc::new(Mutex::new(O::default()));
     let stderr_read = Arc::new(Mutex::new(E::default()));
-    let stdout_task = child
-        .stdout
-        .take()
-        .map(|stdout| tauri::async_runtime::spawn(read_stdout(stdout, Arc::clone(&stdout_read))));
-    let stderr_task = child
-        .stderr
-        .take()
-        .map(|stderr| tauri::async_runtime::spawn(read_stderr(stderr, Arc::clone(&stderr_read))));
+    let stdout_task = child.stdout.take().map(|pipe| {
+        let watched = Watched {
+            pipe,
+            activity: Arc::clone(&activity),
+        };
+        tauri::async_runtime::spawn(read_stdout(watched, Arc::clone(&stdout_read)))
+    });
+    let stderr_task = child.stderr.take().map(|pipe| {
+        let watched = Watched {
+            pipe,
+            activity: Arc::clone(&activity),
+        };
+        tauri::async_runtime::spawn(read_stderr(watched, Arc::clone(&stderr_read)))
+    });
 
     // The child is borrowed by the wait rather than moved into it, so it is still alive when a
     // timeout or a cancel kills its tree. Dropped first (and `kill_on_drop` ended it), a tree kill
     // by the pid of a process already gone does not find the FFmpeg it started on Windows.
     let outcome = tokio::select! {
-        waited = tokio::time::timeout(timeout, child.wait()) => match waited {
+        waited = tokio::time::timeout(limits.total, child.wait()) => match waited {
             Ok(Ok(status)) => Ok(status),
             Ok(Err(error)) => Err(RunFailure::Wait(error)),
             Err(_) => Err(RunFailure::TimedOut),
         },
+        () = quiet_for_too_long(&activity, limits.idle) => Err(RunFailure::Stalled),
         () = wait_for_cancel(cancel) => Err(RunFailure::Cancelled),
     };
 
@@ -431,6 +552,161 @@ mod tests {
         .expect("a set cancel flag ends the run");
 
         assert!(matches!(failure, RunFailure::Cancelled));
+    }
+
+    /// A program that prints nothing and outlives any limit these tests use.
+    fn silent_args() -> (&'static str, Vec<&'static str>) {
+        if cfg!(windows) {
+            ("cmd", vec!["/C", "ping -n 30 127.0.0.1 > NUL"])
+        } else {
+            ("sleep", vec!["30"])
+        }
+    }
+
+    /// A program that prints a line a second for about six seconds and then exits cleanly.
+    fn ticking_args() -> (&'static str, Vec<&'static str>) {
+        if cfg!(windows) {
+            ("ping", vec!["-n", "7", "127.0.0.1"])
+        } else {
+            (
+                "sh",
+                vec!["-c", "for i in 1 2 3 4 5 6; do echo tick; sleep 1; done"],
+            )
+        }
+    }
+
+    /// Reads a pipe to its end, keeping nothing.
+    async fn drain(mut pipe: impl AsyncRead + Unpin) {
+        let mut chunk = [0u8; 256];
+
+        while let Ok(1..) = tokio::io::AsyncReadExt::read(&mut pipe, &mut chunk).await {}
+    }
+
+    #[tokio::test]
+    async fn an_async_run_that_prints_nothing_is_stopped_as_stalled_long_before_its_total() {
+        let (binary, args) = silent_args();
+        let mut command = tokio::process::Command::new(binary);
+        command.args(args);
+        let started = Instant::now();
+
+        let failure = run_bounded_async(
+            command,
+            RunLimits::total(Duration::from_secs(60)).idle_after(Duration::from_secs(1)),
+            None,
+            |stdout, _read: Arc<Mutex<()>>| drain(stdout),
+            |stderr, _read: Arc<Mutex<()>>| drain(stderr),
+        )
+        .await
+        .err()
+        .expect("a run that prints nothing ends at its idle limit");
+
+        assert!(matches!(failure, RunFailure::Stalled));
+        assert!(started.elapsed() < Duration::from_secs(20));
+    }
+
+    #[tokio::test]
+    async fn an_async_run_that_keeps_printing_runs_past_its_idle_limit() {
+        // Twice the idle limit in all, and never that long between two lines. Counted from the
+        // start, the limit would end it halfway.
+        let (binary, args) = ticking_args();
+        let mut command = tokio::process::Command::new(binary);
+        command.args(args);
+        let started = Instant::now();
+
+        let output = run_bounded_async(
+            command,
+            RunLimits::total(Duration::from_secs(60)).idle_after(Duration::from_secs(3)),
+            None,
+            |stdout, _read: Arc<Mutex<()>>| drain(stdout),
+            |stderr, _read: Arc<Mutex<()>>| drain(stderr),
+        )
+        .await
+        .unwrap();
+
+        assert!(output.status.success());
+        assert!(
+            started.elapsed() > Duration::from_secs(4),
+            "the run has to outlast the idle limit for this to say anything"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_run_with_no_idle_limit_is_never_quiet_for_too_long() {
+        let activity = Activity::starting_now();
+
+        let waited = tokio::time::timeout(
+            Duration::from_secs(24 * 60 * 60),
+            quiet_for_too_long(&activity, None),
+        )
+        .await;
+
+        assert!(waited.is_err());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_idle_limit_counts_from_the_last_output() {
+        let activity = Activity::starting_now();
+        let idle = Duration::from_secs(10);
+
+        // Output every six seconds for a minute never leaves ten seconds of quiet.
+        let printing = async {
+            for _ in 0..10 {
+                tokio::time::sleep(Duration::from_secs(6)).await;
+                activity.stamp();
+            }
+        };
+
+        tokio::select! {
+            () = quiet_for_too_long(&activity, Some(idle)) => {
+                panic!("a run that keeps printing is not idle")
+            }
+            () = printing => {}
+        }
+
+        // Then nothing more, and the limit is reached ten seconds after the last output.
+        let last_output = tokio::time::Instant::now();
+        quiet_for_too_long(&activity, Some(idle)).await;
+
+        assert!(last_output.elapsed() >= idle);
+        assert!(last_output.elapsed() < idle + Duration::from_secs(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_run_that_never_prints_is_idle_from_its_start() {
+        let activity = Activity::starting_now();
+        let idle = Duration::from_secs(10);
+        let started = tokio::time::Instant::now();
+
+        quiet_for_too_long(&activity, Some(idle)).await;
+
+        assert!(started.elapsed() >= idle);
+        assert!(started.elapsed() < idle + Duration::from_secs(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn bytes_read_through_a_watched_pipe_count_as_output_and_its_end_does_not() {
+        let activity = Activity::starting_now();
+        let mut watched = Watched {
+            pipe: &b"line\n"[..],
+            activity: Arc::clone(&activity),
+        };
+        let mut buffer = [0u8; 16];
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert!(activity.quiet_for() >= Duration::from_secs(5));
+
+        let read = tokio::io::AsyncReadExt::read(&mut watched, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(read, 5);
+        assert_eq!(activity.quiet_for(), Duration::ZERO);
+
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        let read = tokio::io::AsyncReadExt::read(&mut watched, &mut buffer)
+            .await
+            .unwrap();
+        assert_eq!(read, 0);
+        assert!(activity.quiet_for() >= Duration::from_secs(3));
     }
 
     /// Hands over one line, then holds the pipe open well past the drain deadline, as a child

@@ -11,6 +11,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
 - A folder that already holds a Kavynex library can be chosen as the library folder. A library
   whose drive letter changed, or the original folder after a switch away from it, is picked back up
   instead of being refused as not empty.
+- Saving the comments of a video that has many thousands no longer stops at three minutes with
+  nothing saved. It goes on for as long as yt-dlp keeps answering, and Skip comments still stops it.
 
 ## [1.9.0] (2026-11-08)
 

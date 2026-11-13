@@ -20,6 +20,7 @@ use crate::services::yt_dlp::cookies::{
 };
 use crate::services::yt_dlp::registry::{register_download_run, DownloadRunReleaseGuard};
 use crate::services::yt_dlp::url::{is_allowed_youtube_url, youtube_ref_for_log};
+use crate::utils::bounded_run::RunLimits;
 use crate::utils::bounded_semaphore::BoundedSemaphore;
 use crate::utils::format::{codec_is_present, normalize_yt_dlp_upload_date};
 use crate::utils::io::{read_lossy_line, read_lossy_line_capped, MAX_PROGRESS_LINE_BYTES};
@@ -36,7 +37,26 @@ pub use sanitize::*;
 use terminal::*;
 
 const YT_DLP_METADATA_TIMEOUT_SECS: u64 = 60;
-const YT_DLP_COMMENTS_TIMEOUT_SECS: u64 = 180;
+
+/// How long a comment backup may go without yt-dlp printing anything before it is taken for hung.
+///
+/// A comment backup has no total that fits. YouTube hands comments over a page at a time, so the
+/// run is seconds for a video with a few and many minutes for one with tens of thousands, and the
+/// JSON only comes out at the end, so a run stopped on a total saves nothing however far it got.
+/// yt-dlp is run with `-v` and prints a line for each page it asks for, which is what tells a run
+/// that is working from one that is not. Three minutes is far past any one page, retries included.
+const YT_DLP_COMMENTS_IDLE_SECS: u64 = 180;
+
+/// The most a comment backup may take in all, for a run that keeps printing and never ends. Far
+/// above what the `MAX_COMMENTS_PER_MEDIA` it is asked for should need. The user can stop it long
+/// before (Skip comments, or Cancel on a refresh).
+const YT_DLP_COMMENTS_MAX_RUNTIME_SECS: u64 = 4 * 60 * 60;
+
+/// The limits of a comment backup (see the two constants above).
+fn comments_run_limits() -> RunLimits {
+    RunLimits::total(Duration::from_secs(YT_DLP_COMMENTS_MAX_RUNTIME_SECS))
+        .idle_after(Duration::from_secs(YT_DLP_COMMENTS_IDLE_SECS))
+}
 
 pub async fn fetch_yt_dlp_metadata(
     yt_dlp: &str,
@@ -55,7 +75,7 @@ pub async fn fetch_yt_dlp_metadata(
     let (json_payload, _stdout_logs, _stderr_logs) = run_yt_dlp_and_capture_json(
         yt_dlp,
         &args,
-        YT_DLP_METADATA_TIMEOUT_SECS,
+        RunLimits::total(Duration::from_secs(YT_DLP_METADATA_TIMEOUT_SECS)),
         AppErrorCode::YtDlpMetadataTimeout,
         AppErrorCode::YtDlpMetadataExecFailed,
         AppErrorCode::YtDlpMetadataFailed,
@@ -78,8 +98,8 @@ pub async fn fetch_yt_dlp_metadata(
 /// The extractor arguments for a comment backup.
 ///
 /// Capped at `MAX_COMMENTS_PER_MEDIA` because that is the most one `merge_media_comments` accepts.
-/// Uncapped, yt-dlp kept paging through a video with more, and the whole backup was then refused
-/// at that limit, or ran into the timeout first, with nothing saved either way.
+/// Uncapped, yt-dlp keeps paging through a video with more, and the whole backup is then refused
+/// at that limit with nothing saved.
 fn comments_extractor_args() -> String {
     format!(
         "youtube:comment_sort=top;max_comments={}",
@@ -111,7 +131,7 @@ async fn fetch_yt_dlp_metadata_with_comments(
     let (json_payload, _stdout_logs, _stderr_logs) = run_yt_dlp_and_capture_json(
         yt_dlp,
         &args,
-        YT_DLP_COMMENTS_TIMEOUT_SECS,
+        comments_run_limits(),
         AppErrorCode::YtDlpCommentsTimeout,
         AppErrorCode::YtDlpCommentsExecFailed,
         AppErrorCode::YtDlpCommentsFailed,
@@ -226,7 +246,8 @@ pub async fn fetch_youtube_comments_async<R: Runtime>(
     }
 
     // Register the run (when a run_id was supplied) so the frontend can cancel this comment backup
-    // (which can run for up to YT_DLP_COMMENTS_TIMEOUT_SECS) promptly, instead of waiting it out.
+    // (which goes on for as long as yt-dlp keeps answering, see comments_run_limits) promptly,
+    // instead of waiting it out.
     // The guard unregisters the run when this function returns. Registered before anything else
     // awaits, so a Cancel clicked right after the fetch starts finds the run instead of being
     // refused as unknown.
@@ -329,7 +350,7 @@ pub async fn list_yt_dlp_formats_async<R: Runtime>(
     let (json_payload, mut stdout_logs, mut stderr_logs) = run_yt_dlp_and_capture_json(
         &yt_dlp,
         &args,
-        YT_DLP_METADATA_TIMEOUT_SECS,
+        RunLimits::total(Duration::from_secs(YT_DLP_METADATA_TIMEOUT_SECS)),
         AppErrorCode::YtDlpMetadataTimeout,
         AppErrorCode::YtDlpMetadataExecFailed,
         AppErrorCode::YtDlpMetadataFailed,

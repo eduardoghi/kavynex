@@ -141,7 +141,7 @@ const FRIENDLY_MESSAGE_CASES: Array<[code: string, friendlyMessage: string]> = [
     [YT_DLP_THUMBNAIL_NOT_FOUND_ERROR_CODE, "yt-dlp finished, but no thumbnail file was produced."],
     [
         YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE,
-        "The comment download took too long and was interrupted. Nothing already saved was changed.",
+        "The comment download stopped answering, or went on for too long, and was interrupted. Nothing already saved was changed.",
     ],
     [
         YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE,

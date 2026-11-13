@@ -262,7 +262,7 @@ const FRIENDLY_ERROR_MESSAGES: Partial<Record<AppErrorCode | KnownErrorCode, str
     // fetches first and only replaces what is stored once the fetch succeeded. Worded so it holds
     // for a media that has no comments stored yet too, which is where a first fetch fails.
     [YT_DLP_COMMENTS_TIMEOUT_ERROR_CODE]:
-        "The comment download took too long and was interrupted. Nothing already saved was changed.",
+        "The comment download stopped answering, or went on for too long, and was interrupted. Nothing already saved was changed.",
     [YT_DLP_COMMENTS_EXEC_FAILED_ERROR_CODE]:
         "yt-dlp could not be started to download the comments. Nothing already saved was changed.",
     [YT_DLP_COMMENTS_FAILED_ERROR_CODE]:

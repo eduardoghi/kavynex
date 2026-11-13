@@ -250,7 +250,9 @@ pub async fn list_channel_missing_media_async<R: Runtime>(
         let run = run_yt_dlp_and_capture_json(
             &yt_dlp,
             &args,
-            CHANNEL_LISTING_TIMEOUT_SECS,
+            crate::utils::bounded_run::RunLimits::total(std::time::Duration::from_secs(
+                CHANNEL_LISTING_TIMEOUT_SECS,
+            )),
             AppErrorCode::YtDlpMetadataTimeout,
             AppErrorCode::YtDlpMetadataExecFailed,
             AppErrorCode::YtDlpMetadataFailed,

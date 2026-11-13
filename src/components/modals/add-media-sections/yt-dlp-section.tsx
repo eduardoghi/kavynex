@@ -171,7 +171,7 @@ function YtDlpSectionView({
 
             <Checkbox
                 label="Save YouTube comments"
-                description="Fetched after the download, up to 100,000 per media. A video with many can take a few minutes, and Skip comments stops it without losing the media."
+                description="Fetched after the download, up to 100,000 per media. A video with tens of thousands can take a long while, and Skip comments stops it without losing the media."
                 checked={downloadComments}
                 onChange={(event) => onChangeDownloadComments(event.currentTarget.checked)}
                 disabled={isLocked}

@@ -128,7 +128,9 @@ pub(super) async fn run_thumbnail_yt_dlp_with_timeout(
                 AppErrorCode::YtDlpThumbnailExecFailed,
                 format!("{exec_message}: {error}"),
             ),
-            RunFailure::TimedOut => AppError::from_code(
+            // This run has no idle limit, so it is never stalled. Named so a limit added later
+            // reads as the timeout it would be.
+            RunFailure::TimedOut | RunFailure::Stalled => AppError::from_code(
                 AppErrorCode::YtDlpThumbnailTimeout,
                 timeout_message.to_string(),
             ),

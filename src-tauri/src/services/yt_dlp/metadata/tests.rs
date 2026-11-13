@@ -9,7 +9,9 @@ use super::{
     redact_probe_line, redact_sensitive_from_line, resolve_youtube_video_id,
     run_yt_dlp_and_capture_json, sanitize_filename_component, sanitize_identifier_component,
 };
+use crate::utils::bounded_run::RunLimits;
 use crate::AppErrorCode;
+use std::time::Duration;
 
 #[test]
 fn sanitize_identifier_component_keeps_unaltered_ids_unchanged() {
@@ -89,7 +91,7 @@ async fn run_and_capture_kills_the_child_and_reports_timeout_when_it_expires() {
     let error = run_yt_dlp_and_capture_json(
         binary,
         &args,
-        1,
+        RunLimits::total(Duration::from_secs(1)),
         AppErrorCode::YtDlpMetadataTimeout,
         AppErrorCode::YtDlpMetadataExecFailed,
         AppErrorCode::YtDlpMetadataFailed,
@@ -102,6 +104,43 @@ async fn run_and_capture_kills_the_child_and_reports_timeout_when_it_expires() {
     .unwrap_err();
 
     assert_eq!(error.code, AppErrorCode::YtDlpMetadataTimeout.as_str());
+}
+
+// Spawns a real child process and exercises the idle limit a comment backup runs under.
+#[tokio::test]
+async fn run_and_capture_stops_a_child_that_prints_nothing_and_reports_the_timeout() {
+    let (binary, args) = if cfg!(windows) {
+        (
+            "cmd",
+            vec!["/C".to_string(), "ping -n 30 127.0.0.1 > NUL".to_string()],
+        )
+    } else {
+        ("sleep", vec!["30".to_string()])
+    };
+    let started = std::time::Instant::now();
+
+    let error = run_yt_dlp_and_capture_json(
+        binary,
+        &args,
+        RunLimits::total(Duration::from_secs(60)).idle_after(Duration::from_secs(1)),
+        AppErrorCode::YtDlpCommentsTimeout,
+        AppErrorCode::YtDlpCommentsExecFailed,
+        AppErrorCode::YtDlpCommentsFailed,
+        "timed out",
+        "exec failed",
+        "failed",
+        None,
+    )
+    .await
+    .unwrap_err();
+
+    // The timeout's code, with details that tell it from the total running out.
+    assert_eq!(error.code, AppErrorCode::YtDlpCommentsTimeout.as_str());
+    assert!(error
+        .details
+        .as_deref()
+        .is_some_and(|details| details.contains("printed nothing")));
+    assert!(started.elapsed() < Duration::from_secs(20));
 }
 
 // Spawns a real child process and exercises the kill/cancel path.
@@ -126,7 +165,7 @@ async fn run_and_capture_kills_the_child_and_reports_cancellation_when_flagged()
     let error = run_yt_dlp_and_capture_json(
         binary,
         &args,
-        30,
+        RunLimits::total(Duration::from_secs(30)),
         AppErrorCode::YtDlpMetadataTimeout,
         AppErrorCode::YtDlpMetadataExecFailed,
         AppErrorCode::YtDlpMetadataFailed,
@@ -151,7 +190,7 @@ async fn a_run_cancelled_before_it_gets_a_slot_never_starts() {
     let error = run_yt_dlp_and_capture_json(
         "kavynex-no-such-binary",
         &[],
-        30,
+        RunLimits::total(Duration::from_secs(30)),
         AppErrorCode::YtDlpMetadataTimeout,
         AppErrorCode::YtDlpMetadataExecFailed,
         AppErrorCode::YtDlpMetadataFailed,

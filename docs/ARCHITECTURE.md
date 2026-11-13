@@ -102,7 +102,7 @@ sqlx (SQLite) / std::fs / std::process (yt-dlp, ffmpeg)
     `kill_process_tree` kills a whole tree.
   - `bounded_run.rs`: running yt-dlp or FFmpeg to completion under a time limit, for every call
     site outside the download, which keeps its own loop since it streams progress and has a stall
-    watchdog.
+    watchdog. A run can also be given an idle limit (`RunLimits`), which the comment backup uses.
   - `hash.rs`: SHA-256 file hashing used for the content-addressed media/thumbnail
     filenames (see `docs/DIRECTORIES.md`).
   - `naming.rs`: `unique_temp_suffix()`, the **only** place in the tree allowed to derive a name
@@ -395,7 +395,11 @@ once the media is registered, so `createMedia` gets a second run id (`commentsRu
 `fetch_media_comments` registers for itself, and `onCommentsFetchChange` keeps
 `isFetchingComments` set while it runs, which is what puts "Skip comments" in the modal footer.
 Skipping keeps the media. yt-dlp is asked for at most `MAX_COMMENTS_PER_MEDIA` comments
-(`max_comments`), the most one merge accepts.
+(`max_comments`), the most one merge accepts. The run has no fixed length to be held to, since
+YouTube hands comments over a page at a time and yt-dlp prints the JSON only at the end. It is
+stopped when yt-dlp has printed nothing for three minutes, and otherwise goes on, under a ceiling
+of four hours (`comments_run_limits` in `services/yt_dlp/metadata/`, `RunLimits` in
+`utils/bounded_run.rs`).
 
 `fetch_media_comments` fetches and stores in one command and returns only the counts
 (`MediaCommentsFetch`). The comments never pass through the renderer on the way to the database,

@@ -456,7 +456,7 @@ fn run_command_capturing_first_line_within(
         let detail = match failure {
             RunFailure::Spawn(error) => format!("failed to execute command: {error}"),
             RunFailure::Wait(error) => format!("failed to wait for command: {error}"),
-            RunFailure::TimedOut | RunFailure::Cancelled => {
+            RunFailure::TimedOut | RunFailure::Stalled | RunFailure::Cancelled => {
                 format!("timed out after {} seconds", timeout.as_secs())
             }
         };

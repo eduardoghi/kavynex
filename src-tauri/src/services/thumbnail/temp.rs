@@ -145,7 +145,7 @@ fn run_tracked_ffmpeg(command: std::process::Command) -> AppResult<std::process:
             AppErrorCode::FfmpegExecFailed,
             format!("failed to wait for ffmpeg: {error}"),
         ),
-        RunFailure::TimedOut | RunFailure::Cancelled => AppError::from_code(
+        RunFailure::TimedOut | RunFailure::Stalled | RunFailure::Cancelled => AppError::from_code(
             AppErrorCode::FfmpegFailed,
             format!(
                 "ffmpeg timed out after {} seconds",

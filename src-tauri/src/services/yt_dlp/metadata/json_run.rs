@@ -118,7 +118,7 @@ pub(crate) fn base_json_args() -> Vec<String> {
 /// Reads yt-dlp's stderr as log lines, keeping only the ones worth showing and only the most
 /// recent of them ([`StderrTail`]).
 pub(super) async fn read_filtered_stderr_lines(
-    stderr: tokio::process::ChildStderr,
+    stderr: impl AsyncRead + Unpin,
     log_lines: Arc<Mutex<StderrTail>>,
 ) {
     let mut reader = BufReader::new(stderr);
@@ -145,7 +145,7 @@ pub(super) async fn read_filtered_stderr_lines(
 pub(in crate::services::yt_dlp) async fn run_yt_dlp_and_capture_json(
     yt_dlp: &str,
     args: &[String],
-    timeout_secs: u64,
+    limits: RunLimits,
     timeout_code: AppErrorCode,
     exec_code: AppErrorCode,
     failed_code: AppErrorCode,
@@ -189,7 +189,7 @@ pub(in crate::services::yt_dlp) async fn run_yt_dlp_and_capture_json(
     // only ever comes from the download flow. Other callers pass None.
     let run = crate::utils::bounded_run::run_bounded_async(
         command,
-        Duration::from_secs(timeout_secs),
+        limits,
         cancel.as_deref(),
         |stdout, read| async move {
             read_capped_json_stdout_into(stdout, MAX_YT_DLP_JSON_BYTES, &read).await;
@@ -205,6 +205,13 @@ pub(in crate::services::yt_dlp) async fn run_yt_dlp_and_capture_json(
                 AppError::from_code(exec_code, format!("{exec_message}: {error}"))
             }
             RunFailure::TimedOut => AppError::from_code(timeout_code, timeout_message),
+            // The same code as the time limit, since what the user can do about it is the same.
+            // The details say which of the two it was.
+            RunFailure::Stalled => AppError::from_code_with_details(
+                timeout_code,
+                timeout_message,
+                "yt-dlp printed nothing for the whole idle limit, so it was stopped",
+            ),
             RunFailure::Cancelled => AppError::from_code(
                 AppErrorCode::YtDlpDownloadCancelled,
                 "yt-dlp download cancelled",
