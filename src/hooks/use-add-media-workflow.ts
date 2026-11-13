@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
 import { createMedia } from "../services/media-service";
-import { cancelMediaDownload } from "../services/media-download-service";
+import { cancelRegisteredRun } from "../use-cases/cancel-registered-run";
 import { useAddMediaForm } from "./use-add-media-form";
 import { useAsyncFlag } from "./use-async-flag";
 import { useYtDlpEvents } from "./use-yt-dlp-events";
@@ -63,24 +63,6 @@ type UseAddMediaWorkflowReturn = {
     closeAddMediaModal: () => Promise<void>;
 };
 
-// How long a cancel waits before asking once more for a run the backend did not know yet. The
-// creation registers its run id a moment after the click that starts it, and a Cancel pressed in
-// that moment found nothing and did nothing.
-const CANCEL_RETRY_DELAY_MS = 400;
-
-async function cancelRegisteredRun(runId: string): Promise<void> {
-    try {
-        await cancelMediaDownload(runId);
-    } catch (error) {
-        if (parseAppError(error).code !== INVALID_RUN_ID_ERROR_CODE) {
-            throw error;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, CANCEL_RETRY_DELAY_MS));
-        await cancelMediaDownload(runId);
-    }
-}
-
 export function useAddMediaWorkflow({
     selectedChannelId,
     importMode,
@@ -135,6 +117,7 @@ export function useAddMediaWorkflow({
         runAddMedia,
         startRun: ytDlpEvents.startRun,
         appendManualLog: ytDlpEvents.appendManualLog,
+        markStopped: ytDlpEvents.markStopped,
         onReloadMedia,
     });
 

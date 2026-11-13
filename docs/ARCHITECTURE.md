@@ -443,7 +443,9 @@ listed is left out until a retry lists them. The batch then has `create_media` d
 each media in the format chosen for it, duplicate check included, one at a time with
 `BATCH_PAUSE_MS` (5 seconds) between two, so YouTube sees what a person adding them by hand would
 make rather than a burst. A media that fails is reported and the batch goes on, and a stop cancels
-the run in progress and starts nothing after it.
+the run in progress, the comment backup included, and starts nothing after it. The batch tells the
+terminal itself when a media fails or is stopped (`markStopped`), since the backend sends no event
+for one it refuses before the download starts, and `isYtDlpRunning` would otherwise stay set.
 
 ### Changing the library folder
 

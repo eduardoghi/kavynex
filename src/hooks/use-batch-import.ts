@@ -1,13 +1,17 @@
 import { useCallback, useRef, useState } from "react";
 import type { ImportMode } from "../types/settings";
-import { createMedia } from "../services/media-service";
-import { cancelMediaDownload } from "../services/media-download-service";
+import { createMedia, type CommentsBackupOutcome } from "../services/media-service";
 import { buildYtDlpCommandPreview, generateYtDlpRunId } from "../use-cases/add-media";
-import { YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE } from "../constants/error-codes";
+import { cancelRegisteredRun } from "../use-cases/cancel-registered-run";
+import {
+    INVALID_RUN_ID_ERROR_CODE,
+    YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE,
+} from "../constants/error-codes";
 import { parseAppError } from "../utils/app-error";
 import { logError } from "../utils/app-logger";
 import { resolveErrorMessage } from "../utils/error-message";
 import { useMemoObject } from "./use-memo-object";
+import type { YtDlpRunOutcome } from "./yt-dlp-terminal-store";
 
 // The pause between two media of a batch, so YouTube sees one download after another the way a
 // person adding them by hand would make them, rather than a burst.
@@ -66,11 +70,40 @@ type UseBatchImportOptions = {
     // The add-media terminal, which shows the download in progress.
     startRun: (runId: string, commandPreview: string) => void;
     appendManualLog: (line: string) => void;
+    // Tells the terminal a run is over. The backend says so itself for a download that started
+    // (the finished, error and cancelled events), and says nothing for a media it refuses before
+    // that (already in the channel, the library folder out of reach, yt-dlp not found). startRun
+    // would then stay in force after the batch, and the app would go on refusing what a running
+    // download blocks.
+    markStopped: (outcome?: YtDlpRunOutcome) => void;
     onReloadMedia: () => Promise<void>;
 };
 
 function isCancellation(error: unknown): boolean {
     return parseAppError(error).code === YT_DLP_DOWNLOAD_CANCELLED_ERROR_CODE;
+}
+
+// Cancels the run `runId`, for a stop. A run the backend no longer knows has ended on its own,
+// which is what the stop was after, so that refusal is not reported.
+function cancelRunForStop(runId: string): void {
+    void cancelRegisteredRun(runId).catch((error: unknown) => {
+        if (parseAppError(error).code !== INVALID_RUN_ID_ERROR_CODE) {
+            logError("batch-import", "Failed to cancel a run of a batch.", error, { runId });
+        }
+    });
+}
+
+// What to say about a media that was added with its comments missing, or null when nothing is.
+function addedNote(comments: CommentsBackupOutcome, stopped: boolean): string | null {
+    if (comments === "failed") {
+        return "Added, but its comments could not be saved.";
+    }
+
+    if (comments === "skipped" && stopped) {
+        return "Added without its comments, since the batch was stopped.";
+    }
+
+    return null;
 }
 
 // Resolves after `ms`, or as soon as `signal` aborts.
@@ -102,6 +135,7 @@ export function useBatchImport({
     runAddMedia,
     startRun,
     appendManualLog,
+    markStopped,
     onReloadMedia,
 }: UseBatchImportOptions): BatchImportController {
     const [channelId, setChannelId] = useState<number | null>(null);
@@ -128,7 +162,8 @@ export function useBatchImport({
             channel: number,
             item: BatchImportItem,
             index: number,
-            options: BatchImportOptions
+            options: BatchImportOptions,
+            signal: AbortSignal
         ): Promise<void> => {
             const url = `https://www.youtube.com/watch?v=${item.youtubeVideoId}`;
 
@@ -170,15 +205,19 @@ export function useBatchImport({
                     commentsRunId,
                     onCommentsFetchChange: (fetching) => {
                         runIdRef.current = fetching ? commentsRunId : "";
+
+                        // A stop pressed once the download was over found no run to cancel, since
+                        // the download's is released when the media is registered and this one had
+                        // not started. The comment backup would then run to its end, which can be
+                        // long, behind a button that says it is stopping.
+                        if (fetching && signal.aborted) {
+                            cancelRunForStop(commentsRunId);
+                        }
                     },
                 }
             );
 
-            setItem(
-                index,
-                "done",
-                created.comments === "failed" ? "Added, but its comments could not be saved." : null
-            );
+            setItem(index, "done", addedNote(created.comments, signal.aborted));
         },
         [appendManualLog, importMode, libraryPath, setItem, startRun]
     );
@@ -211,13 +250,15 @@ export function useBatchImport({
                         }
 
                         try {
-                            await importOne(channel, item, index, options);
+                            await importOne(channel, item, index, options, controller.signal);
                         } catch (error) {
                             if (isCancellation(error) || controller.signal.aborted) {
+                                markStopped("cancelled");
                                 setItem(index, "stopped");
                                 continue;
                             }
 
+                            markStopped("failed");
                             logError("batch-import", "Failed to add a media of a batch.", error, {
                                 channelId: channel,
                                 youtubeVideoId: item.youtubeVideoId,
@@ -245,7 +286,7 @@ export function useBatchImport({
                 }
             });
         },
-        [importOne, onReloadMedia, runAddMedia, setItem]
+        [importOne, markStopped, onReloadMedia, runAddMedia, setItem]
     );
 
     const stop = useCallback((): void => {
@@ -261,9 +302,11 @@ export function useBatchImport({
         const runId = runIdRef.current;
 
         if (runId) {
-            // Best effort. A run that ended meanwhile is not registered any more, and the loop
-            // starts nothing after the abort either way.
-            void cancelMediaDownload(runId).catch(() => undefined);
+            // A run that ended meanwhile is not registered any more, and the loop starts nothing
+            // after the abort either way. One the backend has not registered yet is asked for
+            // again (see cancelRegisteredRun), and a comment backup that begins after this is
+            // cancelled where it begins (onCommentsFetchChange above).
+            cancelRunForStop(runId);
         }
     }, []);
 

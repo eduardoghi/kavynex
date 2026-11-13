@@ -13,6 +13,10 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   instead of being refused as not empty.
 - Saving the comments of a video that has many thousands no longer stops at three minutes with
   nothing saved. It goes on for as long as yt-dlp keeps answering, and Skip comments still stops it.
+- After a batch import in which a media failed, the app no longer refuses to change the library
+  folder or delete a channel as if a download were still running.
+- Stop in a batch import also stops the comment backup of the media in progress, and reaches a
+  download that had only just started.
 
 ## [1.9.0] (2026-11-08)
 
