@@ -41,3 +41,26 @@ pub fn unique_temp_path(label: &str) -> PathBuf {
         crate::utils::naming::unique_temp_suffix()
     ))
 }
+
+/// `path` spelled through this machine's own administrative share (`C:\x` as `\\localhost\C$\x`),
+/// which names the same file and does not canonicalize to the same string. `None` where the share
+/// cannot be reached (not an administrator, or the Server service is off), so a test built on it
+/// has to skip there.
+///
+/// It is the one way to have a real second spelling of a path in a test. A symlink and a junction
+/// are resolved by `canonicalize`, so they never reach the code that exists for the alias.
+#[cfg(windows)]
+pub fn admin_share_spelling(path: &std::path::Path) -> Option<PathBuf> {
+    let text = path.to_str()?;
+    let text = text.strip_prefix(r"\\?\").unwrap_or(text);
+    let mut characters = text.chars();
+    let drive = characters.next().filter(char::is_ascii_alphabetic)?;
+    let rest = characters.as_str().strip_prefix(':')?;
+    let through_share = PathBuf::from(format!(r"\\localhost\{drive}${rest}"));
+
+    if through_share.exists() {
+        Some(through_share)
+    } else {
+        None
+    }
+}

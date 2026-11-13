@@ -342,22 +342,19 @@ pub fn stage_media_import_recorded_sync(
 }
 
 /// True when `source` sits inside the library and is not the content-addressed `destination`
-/// itself. Both are canonicalized, so a different spelling of a library path still counts.
+/// itself. Both questions are asked of the disk as well as of the paths, so a library reached
+/// under another spelling (a drive letter mapped to the share it is on) still counts. See
+/// `filesystem::identity`.
 fn source_is_another_library_file(source: &Path, destination: &Path, library_dir: &Path) -> bool {
-    let Ok(canonical_source) = source.canonicalize() else {
-        return false;
-    };
-
-    if destination
-        .canonicalize()
-        .is_ok_and(|canonical_destination| canonical_destination == canonical_source)
-    {
+    if !source.exists() {
         return false;
     }
 
-    library_dir
-        .canonicalize()
-        .is_ok_and(|canonical_library| canonical_source.starts_with(canonical_library))
+    if crate::services::filesystem::is_same_directory_entry(source, destination) {
+        return false;
+    }
+
+    crate::services::filesystem::path_is_inside_dir(source, library_dir)
 }
 
 /// The refusal for a library file whose name says it holds the imported content and whose bytes
@@ -671,6 +668,61 @@ mod tests {
             fs::read(library_dir.join(&staged.relative_path)).unwrap(),
             b"downloaded-bytes"
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_move_of_a_library_file_picked_under_another_spelling_of_the_library_removes_nothing() {
+        // The library is on a share and the file is picked in it through a drive letter mapped to
+        // that share. Read as a file from outside, it was matched by content against itself and
+        // then removed as the Move's source, with no trash to bring it back from.
+        let root = unique_test_dir("move-from-library-alias");
+        let library_dir = root.join("library");
+        let video_dir = library_dir.join("video");
+        fs::create_dir_all(&video_dir).unwrap();
+        let Some(library_through_share) = crate::test_support::admin_share_spelling(&library_dir)
+        else {
+            eprintln!("skipped: the administrative share of the temp drive cannot be reached");
+            let _ = fs::remove_dir_all(root);
+            return;
+        };
+
+        // A file under its content-addressed name, so the import's destination is the file itself.
+        let seed = video_dir.join("seed.mp4");
+        fs::write(&seed, b"library-bytes").unwrap();
+        let hash = crate::utils::hash::file_hash(&seed).unwrap();
+        let stored = video_dir.join(format!("media_{hash}.mp4"));
+        fs::rename(&seed, &stored).unwrap();
+
+        let staged = stage_media_import_cancellable_sync(
+            stored.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_through_share.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(staged.source_to_remove, None);
+        assert!(staged.library_holds_only_copy);
+        assert_eq!(fs::read(&stored).unwrap(), b"library-bytes");
+
+        // And one under a name of its own, which another row may point at. Imported as a Copy.
+        let owned = video_dir.join("youtube_abc_137.mp4");
+        fs::write(&owned, b"downloaded-bytes").unwrap();
+
+        let staged = stage_media_import_cancellable_sync(
+            owned.to_string_lossy().as_ref(),
+            ImportMode::Move,
+            library_through_share.to_string_lossy().as_ref(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(staged.source_to_remove, None);
+        assert!(!staged.library_holds_only_copy);
+        assert_eq!(fs::read(&owned).unwrap(), b"downloaded-bytes");
 
         let _ = fs::remove_dir_all(root);
     }

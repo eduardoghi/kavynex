@@ -13,6 +13,7 @@ use crate::utils::naming::unique_temp_suffix;
 use crate::{AppError, AppErrorCode, AppResult};
 
 mod durable;
+mod identity;
 mod move_file;
 mod replace;
 mod retry;
@@ -20,6 +21,7 @@ mod scan;
 mod verified_copy;
 
 pub(crate) use durable::*;
+pub(crate) use identity::*;
 pub(crate) use move_file::*;
 pub(crate) use replace::*;
 pub(crate) use retry::*;

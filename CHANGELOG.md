@@ -17,6 +17,8 @@ User-visible changes, newest first. Earlier releases are described on their GitH
   folder or delete a channel as if a download were still running.
 - Stop in a batch import also stops the comment backup of the media in progress, and reaches a
   download that had only just started.
+- Importing in Move mode a file that is already in the library, picked through another path to the
+  same folder (a drive letter mapped to the share the library is on), no longer removes it.
 
 ## [1.9.0] (2026-11-08)
 

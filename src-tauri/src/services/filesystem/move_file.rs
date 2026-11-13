@@ -32,13 +32,10 @@ pub(super) fn move_or_copy_file_using(
     // If the source already IS the destination (e.g. re-importing a file that is already
     // inside the library, in Move mode), this must be a no-op. Without this guard the
     // "identical content" branch below would remove the source and thus delete the only
-    // copy of the file.
-    if let (Ok(canonical_source), Ok(canonical_destination)) =
-        (source.canonicalize(), destination.canonicalize())
-    {
-        if canonical_source == canonical_destination {
-            return Ok(());
-        }
+    // copy of the file. Asked of the disk as well as of the paths, since one entry can be
+    // reached under two spellings (see `identity`).
+    if is_same_directory_entry(source, destination) {
+        return Ok(());
     }
 
     let parent = destination.parent().ok_or_else(|| {
@@ -167,12 +164,12 @@ pub(super) fn stage_move_using(
         ));
     }
 
-    if let (Ok(canonical_source), Ok(canonical_destination)) =
-        (source.canonicalize(), destination.canonicalize())
-    {
-        if canonical_source == canonical_destination {
-            return Ok(StagedMove::SameFile);
-        }
+    // The one entry reached twice, under one spelling or two (see `identity`). Taken for another
+    // file, it would pass the identical-content test below and be handed back as a source to
+    // remove, which is the library's only copy. A hard link of the destination elsewhere is not
+    // this case. It is a second entry, and it is still owed its removal.
+    if is_same_directory_entry(source, destination) {
+        return Ok(StagedMove::SameFile);
     }
 
     let parent = destination.parent().ok_or_else(|| {

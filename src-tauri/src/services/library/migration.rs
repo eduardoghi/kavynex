@@ -20,7 +20,7 @@ const MIGRATED_LIBRARY_DIRS: [&str; 5] = [
     MANAGED_LIBRARY_DIRS[3],
     LIBRARY_TRASH_DIR,
 ];
-use crate::services::filesystem::copy_directory_contents_tracked;
+use crate::services::filesystem::{copy_directory_contents_tracked, directory_chain_contains};
 use crate::services::library::paths::ensure_library_dir;
 use crate::services::logger;
 use crate::{AppError, AppErrorCode, AppResult};
@@ -124,9 +124,11 @@ fn is_library_index_entry(name: &str) -> bool {
 /// already present and the removal of the old folder would delete the new one with it.
 ///
 /// Two checks, because each covers what the other cannot. The directories' identity on disk
-/// (volume and file index, or device and inode) is compared along both ancestor chains, which also
-/// catches one folder inside the other. A file written into the new folder and looked for in the
-/// old one covers a share whose server reports no usable file index.
+/// (volume and file index, or device and inode) is compared along both ancestor chains
+/// (`filesystem::directory_chain_contains`), which also catches one folder inside the other. That
+/// check counts a directory it cannot open as not matching, so a file written into the new folder
+/// and looked for in the old one covers that, and a share whose server reports no usable file
+/// index.
 fn ensure_distinct_directories(old: &Path, new: &Path) -> AppResult<()> {
     let same_folder = || {
         AppError::from_code(
@@ -165,20 +167,6 @@ fn ensure_distinct_directories(old: &Path, new: &Path) -> AppResult<()> {
     }
 
     Ok(())
-}
-
-/// Whether `path` or one of its ancestors is the directory `target`, compared by identity on disk.
-///
-/// A directory that cannot be opened counts as not matching. The probe file in
-/// `ensure_distinct_directories` still covers the case that matters most, the two being one folder.
-fn directory_chain_contains(path: &Path, target: &Path) -> bool {
-    let Ok(target) = same_file::Handle::from_path(target) else {
-        return false;
-    };
-
-    path.ancestors()
-        .filter_map(|ancestor| same_file::Handle::from_path(ancestor).ok())
-        .any(|ancestor| ancestor == target)
 }
 
 /// The destination must be empty, or contain only what a library holds, which is the app's managed

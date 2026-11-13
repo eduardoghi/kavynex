@@ -959,6 +959,147 @@ fn a_staged_move_of_a_file_onto_itself_reports_the_same_file() {
 }
 
 #[test]
+fn a_staged_move_onto_a_hard_link_of_its_source_still_owes_the_source_its_removal() {
+    // What an earlier Move leaves when the original could not be removed. The library file and
+    // the user's file are one file under two entries. Read as the same entry, the retry would
+    // never free the original.
+    let (dir, source, destination, hash) = staged_move_fixture(b"one file, two names");
+    fs::create_dir_all(destination.parent().unwrap()).unwrap();
+    fs::hard_link(&source, &destination).unwrap();
+
+    let staged = stage_move_cancellable(&source, &destination, &hash, None).unwrap();
+
+    assert_eq!(staged, StagedMove::SourceKept);
+
+    fs::remove_file(&source).unwrap();
+    assert_eq!(fs::read(&destination).unwrap(), b"one file, two names");
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_entry_is_recognized_as_itself_by_identity_without_reading_the_paths_as_text() {
+    // The half that covers one entry reached under two spellings (a share by its name and by a
+    // drive letter mapped to it), where the canonical paths differ. It never compares them.
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("media_hash.mp4");
+    fs::write(&file, b"bytes").unwrap();
+
+    assert!(same_entry_by_identity(&file, &file));
+    assert!(same_entry_by_identity(
+        &file,
+        &dir.join(".").join("media_hash.mp4")
+    ));
+    assert!(is_same_directory_entry(&file, &file));
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[cfg(windows)]
+#[test]
+fn a_file_reached_through_a_share_and_through_its_drive_letter_is_one_entry() {
+    // The alias itself, where the machine allows one. A library on a share, and a file picked in
+    // it through a drive letter mapped to that share.
+    let (dir, source, _, hash) = staged_move_fixture(b"one entry, two spellings");
+    let Some(through_share) = crate::test_support::admin_share_spelling(&source) else {
+        eprintln!("skipped: the administrative share of the temp drive cannot be reached");
+        let _ = fs::remove_dir_all(dir);
+        return;
+    };
+    let dir_through_share = crate::test_support::admin_share_spelling(&dir).unwrap();
+
+    assert_ne!(
+        source.canonicalize().unwrap(),
+        through_share.canonicalize().unwrap(),
+        "the two spellings have to canonicalize apart for this to say anything"
+    );
+
+    assert!(is_same_directory_entry(&source, &through_share));
+    assert!(path_is_inside_dir(&source, &dir_through_share));
+    assert!(path_is_inside_dir(&through_share, &dir));
+
+    // Staged either way round, it is the same file, and nothing is handed back to remove.
+    assert_eq!(
+        stage_move_cancellable(&source, &through_share, &hash, None).unwrap(),
+        StagedMove::SameFile
+    );
+    assert_eq!(
+        stage_move_cancellable(&through_share, &source, &hash, None).unwrap(),
+        StagedMove::SameFile
+    );
+    move_or_copy_file(&source, &through_share).unwrap();
+
+    assert_eq!(fs::read(&source).unwrap(), b"one entry, two spellings");
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_hard_link_is_another_entry_of_the_same_file() {
+    let dir = unique_test_dir();
+    let elsewhere = dir.join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let file = dir.join("media_hash.mp4");
+    fs::write(&file, b"bytes").unwrap();
+
+    // Under the same name in another folder, and under another name in the same folder.
+    let same_name_elsewhere = elsewhere.join("media_hash.mp4");
+    let other_name_beside = dir.join("clip.mp4");
+    fs::hard_link(&file, &same_name_elsewhere).unwrap();
+    fs::hard_link(&file, &other_name_beside).unwrap();
+
+    for link in [&same_name_elsewhere, &other_name_beside] {
+        assert!(!same_entry_by_identity(&file, link));
+        assert!(!is_same_directory_entry(&file, link));
+    }
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn two_files_and_a_file_that_is_not_there_are_not_the_same_entry() {
+    let dir = unique_test_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("a.mp4");
+    let other = dir.join("b.mp4");
+    fs::write(&file, b"bytes").unwrap();
+    fs::write(&other, b"bytes").unwrap();
+
+    assert!(!is_same_directory_entry(&file, &other));
+    assert!(!is_same_directory_entry(&file, &dir.join("missing.mp4")));
+    assert!(!is_same_directory_entry(
+        &dir.join("missing.mp4"),
+        &dir.join("missing.mp4")
+    ));
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_path_is_inside_a_directory_by_identity_along_its_ancestors() {
+    let dir = unique_test_dir();
+    let library = dir.join("library");
+    let beside = dir.join("beside");
+    fs::create_dir_all(library.join("video")).unwrap();
+    fs::create_dir_all(&beside).unwrap();
+    let inside = library.join("video").join("media_hash.mp4");
+    let outside = beside.join("media_hash.mp4");
+    fs::write(&inside, b"bytes").unwrap();
+    fs::write(&outside, b"bytes").unwrap();
+
+    assert!(directory_chain_contains(&inside, &library));
+    assert!(path_is_inside_dir(&inside, &library));
+    assert!(path_is_inside_dir(&library, &library));
+
+    assert!(!directory_chain_contains(&outside, &library));
+    assert!(!path_is_inside_dir(&outside, &library));
+    assert!(!path_is_inside_dir(&inside, &dir.join("missing")));
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn a_staged_move_onto_identical_content_keeps_the_source_for_the_caller_to_remove() {
     let (dir, source, destination, hash) = staged_move_fixture(b"same bytes");
     fs::create_dir_all(destination.parent().unwrap()).unwrap();
