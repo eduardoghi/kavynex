@@ -62,7 +62,7 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 hyper = { version = "1", default-features = false, features = ["server", "http1"] }
 # The operating system's random source, for the token the loopback media server requires in every
 # URL (services/media_server.rs). Already present transitively; pinned here as a direct dependency.
-getrandom = "0.3"
+getrandom = "0.4"
 # The `Service<Name>` trait hyper-util's HttpConnector takes as a custom DNS resolver. Used by the
 # thumbnail downloader's SSRF guard to pin resolution to public addresses (see
 # services/thumbnail/download/fetch.rs). Already present transitively via hyper-util; pinned here as a
